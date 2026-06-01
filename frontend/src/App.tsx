@@ -56,6 +56,7 @@ import { PotentiometerNode } from './components/nodes/PotentiometerNode';
 import { SevenSegmentNode } from './components/nodes/SevenSegmentNode';
 import { CurrentSourceNode } from './components/nodes/CurrentSourceNode';
 import { datasheets } from './utils/datasheets';
+import { useMCPBridge } from './hooks/useMCPBridge';
 
 const edgeTypes = {
   aura: AuraEdge,
@@ -1043,7 +1044,7 @@ export default function App() {
       setNodes(updatedNodes);
       simResultRef.current = { portToNet, result };
 
-      setEdges(eds => eds.map(e => {
+      const updatedEdges = edges.map(e => {
         const srcNode = updatedNodes.find(n => n.id === e.source);
         const tgtNode = updatedNodes.find(n => n.id === e.target);
         const curArr = srcNode?.data.current_array || tgtNode?.data.current_array;
@@ -1053,11 +1054,20 @@ export default function App() {
           type: showAura ? 'aura' : 'smoothstep', 
           data: { ...e.data, current_array: curArr, time_points: tPts } 
         };
-      }));
+      });
+      setEdges(updatedEdges);
       
-    } catch (e) {
+      return {
+        ok: true,
+        nodes: updatedNodes,
+        edges: updatedEdges,
+        rawResult: result
+      };
+      
+    } catch (e: any) {
       console.error("Simulation failed:", e);
       setIsSimulating(false);
+      return { ok: false, error: e.message || String(e) };
     }
   };
 
@@ -1147,6 +1157,23 @@ export default function App() {
       setEdges(presets.basicBlink.edges);
     }
   };
+
+  useMCPBridge({
+    nodes, edges, isSimulating, selectedPreset, probeMode,
+    runSimulation, stopSimulation,
+    setProbeMode,
+    setNodes: (n: any) => setNodes(n),
+    setEdges: (e: any) => setEdges(e),
+    loadPreset: (name: string) => {
+      const preset = allPresets[name];
+      if (preset) {
+        stopSimulation();
+        setNodes(preset.nodes);
+        setEdges(preset.edges);
+        setSelectedPreset(name);
+      }
+    },
+  });
 
   return (
     <div className="flex flex-col h-screen w-full bg-gray-50 text-gray-900 font-sans overflow-hidden">
