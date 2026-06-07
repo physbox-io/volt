@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Settings, Trash2, BookOpen, Inbox } from 'lucide-react';
+import { X, Settings, Trash2, BookOpen, Inbox, Key } from 'lucide-react';
 import type { CircuitPreset } from '../utils/storage';
 
 interface SettingsModalProps {
@@ -12,6 +12,7 @@ interface SettingsModalProps {
 
 export function SettingsModal({ onClose, showAura, setShowAura, userPresets, onDeleteUserPreset }: SettingsModalProps) {
   const [tab, setTab] = useState<'general' | 'presets'>('general');
+  const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
   const userPresetKeys = Object.keys(userPresets);
 
   return (
@@ -80,6 +81,27 @@ export function SettingsModal({ onClose, showAura, setShowAura, userPresets, onD
                   />
                   <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600" />
                 </label>
+              </div>
+
+              <div className="pt-4 border-t border-gray-100">
+                <label htmlFor="geminiApiKey" className="flex items-center gap-1.5 text-xs font-bold text-gray-800 uppercase tracking-widest mb-2">
+                  <Key size={14} className="text-gray-500" />
+                  Gemini API Key
+                </label>
+                <input
+                  type="password"
+                  id="geminiApiKey"
+                  value={geminiApiKey}
+                  onChange={(e) => {
+                    setGeminiApiKey(e.target.value);
+                    localStorage.setItem('gemini_api_key', e.target.value);
+                  }}
+                  placeholder="Paste AIzaSy... here"
+                  className="w-full px-3.5 py-2 text-xs border border-gray-200 rounded-xl shadow-inner focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                />
+                <p className="mt-1.5 text-[10px] text-gray-400 leading-normal">
+                  Your API key is saved locally in your browser and used only to communicate directly with Google's Gemini endpoints.
+                </p>
               </div>
 
               <div className="pt-4 border-t border-gray-100">

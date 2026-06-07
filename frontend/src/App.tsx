@@ -46,7 +46,8 @@ import { XorNode } from './components/nodes/XorNode';
 import { InductorNode } from './components/nodes/InductorNode';
 import { SwitchNode } from './components/nodes/SwitchNode';
 import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
-import { Play, Square, Trash2, Info, Menu, X, AlertCircle, Settings, Save, Crosshair } from 'lucide-react';
+import { Play, Square, Trash2, Info, Menu, X, AlertCircle, Settings, Save, Crosshair, Sparkles } from 'lucide-react';
+import AICopilotPanel from './components/AICopilotPanel';
 import { Simulation } from 'eecircuit-engine';
 import { presets } from './utils/presets';
 import { AuraEdge } from './components/AuraEdge';
@@ -770,6 +771,153 @@ function FlowArea({
   );
 }
 
+function ProbeTooltip({ probeData, isSimulating, onClose }: { probeData: any; isSimulating: boolean; onClose: () => void }) {
+  const [currentVoltage, setCurrentVoltage] = useState(probeData.voltage);
+  const [currentTimeMs, setCurrentTimeMs] = useState(0);
+
+  useEffect(() => {
+    if (!probeData.history || !probeData.timePoints || probeData.history.length === 0) {
+      setCurrentVoltage(probeData.voltage);
+      setCurrentTimeMs(0);
+      return;
+    }
+
+    let animationFrame: number;
+    let startTime = Date.now();
+    const times = probeData.timePoints;
+    const duration = times[times.length - 1] || 1000;
+
+    const animate = () => {
+      let elapsedMs = Date.now() - startTime;
+      if (elapsedMs > duration) {
+        startTime = Date.now();
+        elapsedMs = 0;
+      }
+
+      setCurrentTimeMs(elapsedMs);
+
+      // Find index corresponding to elapsedMs
+      let idx = 0;
+      for (let i = 0; i < times.length; i++) {
+        if (times[i] >= elapsedMs) {
+          idx = i;
+          break;
+        }
+      }
+
+      setCurrentVoltage(probeData.history[idx] ?? 0);
+      animationFrame = requestAnimationFrame(animate);
+    };
+
+    animationFrame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [probeData, isSimulating]);
+
+  return (
+    <div
+      className="fixed z-[200] bg-slate-950/95 backdrop-blur-md text-white rounded-xl px-4 py-3 shadow-2xl border border-violet-500/40 text-xs font-mono pointer-events-auto animate-in fade-in duration-100 flex flex-col gap-2 min-w-[220px]"
+      style={{ left: probeData.x + 12, top: probeData.y - 10 }}
+      onClick={onClose}
+    >
+      <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 gap-4">
+        <span className="text-violet-300 font-bold">🔍 Probe</span>
+        <span className="text-[10px] text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded">Net: {probeData.netName}</span>
+      </div>
+      
+      <div className="flex justify-between items-baseline gap-4 mt-0.5">
+        <div className="text-slate-400 text-[10px]">Value:</div>
+        <div className="text-base font-bold text-green-400">{currentVoltage.toFixed(4)} V</div>
+      </div>
+
+      {probeData.history && probeData.history.length > 0 && (
+        <>
+          <div className="grid grid-cols-3 gap-1 text-[9px] text-slate-400 border-t border-slate-800/50 pt-1.5 mt-0.5">
+            <div>Max: <span className="text-red-400">{probeData.maxV?.toFixed(2)}V</span></div>
+            <div>Min: <span className="text-blue-400">{probeData.minV?.toFixed(2)}V</span></div>
+            <div>Avg: <span className="text-amber-400">{probeData.avgV?.toFixed(2)}V</span></div>
+          </div>
+
+          <div className="h-10 w-full bg-slate-900/60 rounded-lg p-1 border border-slate-800/30 overflow-hidden flex items-center justify-center mt-1 relative">
+            {/* Sparkline */}
+            {(() => {
+              const pts = probeData.history || [];
+              const min = probeData.minV ?? 0;
+              const max = probeData.maxV ?? 0;
+              const range = max - min;
+              
+              // Downsample
+              const maxPoints = 80;
+              let displayPts = pts;
+              if (pts.length > maxPoints) {
+                const factor = Math.ceil(pts.length / maxPoints);
+                displayPts = pts.filter((_, i) => i % factor === 0);
+              }
+              
+              if (displayPts.length === 0) return null;
+              
+              const width = 180;
+              const height = 32;
+              const padding = 2;
+              
+              const pointsString = displayPts.map((v, i) => {
+                const x = padding + (i / (displayPts.length - 1)) * (width - 2 * padding);
+                const y = range === 0 
+                  ? height / 2 
+                  : height - padding - ((v - min) / range) * (height - 2 * padding);
+                return `${x.toFixed(1)},${y.toFixed(1)}`;
+              }).join(' ');
+
+              // Calculate playhead x-coordinate
+              const times = probeData.timePoints || [0, 1000];
+              const duration = times[times.length - 1] || 1000;
+              const playheadRatio = duration > 0 ? currentTimeMs / duration : 0;
+              const playheadX = padding + playheadRatio * (width - 2 * padding);
+
+              return (
+                <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="overflow-visible">
+                  <defs>
+                    <linearGradient id="sparkline-grad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.3" />
+                      <stop offset="100%" stopColor="#a78bfa" stopOpacity="0.0" />
+                    </linearGradient>
+                  </defs>
+                  {/* Area under curve */}
+                  {range > 0 && (
+                    <polygon
+                      points={`${padding},${height - padding} ${pointsString} ${width - padding},${height - padding}`}
+                      fill="url(#sparkline-grad)"
+                    />
+                  )}
+                  {/* Sparkline path */}
+                  <polyline
+                    fill="none"
+                    stroke="#a78bfa"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    points={pointsString}
+                  />
+                  {/* Playhead line */}
+                  <line 
+                    x1={playheadX} 
+                    y1={padding} 
+                    x2={playheadX} 
+                    y2={height - padding} 
+                    stroke="#ef4444" 
+                    strokeWidth="1.5" 
+                    strokeDasharray="1 1"
+                  />
+                </svg>
+              );
+            })()}
+          </div>
+        </>
+      )}
+      <div className="text-[9px] text-slate-500 mt-1 text-center italic border-t border-slate-800/30 pt-1">click to dismiss</div>
+    </div>
+  );
+}
+
 export default function App() {
   // ── Initialise from localStorage ────────────────────────────────────────────
   const savedSettings = loadSettings();
@@ -782,13 +930,24 @@ export default function App() {
   const [selectedPreset, setSelectedPreset] = useState('basicBlink');
   const [isDocsOpen, setIsDocsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showAICopilot, setShowAICopilot] = useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [saveDialogName, setSaveDialogName] = useState('');
   const [showAura, setShowAura] = useState(savedSettings.showAura ?? false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
   const [userPresets, setUserPresets] = useState<Record<string, CircuitPreset>>(() => loadUserPresets());
   const [probeMode, setProbeMode] = useState(false);
-  const [probeData, setProbeData] = useState<{ netName: string; voltage: number; x: number; y: number } | null>(null);
+  const [probeData, setProbeData] = useState<{
+    netName: string;
+    voltage: number;
+    history?: number[];
+    timePoints?: number[];
+    maxV?: number;
+    minV?: number;
+    avgV?: number;
+    x: number;
+    y: number;
+  } | null>(null);
   const simResultRef = useRef<{ portToNet: Record<string, string>; result: any } | null>(null);
 
   // Scope resize handler — inject into every scope node's data
@@ -994,7 +1153,16 @@ export default function App() {
           const vNeg = findGraph(portToNet[`${n.id}-neg`]);
           const valPos = vPos ? vPos.voltage_levels[vPos.voltage_levels.length - 1] : 0;
           const valNeg = vNeg ? vNeg.voltage_levels[vNeg.voltage_levels.length - 1] : 0;
-          newNode.data = { ...newNode.data, voltage: valPos - valNeg };
+          const timePoints = vPos ? vPos.timestamps_ms : (vNeg ? vNeg.timestamps_ms : null);
+          const vArr = vPos && vNeg 
+            ? vPos.voltage_levels.map((v, i) => v - (vNeg.voltage_levels[i] || 0))
+            : (vPos ? vPos.voltage_levels : (vNeg ? vNeg.voltage_levels.map(v => -v) : null));
+          newNode.data = { 
+            ...newNode.data, 
+            voltage: valPos - valNeg,
+            voltage_array: vArr,
+            time_points: timePoints
+          };
         } else if (n.type === 'scope') {
           const ch1 = findGraph(portToNet[`${n.id}-ch1`]);
           const ch2 = findGraph(portToNet[`${n.id}-ch2`]);
@@ -1073,6 +1241,7 @@ export default function App() {
 
   const stopSimulation = () => {
     setIsSimulating(false);
+    setProbeData(null);
     setNodes(nds => nds.map(n => {
       if (n.type === 'led') {
         return { ...n, data: { ...n.data, brightness: 0, current_array: undefined, time_points: undefined } };
@@ -1294,6 +1463,13 @@ export default function App() {
           >
             <Settings size={18} />
           </button>
+          <button
+            onClick={() => setShowAICopilot(!showAICopilot)}
+            className={`flex items-center justify-center w-8 h-8 rounded-full border-2 transition-colors focus:outline-none flex-shrink-0 cursor-pointer ${showAICopilot ? 'bg-indigo-100 border-indigo-600 text-indigo-700' : 'border-purple-200 text-purple-600 hover:bg-purple-50 hover:border-purple-300'}`}
+            title="AI Copilot Expert"
+          >
+            <Sparkles size={18} />
+          </button>
           <a
             href="https://github.com/tomgrek/circuitsim"
             target="_blank"
@@ -1324,15 +1500,29 @@ export default function App() {
               const netName = portToNet[srcPort] || 'unknown';
               // Find voltage
               let voltage = 0;
+              let history: number[] = [];
+              let timePoints: number[] = [];
+              let maxV = 0;
+              let minV = 0;
+              let avgV = 0;
               if (result?.variableNames && result?.data) {
                 const search = netName.toLowerCase();
                 const idx = result.variableNames.findIndex((v: string) => v.toLowerCase() === search || v.toLowerCase() === `v(${search})`);
                 if (idx !== -1 && result.data[idx]) {
                   const vals = result.data[idx].values;
                   voltage = vals[vals.length - 1];
+                  history = vals;
+                  maxV = Math.max(...vals);
+                  minV = Math.min(...vals);
+                  const sum = vals.reduce((a: number, b: number) => a + b, 0);
+                  avgV = sum / vals.length;
+                  
+                  if (result.data[0]) {
+                    timePoints = result.data[0].values.map((t: number) => t * 1000);
+                  }
                 }
               }
-              setProbeData({ netName, voltage, x: event.clientX, y: event.clientY });
+              setProbeData({ netName, voltage, history, timePoints, maxV, minV, avgV, x: event.clientX, y: event.clientY });
             }}
           />
         </ReactFlowProvider>
@@ -1344,6 +1534,15 @@ export default function App() {
         runSimulation={runSimulation}
         simLength={simLength}
       />
+        )}
+        {showAICopilot && (
+          <AICopilotPanel
+            nodes={nodes}
+            edges={edges}
+            setNodes={setNodes}
+            setEdges={setEdges}
+            onClose={() => setShowAICopilot(false)}
+          />
         )}
         {isDocsOpen && <DocsModal onClose={() => setIsDocsOpen(false)} />}
         {isSettingsOpen && (
@@ -1398,16 +1597,7 @@ export default function App() {
 
         {/* Probe Tooltip */}
         {probeData && (
-          <div
-            className="fixed z-[200] bg-gray-900 text-white rounded-lg px-4 py-3 shadow-2xl border border-violet-500 text-xs font-mono pointer-events-auto animate-in fade-in duration-100"
-            style={{ left: probeData.x + 12, top: probeData.y - 10 }}
-            onClick={() => setProbeData(null)}
-          >
-            <div className="text-violet-300 font-bold mb-1">🔍 Probe</div>
-            <div>Net: <span className="text-amber-300">{probeData.netName}</span></div>
-            <div>V: <span className="text-green-300">{probeData.voltage.toFixed(4)} V</span></div>
-            <div className="text-[9px] text-gray-400 mt-1 italic">click to dismiss</div>
-          </div>
+          <ProbeTooltip probeData={probeData} isSimulating={isSimulating} onClose={() => setProbeData(null)} />
         )}
       </div>
     </div>

@@ -11,12 +11,77 @@ interface BridgeProps {
   isSimulating: boolean;
   selectedPreset: string;
   probeMode: boolean;
-  runSimulation: () => void;
+  runSimulation: (nodesOverride?: Node[]) => Promise<any>;
   stopSimulation: () => void;
   setProbeMode: (v: boolean) => void;
   setNodes: (nodes: Node[] | ((prev: Node[]) => Node[])) => void;
   setEdges: (edges: Edge[] | ((prev: Edge[]) => Edge[])) => void;
   loadPreset?: (name: string) => void;
+}
+
+function getSpeakerAudio(
+  voltageData: { t: number; v: number }[],
+  sampleRate: number,
+  acCouple: boolean,
+  normalize: boolean,
+  voltageScale: number
+): number[] {
+  if (!voltageData || voltageData.length === 0) return [];
+  const durationSec = voltageData[voltageData.length - 1].t / 1000;
+  const frameCount = Math.max(1, Math.floor(sampleRate * durationSec));
+  const rawSamples = new Float32Array(frameCount);
+
+  let dataIdx = 0;
+  for (let i = 0; i < frameCount; i++) {
+    const t_ms = (i / sampleRate) * 1000;
+    while (dataIdx < voltageData.length - 2 && voltageData[dataIdx + 1].t < t_ms) {
+      dataIdx++;
+    }
+    const p0 = voltageData[Math.max(0, dataIdx - 1)];
+    const p1 = voltageData[dataIdx];
+    const p2 = voltageData[Math.min(voltageData.length - 1, dataIdx + 1)];
+    const p3 = voltageData[Math.min(voltageData.length - 1, dataIdx + 2)];
+
+    let v = p1.v;
+    if (p2.t > p1.t) {
+      const t = Math.max(0, Math.min(1, (t_ms - p1.t) / (p2.t - p1.t)));
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const m1 = (p2.v - p0.v) / (p2.t - p0.t || 1);
+      const m2 = (p3.v - p1.v) / (p3.t - p1.t || 1);
+      const dt = p2.t - p1.t;
+      const h00 = 2 * t3 - 3 * t2 + 1;
+      const h10 = t3 - 2 * t2 + t;
+      const h01 = -2 * t3 + 3 * t2;
+      const h11 = t3 - t2;
+      v = h00 * p1.v + h10 * dt * m1 + h01 * p2.v + h11 * dt * m2;
+    }
+    rawSamples[i] = v;
+  }
+
+  let dcOffset = 0;
+  if (acCouple) {
+    let sum = 0;
+    for (let i = 0; i < frameCount; i++) sum += rawSamples[i];
+    dcOffset = sum / frameCount;
+  }
+
+  let scale = 1.0 / (voltageScale || 5.0);
+  if (normalize) {
+    let peak = 0;
+    for (let i = 0; i < frameCount; i++) {
+      const ac = Math.abs(rawSamples[i] - dcOffset);
+      if (ac > peak) peak = ac;
+    }
+    scale = peak > 0.001 ? 0.8 / peak : scale;
+  }
+
+  const values: number[] = [];
+  for (let i = 0; i < frameCount; i++) {
+    const v = (rawSamples[i] - dcOffset) * scale;
+    values.push(Math.max(-1, Math.min(1, v)));
+  }
+  return values;
 }
 
 export function useMCPBridge(props: BridgeProps) {
@@ -30,7 +95,9 @@ export function useMCPBridge(props: BridgeProps) {
 
     const connect = () => {
       if (dead) return;
-      ws = new WebSocket(`ws://${location.host}/mcp?role=browser`);
+      const params = new URLSearchParams(location.search);
+      const wsPort = params.get('mcpPort') || '3142';
+      ws = new WebSocket(`ws://localhost:${wsPort}`);
 
       ws.onopen = () =>
         ws!.send(JSON.stringify({ event: 'HELLO', app: 'circuit', port: location.port }));
@@ -55,7 +122,7 @@ export function useMCPBridge(props: BridgeProps) {
       ws.onerror = () => ws?.close();
     };
 
-    const handle = (cmd: string, msg: any): unknown => {
+    const handle = async (cmd: string, msg: any): Promise<unknown> => {
       const { nodes, edges, isSimulating, selectedPreset, probeMode,
               runSimulation, stopSimulation, setProbeMode, setNodes, setEdges,
               loadPreset } = p.current;
@@ -122,6 +189,48 @@ export function useMCPBridge(props: BridgeProps) {
           if (!Array.isArray(msg.edges)) return { ok: false, error: 'edges must be array' };
           setEdges(msg.edges);
           return { ok: true };
+
+        case 'UPLOAD_AUDIO': {
+          const { nodeId, values, pwlData, sampleRate } = msg;
+          if (!nodeId) return { ok: false, error: 'nodeId is required' };
+          let finalPwl = pwlData;
+          if (values && Array.isArray(values)) {
+            const sr = sampleRate || 8000;
+            finalPwl = values.map((v: number, i: number) => ({ t: i / sr, v }));
+          }
+          if (!finalPwl || !Array.isArray(finalPwl)) {
+            return { ok: false, error: 'Either values or pwlData array must be provided' };
+          }
+          setNodes((nds) => nds.map(n =>
+            n.id === nodeId
+              ? { ...n, data: { ...n.data, pwlData: finalPwl } }
+              : n
+          ));
+          return { ok: true };
+        }
+
+        case 'GET_SPEAKER_AUDIO': {
+          const { nodeId, sampleRate, acCouple, normalize, voltageScale } = msg;
+          if (!nodeId) return { ok: false, error: 'nodeId is required' };
+          const node = nodes.find(n => n.id === nodeId);
+          if (!node) return { ok: false, error: `Node ${nodeId} not found` };
+          if (node.type !== 'speaker') return { ok: false, error: `Node ${nodeId} is not a speaker` };
+
+          const voltageData = (node.data?.voltageData as { t: number; v: number }[]) || [];
+          const sr = sampleRate || 8000;
+          const isAc = acCouple !== undefined ? !!acCouple : !!node.data?.acCouple;
+          const isNorm = normalize !== undefined ? !!normalize : !!node.data?.normalize;
+          const vs = voltageScale !== undefined ? Number(voltageScale) : Number(node.data?.voltageScale ?? 5.0);
+
+          const values = getSpeakerAudio(voltageData, sr, isAc, isNorm, vs);
+          return {
+            nodeId,
+            sampleRate: sr,
+            duration: voltageData.length > 0 ? (voltageData[voltageData.length - 1].t / 1000) : 0,
+            values,
+            voltageData
+          };
+        }
 
         case 'LOAD_PRESET': {
           const name = String(msg.preset || '');

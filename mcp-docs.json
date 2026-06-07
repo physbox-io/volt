@@ -1,0 +1,231 @@
+{
+  "overview": "Circuit Expert is a browser-based interactive electronics circuit playground. It uses a WASM-compiled ngspice simulator (via @tscircuit/ngspice-spice-engine) to run SPICE-accurate transient simulations. The canvas is built using React Flow, where components are nodes and connections are edges. In addition to analog components, it integrates logic gates and a Javascript-sandboxed Microcontroller (MCU) simulator for hybrid digital/analog designs. Coordinate system: standard canvas coordinates (X increases right, Y increases down).",
+  "workflow": [
+    "1. Call circuit_get_schema to find the list of supported components, their parameters, and connection terminal names.",
+    "2. Use circuit_get_state to check the current canvas state: which nodes (components) and edges (wires) are loaded.",
+    "3. Construct or modify the circuit by calling circuit_set_nodes and/or circuit_set_edges.",
+    "4. Trigger the transient simulation using circuit_run_sim. Always call this after modifying node properties or connections to update voltages, currents, and MCU outputs.",
+    "5. Retrieve the simulation waveforms using circuit_get_waveforms to inspect voltages, currents, and MCU logs programmatically.",
+    "6. If troubleshooting or analyzing a wire, call circuit_toggle_probe to enable real-time voltage inspection at specific coordinates."
+  ],
+  "gotchas": [
+    "SINGULAR MATRIX ERROR: ngspice is extremely sensitive to floating nodes. Any pin or terminal that is left unconnected will cause a singular matrix error. To prevent this, the simulation layer automatically shunts unconnected pins with a 1G ohm resistor to ground, but you should always ensure loops are closed and Ground (GND) is connected to a common reference.",
+    "MCU TWO-PASS SIMULATION: MCUs are simulated using a two-pass mechanism. Pass 1 runs standard SPICE. Pass 2 inputs the resulting node voltages into the JS sandbox, generates a Piecewise Linear (PWL) output, and re-runs SPICE. For analog reads (e.g. analogRead('A0')), make sure the source is connected to A0 and that you call sleep() in the loop to give the simulation time steps.",
+    "PORT TO NET NAMES: In ngspice, nodes are resolved to net names. If you use the probe tool (circuit_toggle_probe), it maps component ports like 'led1-anode' to net names like 'net1'. Keep track of these mappings if writing custom spice.",
+    "SAMPLING RATES: The oscilloscope and speaker components capture waveforms over the simulation duration (e.g., simLength). If you are outputting audio, make sure the sampling frequency of your signal generator or MCU code matches the time scale to avoid aliasing."
+  ],
+  "coordinateSystem": {
+    "canvasGrid": "React Flow canvas uses a standard X/Y coordinate system. X increases to the right, Y increases downwards.",
+    "spacing": "Ensure components are spaced sufficiently (typically 100-300 units apart) so that their ports can be easily connected without overlapping wires."
+  },
+  "tools": {
+    "circuit_get_state": "Return full Circuit Expert state: nodes, edges, isSimulating, selectedPreset, probeMode.",
+    "circuit_get_components": "Return all circuit components (nodes) with positions and data.",
+    "circuit_run_sim": "Trigger the SPICE simulation in Circuit Expert.",
+    "circuit_stop_sim": "Stop the running SPICE simulation.",
+    "circuit_toggle_probe": "Toggle probe mode (click a wire to inspect voltage).",
+    "circuit_load_preset": "Load a named circuit preset.",
+    "circuit_set_nodes": "Replace all components in the Circuit Expert canvas.",
+    "circuit_set_edges": "Replace all wires in the Circuit Expert canvas.",
+    "circuit_get_schema": "Return the Circuit Expert component schema, state fields, and SPICE model specifications.",
+    "circuit_get_waveforms": "Return transient waveforms (voltage/current time series) for all components and wires after simulation runs.",
+    "circuit_upload_audio": "Upload audio samples to a microphone node.",
+    "circuit_download_audio": "Download audio waveforms from a speaker node, optionally interpolated."
+  },
+  "schema": {
+    "nodeFields": {
+      "id": "string — unique component identifier",
+      "type": "string — component type (e.g., resistor, capacitor, inductor, diode, led, switch, multimeter, scope, speaker, transistor (npn/pnp), source (voltage/current/acvoltage/signalgen), ground, mcu, sevensegment, potentiometer, opamp, timer555)",
+      "position": {
+        "x": "number — X position on canvas",
+        "y": "number — Y position on canvas"
+      },
+      "data": {
+        "label": "string — display label (e.g., '1k', '10u', '5V')",
+        "value": "string/number — component value",
+        "isSimulating": "boolean — true if SPICE simulation is running and rendering animation",
+        "current_array": "number[] — transient current through component in Amperes over time",
+        "time_points": "number[] — transient timestamps in milliseconds",
+        "voltageData": "{t: number, v: number}[] — transient voltage readings (e.g., for Oscilloscope, Speaker)",
+        "segmentVoltageArrays": "Record<string, number[]> — per-segment voltage readings for 7-Segment displays"
+      }
+    },
+    "componentTerminals": {
+      "resistor": ["in", "out"],
+      "capacitor": ["in", "out"],
+      "inductor": ["in", "out"],
+      "diode": ["anode", "cathode"],
+      "led": ["anode", "cathode"],
+      "zener": ["anode", "cathode"],
+      "switch": ["in", "out"],
+      "voltage": ["pos", "neg"],
+      "acvoltage": ["pos", "neg"],
+      "signalgen": ["out", "gnd", "sync"],
+      "ground": ["in"],
+      "scope": ["ch1", "ch2", "gnd"],
+      "speaker": ["in", "gnd"],
+      "npn": ["c", "b", "e"],
+      "pnp": ["c", "b", "e"],
+      "nmos": ["d", "g", "s"],
+      "pmos": ["d", "g", "s"],
+      "potentiometer": ["in", "out", "wiper"],
+      "sevensegment": ["a", "b", "c", "d", "e", "f", "g", "common"],
+      "mcu": ["D0", "D1", "D2", "D3", "A0", "A1", "5V", "GND"],
+      "opamp": ["in_non", "in_inv", "vcc", "vee", "out"],
+      "timer555": ["1", "2", "3", "4", "5", "6", "7", "8"]
+    },
+    "spiceModels": {
+      "potentiometer": {
+        "description": "Modelled as a two-resistor voltage divider to capture 3-terminal behaviour.",
+        "parameters": {
+          "totalResistance": "number — total end-to-end resistance in ohms",
+          "wiperPos": "number — wiper position from 0.0 (0%) to 1.0 (100%)",
+          "R_top": "TotalResistance * (1 - WiperPos) ohms",
+          "R_bottom": "TotalResistance * WiperPos ohms"
+        }
+      },
+      "sevensegment": {
+        "description": "Common Cathode 7-segment display node. Assumes common pin is grounded.",
+        "activationThreshold": "2.5V — segment lights up if (V_seg - V_common) > 2.5V"
+      },
+      "currentSource": {
+        "description": "Provides constant DC current.",
+        "parameters": {
+          "value": "number — DC current in Amperes"
+        }
+      }
+    },
+    "probeMode": {
+      "description": "Allows clicking on a wire/edge after a simulation run to inspect voltage at that node.",
+      "behavior": "Displays a floating tooltip showing the Net name and the final voltage value of the SPICE node."
+    }
+  },
+  "examples": [
+    {
+      "title": "Basic LED Blinker",
+      "description": "A signal generator producing a 1Hz square wave to blink a red LED through a 330 ohm current-limiting resistor.",
+      "nodes": [
+        { "id": "sg1", "type": "signalgen", "position": { "x": 100, "y": 150 }, "data": { "label": "Clock 1Hz", "waveform": "square", "frequency": 1, "amplitude": 5 } },
+        { "id": "r1", "type": "resistor", "position": { "x": 350, "y": 150 }, "data": { "label": "330" } },
+        { "id": "led1", "type": "led", "position": { "x": 600, "y": 150 }, "data": { "label": "Red LED", "color": "red", "v_drop": 2.0, "max_current": 20 } },
+        { "id": "g1", "type": "ground", "position": { "x": 600, "y": 300 }, "data": { "label": "GND" } },
+        { "id": "g2", "type": "ground", "position": { "x": 100, "y": 300 }, "data": { "label": "GND" } }
+      ],
+      "edges": [
+        { "id": "e-sg1-r1", "source": "sg1", "target": "r1", "sourceHandle": "out", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-r1-led1", "source": "r1", "target": "led1", "sourceHandle": "out", "targetHandle": "anode", "type": "smoothstep" },
+        { "id": "e-led1-g1", "source": "led1", "target": "g1", "sourceHandle": "cathode", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-sg1-g2", "source": "sg1", "target": "g2", "sourceHandle": "gnd", "targetHandle": "in", "type": "smoothstep" }
+      ]
+    },
+    {
+      "title": "555 Timer Blinker",
+      "description": "An astable oscillator circuit built around the NE555 timer macro model, blinking an LED at around 1.3Hz.",
+      "nodes": [
+        { "id": "v1", "type": "voltage", "position": { "x": 100, "y": 50 }, "data": { "label": "5V" } },
+        { "id": "t555", "type": "timer555", "position": { "x": 400, "y": 200 }, "data": { "label": "555 Timer" } },
+        { "id": "r1", "type": "resistor", "position": { "x": 250, "y": 50 }, "data": { "label": "10k" } },
+        { "id": "r2", "type": "resistor", "position": { "x": 250, "y": 150 }, "data": { "label": "47k" } },
+        { "id": "c1", "type": "capacitor", "position": { "x": 250, "y": 250 }, "data": { "label": "10u" } },
+        { "id": "r3", "type": "resistor", "position": { "x": 600, "y": 200 }, "data": { "label": "330" } },
+        { "id": "led1", "type": "led", "position": { "x": 800, "y": 200 }, "data": { "label": "Blue LED", "color": "blue" } },
+        { "id": "g1", "type": "ground", "position": { "x": 100, "y": 400 }, "data": { "label": "GND" } }
+      ],
+      "edges": [
+        { "id": "e-v1-t8", "source": "v1", "target": "t555", "sourceHandle": "pos", "targetHandle": "8", "type": "smoothstep" },
+        { "id": "e-v1-t4", "source": "v1", "target": "t555", "sourceHandle": "pos", "targetHandle": "4", "type": "smoothstep" },
+        { "id": "e-v1-r1", "source": "v1", "target": "r1", "sourceHandle": "pos", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-v1-g1", "source": "v1", "target": "g1", "sourceHandle": "neg", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-t1-g1", "source": "t555", "target": "g1", "sourceHandle": "1", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-r1-r2", "source": "r1", "target": "r2", "sourceHandle": "out", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-r1-t7", "source": "r1", "target": "t555", "sourceHandle": "out", "targetHandle": "7", "type": "smoothstep" },
+        { "id": "e-r2-c1", "source": "r2", "target": "c1", "sourceHandle": "out", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-r2-t6", "source": "r2", "target": "t555", "sourceHandle": "out", "targetHandle": "6", "type": "smoothstep" },
+        { "id": "e-r2-t2", "source": "r2", "target": "t555", "sourceHandle": "out", "targetHandle": "2", "type": "smoothstep" },
+        { "id": "e-c1-g1", "source": "c1", "target": "g1", "sourceHandle": "out", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-t3-r3", "source": "t555", "target": "r3", "sourceHandle": "3", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-r3-led1", "source": "r3", "target": "led1", "sourceHandle": "out", "targetHandle": "anode", "type": "smoothstep" },
+        { "id": "e-led1-g1", "source": "led1", "target": "g1", "sourceHandle": "cathode", "targetHandle": "in", "type": "smoothstep" }
+      ]
+    },
+    {
+      "title": "MCU Analog Logger",
+      "description": "An AC voltage source monitored by an MCU analog input channel. Demonstrates the two-pass MCU SPICE simulation loop and serial logging.",
+      "nodes": [
+        { "id": "vac1", "type": "acvoltage", "position": { "x": 50, "y": 180 }, "data": { "label": "5V 40Hz", "amplitude": 5, "frequency": 40 } },
+        { "id": "mcu1", "type": "mcu", "position": { "x": 300, "y": 150 }, "data": { "label": "Microcontroller", "code": "pinMode('A0', 'INPUT');\n\n// Read A0 every 5ms and log it\nwhile(true) {\n  const val = analogRead('A0');\n  Serial.println(`t=${millis()}ms -> A0: ${val}`);\n  sleep(5);\n}" } },
+        { "id": "g1", "type": "ground", "position": { "x": 50, "y": 300 }, "data": { "label": "GND" } },
+        { "id": "g2", "type": "ground", "position": { "x": 300, "y": 350 }, "data": { "label": "GND" } }
+      ],
+      "edges": [
+        { "id": "e-vac-mcu", "source": "vac1", "target": "mcu1", "sourceHandle": "pos", "targetHandle": "A0", "type": "smoothstep" },
+        { "id": "e-vac-gnd", "source": "vac1", "target": "g1", "sourceHandle": "neg", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-mcu-gnd", "source": "mcu1", "target": "g2", "sourceHandle": "GND", "targetHandle": "in", "type": "smoothstep" }
+      ]
+    },
+    {
+      "title": "BJT Audio Amplifier",
+      "description": "A single-stage common-emitter NPN transistor amplifier amplifying a microphone input signal to drive a speaker load.",
+      "nodes": [
+        { "id": "v1", "type": "voltage", "position": { "x": 100, "y": 50 }, "data": { "label": "12V VCC" } },
+        { "id": "mic1", "type": "microphone", "position": { "x": 100, "y": 300 }, "data": { "label": "Mic Input" } },
+        { "id": "cin", "type": "capacitor", "position": { "x": 250, "y": 300 }, "data": { "label": "10u" } },
+        { "id": "r1", "type": "resistor", "position": { "x": 400, "y": 150 }, "data": { "label": "47k" } },
+        { "id": "r2", "type": "resistor", "position": { "x": 400, "y": 400 }, "data": { "label": "10k" } },
+        { "id": "q1", "type": "npn", "position": { "x": 600, "y": 300 }, "data": { "label": "2N3904 NPN", "bf": 300 } },
+        { "id": "rc", "type": "resistor", "position": { "x": 600, "y": 150 }, "data": { "label": "2.2k" } },
+        { "id": "re", "type": "resistor", "position": { "x": 600, "y": 450 }, "data": { "label": "1k" } },
+        { "id": "cout", "type": "capacitor", "position": { "x": 800, "y": 300 }, "data": { "label": "470u" } },
+        { "id": "spk1", "type": "speaker", "position": { "x": 1000, "y": 300 }, "data": { "label": "Speaker Output", "acCouple": true, "normalize": true } },
+        { "id": "g1", "type": "ground", "position": { "x": 100, "y": 600 }, "data": { "label": "GND" } }
+      ],
+      "edges": [
+        { "id": "e-v1-rc", "source": "v1", "target": "rc", "sourceHandle": "pos", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-v1-r1", "source": "v1", "target": "r1", "sourceHandle": "pos", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-v1-g1", "source": "v1", "target": "g1", "sourceHandle": "neg", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-mic-cin", "source": "mic1", "target": "cin", "sourceHandle": "out", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-mic-g1", "source": "mic1", "target": "g1", "sourceHandle": "gnd", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-r1-b", "source": "r1", "target": "q1", "sourceHandle": "out", "targetHandle": "b", "type": "smoothstep" },
+        { "id": "e-r2-b", "source": "q1", "target": "r2", "sourceHandle": "b", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-r2-g1", "source": "r2", "target": "g1", "sourceHandle": "out", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-cin-b", "source": "cin", "target": "q1", "sourceHandle": "out", "targetHandle": "b", "type": "smoothstep" },
+        { "id": "e-rc-c", "source": "rc", "target": "q1", "sourceHandle": "out", "targetHandle": "c", "type": "smoothstep" },
+        { "id": "e-c-cout", "source": "q1", "target": "cout", "sourceHandle": "c", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-q1-re", "source": "q1", "target": "re", "sourceHandle": "e", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-re-g1", "source": "re", "target": "g1", "sourceHandle": "out", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-cout-spk", "source": "cout", "target": "spk1", "sourceHandle": "out", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-spk-g1", "source": "spk1", "target": "g1", "sourceHandle": "gnd", "targetHandle": "in", "type": "smoothstep" }
+      ]
+    },
+    {
+      "title": "MOSFET Boost Converter",
+      "description": "A switching DC-DC boost converter using an NMOS switch driven by a 50kHz PWM source, stepping up 5V to approximately 25V across a filter capacitor and resistor load.",
+      "nodes": [
+        { "id": "v5v", "type": "voltage", "position": { "x": 50, "y": 250 }, "data": { "label": "5V Input" } },
+        { "id": "l1", "type": "inductor", "position": { "x": 250, "y": 150 }, "data": { "label": "100u" } },
+        { "id": "sw1", "type": "nmos", "position": { "x": 450, "y": 300 }, "data": { "label": "NMOS Switch", "vto": 2.0, "kp": 0.5 } },
+        { "id": "pwm1", "type": "signalgen", "position": { "x": 50, "y": 450 }, "data": { "label": "PWM 50kHz", "waveform": "square", "frequency": 50000, "amplitude": 5, "dutyCycle": 80 } },
+        { "id": "d1", "type": "diode", "position": { "x": 550, "y": 150 }, "data": { "label": "Schottky Diode", "v_drop": 0.3 } },
+        { "id": "c1", "type": "capacitor", "position": { "x": 750, "y": 250 }, "data": { "label": "100u" } },
+        { "id": "rload", "type": "resistor", "position": { "x": 900, "y": 250 }, "data": { "label": "1k Load" } },
+        { "id": "mm_out", "type": "multimeter", "position": { "x": 1000, "y": 250 }, "data": { "label": "Output Volts" } },
+        { "id": "g1", "type": "ground", "position": { "x": 450, "y": 550 }, "data": { "label": "GND" } }
+      ],
+      "edges": [
+        { "id": "e-v5v-l1", "source": "v5v", "target": "l1", "sourceHandle": "pos", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-v5v-gnd", "source": "v5v", "target": "g1", "sourceHandle": "neg", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-l1-sw", "source": "l1", "target": "sw1", "sourceHandle": "out", "targetHandle": "d", "type": "smoothstep" },
+        { "id": "e-l1-d1", "source": "l1", "target": "d1", "sourceHandle": "out", "targetHandle": "anode", "type": "smoothstep" },
+        { "id": "e-sw-gnd", "source": "sw1", "target": "g1", "sourceHandle": "s", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-pwm-sw", "source": "pwm1", "target": "sw1", "sourceHandle": "out", "targetHandle": "g", "type": "smoothstep" },
+        { "id": "e-pwm-gnd", "source": "pwm1", "target": "g1", "sourceHandle": "gnd", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-d1-c1", "source": "d1", "target": "c1", "sourceHandle": "cathode", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-c1-rl", "source": "c1", "target": "rload", "sourceHandle": "in", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-rl-mmout", "source": "rload", "target": "mm_out", "sourceHandle": "in", "targetHandle": "pos", "type": "smoothstep" },
+        { "id": "e-c1-gnd", "source": "c1", "target": "g1", "sourceHandle": "out", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "e-rl-gnd", "source": "rload", "target": "g1", "sourceHandle": "out", "targetHandle": "in", "type": "smoothstep" },
+        { "id": "mmout-neg", "source": "mm_out", "target": "g1", "sourceHandle": "neg", "targetHandle": "in", "type": "smoothstep" }
+      ]
+    }
+  ]
+}

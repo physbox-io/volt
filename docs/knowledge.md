@@ -133,3 +133,22 @@ The sidebar properties panel dynamically injects a "Datasheet" section based on 
 ## 🔬 Debugging & Development
 - **Isolated Testing**: Use `npx tsx src/utils/mcu.ts` or standalone `.mjs` files to test logic (like PWL generation) outside the browser.
 - **Ref Updates**: For high-frequency visual updates (glow, text), use `useRef` and direct DOM manipulation inside `requestAnimationFrame` to avoid React re-render overhead.
+
+---
+
+## 🔌 MCP WebSocket & Documentation Sync
+
+### WebSocket Role Reversal
+To support local development and standalone static deployment configurations:
+1. The **local companion server** (`~/expt_mcp/server.py` or `server.mjs`) hosts a WebSocket server on port `3142`.
+2. The **browser React app** connects as a client to `ws://localhost:3142`.
+3. The companion server acts as a bridge, routing tool calls from MCP clients (e.g. Claude) over WebSocket to the browser simulation, returning SPICE outputs dynamically.
+
+### Keeping Documentation & Schemas in Sync
+If component types, data fields, or simulation actions in the React app change, you MUST update:
+1. **`mcp-docs.json`** at the root of this repository (`circuit/mcp-docs.json`).
+2. **`mcp-docs/circuit.json`** inside the MCP server repository (`expt_mcp/mcp-docs/circuit.json`). This is a fallback copy committed to the MCP repo so users can run it standalone without cloning the simulator.
+
+If you also change React hook commands:
+- Update **`frontend/src/hooks/useMCPBridge.ts`** to handle the command and map it to canvas nodes/wires.
+

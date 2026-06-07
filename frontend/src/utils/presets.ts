@@ -745,6 +745,36 @@ export const currentMirror: CircuitPreset = {
   ]
 };
 
+export const buckConverter: CircuitPreset = {
+  name: 'Buck Converter (24V → 5V)',
+  recommendedSimLength: 0.05,
+  nodes: [
+    { id: 'v1',    type: 'voltage',    position: { x: 50,   y: 250 }, data: { label: '24V IN', value: 24 } },
+    { id: 'sw1',   type: 'nmos',       position: { x: 300,  y: 300 }, data: { label: 'NMOS Switch', vto: 2.0, kp: 0.5 } },
+    { id: 'pwm1',  type: 'signalgen',  position: { x: 300,  y: 500 }, data: { label: 'PWM 1kHz 14%', waveform: 'square', frequency: 1000, amplitude: 10, dutyCycle: 14 } },
+    { id: 'd1',    type: 'diode',      position: { x: 500,  y: 400 }, data: { label: 'Schottky', v_drop: 0.3 } },
+    { id: 'l1',    type: 'inductor',   position: { x: 650,  y: 250 }, data: { label: '2mH' } },
+    { id: 'c1',    type: 'capacitor',  position: { x: 850,  y: 350 }, data: { label: '1000uF' } },
+    { id: 'rload', type: 'resistor',   position: { x: 1000, y: 350 }, data: { label: '5R Load' } },
+    { id: 'mm1',   type: 'multimeter', position: { x: 1150, y: 350 }, data: { label: 'Output V' } },
+    { id: 'g1',    type: 'ground',     position: { x: 600,  y: 600 }, data: { label: 'GND' } },
+  ],
+  edges: [
+    { id: 'e-v1-sw-d',    source: 'v1',   target: 'sw1',   sourceHandle: 'pos',     targetHandle: 'd',   type: 'smoothstep' },
+    { id: 'e-v1-gnd',     source: 'v1',   target: 'g1',    sourceHandle: 'neg',     targetHandle: 'in',  type: 'smoothstep' },
+    { id: 'e-sw-s-l1',    source: 'sw1',  target: 'l1',    sourceHandle: 's',       targetHandle: 'in',  type: 'smoothstep' },
+    { id: 'e-pwm-gate',   source: 'pwm1', target: 'sw1',   sourceHandle: 'out',     targetHandle: 'g',   type: 'smoothstep' },
+    { id: 'e-pwm-gnd',    source: 'pwm1', target: 'g1',    sourceHandle: 'gnd',     targetHandle: 'in',  type: 'smoothstep' },
+    { id: 'e-d1-sw-node', source: 'd1',   target: 'sw1',   sourceHandle: 'cathode', targetHandle: 's',   type: 'smoothstep' },
+    { id: 'e-d1-gnd',     source: 'd1',   target: 'g1',    sourceHandle: 'anode',   targetHandle: 'in',  type: 'smoothstep' },
+    { id: 'e-l1-c1',      source: 'l1',   target: 'c1',    sourceHandle: 'out',     targetHandle: 'in',  type: 'smoothstep' },
+    { id: 'e-c1-rload',   source: 'c1',   target: 'rload', sourceHandle: 'in',      targetHandle: 'in',  type: 'smoothstep' },
+    { id: 'e-c1-gnd',     source: 'c1',   target: 'g1',    sourceHandle: 'out',     targetHandle: 'in',  type: 'smoothstep' },
+    { id: 'e-rload-mm',   source: 'rload', target: 'mm1',  sourceHandle: 'out',     targetHandle: 'pos', type: 'smoothstep' },
+    { id: 'e-mm-gnd',     source: 'mm1',  target: 'g1',    sourceHandle: 'neg',     targetHandle: 'in',  type: 'smoothstep' },
+  ]
+};
+
 export const presets: Record<string, CircuitPreset> = {
   empty,
   basicBlink,
@@ -759,6 +789,7 @@ export const presets: Record<string, CircuitPreset> = {
   classABamp,
   bridgeRectifier,
   boostConverter,
+  buckConverter,
   potDimmer,
   sevenSegDirect,
   currentMirror,
