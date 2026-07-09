@@ -1,5 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 @import "reactflow/dist/style.css";
+
+@variant dark (&:where(.dark, .dark *));
 
 html, body, #root {
   width: 100%;
@@ -7,6 +10,34 @@ html, body, #root {
   margin: 0;
   padding: 0;
   font-family: 'Outfit', sans-serif;
+  background-color: #f8fafc;
+  color: #0f172a;
+  overflow: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+html.dark, html.dark body, html.dark #root {
+  background-color: #0f172a;
+  color: #f1f5f9;
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dark .glass-panel {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+}
+
+.physics-accent {
+  color: #3b82f6;
 }
 
 .react-flow__handle {
@@ -41,4 +72,189 @@ html, body, #root {
   animation: dash-move 1.5s infinite linear;
   filter: drop-shadow(0 0 2px #fbbf24);
   transition: all 0.3s ease;
+}
+
+/* CAD Properties Inspector Elements */
+aside.glass-panel select,
+aside.glass-panel input[type="text"],
+aside.glass-panel input[type="password"],
+aside.glass-panel input[type="number"],
+aside.glass-panel textarea {
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background-color: #ffffff;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #1e293b;
+  outline: none;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+}
+
+.dark aside.glass-panel select,
+.dark aside.glass-panel input[type="text"],
+.dark aside.glass-panel input[type="password"],
+.dark aside.glass-panel input[type="number"],
+.dark aside.glass-panel textarea {
+  border-color: #1e293b;
+  background-color: #0f172a;
+  color: #cbd5e1;
+}
+
+aside.glass-panel select:focus,
+aside.glass-panel input[type="text"]:focus,
+aside.glass-panel input[type="password"]:focus,
+aside.glass-panel input[type="number"]:focus,
+aside.glass-panel textarea:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25);
+}
+
+.dark aside.glass-panel select:focus,
+.dark aside.glass-panel input[type="text"]:focus,
+.dark aside.glass-panel input[type="password"]:focus,
+.dark aside.glass-panel input[type="number"]:focus,
+.dark aside.glass-panel textarea:focus {
+  border-color: #3b82f6;
+}
+
+aside.glass-panel .bg-white {
+  background-color: #ffffff;
+  border-color: #f1f5f9;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  transition: all 0.15s ease;
+}
+.dark aside.glass-panel .bg-white {
+  background-color: #0f172a;
+  border-color: #1e293b;
+}
+
+aside.glass-panel .bg-slate-50 {
+  background-color: #f8fafc;
+  border-color: #e2e8f0;
+  box-shadow: inset 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+  transition: all 0.15s ease;
+}
+.dark aside.glass-panel .bg-slate-50 {
+  background-color: #090d16;
+  border-color: #0f172a;
+}
+
+/* Range Sliders */
+aside.glass-panel input[type="range"] {
+  width: 100%;
+  accent-color: #3b82f6;
+  cursor: pointer;
+  height: 6px;
+  border-radius: 4px;
+  background-color: #cbd5e1;
+  border: none;
+  outline: none;
+  appearance: none;
+}
+.dark aside.glass-panel input[type="range"] {
+  background-color: #1e293b;
+}
+
+/* Typography styles for CAD */
+aside.glass-panel .text-slate-700 {
+  color: #334155;
+  transition: color 0.15s ease;
+}
+.dark aside.glass-panel .text-slate-700 {
+  color: #e2e8f0;
+}
+aside.glass-panel .text-slate-650,
+aside.glass-panel .text-slate-600 {
+  color: #475569;
+  transition: color 0.15s ease;
+}
+.dark aside.glass-panel .text-slate-650,
+.dark aside.glass-panel .text-slate-600 {
+  color: #cbd5e1;
+}
+aside.glass-panel .text-slate-555,
+aside.glass-panel .text-slate-500 {
+  color: #64748b;
+  transition: color 0.15s ease;
+}
+.dark aside.glass-panel .text-slate-555,
+.dark aside.glass-panel .text-slate-500 {
+  color: #94a3b8;
+}
+aside.glass-panel .text-slate-400 {
+  color: #94a3b8;
+  transition: color 0.15s ease;
+}
+.dark aside.glass-panel .text-slate-400 {
+  color: #475569;
+}
+
+/* Headers inside Panels */
+aside.glass-panel h3 {
+  font-size: 11px;
+  font-weight: 700;
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid #f1f5f9;
+  padding: 6px 8px;
+  margin-top: -6px;
+  margin-bottom: 6px;
+  margin-left: -8px;
+  margin-right: -8px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.dark aside.glass-panel h3 {
+  color: #e2e8f0;
+  border-bottom-color: #1e293b;
+}
+aside.glass-panel h3:hover {
+  background-color: rgba(226, 232, 240, 0.4);
+}
+.dark aside.glass-panel h3:hover {
+  background-color: rgba(30, 41, 59, 0.4);
+}
+
+/* Dark mode React Flow canvas and controls */
+.dark .react-flow {
+  background-color: #0b0f19 !important;
+}
+
+.dark .react-flow__background {
+  opacity: 0.15;
+}
+
+.dark .react-flow__controls-button {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-bottom: 1px solid #334155 !important;
+}
+
+.dark .react-flow__controls-button:hover {
+  background-color: #334155 !important;
+}
+
+.dark .react-flow__controls-button svg {
+  fill: #f1f5f9 !important;
+}
+
+/* Dark mode for React Flow standard nodes */
+.dark .react-flow__node:not(.react-flow__node-scope):not(.react-flow__node-multimeter):not(.react-flow__node-mcu):not(.react-flow__node-sevenseg) > div {
+  background-color: #1e293b !important;
+  border-color: #475569 !important;
+  color: #f8fafc !important;
+}
+
+.dark .react-flow__node:not(.react-flow__node-scope):not(.react-flow__node-multimeter):not(.react-flow__node-mcu):not(.react-flow__node-sevenseg) div.bg-gray-200,
+.dark .react-flow__node:not(.react-flow__node-scope):not(.react-flow__node-multimeter):not(.react-flow__node-mcu):not(.react-flow__node-sevenseg) div.bg-white {
+  background-color: #0f172a !important;
+  border-color: #475569 !important;
+}
+
+.dark .react-flow__node:not(.react-flow__node-scope):not(.react-flow__node-multimeter):not(.react-flow__node-mcu):not(.react-flow__node-sevenseg) div.text-gray-700 {
+  color: #cbd5e1 !important;
 }

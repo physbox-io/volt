@@ -39,60 +39,70 @@ export function DocsModal({ onClose }: DocsModalProps) {
   const [activeTab, setActiveTab] = useState<'about' | 'usage' | 'simulation' | 'audio' | 'license'>('about');
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full h-[80vh] flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 className="text-xl font-bold text-gray-800">Documentation</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 transition-colors">
+    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-4xl w-full h-[80vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+          <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Documentation</h2>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer">
             <X size={24} />
           </button>
         </div>
         <div className="flex flex-1 overflow-hidden">
-          <div className="w-64 bg-gray-50 border-r border-gray-200 p-4 flex flex-col gap-2 overflow-y-auto">
+          <div className="w-64 bg-slate-50 dark:bg-slate-950/60 border-r border-slate-200 dark:border-slate-800 p-4 flex flex-col gap-2 overflow-y-auto">
             <button
               onClick={() => setActiveTab('about')}
-              className={`text-left px-4 py-2 rounded-md font-medium transition-colors ${
-                activeTab === 'about' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-200'
+              className={`text-left px-4 py-2 rounded-md font-medium transition-colors cursor-pointer ${
+                activeTab === 'about'
+                  ? 'bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 font-semibold'
+                  : 'text-slate-650 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
               }`}
             >
               About
             </button>
             <button
               onClick={() => setActiveTab('simulation')}
-              className={`text-left px-4 py-2 rounded-md font-medium transition-colors ${
-                activeTab === 'simulation' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-200'
+              className={`text-left px-4 py-2 rounded-md font-medium transition-colors cursor-pointer ${
+                activeTab === 'simulation'
+                  ? 'bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 font-semibold'
+                  : 'text-slate-650 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
               }`}
             >
               Simulation Engine
             </button>
             <button
               onClick={() => setActiveTab('audio')}
-              className={`text-left px-4 py-2 rounded-md font-medium transition-colors ${
-                activeTab === 'audio' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-200'
+              className={`text-left px-4 py-2 rounded-md font-medium transition-colors cursor-pointer ${
+                activeTab === 'audio'
+                  ? 'bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 font-semibold'
+                  : 'text-slate-650 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
               }`}
             >
               Audio
             </button>
             <button
               onClick={() => setActiveTab('usage')}
-              className={`text-left px-4 py-2 rounded-md font-medium transition-colors ${
-                activeTab === 'usage' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-200'
+              className={`text-left px-4 py-2 rounded-md font-medium transition-colors cursor-pointer ${
+                activeTab === 'usage'
+                  ? 'bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 font-semibold'
+                  : 'text-slate-650 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
               }`}
             >
               Usage Guide
             </button>
             <button
               onClick={() => setActiveTab('license')}
-              className={`text-left px-4 py-2 rounded-md font-medium transition-colors ${
-                activeTab === 'license' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-200'
+              className={`text-left px-4 py-2 rounded-md font-medium transition-colors cursor-pointer ${
+                activeTab === 'license'
+                  ? 'bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 font-semibold'
+                  : 'text-slate-655 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
               }`}
             >
               License
             </button>
           </div>
-          <div className="flex-1 p-8 overflow-y-auto">
+          <div className="flex-1 p-8 overflow-y-auto bg-white dark:bg-slate-900 transition-colors">
             {activeTab === 'about' && (
-              <div className="prose max-w-none text-gray-800">
+              <div className="prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 leading-relaxed">
                 <h3 className="text-2xl font-bold mb-4">About Circuit Expt</h3>
                 <p className="mb-4">
                   Circuit Expt is an interactive, browser-based electronics playground and simulation tool. 
@@ -116,7 +126,7 @@ export function DocsModal({ onClose }: DocsModalProps) {
               </div>
             )}
             {activeTab === 'usage' && (
-              <div className="prose max-w-none text-gray-800">
+              <div className="prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 leading-relaxed">
                 <h3 className="text-2xl font-bold mb-4">Using the Playground</h3>
                 
                 <h4 className="text-xl font-semibold mb-2 mt-6">Basic Interaction</h4>
@@ -145,7 +155,7 @@ export function DocsModal({ onClose }: DocsModalProps) {
               </div>
             )}
             {activeTab === 'simulation' && (
-              <div className="prose max-w-none text-gray-800">
+              <div className="prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 leading-relaxed">
                 <h3 className="text-2xl font-bold mb-4">How Simulation Works</h3>
                 <p className="mb-4">
                   Circuit Expt utilizes a hybrid simulation approach to seamlessly blend continuous analog components with discrete digital logic and scriptable microcontrollers. Here's how the different simulation domains operate and interact:
@@ -178,7 +188,7 @@ export function DocsModal({ onClose }: DocsModalProps) {
               </div>
             )}
             {activeTab === 'audio' && (
-              <div className="prose max-w-none text-gray-800">
+              <div className="prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 leading-relaxed">
                 <h3 className="text-2xl font-bold mb-4">Audio & Signal Processing</h3>
                 <p className="mb-4">
                   Circuit Expt supports high-fidelity audio interaction by bridging the browser's Web Audio API with the SPICE simulation engine.
@@ -204,9 +214,9 @@ export function DocsModal({ onClose }: DocsModalProps) {
               </div>
             )}
             {activeTab === 'license' && (
-              <div className="text-gray-800">
+              <div className="text-slate-800 dark:text-slate-200">
                 <h3 className="text-2xl font-bold mb-4">License Information</h3>
-                <pre className="whitespace-pre-wrap font-mono text-sm bg-gray-50 p-4 rounded border border-gray-200">
+                <pre className="whitespace-pre-wrap font-mono text-xs bg-slate-50 dark:bg-slate-950/60 p-4 rounded border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400">
                   {LICENSE_TEXT}
                 </pre>
               </div>
