@@ -39,18 +39,18 @@ import puppeteer from 'puppeteer';
   // Wait a few seconds for simulation to finish and logs to appear
   await new Promise(r => setTimeout(r, 1000));
 
-  // Inspect the circles inside edges
-  const circles = await page.evaluate(() => {
-    const edgeCircles = Array.from(document.querySelectorAll('.react-flow__edge circle'));
-    return edgeCircles.map(c => ({
-      cx: c.getAttribute('cx'),
-      cy: c.getAttribute('cy'),
-      r: c.getAttribute('r'),
-      fill: window.getComputedStyle(c).fill,
-      parent: c.parentElement ? c.parentElement.getAttribute('data-id') : null
-    }));
+  // Inspect the edge paths
+  const edgePaths = await page.evaluate(() => {
+    const paths = Array.from(document.querySelectorAll('.react-flow__edge'));
+    return paths.map(p => {
+      const pathEl = p.querySelector('path.react-flow__edge-path');
+      return {
+        id: p.getAttribute('data-id'),
+        d: pathEl ? pathEl.getAttribute('d') : null
+      };
+    });
   });
-  console.log("RENDERED CIRCLES:", JSON.stringify(circles, null, 2));
   
+  console.log("EDGE PATHS:", JSON.stringify(edgePaths, null, 2));
   await browser.close();
 })();

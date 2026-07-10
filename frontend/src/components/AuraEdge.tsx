@@ -213,6 +213,24 @@ export function AuraEdge({
   markerEnd,
   type,
 }: EdgeProps) {
+  const defaultOffset = 4;
+  let dynamicOffset = defaultOffset;
+
+  const isSourceVert = sourcePosition === 'top' || sourcePosition === 'bottom';
+  const isTargetVert = targetPosition === 'top' || targetPosition === 'bottom';
+
+  if (isSourceVert && isTargetVert) {
+    const distanceY = Math.abs(targetY - sourceY);
+    if (distanceY < 2 * defaultOffset) {
+      dynamicOffset = Math.max(2, Math.floor(distanceY / 2) - 1);
+    }
+  } else if (!isSourceVert && !isTargetVert) {
+    const distanceX = Math.abs(targetX - sourceX);
+    if (distanceX < 2 * defaultOffset) {
+      dynamicOffset = Math.max(2, Math.floor(distanceX / 2) - 1);
+    }
+  }
+
   const [edgePath] = getSmoothStepPath({
     sourceX,
     sourceY,
@@ -221,6 +239,7 @@ export function AuraEdge({
     targetX,
     targetY,
     borderRadius: 0,
+    offset: dynamicOffset,
   });
 
   const [current, setCurrent] = useState(0);
