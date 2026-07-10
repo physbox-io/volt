@@ -40,11 +40,6 @@ html.dark, html.dark body, html.dark #root {
   color: #3b82f6;
 }
 
-.react-flow__handle {
-  width: 8px !important;
-  height: 8px !important;
-  border: 2px solid white !important;
-}
 
 @keyframes electric-glow {
   0% { filter: drop-shadow(0 0 2px #fbbf24) drop-shadow(0 0 5px #f59e0b); }
@@ -258,3 +253,53 @@ aside.glass-panel h3:hover {
 .dark .react-flow__node:not(.react-flow__node-scope):not(.react-flow__node-multimeter):not(.react-flow__node-mcu):not(.react-flow__node-sevenseg) div.text-gray-700 {
   color: #cbd5e1 !important;
 }
+
+/* Overrides for schematic nodes to ensure transparency */
+.react-flow__node {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.react-flow__node > div.schematic-node,
+.dark .react-flow__node > div.schematic-node,
+.dark .react-flow__node:not(.react-flow__node-scope):not(.react-flow__node-multimeter):not(.react-flow__node-mcu):not(.react-flow__node-sevenseg) > div.schematic-node {
+  background-color: transparent !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Connection handle styling (solid dots matching connection wire color) */
+.react-flow__handle {
+  width: 4px !important;
+  height: 4px !important;
+  background-color: #334155 !important; /* matching dark slate in light mode */
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.dark .react-flow__handle {
+  background-color: #ffffff !important; /* solid white in dark mode */
+}
+
+/* Eliminate gap between handle and component boundaries */
+.react-flow__handle-top {
+  top: 0px !important;
+  transform: translate(-50%, -50%) !important;
+}
+.react-flow__handle-bottom {
+  bottom: 0px !important;
+  transform: translate(-50%, 50%) !important;
+}
+.react-flow__handle-left {
+  left: 0px !important;
+  transform: translate(-50%, -50%) !important;
+}
+.react-flow__handle-right {
+  right: 0px !important;
+  transform: translate(50%, -50%) !important;
+}
+
+

@@ -1,23 +1,43 @@
 import { Handle, Position } from '@xyflow/react';
 
-export function NpnNode({ data }: any) {
+export function NpnNode({ data, selected }: any) {
   return (
-    <div className="bg-gray-100 border-2 border-gray-400 rounded-md p-2 w-16 h-16 flex flex-col items-center justify-center relative shadow-sm">
-      <Handle type="target" position={Position.Top} id="c" className="w-3 h-3 bg-blue-500" style={{ left: '75%' }} />
-      <Handle type="source" position={Position.Top} id="c" className="w-3 h-3 bg-blue-500" style={{ left: '75%' }} />
-      <Handle type="target" position={Position.Left} id="b" className="w-3 h-3 bg-purple-500" />
-      <Handle type="source" position={Position.Left} id="b" className="w-3 h-3 bg-purple-500" />
-      <Handle type="source" position={Position.Bottom} id="e" className="w-3 h-3 bg-black" style={{ left: '75%' }} />
-      <Handle type="target" position={Position.Bottom} id="e" className="w-3 h-3 bg-black" style={{ left: '75%' }} />
+    <div className="schematic-node w-[48px] h-[48px] flex items-center justify-center relative select-none">
+      <Handle type="target" position={Position.Top} id="c" className="w-2 h-2 bg-blue-500 !border-0" style={{ left: '66.67%' }} />
+      <Handle type="source" position={Position.Top} id="c" className="w-2 h-2 bg-blue-500 !border-0" style={{ left: '66.67%' }} />
+      <Handle type="target" position={Position.Left} id="b" className="w-2 h-2 bg-blue-500 !border-0" style={{ top: '50%' }} />
+      <Handle type="source" position={Position.Left} id="b" className="w-2 h-2 bg-blue-500 !border-0" style={{ top: '50%' }} />
+      <Handle type="source" position={Position.Bottom} id="e" className="w-2 h-2 bg-blue-500 !border-0" style={{ left: '66.67%' }} />
+      <Handle type="target" position={Position.Bottom} id="e" className="w-2 h-2 bg-blue-500 !border-0" style={{ left: '66.67%' }} />
       
-      <svg viewBox="0 0 40 40" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-800">
-        <path d="M0 20 H 14" />
-        <path d="M14 10 V 30" strokeWidth="4" />
-        <path d="M14 16 L 26 4 V 0" />
-        <path d="M14 24 L 26 36 V 40" />
-        <path d="M26 36 L 20 35 M26 36 L 25 30" strokeWidth="2" />
+      <svg 
+        width="48" 
+        height="48" 
+        viewBox="0 0 40 40" 
+        fill="none" 
+        stroke={selected ? '#3b82f6' : 'currentColor'} 
+        strokeWidth="1.5" 
+        strokeLinecap="round" 
+        strokeLinejoin="round"
+        className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
+      >
+        {/* Base Lead */}
+        <path d="M 0 20 H 16" />
+        {/* Base Plate */}
+        <path d="M 16 10 V 30" strokeWidth="2.2" />
+        {/* Collector Lead */}
+        <path d="M 16 15 L 26.67 5 V 0" />
+        {/* Emitter Lead */}
+        <path d="M 16 25 L 26.67 35 V 40" />
+        {/* Emitter Arrow pointing out */}
+        <path d="M 26.67 35 L 20 34 M 26.67 35 L 24 28" strokeWidth="1.2" />
       </svg>
-      <div className="text-[10px] mt-1 font-mono text-gray-600">{data.label || 'NPN'}</div>
+
+      <div className="absolute left-1 top-2 text-[9px] font-bold font-mono text-slate-500 dark:text-slate-400 pointer-events-none">
+        {data.label || 'NPN'}
+      </div>
     </div>
   );
 }
+
+

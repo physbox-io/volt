@@ -37,9 +37,9 @@ export const timer555Blink: CircuitPreset = {
   nodes: [
     { id: 'v1', type: 'voltage', position: { x: 100, y: 50 }, data: { label: '5V' } },
     { id: 't555', type: 'timer555', position: { x: 400, y: 200 }, data: { label: '555 Timer' } },
-    { id: 'r1', type: 'resistor', position: { x: 250, y: 50 }, data: { label: '10kΩ' } },
-    { id: 'r2', type: 'resistor', position: { x: 250, y: 150 }, data: { label: '47kΩ' } },
-    { id: 'c1', type: 'capacitor', position: { x: 250, y: 250 }, data: { label: '10µF' } },
+    { id: 'r1', type: 'resistor', position: { x: 250, y: 50 }, data: { label: '10kΩ', orientation: 'vertical' } },
+    { id: 'r2', type: 'resistor', position: { x: 250, y: 150 }, data: { label: '47kΩ', orientation: 'vertical' } },
+    { id: 'c1', type: 'capacitor', position: { x: 250, y: 250 }, data: { label: '10µF', orientation: 'vertical' } },
     { id: 'r3', type: 'resistor', position: { x: 600, y: 200 }, data: { label: '330Ω' } },
     { id: 'led1', type: 'led', position: { x: 800, y: 200 }, data: { label: 'LED', color: 'blue', v_drop: 2.0, max_current: 20 } },
     { id: 'g1', type: 'ground', position: { x: 100, y: 400 }, data: { label: 'GND' } },
@@ -94,15 +94,15 @@ export const bjtAmp: CircuitPreset = {
     { id: 'cin', type: 'capacitor', position: { x: 250, y: 300 }, data: { label: '10µF' } },
     
     // Bias
-    { id: 'r1', type: 'resistor', position: { x: 400, y: 150 }, data: { label: '47kΩ' } },
-    { id: 'r2', type: 'resistor', position: { x: 400, y: 400 }, data: { label: '10kΩ' } },
+    { id: 'r1', type: 'resistor', position: { x: 400, y: 150 }, data: { label: '47kΩ', orientation: 'vertical' } },
+    { id: 'r2', type: 'resistor', position: { x: 400, y: 400 }, data: { label: '10kΩ', orientation: 'vertical' } },
     
     // Transistor
     { id: 'q1', type: 'npn', position: { x: 600, y: 300 }, data: { label: '2N3904', bf: 300 } },
     
     // Collector & Emitter resistors
-    { id: 'rc', type: 'resistor', position: { x: 600, y: 150 }, data: { label: '2.2kΩ' } },
-    { id: 're', type: 'resistor', position: { x: 600, y: 450 }, data: { label: '1kΩ' } },
+    { id: 'rc', type: 'resistor', position: { x: 600, y: 150 }, data: { label: '2.2kΩ', orientation: 'vertical' } },
+    { id: 're', type: 'resistor', position: { x: 600, y: 450 }, data: { label: '1kΩ', orientation: 'vertical' } },
     
     // Output coupling & Speaker
     { id: 'cout', type: 'capacitor', position: { x: 800, y: 300 }, data: { label: '470µF' } },
@@ -554,7 +554,7 @@ export const bistableMultivibrator: CircuitPreset = {
     
     // Collector loads
     { id: 'rc1', type: 'resistor', position: { x: 200, y: 150 }, data: { label: '1k' } },
-    { id: 'rc2', type: 'resistor', position: { x: 400, y: 150 }, data: { label: '1k' } },
+    { id: 'rc2', type: 'resistor', position: { x: 400, y: 150 }, data: { label: '1.02k' } },
     
     // LEDs to show state
     { id: 'led1', type: 'led', position: { x: 100, y: 150 }, data: { label: 'L1', color: 'red' } },
@@ -616,18 +616,18 @@ export const astableMultivibrator: CircuitPreset = {
   name: 'Astable Multivibrator (Blinker)',
   recommendedSimLength: 2.0,
   nodes: [
-    { id: 'vcc', type: 'voltage', position: { x: 300, y: 50 }, data: { label: '5V' } },
-    { id: 'q1', type: 'npn', position: { x: 200, y: 350 }, data: { label: 'Q1' } },
-    { id: 'q2', type: 'npn', position: { x: 400, y: 350 }, data: { label: 'Q2' } },
-    { id: 'rc1', type: 'resistor', position: { x: 200, y: 150 }, data: { label: '330' } },
-    { id: 'rc2', type: 'resistor', position: { x: 400, y: 150 }, data: { label: '330' } },
-    { id: 'rb1', type: 'resistor', position: { x: 280, y: 150 }, data: { label: '47k' } },
-    { id: 'rb2', type: 'resistor', position: { x: 320, y: 150 }, data: { label: '48k' } },
-    { id: 'c1', type: 'capacitor', position: { x: 250, y: 250 }, data: { label: '10uF' } },
-    { id: 'c2', type: 'capacitor', position: { x: 350, y: 250 }, data: { label: '10uF' } },
-    { id: 'led1', type: 'led', position: { x: 100, y: 250 }, data: { label: 'L1', color: 'red' } },
-    { id: 'led2', type: 'led', position: { x: 500, y: 250 }, data: { label: 'L2', color: 'green' } },
-    { id: 'g1', type: 'ground', position: { x: 300, y: 500 }, data: { label: 'GND' } },
+    { id: 'vcc', type: 'voltage', position: { x: 320, y: 48 }, data: { label: '5V' } },
+    { id: 'q1', type: 'npn', position: { x: 208, y: 352 }, data: { label: 'Q1' } },
+    { id: 'q2', type: 'npn', position: { x: 400, y: 352 }, data: { label: 'Q2' } },
+    { id: 'rc1', type: 'resistor', position: { x: 224, y: 144 }, data: { label: '330', orientation: 'vertical' } },
+    { id: 'rc2', type: 'resistor', position: { x: 416, y: 144 }, data: { label: '330', orientation: 'vertical' } },
+    { id: 'rb1', type: 'resistor', position: { x: 304, y: 144 }, data: { label: '47k', orientation: 'vertical' } },
+    { id: 'rb2', type: 'resistor', position: { x: 336, y: 144 }, data: { label: '48k', orientation: 'vertical' } },
+    { id: 'c1', type: 'capacitor', position: { x: 240, y: 240 }, data: { label: '10uF' } },
+    { id: 'c2', type: 'capacitor', position: { x: 352, y: 240 }, data: { label: '10uF' } },
+    { id: 'led1', type: 'led', position: { x: 216, y: 240 }, data: { label: 'L1', color: 'red' } },
+    { id: 'led2', type: 'led', position: { x: 408, y: 240 }, data: { label: 'L2', color: 'green' } },
+    { id: 'g1', type: 'ground', position: { x: 320, y: 504 }, data: { label: 'GND' } },
   ],
   edges: [
      { id: 'e-v-rc1', source: 'vcc', target: 'rc1', sourceHandle: 'pos', targetHandle: 'in' },

@@ -1,20 +1,86 @@
 import { Handle, Position } from '@xyflow/react';
 
-export function CurrentSourceNode({ data }: any) {
+export function CurrentSourceNode({ data, selected }: any) {
   const label = data.label || '10mA';
-  return (
-    <div className="bg-white border-2 border-teal-700 rounded-full w-16 h-16 flex flex-col items-center justify-center relative shadow-sm">
-      <Handle type="target" position={Position.Top} id="pos" className="w-3 h-3 bg-red-500" />
-      <Handle type="source" position={Position.Top} id="pos" className="w-3 h-3 bg-red-500" />
-      <Handle type="source" position={Position.Bottom} id="neg" className="w-3 h-3 bg-black" />
-      <Handle type="target" position={Position.Bottom} id="neg" className="w-3 h-3 bg-black" />
+  const isHorizontal = data.orientation === 'horizontal';
 
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-        {/* Arrow pointing up (current direction) */}
-        <line x1="14" y1="24" x2="14" y2="6" stroke="#0d9488" strokeWidth="2" />
-        <path d="M10,10 L14,4 L18,10" fill="none" stroke="#0d9488" strokeWidth="2" strokeLinejoin="round" />
+  return (
+    <div className="schematic-node w-[36px] h-[36px] flex items-center justify-center relative select-none">
+      <Handle 
+        type="target" 
+        position={isHorizontal ? Position.Left : Position.Top} 
+        id="pos" 
+        className="w-2 h-2 bg-blue-500 !border-0" 
+        style={isHorizontal ? { top: '50%', left: '0%' } : { left: '50%', top: '0%' }}
+      />
+      <Handle 
+        type="source" 
+        position={isHorizontal ? Position.Left : Position.Top} 
+        id="pos" 
+        className="w-2 h-2 bg-blue-500 !border-0" 
+        style={isHorizontal ? { top: '50%', left: '0%' } : { left: '50%', top: '0%' }}
+      />
+      
+      <svg 
+        width="36" 
+        height="36" 
+        viewBox="0 0 48 48" 
+        fill="none" 
+        stroke={selected ? '#3b82f6' : 'currentColor'} 
+        strokeWidth="1.5" 
+        strokeLinecap="round" 
+        strokeLinejoin="round"
+        style={{ overflow: 'visible' }}
+        className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
+      >
+        {isHorizontal ? (
+          <>
+            {/* Left & Right Leads */}
+            <path d="M -4 24 H 8" />
+            <path d="M 40 24 H 52" />
+            {/* Circle */}
+            <circle cx="24" cy="24" r="16" />
+            {/* Arrow (current direction pointing right) */}
+            <line x1="16" y1="24" x2="32" y2="24" />
+            <path d="M 27 20 L 32 24 L 27 28" />
+          </>
+        ) : (
+          <>
+            {/* Top & Bottom Leads */}
+            <path d="M 24 -4 V 8" />
+            <path d="M 24 40 V 52" />
+            {/* Circle */}
+            <circle cx="24" cy="24" r="16" />
+            {/* Arrow (current direction pointing up) */}
+            <line x1="24" y1="32" x2="24" y2="16" />
+            <path d="M 20 21 L 24 16 L 28 21" />
+          </>
+        )}
       </svg>
-      <div className="text-[9px] font-bold font-mono text-teal-800 leading-none">{label}</div>
+
+      <div className={isHorizontal
+        ? "absolute -top-4 text-[10px] font-bold font-mono text-slate-700 dark:text-slate-350 text-center w-full pointer-events-none"
+        : "absolute left-[54px] text-[10px] font-bold font-mono text-slate-700 dark:text-slate-350 whitespace-nowrap pointer-events-none"
+      }>
+        {label}
+      </div>
+      
+      <Handle 
+        type="source" 
+        position={isHorizontal ? Position.Right : Position.Bottom} 
+        id="neg" 
+        className="w-2 h-2 bg-blue-500 !border-0" 
+        style={isHorizontal ? { top: '50%', left: '100%' } : { left: '50%', top: '100%' }}
+      />
+      <Handle 
+        type="target" 
+        position={isHorizontal ? Position.Right : Position.Bottom} 
+        id="neg" 
+        className="w-2 h-2 bg-blue-500 !border-0" 
+        style={isHorizontal ? { top: '50%', left: '100%' } : { left: '50%', top: '100%' }}
+      />
     </div>
   );
 }
+
+

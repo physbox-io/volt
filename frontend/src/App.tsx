@@ -50,7 +50,7 @@ import { Play, Square, Trash2, Info, Menu, X, AlertCircle, Settings, Save, Cross
 import AICopilotPanel from './components/AICopilotPanel';
 import { Simulation } from 'eecircuit-engine';
 import { presets } from './utils/presets';
-import { AuraEdge } from './components/AuraEdge';
+import { AuraEdge, EdgePathProvider } from './components/AuraEdge';
 import { SettingsModal } from './components/SettingsModal';
 import { loadSettings, saveSettings, loadUserPresets, addUserPreset, removeUserPreset, nameToKey, type CircuitPreset } from './utils/storage';
 import { PotentiometerNode } from './components/nodes/PotentiometerNode';
@@ -61,6 +61,9 @@ import { useMCPBridge } from './hooks/useMCPBridge';
 
 const edgeTypes = {
   aura: AuraEdge,
+  smoothstep: AuraEdge,
+  straight: AuraEdge,
+  step: AuraEdge,
 };
 import { Logo } from './components/Logo';
 import { DocsModal } from './components/DocsModal';
@@ -133,8 +136,14 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
             draggable 
             className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center text-center cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
           >
-            <div className="p-1 px-2.5 bg-sky-50 dark:bg-sky-950/40 rounded-lg mb-1 group-hover:scale-105 transition-transform text-sky-650 dark:text-sky-400 font-bold text-[10px]">
-              NPN
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="24" height="24" viewBox="0 0 60 60" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <line x1="20" y1="10" x2="20" y2="50" strokeWidth="3" />
+                <line x1="5" y1="30" x2="20" y2="30" />
+                <line x1="20" y1="20" x2="45" y2="7" />
+                <line x1="20" y1="40" x2="45" y2="53" />
+                <polygon points="45,53 35,46 41,38" fill="currentColor" />
+              </svg>
             </div>
             <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">NPN BJT</span>
           </div>
@@ -143,8 +152,14 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
             draggable 
             className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center text-center cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
           >
-            <div className="p-1 px-2.5 bg-sky-50 dark:bg-sky-950/40 rounded-lg mb-1 group-hover:scale-105 transition-transform text-sky-650 dark:text-sky-400 font-bold text-[10px]">
-              PNP
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="24" height="24" viewBox="0 0 60 60" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <line x1="20" y1="10" x2="20" y2="50" strokeWidth="3" />
+                <line x1="5" y1="30" x2="20" y2="30" />
+                <line x1="20" y1="20" x2="45" y2="7" />
+                <line x1="20" y1="40" x2="45" y2="53" />
+                <polygon points="20,20 30,17 26,27" fill="currentColor" />
+              </svg>
             </div>
             <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">PNP BJT</span>
           </div>
@@ -153,8 +168,16 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
             draggable 
             className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center text-center cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
           >
-            <div className="p-1 px-2 bg-indigo-50 dark:bg-indigo-950/40 rounded-lg mb-1 group-hover:scale-105 transition-transform text-indigo-650 dark:text-indigo-400 font-bold text-[10px]">
-              NMOS
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="24" height="24" viewBox="0 0 60 60" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <line x1="15" y1="15" x2="15" y2="45" strokeWidth="3" />
+                <line x1="22" y1="15" x2="22" y2="45" strokeWidth="3" />
+                <line x1="5" y1="30" x2="15" y2="30" />
+                <line x1="22" y1="20" x2="45" y2="20" />
+                <line x1="22" y1="40" x2="45" y2="40" />
+                <line x1="22" y1="30" x2="45" y2="30" />
+                <polygon points="22,30 32,25 32,35" fill="currentColor" />
+              </svg>
             </div>
             <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">NMOS</span>
           </div>
@@ -163,8 +186,16 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
             draggable 
             className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center text-center cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
           >
-            <div className="p-1 px-2 bg-indigo-50 dark:bg-indigo-950/40 rounded-lg mb-1 group-hover:scale-105 transition-transform text-indigo-650 dark:text-indigo-400 font-bold text-[10px]">
-              PMOS
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="24" height="24" viewBox="0 0 60 60" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <line x1="15" y1="15" x2="15" y2="45" strokeWidth="3" />
+                <line x1="22" y1="15" x2="22" y2="45" strokeWidth="3" />
+                <line x1="5" y1="30" x2="15" y2="30" />
+                <line x1="22" y1="20" x2="45" y2="20" />
+                <line x1="22" y1="40" x2="45" y2="40" />
+                <line x1="22" y1="30" x2="45" y2="30" />
+                <polygon points="45,30 35,25 35,35" fill="currentColor" />
+              </svg>
             </div>
             <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">PMOS</span>
           </div>
@@ -179,8 +210,41 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
               draggable 
               className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center text-center cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
             >
-              <div className="p-1 px-2 bg-violet-50 dark:bg-violet-950/40 rounded-lg mb-1 group-hover:scale-105 transition-transform text-violet-600 dark:text-violet-400 font-extrabold text-[9px] uppercase">
-                {gate}
+              <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+                {gate === 'and' && (
+                  <svg width="24" height="24" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M 20 20 H 50 A 30 30 0 0 1 80 50 A 30 30 0 0 1 50 80 H 20 Z" />
+                  </svg>
+                )}
+                {gate === 'or' && (
+                  <svg width="24" height="24" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M 20 20 C 35 20, 50 30, 80 50 C 50 70, 35 80, 20 80 C 35 50, 35 50, 20 20 Z" />
+                  </svg>
+                )}
+                {gate === 'not' && (
+                  <svg width="24" height="24" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <polygon points="20,20 20,80 70,50" />
+                    <circle cx="78" cy="50" r="8" fill="none" />
+                  </svg>
+                )}
+                {gate === 'nand' && (
+                  <svg width="24" height="24" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M 15 20 H 45 A 30 30 0 0 1 75 50 A 30 30 0 0 1 45 80 H 15 Z" />
+                    <circle cx="83" cy="50" r="8" fill="none" />
+                  </svg>
+                )}
+                {gate === 'nor' && (
+                  <svg width="24" height="24" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M 15 20 C 30 20, 45 30, 75 50 C 45 70, 30 80, 15 80 C 30 50, 30 50, 15 20 Z" />
+                    <circle cx="83" cy="50" r="8" fill="none" />
+                  </svg>
+                )}
+                {gate === 'xor' && (
+                  <svg width="24" height="24" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M 15 20 C 25 35, 25 65, 15 80" />
+                    <path d="M 22 20 C 37 20, 52 30, 82 50 C 52 70, 37 80, 22 80 C 37 50, 37 50, 22 20 Z" />
+                  </svg>
+                )}
               </div>
               <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 capitalize">{gate} Gate</span>
             </div>
@@ -188,261 +252,295 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
         </div>
 
         <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2 mt-2">Tools</div>
-        <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-2 gap-2">
           {/* DC Voltage */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'voltage', '5V')} draggable
           >
-            <div className="bg-yellow-50 dark:bg-yellow-950/40 border-2 border-yellow-500 rounded-full w-10 h-10 flex items-center justify-center font-bold text-[11px] text-yellow-600 dark:text-yellow-400 group-hover:scale-105 transition-transform">5V</div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">DC Voltage</span>
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="24" height="24" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="24" cy="24" r="16" />
+                <path d="M 24 13 V 19" />
+                <path d="M 21 16 H 27" />
+                <path d="M 21 32 H 27" />
+              </svg>
+            </div>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">DC Voltage</span>
           </div>
 
           {/* Ground */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'ground')} draggable
           >
-            <div className="flex flex-col items-center group-hover:scale-105 transition-transform p-1 bg-green-50 dark:bg-green-950/40 rounded-lg">
-              <div className="w-1 h-2 bg-green-500"></div>
-              <svg width="20" height="16" viewBox="0 0 24 20" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-green-600 dark:text-green-400">
+            <div className="mb-1 group-hover:scale-105 transition-transform text-green-600 dark:text-green-400">
+              <svg width="24" height="20" viewBox="0 0 24 20" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M4 6h16 M7 11h10 M10 16h4" />
               </svg>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Ground</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Ground</span>
           </div>
 
           {/* Resistor */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'resistor', '1k')} draggable
           >
-            <div className="bg-slate-50 dark:bg-slate-955 border-2 border-slate-700 dark:border-slate-500 rounded w-16 h-7 flex items-center justify-center text-[10px] font-bold text-slate-700 dark:text-slate-300 group-hover:scale-105 transition-transform">1kΩ</div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Resistor</span>
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="36" height="18" viewBox="0 0 80 40" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M 0 20 H 25 L 27.5 10 L 32.5 30 L 37.5 10 L 42.5 30 L 47.5 10 L 52.5 30 L 55 20 H 80" />
+              </svg>
+            </div>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Resistor</span>
           </div>
 
           {/* Capacitor */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'capacitor', '10u')} draggable
           >
-            <div className="bg-blue-50 dark:bg-blue-955 border-2 border-blue-600 dark:border-blue-400 rounded w-12 h-8 flex flex-col items-center justify-center gap-0.5 group-hover:scale-105 transition-transform">
-              <div className="flex gap-1 h-3">
-                <div className="w-[2.5px] bg-blue-700 dark:bg-blue-300 h-full"></div>
-                <div className="w-[2.5px] bg-blue-700 dark:bg-blue-300 h-full"></div>
-              </div>
-              <span className="text-[7px] font-bold text-blue-700 dark:text-blue-300">10uF</span>
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="30" height="22" viewBox="0 0 64 48" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M 0 24 H 29" />
+                <path d="M 29 12 V 36" strokeWidth="2.5" />
+                <path d="M 35 12 V 36" strokeWidth="2.5" />
+                <path d="M 35 24 H 64" />
+              </svg>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Capacitor</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Capacitor</span>
           </div>
 
           {/* Inductor */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'inductor', '100u')} draggable
           >
-            <div className="bg-emerald-50 dark:bg-emerald-955 border-2 border-emerald-600 dark:border-emerald-400 rounded w-16 h-8 flex flex-col items-center justify-center gap-0.5 group-hover:scale-105 transition-transform">
-              <svg width="24" height="8" viewBox="0 0 32 12">
-                <path d="M0,6 C4,0 8,12 12,6 C16,0 20,12 24,6 C28,0 32,12 36,6" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-emerald-700 dark:text-emerald-400" />
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="36" height="18" viewBox="0 0 80 40" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M 0 20 H 16 A 6,6 0 0,1 28,20 A 6,6 0 0,1 40,20 A 6,6 0 0,1 52,20 A 6,6 0 0,1 64,20 H 80" />
               </svg>
-              <span className="text-[7.5px] font-bold text-emerald-700 dark:text-emerald-400">100uH</span>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Inductor</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Inductor</span>
           </div>
 
           {/* Diode */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'diode')} draggable
           >
-            <div className="w-10 h-8 flex items-center justify-center group-hover:scale-105 transition-transform bg-amber-50 dark:bg-amber-955 rounded-lg p-1 text-amber-700 dark:text-amber-400">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M8 6v12l8-6-8-6Z" fill="currentColor" />
-                <path d="M16 6v12" />
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="30" height="22" viewBox="0 0 64 48" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M 0 24 H 24" />
+                <path d="M 24 14 L 36 24 L 24 34 Z" fill="currentColor" />
+                <path d="M 36 14 V 34" strokeWidth="2.5" />
+                <path d="M 36 24 H 64" />
               </svg>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Diode</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Diode</span>
           </div>
 
           {/* LED */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'led')} draggable
           >
-            <div className="bg-red-50 dark:bg-red-955 border-2 border-red-500 rounded-full w-8 h-8 flex items-center justify-center group-hover:scale-105 transition-transform">
-               <div className="w-4 h-4 bg-red-500 rounded-full animate-pulse"></div>
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="30" height="22" viewBox="0 0 64 48" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M 0 24 H 24" />
+                <path d="M 24 14 L 36 24 L 24 34 Z" fill="currentColor" />
+                <path d="M 36 14 V 34" strokeWidth="2.5" />
+                <path d="M 36 24 H 64" />
+                <path d="M 28 14 L 34 8 M 32 8 H 34 V 10" strokeWidth="1" />
+                <path d="M 32 18 L 38 12 M 36 12 H 38 V 14" strokeWidth="1" />
+              </svg>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">LED</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">LED</span>
           </div>
 
           {/* 555 Timer */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'timer555')} draggable
           >
-            <div className="bg-slate-800 dark:bg-slate-955 border-2 border-slate-950 dark:border-slate-800 rounded w-16 h-8 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <span className="text-slate-100 text-[9px] font-bold">NE555</span>
+            <div className="mb-1 group-hover:scale-105 transition-transform">
+              <div className="border border-slate-300 dark:border-slate-700 rounded px-1.5 py-0.5 text-[9px] font-bold text-slate-700 dark:text-slate-300">NE555</div>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">555 Timer</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">555 Timer</span>
           </div>
 
           {/* Microcontroller */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'mcu')} draggable
           >
-            <div className="bg-slate-800 dark:bg-slate-955 border-2 border-slate-950 dark:border-slate-800 rounded w-16 h-8 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <span className="text-slate-100 text-[9px] font-bold">MCU</span>
+            <div className="mb-1 group-hover:scale-105 transition-transform">
+              <div className="border border-slate-300 dark:border-slate-700 rounded px-1.5 py-0.5 text-[9px] font-bold text-slate-700 dark:text-slate-300">MCU</div>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Microcontroller</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">MCU</span>
           </div>
 
           {/* Op-Amp */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'opamp')} draggable
           >
-            <div className="w-12 h-8 relative group-hover:scale-105 transition-transform bg-indigo-50 dark:bg-indigo-955 border border-indigo-200 dark:border-indigo-800 rounded p-1 flex items-center justify-center">
-              <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-                <polygon points="10,10 10,90 90,50" fill="transparent" stroke="currentColor" strokeWidth="6" className="text-indigo-600 dark:text-indigo-400" />
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="28" height="22" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polygon points="10,10 10,90 90,50" />
               </svg>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Op-Amp</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Op-Amp</span>
           </div>
 
           {/* Multimeter */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'multimeter')} draggable
           >
-            <div className="bg-slate-800 border-2 border-slate-950 rounded w-16 h-8 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <span className="text-emerald-400 text-[8px] font-mono">0.00 V</span>
+            <div className="mb-1 group-hover:scale-105 transition-transform">
+              <div className="border border-slate-300 dark:border-slate-700 rounded px-1 py-0.5 font-mono text-[8px] text-slate-700 dark:text-slate-300">0.00 V</div>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Multimeter</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Multimeter</span>
           </div>
 
           {/* DC Source */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'voltage', '5V')} draggable
           >
-            <div className="bg-white dark:bg-slate-955 border-2 border-rose-500 dark:border-rose-400 rounded-full w-10 h-10 flex flex-col items-center justify-center group-hover:scale-105 transition-transform">
-              <span className="text-[9px] font-bold text-rose-500 dark:text-rose-400 leading-none">+</span>
-              <span className="text-[9px] font-bold text-rose-500 dark:text-rose-400 leading-none">-</span>
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="24" height="24" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="24" cy="24" r="16" />
+                <path d="M 24 13 V 19" />
+                <path d="M 21 16 H 27" />
+                <path d="M 21 32 H 27" />
+              </svg>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 text-center">DC Source</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">DC Source</span>
           </div>
 
           {/* AC Source */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'acvoltage', '10V 60Hz')} draggable
           >
-            <div className="bg-white dark:bg-slate-955 border-2 border-red-500 rounded-full w-10 h-10 flex flex-col items-center justify-center group-hover:scale-105 transition-transform">
-               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-red-600 dark:text-red-400">
-                 <path d="M4 12 c 4 -8, 12 8, 16 0" />
-               </svg>
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="24" height="24" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="24" cy="24" r="16" />
+                <path d="M 16 24 C 18 16, 22 16, 24 24 C 26 32, 30 32, 32 24" />
+              </svg>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 text-center">AC Source</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">AC Source</span>
           </div>
 
           {/* Signal Gen */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'signalgen')} draggable
           >
-            <div className="bg-blue-50 dark:bg-blue-955 border-2 border-blue-600 rounded w-16 h-8 flex flex-col items-center justify-center group-hover:scale-105 transition-transform">
-              <span className="text-blue-900 dark:text-blue-300 text-[8px] font-bold">~ SINE</span>
+            <div className="mb-1 group-hover:scale-105 transition-transform">
+              <div className="border border-slate-300 dark:border-slate-700 rounded px-1 py-0.5 text-[8px] font-bold text-slate-700 dark:text-slate-300">~ SINE</div>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Signal Gen</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Signal Gen</span>
           </div>
 
           {/* Oscilloscope */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'scope')} draggable
           >
-            <div className="bg-slate-800 dark:bg-slate-955 border-2 border-slate-950 dark:border-slate-800 rounded w-16 h-8 flex items-center justify-center overflow-hidden group-hover:scale-105 transition-transform">
-              <svg width="100%" height="100%" viewBox="0 0 100 60">
-                <polyline points="0,30 25,10 50,50 75,10 100,30" fill="none" stroke="#22c55e" strokeWidth="5" />
-              </svg>
+            <div className="mb-1 group-hover:scale-105 transition-transform">
+              <div className="border border-slate-300 dark:border-slate-700 rounded w-10 h-6 flex items-center justify-center overflow-hidden">
+                <svg width="100%" height="100%" viewBox="0 0 100 60" className="text-slate-700 dark:text-slate-300">
+                  <polyline points="0,30 25,10 50,50 75,10 100,30" fill="none" stroke="currentColor" strokeWidth="4" />
+                </svg>
+              </div>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Oscilloscope</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Scope</span>
           </div>
 
           {/* Speaker */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'speaker')} draggable
           >
-            <div className="bg-slate-100 dark:bg-slate-800 border-2 border-slate-400 dark:border-slate-650 rounded w-10 h-10 flex items-center justify-center group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
               </svg>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Speaker</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Speaker</span>
           </div>
 
           {/* Mic */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'microphone')} draggable
           >
-            <div className="bg-slate-100 dark:bg-slate-800 border-2 border-slate-400 dark:border-slate-650 rounded w-10 h-10 flex items-center justify-center group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
                 <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
               </svg>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Mic</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Mic</span>
           </div>
 
           {/* Switch */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'switch')} draggable
           >
-            <div className="bg-slate-100 dark:bg-slate-800 border-2 border-slate-400 dark:border-slate-650 rounded w-12 h-10 flex items-center justify-center group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="24" height="24" viewBox="0 0 40 30" fill="none" stroke="currentColor" strokeWidth="3">
-                 <circle cx="10" cy="20" r="3" fill="currentColor" />
-                 <circle cx="30" cy="20" r="3" fill="currentColor" />
-                 <line x1="10" y1="20" x2="30" y2="5" stroke="currentColor" strokeLinecap="round" />
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="30" height="20" viewBox="0 0 40 30" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="10" cy="20" r="3" fill="currentColor" />
+                <circle cx="30" cy="20" r="3" fill="currentColor" />
+                <line x1="10" y1="20" x2="30" y2="5" stroke="currentColor" strokeLinecap="round" />
               </svg>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Switch</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Switch</span>
           </div>
 
           {/* Pot */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'potentiometer', '10k')} draggable
           >
-            <div className="bg-white dark:bg-slate-955 border-2 border-orange-600 rounded w-16 h-8 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <svg width="32" height="14" viewBox="0 0 32 14"><rect x="2" y="4" width="28" height="6" fill="none" stroke="#9a3412" strokeWidth="1.5" rx="1"/><line x1="16" y1="0" x2="16" y2="5" stroke="#c2410c" strokeWidth="1.5"/><path d="M13,3 L16,0 L19,3" fill="none" stroke="#c2410c" strokeWidth="1"/></svg>
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="30" height="20" viewBox="0 0 32 14" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <rect x="2" y="4" width="28" height="6" rx="1"/>
+                <line x1="16" y1="0" x2="16" y2="5"/>
+                <path d="M13,3 L16,0 L19,3"/>
+              </svg>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Pot</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Pot</span>
           </div>
 
           {/* 7-Seg */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'sevenseg')} draggable
           >
-            <div className="bg-slate-955 border-2 border-slate-800 rounded w-10 h-10 flex items-center justify-center group-hover:scale-105 transition-transform bg-slate-950">
-              <span className="text-red-500 font-bold text-lg font-mono leading-none">8</span>
+            <div className="mb-1 group-hover:scale-105 transition-transform">
+              <div className="border border-slate-300 dark:border-slate-700 rounded w-6 h-6 flex items-center justify-center font-mono text-xs font-bold text-slate-700 dark:text-slate-300">8</div>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">7-Seg</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">7-Seg</span>
           </div>
 
           {/* I Source */}
           <div 
-            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center gap-2 cursor-grab hover:border-blue-400 dark:hover:border-blue-850 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
             onDragStart={(e) => onDragStart(e, 'currentsource', '10m')} draggable
           >
-            <div className="bg-white dark:bg-slate-955 border-2 border-teal-600 rounded-full w-10 h-10 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <svg width="16" height="16" viewBox="0 0 28 28" fill="none"><line x1="14" y1="24" x2="14" y2="6" stroke="#0d9488" strokeWidth="2.5"/><path d="M10,10 L14,4 L18,10" fill="none" stroke="#0d9488" strokeWidth="2.5"/></svg>
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="24" height="24" viewBox="0 0 28 28" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="14" cy="14" r="12" />
+                <line x1="14" y1="20" x2="14" y2="8" />
+                <path d="M10,12 L14,8 L18,12" />
+              </svg>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">I Source</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">I Source</span>
           </div>
         </div>
       </aside>
@@ -486,6 +584,20 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
         </button>
       </div>
       <div className="text-[10px] text-slate-400 dark:text-slate-500 mb-4 font-mono">ID: {selectedNode.id}</div>
+      
+      {['resistor', 'capacitor', 'inductor', 'diode', 'zener', 'led', 'switch', 'voltage', 'acvoltage', 'currentsource'].includes(selectedNode.type || '') && (
+        <div className="mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Orientation</label>
+          <select 
+            value={(selectedNode.data.orientation as string) || 'horizontal'} 
+            onChange={e => updateData('orientation', e.target.value)} 
+            className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+          >
+            <option value="horizontal">Horizontal</option>
+            <option value="vertical">Vertical</option>
+          </select>
+        </div>
+      )}
       
       {selectedNode.type === 'voltage' && (
         <div className="mb-3">
@@ -809,9 +921,12 @@ function FlowArea({
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         connectionMode={ConnectionMode.Loose}
+        defaultEdgeOptions={{ type: 'aura' }}
+        snapToGrid={true}
+        snapGrid={[8, 8]}
         fitView
       >
-        <Background color="#ccc" gap={16} />
+        <Background color="#ccc" gap={8} />
         <Controls />
       </ReactFlow>
     </div>
@@ -1616,8 +1731,9 @@ export default function App() {
 
       <div className="flex flex-1 relative min-h-0 overflow-hidden">
         <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
-        <ReactFlowProvider>
-          <FlowArea 
+        <EdgePathProvider edges={edges}>
+          <ReactFlowProvider>
+            <FlowArea 
             nodes={nodes} edges={edges} 
             setNodes={setNodes}
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
@@ -1658,6 +1774,7 @@ export default function App() {
             }}
           />
         </ReactFlowProvider>
+      </EdgePathProvider>
         {nodes.find(n => n.selected) && (
           <PropertiesPanel 
             selectedNode={nodes.find(n => n.selected)!} 
