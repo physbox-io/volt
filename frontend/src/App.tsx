@@ -46,7 +46,7 @@ import { XorNode } from './components/nodes/XorNode';
 import { InductorNode } from './components/nodes/InductorNode';
 import { SwitchNode } from './components/nodes/SwitchNode';
 import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
-import { Play, Square, Trash2, Info, Menu, X, AlertCircle, Settings, Save, Crosshair, Sparkles, Sun, Moon, Zap, Activity } from 'lucide-react';
+import { Play, Square, Trash2, Info, Menu, X, AlertCircle, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
 import { playbackTicker } from './utils/playbackTicker';
 import { presets } from './utils/presets';
@@ -56,6 +56,9 @@ import { loadSettings, saveSettings, loadUserPresets, addUserPreset, removeUserP
 import { PotentiometerNode } from './components/nodes/PotentiometerNode';
 import { SevenSegmentNode } from './components/nodes/SevenSegmentNode';
 import { CurrentSourceNode } from './components/nodes/CurrentSourceNode';
+import { TransformerNode } from './components/nodes/TransformerNode';
+import { DFlipFlopNode } from './components/nodes/DFlipFlopNode';
+import { LDRNode } from './components/nodes/LDRNode';
 import { datasheets } from './utils/datasheets';
 import { useMCPBridge } from './hooks/useMCPBridge';
 
@@ -100,6 +103,9 @@ const nodeTypes = {
   potentiometer: PotentiometerNode,
   sevenseg: SevenSegmentNode,
   currentsource: CurrentSourceNode,
+  transformer: TransformerNode,
+  dff: DFlipFlopNode,
+  ldr: LDRNode,
 };
 
 let simulationWorker: Worker | null = null;
@@ -593,13 +599,76 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
             </div>
             <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">I Source</span>
           </div>
+
+          {/* Transformer */}
+          <div 
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
+            onDragStart={(e) => onDragStart(e, 'transformer')} draggable
+          >
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="24" height="24" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M 8 16 H 18 A 4 4 0 0 1 18 24 A 4 4 0 0 1 18 32 H 8" />
+                <path d="M 40 16 H 30 A 4 4 0 0 0 30 24 A 4 4 0 0 0 30 32 H 40" />
+                <line x1="22" y1="12" x2="22" y2="36" />
+                <line x1="26" y1="12" x2="26" y2="36" />
+              </svg>
+            </div>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Transformer</span>
+          </div>
+
+          {/* D Flip-Flop */}
+          <div 
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
+            onDragStart={(e) => onDragStart(e, 'dff')} draggable
+          >
+            <div className="mb-1 group-hover:scale-105 transition-transform">
+              <div className="border border-slate-300 dark:border-slate-700 rounded px-1 py-0.5 text-[8px] font-bold text-slate-700 dark:text-slate-300">DFF</div>
+            </div>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">D Flip-Flop</span>
+          </div>
+
+          {/* LDR */}
+          <div 
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
+            onDragStart={(e) => onDragStart(e, 'ldr')} draggable
+          >
+            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
+              <svg width="24" height="24" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="24" cy="24" r="12" />
+                <path d="M 14 24 L 17 20 L 21 28 L 25 20 L 29 28 L 31 20 L 34 24" />
+              </svg>
+            </div>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">LDR</span>
+          </div>
         </div>
       </aside>
     </div>
   );
 }
 
-function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, simLength }: { selectedNode: Node, setNodes: any, isSimulating: boolean, runSimulation: () => void, simLength: number }) {
+function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, simLength }: { selectedNode: any, setNodes: any, isSimulating: boolean, runSimulation: () => void, simLength: number }) {
+  const simDebounceTimerRef = useRef<any>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const webcamIntervalRef = useRef<any>(null);
+  const [isRecordingWebcam, setIsRecordingWebcam] = useState(false);
+  const webcamRecordingDataRef = useRef<{ t: number; v: number }[]>([]);
+  const webcamRecordingStartRef = useRef<number>(0);
+
+  const ldrId = selectedNode?.type === 'ldr' ? selectedNode.id : null;
+
+  useEffect(() => {
+    return () => {
+      if (webcamIntervalRef.current) {
+        clearInterval(webcamIntervalRef.current);
+        webcamIntervalRef.current = null;
+      }
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [stream, ldrId]);
+
   if (!selectedNode) return null;
 
   const updateData = (key: string, value: any) => {
@@ -618,8 +687,89 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
       return { ...n, data: newData };
     }));
     if (isSimulating) {
-      setTimeout(runSimulation, 50);
+      if (simDebounceTimerRef.current) {
+        clearTimeout(simDebounceTimerRef.current);
+      }
+      simDebounceTimerRef.current = setTimeout(() => {
+        runSimulation();
+      }, 150);
     }
+  };
+
+  const startWebcam = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      setStream(mediaStream);
+      updateData('isWebcamActive', true);
+
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
+          videoRef.current.play().catch(e => console.error("Error playing video:", e));
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 40;
+        canvas.height = 30;
+        const ctx = canvas.getContext('2d');
+
+        webcamIntervalRef.current = setInterval(() => {
+          if (videoRef.current && ctx) {
+            try {
+              ctx.drawImage(videoRef.current, 0, 0, 40, 30);
+              const imgData = ctx.getImageData(0, 0, 40, 30);
+              const data = imgData.data;
+              let totalLuma = 0;
+              for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i+1];
+                const b = data[i+2];
+                const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+                totalLuma += luma;
+              }
+              const avgBrightness = (totalLuma / (data.length / 4)) / 255;
+              updateData('lightLevel', avgBrightness);
+            } catch (err) {
+              console.error("Error analyzing frame:", err);
+            }
+          }
+        }, 100);
+      }, 300);
+    } catch (err) {
+      console.error("Error accessing webcam:", err);
+      alert("Failed to access webcam. Please check permissions.");
+    }
+  };
+
+  const stopWebcam = () => {
+    if (webcamIntervalRef.current) {
+      clearInterval(webcamIntervalRef.current);
+      webcamIntervalRef.current = null;
+    }
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+    updateData('isWebcamActive', false);
+  };
+
+  const startRecordingWebcam = () => {
+    webcamRecordingDataRef.current = [];
+    webcamRecordingStartRef.current = Date.now();
+    setIsRecordingWebcam(true);
+
+    const recordInterval = setInterval(() => {
+      const elapsed = (Date.now() - webcamRecordingStartRef.current) / 1000;
+      const currentLight = selectedNode.data.lightLevel ?? 0.5;
+      webcamRecordingDataRef.current.push({ t: elapsed, v: currentLight });
+    }, 33);
+
+    const duration = Math.min(simLength, 5);
+    setTimeout(() => {
+      clearInterval(recordInterval);
+      setIsRecordingWebcam(false);
+      updateData('pwlData', webcamRecordingDataRef.current);
+    }, duration * 1000);
   };
 
   return (
@@ -720,6 +870,35 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
             <label className="block text-xs font-medium text-gray-700 mb-1">Max Current (mA)</label>
             <input type="number" value={(selectedNode.data.max_current as number) || 20} onChange={e => updateData('max_current', parseInt(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
           </div>
+          
+          <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <div className="flex items-center gap-2 mb-2">
+              <input 
+                type="checkbox" 
+                id="led-photo" 
+                checked={!!selectedNode.data.photodiodeMode} 
+                onChange={e => updateData('photodiodeMode', e.target.checked)} 
+                className="cursor-pointer"
+              />
+              <label htmlFor="led-photo" className="text-xs font-semibold text-gray-700 select-none cursor-pointer">
+                Enable Photodiode Mode
+              </label>
+            </div>
+            {selectedNode.data.photodiodeMode && (
+              <>
+                <div className="mb-3">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Reverse Sensitivity (μA)</label>
+                  <input type="number" min="0" step="1" value={selectedNode.data.lightSensitivity !== undefined ? selectedNode.data.lightSensitivity : 10} onChange={e => updateData('lightSensitivity', parseInt(e.target.value) || 0)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+                </div>
+                <div className="mb-3">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Light Exposure (0-100%)</label>
+                  <input type="range" min="0" max="100" value={Math.round((selectedNode.data.lightLevel ?? 0) * 100)} onChange={e => updateData('lightLevel', parseInt(e.target.value) / 100)} className="w-full" />
+                  <div className="text-[9px] text-gray-400 mt-1">Simulates photocurrent generated when light shines on reverse-biased LED.</div>
+                </div>
+              </>
+            )}
+          </div>
+
           {selectedNode.data.isExploded && (
             <button 
               onClick={() => { updateData('isExploded', false); updateData('brightness', 0); }}
@@ -890,6 +1069,132 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
           </div>
         </>
       )}
+      {selectedNode.type === 'transformer' && (
+        <>
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Primary Inductance</label>
+            <input 
+              type="text" 
+              value={(selectedNode.data.l_pri_label as string) || '10mH'} 
+              onChange={e => {
+                updateData('l_pri_label', e.target.value);
+                updateData('l_pri', sanitizeSpiceValue(e.target.value));
+              }} 
+              className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" 
+            />
+          </div>
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Secondary Inductance</label>
+            <input 
+              type="text" 
+              value={(selectedNode.data.l_sec_label as string) || '10mH'} 
+              onChange={e => {
+                updateData('l_sec_label', e.target.value);
+                updateData('l_sec', sanitizeSpiceValue(e.target.value));
+              }} 
+              className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" 
+            />
+          </div>
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Coupling Coefficient (K)</label>
+            <input 
+              type="number" 
+              step="0.01" 
+              min="0.01" 
+              max="1.0" 
+              value={(selectedNode.data.k as number) ?? 0.99} 
+              onChange={e => updateData('k', parseFloat(e.target.value) || 0.99)} 
+              className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" 
+            />
+          </div>
+        </>
+      )}
+      {selectedNode.type === 'dff' && (
+        <div className="mb-3 p-2.5 bg-indigo-50 dark:bg-slate-800/40 border border-indigo-100 dark:border-slate-800 rounded-lg text-xs text-indigo-900 dark:text-indigo-200 shadow-sm leading-relaxed">
+          <strong className="block mb-1 text-[11px] font-bold text-indigo-950 dark:text-indigo-150 uppercase tracking-wider">D Flip-Flop</strong>
+          Rising-edge triggered. Samples the D input and sets Q accordingly on each positive edge of CLK.
+        </div>
+      )}
+      {selectedNode.type === 'ldr' && (
+        <>
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Dark Resistance</label>
+            <input 
+              type="text" 
+              value={(selectedNode.data.r_dark_label as string) || '100k'} 
+              onChange={e => {
+                updateData('r_dark_label', e.target.value);
+                updateData('r_dark', sanitizeSpiceValue(e.target.value));
+              }} 
+              className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" 
+            />
+          </div>
+          
+          <div className="mb-3 flex items-center gap-2">
+            <input 
+              type="checkbox" 
+              id="ldr-webcam" 
+              checked={!!selectedNode.data.isWebcamActive} 
+              onChange={e => e.target.checked ? startWebcam() : stopWebcam()} 
+              className="cursor-pointer"
+            />
+            <label htmlFor="ldr-webcam" className="text-xs font-semibold text-gray-700 dark:text-gray-300 select-none cursor-pointer">
+              Use Webcam Sensor
+            </label>
+          </div>
+
+          {stream && (
+            <div className="mb-3 rounded-lg overflow-hidden border border-gray-300 dark:border-slate-800 h-28 bg-black relative flex items-center justify-center shadow-inner">
+              <video 
+                ref={videoRef} 
+                className="w-full h-full object-cover" 
+                muted 
+                playsInline
+              />
+              <div className="absolute bottom-1.5 right-1.5 bg-black/70 text-white text-[8px] font-mono px-1.5 py-0.5 rounded shadow-sm">
+                Live LDR Light: {Math.round((selectedNode.data.lightLevel ?? 0) * 100)}%
+              </div>
+            </div>
+          )}
+
+          {!!selectedNode.data.isWebcamActive && (
+            <div className="mb-3">
+              <button
+                onClick={isRecordingWebcam ? undefined : startRecordingWebcam}
+                className={`w-full py-2 rounded-lg font-bold text-xs shadow-md transition-all text-white ${
+                  isRecordingWebcam ? 'bg-red-500 animate-pulse' : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg'
+                }`}
+              >
+                {isRecordingWebcam ? '🔴 Recording Webcam...' : '📹 Record Light Stream'}
+              </button>
+              {selectedNode.data.pwlData && (
+                <div className="text-[9px] text-green-600 dark:text-green-400 font-bold mt-1.5 flex items-center gap-1">
+                  <span>✓</span> PWL Light Stream Loaded ({selectedNode.data.pwlData.length} pts)
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Light Exposure (0-100%)
+            </label>
+            <input 
+              type="range" 
+              min="0" 
+              max="100" 
+              disabled={!!selectedNode.data.isWebcamActive}
+              value={Math.round((selectedNode.data.lightLevel ?? 0.5) * 100)} 
+              onChange={e => updateData('lightLevel', parseInt(e.target.value) / 100)} 
+              className="w-full" 
+            />
+            <div className="text-[10px] text-gray-500 dark:text-gray-400 font-mono mt-1 flex justify-between">
+              <span>Light: {Math.round((selectedNode.data.lightLevel ?? 0.5) * 100)}%</span>
+              <span>R: {Math.round(100 + ((selectedNode.data.r_dark ?? 100000) - 100) * (1 - (selectedNode.data.lightLevel ?? 0.5))).toLocaleString()} Ω</span>
+            </div>
+          </div>
+        </>
+      )}
       {selectedNode.type === 'sevenseg' && (
         <div className="mb-3">
           <div className="text-xs text-gray-500 mb-1">Segments: a(top) b(TR) c(BR) d(bot) e(BL) f(TL) g(mid)</div>
@@ -961,11 +1266,20 @@ function FlowArea({
         y: event.clientY,
       });
 
+      let initialData: any = { label, isOn: false };
+      if (type === 'transformer') {
+        initialData = { label: 'Transformer', l_pri: '10m', l_sec: '10m', k: 0.99, l_pri_label: '10mH', l_sec_label: '10mH' };
+      } else if (type === 'ldr') {
+        initialData = { label: 'LDR', r_dark: 100000, r_dark_label: '100k', lightLevel: 0.5 };
+      } else if (type === 'dff') {
+        initialData = { label: 'DFF' };
+      }
+
       const newNode: Node = {
         id: `${type}-${nodeId++}`,
         type,
         position,
-        data: { label, isOn: false },
+        data: initialData,
       };
 
       setNodes((nds: Node[]) => nds.concat(newNode));
@@ -1517,6 +1831,100 @@ export default function App() {
       data: { ...e.data, current_array: undefined, time_points: undefined }
     })));
   };
+  // --- Undo/Redo History ---
+  const historyRef = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
+  const historyIndexRef = useRef<number>(-1);
+  const [, setHistoryTrigger] = useState(0);
+
+  const pushHistory = useCallback((newNodes: Node[], newEdges: Edge[]) => {
+    const cleanNewNodes = newNodes.map(n => ({
+      id: n.id,
+      type: n.type,
+      position: { x: Math.round(n.position?.x ?? 0), y: Math.round(n.position?.y ?? 0) },
+      data: {
+        ...n.data,
+        isSimulating: undefined,
+        selected: undefined
+      }
+    }));
+    const cleanNewEdges = newEdges.map(e => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle,
+      targetHandle: e.targetHandle
+    }));
+
+    const lastState = historyRef.current[historyIndexRef.current];
+    if (lastState) {
+      const cleanLastNodes = lastState.nodes.map(n => ({
+        id: n.id,
+        type: n.type,
+        position: { x: Math.round(n.position?.x ?? 0), y: Math.round(n.position?.y ?? 0) },
+        data: {
+          ...n.data,
+          isSimulating: undefined,
+          selected: undefined
+        }
+      }));
+      const cleanLastEdges = lastState.edges.map(e => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle,
+        targetHandle: e.targetHandle
+      }));
+
+      const nodesEqual = JSON.stringify(cleanLastNodes) === JSON.stringify(cleanNewNodes);
+      const edgesEqual = JSON.stringify(cleanLastEdges) === JSON.stringify(cleanNewEdges);
+      if (nodesEqual && edgesEqual) {
+        return;
+      }
+    }
+
+    const nextHistory = historyRef.current.slice(0, historyIndexRef.current + 1);
+    nextHistory.push({
+      nodes: newNodes.map(n => ({ ...n })),
+      edges: newEdges.map(e => ({ ...e }))
+    });
+    if (nextHistory.length > 50) {
+      nextHistory.shift();
+    }
+    historyRef.current = nextHistory;
+    historyIndexRef.current = nextHistory.length - 1;
+    setHistoryTrigger(prev => prev + 1);
+  }, []);
+
+  const undo = useCallback(() => {
+    if (historyIndexRef.current > 0) {
+      historyIndexRef.current -= 1;
+      const state = historyRef.current[historyIndexRef.current];
+      stopSimulation();
+      setNodes(state.nodes.map(n => ({ ...n })));
+      setEdges(state.edges.map(e => ({ ...e })));
+      setHistoryTrigger(prev => prev + 1);
+    }
+  }, [stopSimulation]);
+
+  const redo = useCallback(() => {
+    if (historyIndexRef.current < historyRef.current.length - 1) {
+      historyIndexRef.current += 1;
+      const state = historyRef.current[historyIndexRef.current];
+      stopSimulation();
+      setNodes(state.nodes.map(n => ({ ...n })));
+      setEdges(state.edges.map(e => ({ ...e })));
+      setHistoryTrigger(prev => prev + 1);
+    }
+  }, [stopSimulation]);
+
+  // Track structural updates to push to history
+  useEffect(() => {
+    if (isSimulating) return;
+    const timer = setTimeout(() => {
+      pushHistory(nodes, edges);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [nodes, edges, isSimulating, pushHistory]);
 
   const onNodeClick = useCallback((_: any, node: Node) => {
     if (node.type === 'switch') {
@@ -1585,6 +1993,49 @@ export default function App() {
       setEdges(presets.basicBlink.edges);
     }
   };
+
+  const exportJson = useCallback(() => {
+    try {
+      const dataStr = JSON.stringify({ nodes, edges }, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'circuit_volt_scene.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Failed to export JSON', e);
+      alert('Failed to export JSON');
+    }
+  }, [nodes, edges]);
+
+  const importJson = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e: any) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const parsed = JSON.parse(e.target?.result as string);
+          if (parsed && Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) {
+            stopSimulation();
+            setNodes(parsed.nodes);
+            setEdges(parsed.edges);
+          } else {
+            alert('Invalid circuit JSON format. Must contain "nodes" and "edges" arrays.');
+          }
+        } catch (err) {
+          alert('Failed to parse JSON file');
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }, [stopSimulation, setNodes, setEdges]);
 
   useMCPBridge({
     nodes, edges, isSimulating, selectedPreset, probeMode,
@@ -1743,6 +2194,53 @@ export default function App() {
             </button>
           </div>
 
+          {/* Files Segmented Group */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
+            <button 
+              onClick={() => { setSaveDialogName(''); setIsSaveDialogOpen(true); }}
+              className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-650 dark:text-slate-300 transition-colors focus:outline-none cursor-pointer"
+              title="Save circuit as preset"
+            >
+              <Save className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              onClick={exportJson}
+              className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-650 dark:text-slate-300 transition-colors focus:outline-none cursor-pointer"
+              title="Export JSON"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              onClick={importJson}
+              className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-655 dark:text-slate-300 transition-colors focus:outline-none cursor-pointer"
+              title="Import JSON"
+            >
+              <Upload className="w-3.5 h-3.5" />
+            </button>
+
+            <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
+
+            <button
+              onClick={undo}
+              disabled={historyIndexRef.current <= 0}
+              className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-655 dark:text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent transition-colors focus:outline-none cursor-pointer"
+              title="Undo"
+            >
+              <Undo className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              onClick={redo}
+              disabled={historyIndexRef.current >= historyRef.current.length - 1}
+              className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-655 dark:text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent transition-colors focus:outline-none cursor-pointer"
+              title="Redo"
+            >
+              <Redo className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 mx-0.5 hidden sm:block" />
 
           {/* Right Utilities (Dark Mode, Docs, Settings, Copilot, GitHub) */}
@@ -1764,18 +2262,9 @@ export default function App() {
             <Info className="w-4 h-4" />
           </button>
 
-          {/* Save Preset */}
-          <button
-            onClick={() => { setSaveDialogName(''); setIsSaveDialogOpen(true); }}
-            className="flex items-center justify-center w-8 h-8 rounded-full border border-amber-200 dark:border-amber-850 text-amber-655 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs"
-            title="Save circuit as preset"
-          >
-            <Save className="w-4 h-4" />
-          </button>
-
           {/* Settings */}
           <button
-            onClick={() => setIsSettingsOpen(true)}
+            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
             className={`flex items-center justify-center w-8 h-8 rounded-full border transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs ${
               isSettingsOpen 
                 ? 'bg-blue-100 border-blue-400 text-blue-700 dark:bg-blue-955 dark:border-blue-700 dark:text-blue-400' 
@@ -1914,36 +2403,40 @@ export default function App() {
 
         {/* Save Circuit Dialog */}
         {isSaveDialogOpen && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-150 border border-slate-200 dark:border-slate-800">
-              <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-4 flex items-center gap-2 text-white">
-                <Save size={20} />
-                <h2 className="text-lg font-bold tracking-tight">Save Circuit</h2>
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-2xl max-w-md w-full p-6 flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-950 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                  <Save className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-slate-800 dark:text-slate-200 text-base">Save Circuit Preset</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Give your circuit a name to save it locally</p>
+                </div>
               </div>
-              <div className="p-6 space-y-4">
-                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-350">Circuit Name</label>
-                <input
-                  type="text"
-                  autoFocus
-                  value={saveDialogName}
-                  onChange={e => setSaveDialogName(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleSavePreset(); if (e.key === 'Escape') setIsSaveDialogOpen(false); }}
-                  placeholder="My Awesome Circuit"
-                  className="w-full border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent"
-                />
-                <p className="text-[11px] text-slate-400 dark:text-slate-500">Saved as <span className="font-mono font-semibold">User: {saveDialogName.trim() || '…'}</span> in the preset list.</p>
-              </div>
-              <div className="bg-slate-50 dark:bg-slate-950/60 px-6 py-4 flex gap-3 justify-end border-t border-slate-100 dark:border-slate-800/60">
+              <input
+                autoFocus
+                type="text"
+                placeholder="e.g. Astable Multivibrator"
+                value={saveDialogName}
+                onChange={(e) => setSaveDialogName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSavePreset();
+                  if (e.key === 'Escape') setIsSaveDialogOpen(false);
+                }}
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100"
+              />
+              <div className="flex justify-end gap-2 text-xs">
                 <button
                   onClick={() => setIsSaveDialogOpen(false)}
-                  className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-650 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors font-semibold"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSavePreset}
                   disabled={!saveDialogName.trim()}
-                  className="bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:dark:bg-slate-800 text-white px-5 py-2 rounded-xl font-bold text-sm shadow-lg shadow-amber-200 dark:shadow-none transition-all active:scale-95 cursor-pointer"
+                  className="px-4 py-2 font-semibold text-white bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors"
                 >
                   Save
                 </button>

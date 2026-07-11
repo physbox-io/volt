@@ -65,14 +65,22 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
     }
   });
 
+  const unconnectedNets = new Set<string>();
   // Helper to get net for a node's handle
   const getNet = (nodeId: string, handleId: string) => {
-    return portToNet[`${nodeId}-${handleId}`] || `NC_${nodeId}_${handleId}`;
+    const port = `${nodeId}-${handleId}`;
+    if (portToNet[port]) {
+      return portToNet[port];
+    }
+    const ncNet = `NC_${nodeId}_${handleId}`;
+    unconnectedNets.add(ncNet);
+    return ncNet;
   };
 
   let has555 = false;
   let hasOpAmp = false;
   let hasAudio = false;
+  let hasDff = false;
   // 2. Generate SPICE statements for each node
   nodes.forEach(node => {
     if (node.type === 'resistor') {
@@ -116,6 +124,13 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       const v_drop = Number(node.data.v_drop || 2.0);
       const n_coeff = v_drop / 1.2;
       netlist += `.model LED_MODEL_${node.id} D(IS=1e-22 RS=5 N=${n_coeff})\n`;
+
+      if (node.data.photodiodeMode) {
+        const lightLevel = node.data.lightLevel !== undefined ? Number(node.data.lightLevel) : 0;
+        const sensitivity = Number(node.data.lightSensitivity !== undefined ? node.data.lightSensitivity : 10) * 1e-6; // default 10uA
+        const photoCurrent = lightLevel * sensitivity;
+        netlist += `I_photo_${node.id} ${n2} int_led_${node.id} DC ${photoCurrent.toExponential(6)}\n`;
+      }
     }
     else if (node.type === 'diode') {
       const n1 = getNet(node.id, 'anode');
@@ -346,6 +361,50 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       netlist += `R_${node.id}_5V_res ${int5VNet} ${vccNet} 1\n`; // 1 ohm to avoid singular matrix with other 5V sources
       netlist += `R_${node.id}_GND ${gndNet} 0 1m\n`;
     }
+    else if (node.type === 'transformer') {
+      const p1 = getNet(node.id, 'p1');
+      const p2 = getNet(node.id, 'p2');
+      const s1 = getNet(node.id, 's1');
+      const s2 = getNet(node.id, 's2');
+      const lpri = node.data.l_pri !== undefined ? node.data.l_pri : sanitizeSpiceValue(String(node.data.l_pri_label || '10mH'));
+      const lsec = node.data.l_sec !== undefined ? node.data.l_sec : sanitizeSpiceValue(String(node.data.l_sec_label || '10mH'));
+      const k = node.data.k !== undefined ? node.data.k : '0.99';
+      netlist += `L_pri_${node.id} ${p1} ${p2} ${lpri}\n`;
+      netlist += `L_sec_${node.id} ${s1} ${s2} ${lsec}\n`;
+      netlist += `K_${node.id} L_pri_${node.id} L_sec_${node.id} ${k}\n`;
+    }
+    else if (node.type === 'dff') {
+      hasDff = true;
+      const d = getNet(node.id, 'd');
+      const clk = getNet(node.id, 'clk');
+      const q = getNet(node.id, 'q');
+      const qbar = getNet(node.id, 'qbar');
+      netlist += `X_${node.id} ${d} ${clk} ${q} ${qbar} DFF\n`;
+    }
+    else if (node.type === 'ldr') {
+      const n1 = getNet(node.id, 'in');
+      const n2 = getNet(node.id, 'out');
+      const rDark = node.data.r_dark !== undefined ? parseFloat(sanitizeSpiceValue(String(node.data.r_dark))) : 100000;
+      const lightLevel = node.data.lightLevel !== undefined ? Number(node.data.lightLevel) : 0;
+      
+      const pwlData = node.data.pwlData as { t: number; v: number }[] | undefined;
+      if (pwlData && pwlData.length > 0) {
+        const POINTS_PER_LINE = 8;
+        let pwlLines = `V_light_${node.id} light_node_${node.id} 0 PWL(\n`;
+        for (let i = 0; i < pwlData.length; i++) {
+          const p = pwlData[i];
+          if (i % POINTS_PER_LINE === 0) pwlLines += '+ ';
+          pwlLines += `${p.t.toExponential(6)} ${p.v.toExponential(6)} `;
+          if ((i + 1) % POINTS_PER_LINE === 0 || i === pwlData.length - 1) pwlLines += '\n';
+        }
+        pwlLines += '+ )\n';
+        netlist += pwlLines;
+        netlist += `B_ldr_${node.id} ${n1} ${n2} I = V(${n1}, ${n2}) / (100 + (${rDark} - 100) * (1 - V(light_node_${node.id})))\n`;
+      } else {
+        const resVal = 100 + (rDark - 100) * (1 - lightLevel);
+        netlist += `R_${node.id} ${n1} ${n2} ${resVal.toFixed(2)}\n`;
+      }
+    }
   });
   
   // (Logic gates now use native B-sources, no XSPICE .model required)
@@ -395,7 +454,38 @@ S_DIS 7 1 8 state SMOD_DIS
 .ENDS NE555
 `;
   }
+
+  if (hasDff) {
+    netlist += `
+* Idealized Master-Slave D Flip-Flop
+* Node order: D CLK Q QBAR
+.SUBCKT DFF D CLK Q QBAR
+B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+
+* Master Latch: closed when clk_bar > 2.5
+S_M D state_m clk_bar 0 SMOD_DFF
+C_M state_m 0 1n
+R_M state_m 0 1G
+
+* Slave Latch: closed when CLK > 2.5
+S_S state_m state_s CLK 0 SMOD_DFF
+C_S state_s 0 1n
+R_S state_s 0 1G
+
+* Output Drivers
+B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
+B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+
+.MODEL SMOD_DFF SW(VT=2.5 RON=10 ROFF=100MEG)
+.ENDS DFF
+`;
+  }
   
+  // Shunt unconnected nodes to ground to prevent singular matrix errors
+  unconnectedNets.forEach(net => {
+    netlist += `R_shunt_${net} ${net} 0 1G\n`;
+  });
+
   // Save all voltages to ensure they are returned
   netlist += `.save all\n`;
   

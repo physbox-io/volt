@@ -1,0 +1,109 @@
+import { Handle, Position } from '@xyflow/react';
+
+export function TransformerNode({ data, selected }: any) {
+  const lPri = data.l_pri_label || '10mH';
+  const lSec = data.l_sec_label || '10mH';
+
+  return (
+    <div className="schematic-node flex items-center justify-center relative select-none w-[48px] h-[48px]">
+      {/* Primary Terminals (Left) */}
+      <Handle 
+        type="target" 
+        position={Position.Left} 
+        id="p1" 
+        className="w-2 h-2 bg-blue-500 !border-0" 
+        style={{ top: '25%', left: '0%' }}
+      />
+      <Handle 
+        type="source" 
+        position={Position.Left} 
+        id="p1" 
+        className="w-2 h-2 bg-blue-500 !border-0" 
+        style={{ top: '25%', left: '0%' }}
+      />
+      
+      <Handle 
+        type="target" 
+        position={Position.Left} 
+        id="p2" 
+        className="w-2 h-2 bg-blue-500 !border-0" 
+        style={{ top: '75%', left: '0%' }}
+      />
+      <Handle 
+        type="source" 
+        position={Position.Left} 
+        id="p2" 
+        className="w-2 h-2 bg-blue-500 !border-0" 
+        style={{ top: '75%', left: '0%' }}
+      />
+
+      {/* Secondary Terminals (Right) */}
+      <Handle 
+        type="target" 
+        position={Position.Right} 
+        id="s1" 
+        className="w-2 h-2 bg-blue-500 !border-0" 
+        style={{ top: '25%', left: '100%' }}
+      />
+      <Handle 
+        type="source" 
+        position={Position.Right} 
+        id="s1" 
+        className="w-2 h-2 bg-blue-500 !border-0" 
+        style={{ top: '25%', left: '100%' }}
+      />
+
+      <Handle 
+        type="target" 
+        position={Position.Right} 
+        id="s2" 
+        className="w-2 h-2 bg-blue-500 !border-0" 
+        style={{ top: '75%', left: '100%' }}
+      />
+      <Handle 
+        type="source" 
+        position={Position.Right} 
+        id="s2" 
+        className="w-2 h-2 bg-blue-500 !border-0" 
+        style={{ top: '75%', left: '100%' }}
+      />
+
+      {/* Transformer Symbol SVG */}
+      <svg 
+        width="48" 
+        height="48" 
+        viewBox="0 0 48 48" 
+        fill="none" 
+        stroke={selected ? '#3b82f6' : 'currentColor'} 
+        strokeWidth="1.2" 
+        strokeLinecap="round" 
+        strokeLinejoin="round"
+        style={{ overflow: 'visible' }}
+        className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
+      >
+        {/* Left coil leads */}
+        <path d="M 0 12 H 14" />
+        <path d="M 0 36 H 14" />
+
+        {/* Left coil loops */}
+        <path d="M 14 12 C 18 12, 18 20, 14 20 C 18 20, 18 28, 14 28 C 18 28, 18 36, 14 36" strokeLinecap="round" />
+
+        {/* Iron core lines */}
+        <line x1="22" y1="8" x2="22" y2="40" strokeWidth="1.5" />
+        <line x1="26" y1="8" x2="26" y2="40" strokeWidth="1.5" />
+
+        {/* Right coil loops */}
+        <path d="M 34 12 C 30 12, 30 20, 34 20 C 30 20, 30 28, 34 28 C 30 28, 30 36, 34 36" strokeLinecap="round" />
+
+        {/* Right coil leads */}
+        <path d="M 34 12 H 48" />
+        <path d="M 34 36 H 48" />
+      </svg>
+
+      {/* Label and parameters */}
+      <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[7px] font-bold font-mono text-slate-600 dark:text-slate-400 text-center pointer-events-none whitespace-nowrap">
+        {data.label || `${lPri}:${lSec}`}
+      </div>
+    </div>
+  );
+}

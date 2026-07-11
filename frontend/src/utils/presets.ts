@@ -781,6 +781,85 @@ export const buckConverter: CircuitPreset = {
   ]
 };
 
+export const transformerRectifier: CircuitPreset = {
+  name: 'Transformer Rectifier (AC → DC)',
+  recommendedSimLength: 0.1,
+  nodes: [
+    { id: 'vac1', type: 'acvoltage', position: { x: 50, y: 200 }, data: { label: '24V 60Hz', amplitude: 24, frequency: 60 } },
+    { id: 'xfmr1', type: 'transformer', position: { x: 250, y: 180 }, data: { label: 'Step Down', l_pri: '1H', l_sec: '10mH', k: 0.99, l_pri_label: '1H', l_sec_label: '10mH' } },
+    { id: 'd1', type: 'diode', position: { x: 450, y: 120 }, data: { label: 'D1' } },
+    { id: 'd2', type: 'diode', position: { x: 450, y: 280 }, data: { label: 'D2' } },
+    { id: 'd3', type: 'diode', position: { x: 580, y: 120 }, data: { label: 'D3' } },
+    { id: 'd4', type: 'diode', position: { x: 580, y: 280 }, data: { label: 'D4' } },
+    { id: 'c1', type: 'capacitor', position: { x: 750, y: 200 }, data: { label: '220u' } },
+    { id: 'r1', type: 'resistor', position: { x: 900, y: 200 }, data: { label: '1kΩ' } },
+    { id: 'mm1', type: 'multimeter', position: { x: 1050, y: 200 }, data: { label: 'DC Output' } },
+    { id: 'g1', type: 'ground', position: { x: 510, y: 420 }, data: { label: 'GND' } },
+  ],
+  edges: [
+    { id: 'e-vac-p1', source: 'vac1', target: 'xfmr1', sourceHandle: 'pos', targetHandle: 'p1', type: 'smoothstep' },
+    { id: 'e-vac-p2', source: 'vac1', target: 'xfmr1', sourceHandle: 'neg', targetHandle: 'p2', type: 'smoothstep' },
+    { id: 'e-xfmr-s1-d1', source: 'xfmr1', target: 'd1', sourceHandle: 's1', targetHandle: 'anode', type: 'smoothstep' },
+    { id: 'e-xfmr-s1-d2', source: 'xfmr1', target: 'd2', sourceHandle: 's1', targetHandle: 'cathode', type: 'smoothstep' },
+    { id: 'e-xfmr-s2-d3', source: 'xfmr1', target: 'd3', sourceHandle: 's2', targetHandle: 'anode', type: 'smoothstep' },
+    { id: 'e-xfmr-s2-d4', source: 'xfmr1', target: 'd4', sourceHandle: 's2', targetHandle: 'cathode', type: 'smoothstep' },
+    { id: 'e-d1-c1', source: 'd1', target: 'c1', sourceHandle: 'cathode', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-d3-c1', source: 'd3', target: 'c1', sourceHandle: 'cathode', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-d2-gnd', source: 'd2', target: 'g1', sourceHandle: 'anode', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-d4-gnd', source: 'd4', target: 'g1', sourceHandle: 'anode', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-c1-r1', source: 'c1', target: 'r1', sourceHandle: 'in', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-r1-mm1', source: 'r1', target: 'mm1', sourceHandle: 'in', targetHandle: 'pos', type: 'smoothstep' },
+    { id: 'e-c1-gnd', source: 'c1', target: 'g1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-r1-gnd', source: 'r1', target: 'g1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-mm1-gnd', source: 'mm1', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-pri-ref-gnd', source: 'xfmr1', target: 'g1', sourceHandle: 'p2', targetHandle: 'in', type: 'smoothstep' },
+  ]
+};
+
+export const dffBlinker: CircuitPreset = {
+  name: 'D Flip-Flop Clock-Divider',
+  recommendedSimLength: 2.0,
+  nodes: [
+    { id: 'sg1', type: 'signalgen', position: { x: 50, y: 200 }, data: { label: 'Clock 2Hz', waveform: 'square', frequency: 2, amplitude: 5 } },
+    { id: 'dff1', type: 'dff', position: { x: 280, y: 160 }, data: { label: 'Divider' } },
+    { id: 'r1', type: 'resistor', position: { x: 520, y: 130 }, data: { label: '330Ω' } },
+    { id: 'led1', type: 'led', position: { x: 670, y: 130 }, data: { label: 'Q LED', color: 'cyan', v_drop: 2.0 } },
+    { id: 'g1', type: 'ground', position: { x: 450, y: 350 }, data: { label: 'GND' } },
+  ],
+  edges: [
+    { id: 'e-clk-in', source: 'sg1', target: 'dff1', sourceHandle: 'out', targetHandle: 'clk', type: 'smoothstep' },
+    { id: 'e-qbar-d', source: 'dff1', target: 'dff1', sourceHandle: 'qbar', targetHandle: 'd', type: 'smoothstep' },
+    { id: 'e-q-r1', source: 'dff1', target: 'r1', sourceHandle: 'q', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-r1-led1', source: 'r1', target: 'led1', sourceHandle: 'out', targetHandle: 'anode', type: 'smoothstep' },
+    { id: 'e-led1-gnd', source: 'led1', target: 'g1', sourceHandle: 'cathode', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-sg1-gnd', source: 'sg1', target: 'g1', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
+  ]
+};
+
+export const ldrWebcamDemo: CircuitPreset = {
+  name: 'Webcam LDR / LED Photodiode Demo',
+  recommendedSimLength: 1.0,
+  nodes: [
+    { id: 'v1', type: 'voltage', position: { x: 50, y: 150 }, data: { label: '5V' } },
+    { id: 'ldr1', type: 'ldr', position: { x: 250, y: 100 }, data: { label: 'LDR Sensor', r_dark: 100000, r_dark_label: '100k', lightLevel: 0.5 } },
+    { id: 'r1', type: 'resistor', position: { x: 250, y: 250 }, data: { label: '10kΩ', orientation: 'vertical' } },
+    { id: 'led1', type: 'led', position: { x: 450, y: 150 }, data: { label: 'Photo-LED', color: 'gold', photodiodeMode: true, lightSensitivity: 50, lightLevel: 0.5, orientation: 'vertical' } },
+    { id: 'mm1', type: 'multimeter', position: { x: 650, y: 150 }, data: { label: 'Photo-Current' } },
+    { id: 'g1', type: 'ground', position: { x: 450, y: 380 }, data: { label: 'GND' } },
+  ],
+  edges: [
+    { id: 'e-v1-ldr', source: 'v1', target: 'ldr1', sourceHandle: 'pos', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-ldr-r1', source: 'ldr1', target: 'r1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-r1-gnd', source: 'r1', target: 'g1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-v1-gnd', source: 'v1', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
+    
+    // Reverse-biased Photo-LED: Connect 5V to Cathode, Anode to Ground through Multimeter
+    { id: 'e-v1-led-cathode', source: 'v1', target: 'led1', sourceHandle: 'pos', targetHandle: 'cathode', type: 'smoothstep' },
+    { id: 'e-led-anode-mm', source: 'led1', target: 'mm1', sourceHandle: 'anode', targetHandle: 'pos', type: 'smoothstep' },
+    { id: 'e-mm-gnd', source: 'mm1', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
+  ]
+};
+
 export const presets: Record<string, CircuitPreset> = {
   empty,
   basicBlink,
@@ -805,5 +884,8 @@ export const presets: Record<string, CircuitPreset> = {
   mcuAnalogIn,
   mcuPassThrough,
   mcuCleanAudioSampler,
-  mixedLogicBlink
+  mixedLogicBlink,
+  transformerRectifier,
+  dffBlinker,
+  ldrWebcamDemo
 };
