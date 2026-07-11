@@ -17,17 +17,17 @@ export const basicBlink: CircuitPreset = {
   name: 'Basic Blink',
   recommendedSimLength: 1.0,
   nodes: [
-    { id: 'sg1', type: 'signalgen', position: { x: 100, y: 150 }, data: { label: 'SIGNALGEN', waveform: 'square', frequency: 1, amplitude: 5 } },
-    { id: 'r1', type: 'resistor', position: { x: 350, y: 150 }, data: { label: '330Ω' } },
-    { id: 'led1', type: 'led', position: { x: 600, y: 150 }, data: { label: 'LED', color: 'red', v_drop: 2.0, max_current: 20 } },
-    { id: 'g1', type: 'ground', position: { x: 600, y: 300 }, data: { label: 'GND' } },
-    { id: 'g2', type: 'ground', position: { x: 100, y: 300 }, data: { label: 'GND' } },
+    { id: 'sg1', type: 'signalgen', position: { x: 100, y: 116 }, data: { label: 'SIGNALGEN', waveform: 'square', frequency: 1, amplitude: 5 } },
+    { id: 'r1', type: 'resistor', position: { x: 350, y: 152 }, data: { label: '330Ω' } },
+    { id: 'led1', type: 'led', position: { x: 500, y: 168 }, data: { label: 'LED', color: 'red', v_drop: 2.0, max_current: 20, orientation: 'vertical' } },
+    { id: 'g1', type: 'ground', position: { x: 504, y: 260 }, data: { label: 'GND' } },
+    { id: 'g2', type: 'ground', position: { x: 152, y: 260 }, data: { label: 'GND' } },
   ],
   edges: [
-    { id: 'e-sg1-r1', source: 'sg1', target: 'r1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
-    { id: 'e-r1-led1', source: 'r1', target: 'led1', sourceHandle: 'out', targetHandle: 'anode', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
-    { id: 'e-led1-g1', source: 'led1', target: 'g1', sourceHandle: 'cathode', targetHandle: 'in', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
-    { id: 'e-sg1-g2', source: 'sg1', target: 'g2', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
+    { id: 'e-sg1-r1', source: 'sg1', target: 'r1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-r1-led1', source: 'r1', target: 'led1', sourceHandle: 'out', targetHandle: 'anode', type: 'smoothstep' },
+    { id: 'e-led1-g1', source: 'led1', target: 'g1', sourceHandle: 'cathode', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-sg1-g2', source: 'sg1', target: 'g2', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
   ]
 };
 
@@ -295,9 +295,9 @@ export const mcuBlink: CircuitPreset = {
     { id: 'g1', type: 'ground', position: { x: 600, y: 350 }, data: { label: 'GND' } },
   ],
   edges: [
-    { id: 'e-mcu-r1', source: 'mcu1', target: 'r1', sourceHandle: 'D0', targetHandle: 'in', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
-    { id: 'e-r1-led1', source: 'r1', target: 'led1', sourceHandle: 'out', targetHandle: 'anode', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
-    { id: 'e-led1-g1', source: 'led1', target: 'g1', sourceHandle: 'cathode', targetHandle: 'in', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
+    { id: 'e-mcu-r1', source: 'mcu1', target: 'r1', sourceHandle: 'D0', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-r1-led1', source: 'r1', target: 'led1', sourceHandle: 'out', targetHandle: 'anode', type: 'smoothstep' },
+    { id: 'e-led1-g1', source: 'led1', target: 'g1', sourceHandle: 'cathode', targetHandle: 'in', type: 'smoothstep' },
   ]
 };
 
@@ -310,8 +310,8 @@ export const mcuSpeaker: CircuitPreset = {
     { id: 'g1', type: 'ground', position: { x: 400, y: 300 }, data: { label: 'GND' } },
   ],
   edges: [
-    { id: 'e-mcu-spk1', source: 'mcu1', target: 'spk1', sourceHandle: 'D1', targetHandle: 'in', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
-    { id: 'e-spk1-g1', source: 'spk1', target: 'g1', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
+    { id: 'e-mcu-spk1', source: 'mcu1', target: 'spk1', sourceHandle: 'D1', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-spk1-g1', source: 'spk1', target: 'g1', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
   ]
 };
 
@@ -324,8 +324,8 @@ export const mcuAnalogOut: CircuitPreset = {
     { id: 'g1', type: 'ground', position: { x: 400, y: 300 }, data: { label: 'GND' } },
   ],
   edges: [
-    { id: 'e-mcu-scope', source: 'mcu1', target: 'scope1', sourceHandle: 'A0', targetHandle: 'ch1', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
-    { id: 'e-scope-g1', source: 'scope1', target: 'g1', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
+    { id: 'e-mcu-scope', source: 'mcu1', target: 'scope1', sourceHandle: 'A0', targetHandle: 'ch1', type: 'smoothstep' },
+    { id: 'e-scope-g1', source: 'scope1', target: 'g1', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
   ]
 };
 
@@ -339,9 +339,9 @@ export const mcuAnalogIn: CircuitPreset = {
     { id: 'g2', type: 'ground', position: { x: 300, y: 350 }, data: { label: 'GND' } },
   ],
   edges: [
-    { id: 'e-vac-mcu', source: 'vac1', target: 'mcu1', sourceHandle: 'pos', targetHandle: 'A0', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
-    { id: 'e-vac-gnd', source: 'vac1', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
-    { id: 'e-mcu-gnd', source: 'mcu1', target: 'g2', sourceHandle: 'GND', targetHandle: 'in', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
+    { id: 'e-vac-mcu', source: 'vac1', target: 'mcu1', sourceHandle: 'pos', targetHandle: 'A0', type: 'smoothstep' },
+    { id: 'e-vac-gnd', source: 'vac1', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-mcu-gnd', source: 'mcu1', target: 'g2', sourceHandle: 'GND', targetHandle: 'in', type: 'smoothstep' },
   ]
 };
 
@@ -357,11 +357,11 @@ export const mcuPassThrough: CircuitPreset = {
     { id: 'g3', type: 'ground', position: { x: 600, y: 300 }, data: { label: 'GND' } },
   ],
   edges: [
-    { id: 'e-sg-mcu', source: 'sg1', target: 'mcu1', sourceHandle: 'out', targetHandle: 'A0', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
-    { id: 'e-sg-gnd', source: 'sg1', target: 'g1', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
-    { id: 'e-mcu-spk', source: 'mcu1', target: 'spk1', sourceHandle: 'A1', targetHandle: 'in', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
-    { id: 'e-spk-gnd', source: 'spk1', target: 'g3', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
-    { id: 'e-mcu-gnd', source: 'mcu1', target: 'g2', sourceHandle: 'GND', targetHandle: 'in', type: 'smoothstep', style: { strokeWidth: 2, stroke: '#555' } },
+    { id: 'e-sg-mcu', source: 'sg1', target: 'mcu1', sourceHandle: 'out', targetHandle: 'A0', type: 'smoothstep' },
+    { id: 'e-sg-gnd', source: 'sg1', target: 'g1', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-mcu-spk', source: 'mcu1', target: 'spk1', sourceHandle: 'A1', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-spk-gnd', source: 'spk1', target: 'g3', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-mcu-gnd', source: 'mcu1', target: 'g2', sourceHandle: 'GND', targetHandle: 'in', type: 'smoothstep' },
   ]
 };
 
@@ -619,12 +619,12 @@ export const astableMultivibrator: CircuitPreset = {
     { id: 'vcc', type: 'voltage', position: { x: 320, y: 48 }, data: { label: '5V' } },
     { id: 'q1', type: 'npn', position: { x: 208, y: 352 }, data: { label: 'Q1' } },
     { id: 'q2', type: 'npn', position: { x: 400, y: 352 }, data: { label: 'Q2' } },
-    { id: 'rc1', type: 'resistor', position: { x: 224, y: 144 }, data: { label: '330', orientation: 'vertical' } },
-    { id: 'rc2', type: 'resistor', position: { x: 416, y: 144 }, data: { label: '330', orientation: 'vertical' } },
-    { id: 'rb1', type: 'resistor', position: { x: 304, y: 144 }, data: { label: '47k', orientation: 'vertical' } },
-    { id: 'rb2', type: 'resistor', position: { x: 336, y: 144 }, data: { label: '48k', orientation: 'vertical' } },
-    { id: 'c1', type: 'capacitor', position: { x: 240, y: 240 }, data: { label: '10uF' } },
-    { id: 'c2', type: 'capacitor', position: { x: 352, y: 240 }, data: { label: '10uF' } },
+    { id: 'rc1', type: 'resistor', position: { x: 220, y: 144 }, data: { label: '330', orientation: 'vertical' } },
+    { id: 'rc2', type: 'resistor', position: { x: 412, y: 144 }, data: { label: '330', orientation: 'vertical' } },
+    { id: 'rb1', type: 'resistor', position: { x: 292, y: 144 }, data: { label: '47k', orientation: 'vertical' } },
+    { id: 'rb2', type: 'resistor', position: { x: 340, y: 144 }, data: { label: '48k', orientation: 'vertical' } },
+    { id: 'c1', type: 'capacitor', position: { x: 256, y: 240 }, data: { label: '10uF' } },
+    { id: 'c2', type: 'capacitor', position: { x: 368, y: 240 }, data: { label: '10uF' } },
     { id: 'led1', type: 'led', position: { x: 216, y: 240 }, data: { label: 'L1', color: 'red' } },
     { id: 'led2', type: 'led', position: { x: 408, y: 240 }, data: { label: 'L2', color: 'green' } },
     { id: 'g1', type: 'ground', position: { x: 320, y: 504 }, data: { label: 'GND' } },
@@ -641,8 +641,8 @@ export const astableMultivibrator: CircuitPreset = {
      { id: 'e-rc2-led2', source: 'rc2', target: 'led2', sourceHandle: 'out', targetHandle: 'anode' },
      { id: 'e-q1c-c1', source: 'q1', target: 'c1', sourceHandle: 'c', targetHandle: 'in' },
      { id: 'e-c1-q2b', source: 'c1', target: 'q2', sourceHandle: 'out', targetHandle: 'b' },
-     { id: 'e-q2c-c2', source: 'q2', target: 'c2', sourceHandle: 'c', targetHandle: 'in' },
-     { id: 'e-c2-q1b', source: 'c2', target: 'q1', sourceHandle: 'out', targetHandle: 'b' },
+     { id: 'e-q2c-c2', source: 'q2', target: 'c2', sourceHandle: 'c', targetHandle: 'out' },
+     { id: 'e-c2-q1b', source: 'c2', target: 'q1', sourceHandle: 'in', targetHandle: 'b' },
      { id: 'e-rb1-q1b', source: 'rb1', target: 'q1', sourceHandle: 'out', targetHandle: 'b' },
      { id: 'e-rb2-q2b', source: 'rb2', target: 'q2', sourceHandle: 'out', targetHandle: 'b' },
      { id: 'e-q1e-gnd', source: 'q1', target: 'g1', sourceHandle: 'e', targetHandle: 'in' },

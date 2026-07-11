@@ -4,7 +4,7 @@ export function InductorNode({ data, selected }: any) {
   const isVertical = data.orientation === 'vertical';
 
   return (
-    <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[30px] h-[60px]' : 'w-[60px] h-[30px]'}`}>
+    <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[24px] h-[48px]' : 'w-[48px] h-[24px]'}`}>
       <Handle 
         type="target" 
         position={isVertical ? Position.Top : Position.Left} 
@@ -21,26 +21,26 @@ export function InductorNode({ data, selected }: any) {
       />
       
       <svg 
-        width={isVertical ? 30 : 60} 
-        height={isVertical ? 60 : 30} 
-        viewBox={isVertical ? "0 0 40 80" : "0 0 80 40"} 
+        width={isVertical ? 24 : 48} 
+        height={isVertical ? 48 : 24} 
+        viewBox={isVertical ? "0 0 24 48" : "0 0 48 24"} 
         fill="none" 
         stroke={selected ? '#3b82f6' : 'currentColor'} 
-        strokeWidth="1.5" 
+        strokeWidth="1.2" 
         strokeLinecap="round" 
         style={{ overflow: 'visible' }}
         className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
       >
         {isVertical ? (
-          <path d="M 20 -4 V 16 A 6,6 0 0,1 20,28 A 6,6 0 0,1 20,40 A 6,6 0 0,1 20,52 A 6,6 0 0,1 20,64 V 84" />
+          <path d="M 12 -4 V 12 A 4,4 0 0,1 12,20 A 4,4 0 0,1 12,28 A 4,4 0 0,1 12,36 V 52" />
         ) : (
-          <path d="M -4 20 H 16 A 6,6 0 0,1 28,20 A 6,6 0 0,1 40,20 A 6,6 0 0,1 52,20 A 6,6 0 0,1 64,20 H 84" />
+          <path d="M -4 12 H 12 A 4,4 0 0,1 20,12 A 4,4 0 0,1 28,12 A 4,4 0 0,1 36,12 H 52" />
         )}
       </svg>
 
-      <div className={isVertical
-        ? "absolute left-[26px] top-[30px] text-[10px] font-bold font-mono text-slate-700 dark:text-slate-350 pointer-events-none whitespace-nowrap"
-        : "absolute -bottom-4 text-[10px] font-bold font-mono text-slate-700 dark:text-slate-350 text-center w-full pointer-events-none"
+      <div className={isVertical 
+        ? "absolute left-[20px] top-1/2 -translate-y-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 pointer-events-none whitespace-nowrap" 
+        : "absolute -bottom-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 text-center pointer-events-none whitespace-nowrap"
       }>
         {data.label || '100uH'}
       </div>

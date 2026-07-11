@@ -200,6 +200,63 @@ export function EdgePathProvider({ children, edges = [] }: { children: React.Rea
   );
 }
 
+function getSchematicPath({
+  sourceX,
+  sourceY,
+  sourcePosition,
+  targetX,
+  targetY,
+  targetPosition,
+  offset = 8,
+}: {
+  sourceX: number;
+  sourceY: number;
+  sourcePosition: string;
+  targetX: number;
+  targetY: number;
+  targetPosition: string;
+  offset?: number;
+}) {
+  // If aligned horizontally or vertically, return straight line
+  if (sourceX === targetX && (sourcePosition === 'top' || sourcePosition === 'bottom') && (targetPosition === 'top' || targetPosition === 'bottom')) {
+    return `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+  }
+  if (sourceY === targetY && (sourcePosition === 'left' || sourcePosition === 'right') && (targetPosition === 'left' || targetPosition === 'right')) {
+    return `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+  }
+
+  // Otherwise, use a simple Manhattan layout for vertical-horizontal mixed connections
+  const isSourceVert = sourcePosition === 'top' || sourcePosition === 'bottom';
+  const isTargetVert = targetPosition === 'top' || targetPosition === 'bottom';
+
+  if (isSourceVert && !isTargetVert) {
+    const exitDir = sourcePosition === 'bottom' ? 1 : -1;
+    if ((targetY - sourceY) * exitDir > 0) {
+      return `M ${sourceX} ${sourceY} L ${sourceX} ${targetY} L ${targetX} ${targetY}`;
+    }
+  }
+
+  if (!isSourceVert && isTargetVert) {
+    const exitDir = sourcePosition === 'right' ? 1 : -1;
+    if ((targetX - sourceX) * exitDir > 0) {
+      return `M ${sourceX} ${sourceY} L ${targetX} ${sourceY} L ${targetX} ${targetY}`;
+    }
+  }
+
+  // Fallback to React Flow's standard smoothstep path
+  const [standardPath] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    sourcePosition: sourcePosition as any,
+    targetPosition: targetPosition as any,
+    targetX,
+    targetY,
+    borderRadius: 0,
+    offset,
+  });
+  return standardPath;
+}
+
 export function AuraEdge({
   id,
   sourceX,
@@ -231,14 +288,13 @@ export function AuraEdge({
     }
   }
 
-  const [edgePath] = getSmoothStepPath({
+  const edgePath = getSchematicPath({
     sourceX,
     sourceY,
     sourcePosition,
     targetPosition,
     targetX,
     targetY,
-    borderRadius: 0,
     offset: dynamicOffset,
   });
 

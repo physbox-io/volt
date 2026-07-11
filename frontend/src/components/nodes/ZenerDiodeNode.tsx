@@ -4,7 +4,7 @@ export function ZenerDiodeNode({ data, selected }: any) {
   const isVertical = data.orientation === 'vertical';
 
   return (
-    <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[36px] h-[48px]' : 'w-[48px] h-[36px]'}`}>
+    <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[24px] h-[48px]' : 'w-[48px] h-[24px]'}`}>
       <Handle 
         type="target" 
         position={isVertical ? Position.Top : Position.Left} 
@@ -21,12 +21,12 @@ export function ZenerDiodeNode({ data, selected }: any) {
       />
       
       <svg 
-        width={isVertical ? 36 : 48} 
-        height={isVertical ? 48 : 36} 
-        viewBox={isVertical ? "0 0 48 64" : "0 0 64 48"} 
+        width={isVertical ? 24 : 48} 
+        height={isVertical ? 48 : 24} 
+        viewBox={isVertical ? "0 0 24 48" : "0 0 48 24"} 
         fill="none" 
         stroke={selected ? '#3b82f6' : 'currentColor'} 
-        strokeWidth="1.5" 
+        strokeWidth="1.2" 
         strokeLinecap="round" 
         strokeLinejoin="round"
         style={{ overflow: 'visible' }}
@@ -35,35 +35,35 @@ export function ZenerDiodeNode({ data, selected }: any) {
         {isVertical ? (
           <>
             {/* Top lead */}
-            <path d="M 24 -4 V 24" />
+            <path d="M 12 -4 V 18" />
             {/* Triangle (Anode) */}
-            <path d="M 14 24 H 34 L 24 36 Z" fill="currentColor" />
+            <path d="M 6 18 H 18 L 12 26 Z" fill="currentColor" />
             {/* Zener Cathode bar */}
-            <path d="M 14 36 H 34" strokeWidth="2.2" />
-            <path d="M 14 36 V 32" strokeWidth="2.2" />
-            <path d="M 34 36 V 40" strokeWidth="2.2" />
+            <path d="M 6 26 H 18" strokeWidth="2.0" />
+            <path d="M 6 26 V 22" strokeWidth="2.0" />
+            <path d="M 18 26 V 30" strokeWidth="2.0" />
             {/* Bottom lead */}
-            <path d="M 24 36 V 68" />
+            <path d="M 12 26 V 52" />
           </>
         ) : (
           <>
             {/* Left lead */}
-            <path d="M -4 24 H 24" />
+            <path d="M -4 12 H 18" />
             {/* Triangle (Anode) */}
-            <path d="M 24 14 L 36 24 L 24 34 Z" fill="currentColor" />
+            <path d="M 18 6 L 26 12 L 18 18 Z" fill="currentColor" />
             {/* Zener Cathode bar */}
-            <path d="M 36 14 V 34" strokeWidth="2.2" />
-            <path d="M 36 14 H 40" strokeWidth="2.2" />
-            <path d="M 32 34 H 36" strokeWidth="2.2" />
+            <path d="M 26 6 V 18" strokeWidth="2.0" />
+            <path d="M 26 6 H 30" strokeWidth="2.0" />
+            <path d="M 22 18 H 26" strokeWidth="2.0" />
             {/* Right lead */}
-            <path d="M 36 24 H 68" />
+            <path d="M 26 12 H 52" />
           </>
         )}
       </svg>
 
-      <div className={isVertical
-        ? "absolute left-[30px] top-[22px] text-[10px] font-bold font-mono text-slate-700 dark:text-slate-350 pointer-events-none whitespace-nowrap"
-        : "absolute -bottom-4 text-[10px] font-bold font-mono text-slate-700 dark:text-slate-350 text-center w-full pointer-events-none"
+      <div className={isVertical 
+        ? "absolute left-[20px] top-1/2 -translate-y-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 pointer-events-none whitespace-nowrap" 
+        : "absolute -bottom-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 text-center pointer-events-none whitespace-nowrap"
       }>
         {data.label || '5.1V'}
       </div>

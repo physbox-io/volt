@@ -271,35 +271,43 @@ aside.glass-panel h3:hover {
   box-shadow: none !important;
 }
 
-/* Connection handle styling (solid dots matching connection wire color) */
+.schematic-node svg {
+  display: block !important;
+}
+
+/* Connection handle styling — invisible by default, visible on hover */
 .react-flow__handle {
   width: 4px !important;
   height: 4px !important;
-  background-color: #334155 !important; /* matching dark slate in light mode */
+  background-color: #475569 !important;
   border: none !important;
   box-shadow: none !important;
+  opacity: 0 !important;
+  transition: opacity 0.15s ease, transform 0.15s ease !important;
 }
 
 .dark .react-flow__handle {
-  background-color: #ffffff !important; /* solid white in dark mode */
+  background-color: #94a3b8 !important;
+  opacity: 0 !important;
 }
 
-/* Eliminate gap between handle and component boundaries */
-.react-flow__handle-top {
-  top: 0px !important;
-  transform: translate(-50%, -50%) !important;
+/* Hover/active states for handles */
+.react-flow__node:hover .react-flow__handle,
+.react-flow__node:focus-within .react-flow__handle,
+.react-flow__connection-connecting .react-flow__handle {
+  opacity: 1 !important;
 }
-.react-flow__handle-bottom {
-  bottom: 0px !important;
-  transform: translate(-50%, 50%) !important;
-}
-.react-flow__handle-left {
-  left: 0px !important;
-  transform: translate(-50%, -50%) !important;
-}
+
+/* Position handle centers exactly on the inline-style coordinates */
+.react-flow__handle-top,
+.react-flow__handle-bottom,
+.react-flow__handle-left,
 .react-flow__handle-right {
-  right: 0px !important;
-  transform: translate(50%, -50%) !important;
+  transform: translate(-50%, -50%) !important;
+}
+.react-flow__node:hover .react-flow__handle,
+.react-flow__connection-connecting .react-flow__handle {
+  transform: translate(-50%, -50%) scale(1.5) !important;
 }
 
 

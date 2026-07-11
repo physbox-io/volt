@@ -4,7 +4,7 @@ export function VoltageNode({ data, selected }: any) {
   const isHorizontal = data.orientation === 'horizontal';
 
   return (
-    <div className="schematic-node w-[32px] h-[32px] flex items-center justify-center relative select-none">
+    <div className="schematic-node w-[24px] h-[24px] flex items-center justify-center relative select-none">
       <Handle 
         type="target" 
         position={isHorizontal ? Position.Left : Position.Top} 
@@ -21,12 +21,12 @@ export function VoltageNode({ data, selected }: any) {
       />
       
       <svg 
-        width="32" 
-        height="32" 
-        viewBox="0 0 48 48" 
+        width="24" 
+        height="24" 
+        viewBox="0 0 24 24" 
         fill="none" 
         stroke={selected ? '#3b82f6' : 'currentColor'} 
-        strokeWidth="1.5" 
+        strokeWidth="1.2" 
         strokeLinecap="round" 
         strokeLinejoin="round"
         style={{ overflow: 'visible' }}
@@ -35,35 +35,35 @@ export function VoltageNode({ data, selected }: any) {
         {isHorizontal ? (
           <>
             {/* Left & Right Leads */}
-            <path d="M -4 24 H 8" />
-            <path d="M 40 24 H 52" />
+            <path d="M -4 12 H 4" />
+            <path d="M 20 12 H 28" />
             {/* Circle */}
-            <circle cx="24" cy="24" r="16" />
+            <circle cx="12" cy="12" r="8" />
             {/* Plus Sign (Left) */}
-            <path d="M 16 21 V 27" strokeWidth="1.5" />
-            <path d="M 13 24 H 19" strokeWidth="1.5" />
+            <path d="M 8 10 V 14" strokeWidth="1" />
+            <path d="M 6 12 H 10" strokeWidth="1" />
             {/* Minus Sign (Right) */}
-            <path d="M 29 24 H 35" strokeWidth="1.5" />
+            <path d="M 14 12 H 18" strokeWidth="1" />
           </>
         ) : (
           <>
             {/* Top & Bottom Leads */}
-            <path d="M 24 -4 V 8" />
-            <path d="M 24 40 V 52" />
+            <path d="M 12 -4 V 4" />
+            <path d="M 12 20 V 28" />
             {/* Circle */}
-            <circle cx="24" cy="24" r="16" />
+            <circle cx="12" cy="12" r="8" />
             {/* Plus Sign (Top) */}
-            <path d="M 24 13 V 19" strokeWidth="1.5" />
-            <path d="M 21 16 H 27" strokeWidth="1.5" />
+            <path d="M 12 6 V 10" strokeWidth="1" />
+            <path d="M 10 8 H 14" strokeWidth="1" />
             {/* Minus Sign (Bottom) */}
-            <path d="M 21 32 H 27" strokeWidth="1.5" />
+            <path d="M 10 16 H 14" strokeWidth="1" />
           </>
         )}
       </svg>
 
       <div className={isHorizontal
-        ? "absolute -top-4 text-[10px] font-bold font-mono text-slate-700 dark:text-slate-350 text-center w-full pointer-events-none"
-        : "absolute left-[54px] text-[10px] font-bold font-mono text-slate-700 dark:text-slate-350 whitespace-nowrap pointer-events-none"
+        ? "absolute -bottom-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 text-center pointer-events-none whitespace-nowrap"
+        : "absolute left-[28px] top-1/2 -translate-y-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap pointer-events-none"
       }>
         {data.label || '5V'}
       </div>

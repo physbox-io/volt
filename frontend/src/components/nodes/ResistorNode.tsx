@@ -4,7 +4,7 @@ export function ResistorNode({ data, selected }: any) {
   const isVertical = data.orientation === 'vertical';
 
   return (
-    <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[32px] h-[64px]' : 'w-[64px] h-[32px]'}`}>
+    <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[24px] h-[48px]' : 'w-[48px] h-[24px]'}`}>
       <Handle 
         type="target" 
         position={isVertical ? Position.Top : Position.Left} 
@@ -21,27 +21,27 @@ export function ResistorNode({ data, selected }: any) {
       />
       
       <svg 
-        width={isVertical ? 32 : 64} 
-        height={isVertical ? 64 : 32} 
-        viewBox={isVertical ? "0 0 40 80" : "0 0 80 40"} 
+        width={isVertical ? 24 : 48} 
+        height={isVertical ? 48 : 24} 
+        viewBox={isVertical ? "0 0 24 48" : "0 0 48 24"} 
         fill="none" 
         stroke={selected ? '#3b82f6' : 'currentColor'} 
-        strokeWidth="1.5" 
+        strokeWidth="1.2" 
         strokeLinecap="round" 
         strokeLinejoin="round"
         style={{ overflow: 'visible' }}
-        className={`text-slate-850 dark:text-slate-150 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
+        className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
       >
         {isVertical ? (
-          <path d="M 20 -4 V 25 L 10 27.5 L 30 32.5 L 10 37.5 L 30 42.5 L 10 47.5 L 30 52.5 L 20 55 V 84" />
+          <path d="M 12 -4 V 12 L 6 14 L 18 18 L 6 22 L 18 26 L 6 30 L 18 34 L 12 36 V 52" />
         ) : (
-          <path d="M -4 20 H 25 L 27.5 10 L 32.5 30 L 37.5 10 L 42.5 30 L 47.5 10 L 52.5 30 L 55 20 H 84" />
+          <path d="M -4 12 H 12 L 14 6 L 18 18 L 22 6 L 26 18 L 30 6 L 34 18 L 36 12 H 52" />
         )}
       </svg>
 
       <div className={isVertical 
-        ? "absolute left-[26px] top-[30px] text-[10px] font-bold font-mono text-slate-700 dark:text-slate-350 pointer-events-none whitespace-nowrap" 
-        : "absolute -top-4 text-[10px] font-bold font-mono text-slate-700 dark:text-slate-350 text-center w-full pointer-events-none"
+        ? "absolute left-[20px] top-1/2 -translate-y-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 pointer-events-none whitespace-nowrap" 
+        : "absolute -bottom-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 text-center pointer-events-none whitespace-nowrap"
       }>
         {data.label || '1kΩ'}
       </div>

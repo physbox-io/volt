@@ -923,7 +923,7 @@ function FlowArea({
         connectionMode={ConnectionMode.Loose}
         defaultEdgeOptions={{ type: 'aura' }}
         snapToGrid={true}
-        snapGrid={[8, 8]}
+        snapGrid={[4, 4]}
         fitView
       >
         <Background color="#ccc" gap={8} />
