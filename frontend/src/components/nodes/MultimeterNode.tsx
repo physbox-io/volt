@@ -1,5 +1,6 @@
 import { Handle, Position, useReactFlow } from '@xyflow/react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, memo } from 'react';
+import { playbackTicker } from '../../utils/playbackTicker';
 
 function calculateRms(arr: number[]): number {
   if (!arr || arr.length === 0) return 0;
@@ -15,7 +16,7 @@ function calculateRms(arr: number[]): number {
   return count > 0 ? Math.sqrt(sum / count) : 0;
 }
 
-export function MultimeterNode({ id, data }: any) {
+export const MultimeterNode = memo(function MultimeterNode({ id, data }: any) {
   const isSimulating = !!data.isSimulating;
   const displayRef = useRef<HTMLDivElement>(null);
   const { setNodes } = useReactFlow();
@@ -44,17 +45,7 @@ export function MultimeterNode({ id, data }: any) {
       return;
     }
 
-    let animationFrame: number;
-    let startTime = Date.now();
-    const duration = data.time_points[data.time_points.length - 1] || 1000;
-
-    const animate = () => {
-      let elapsedMs = Date.now() - startTime;
-      if (elapsedMs > duration) {
-        startTime = Date.now();
-        elapsedMs = 0;
-      }
-
+    const unsubscribe = playbackTicker.subscribe((elapsedMs) => {
       let idx = 0;
       for (let i = 0; i < data.time_points.length; i++) {
         if (data.time_points[i] >= elapsedMs) {
@@ -67,12 +58,9 @@ export function MultimeterNode({ id, data }: any) {
       if (displayRef.current) {
         displayRef.current.innerText = val.toFixed(3) + ' V';
       }
+    });
 
-      animationFrame = requestAnimationFrame(animate);
-    };
-
-    animationFrame = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animationFrame);
+    return unsubscribe;
   }, [data.voltage, data.voltage_array, data.time_points, isSimulating, data.isRms]);
 
   const rmsVal = data.voltage_array ? calculateRms(data.voltage_array) : 0;
@@ -121,5 +109,5 @@ export function MultimeterNode({ id, data }: any) {
       <Handle type="source" position={Position.Bottom} id="neg" className="w-3 h-3 bg-black" style={{ left: '70%' }} />
     </div>
   );
-}
+});
 

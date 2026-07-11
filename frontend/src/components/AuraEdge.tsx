@@ -1,5 +1,6 @@
 import { BaseEdge, type EdgeProps, getSmoothStepPath } from '@xyflow/react';
-import { useEffect, useState, createContext, useContext, useMemo, useCallback } from 'react';
+import { useEffect, useState, createContext, useContext, useMemo, useCallback, memo } from 'react';
+import { playbackTicker } from '../utils/playbackTicker';
 
 export const EdgePathContext = createContext<{
   registerPath: (id: string, points: {x: number; y: number}[]) => void;
@@ -257,7 +258,7 @@ function getSchematicPath({
   return standardPath;
 }
 
-export function AuraEdge({
+export const AuraEdge = memo(function AuraEdge({
   id,
   sourceX,
   sourceY,
@@ -309,17 +310,7 @@ export function AuraEdge({
       return;
     }
 
-    let animationFrame: number;
-    let startTime = Date.now();
-    const duration = timePoints[timePoints.length - 1] || 1000;
-
-    const animate = () => {
-      let elapsed = Date.now() - startTime;
-      if (elapsed > duration) {
-        startTime = Date.now();
-        elapsed = 0;
-      }
-
+    const unsubscribe = playbackTicker.subscribe((elapsed) => {
       // Find current at this time
       let idx = 0;
       for (let i = 0; i < timePoints.length; i++) {
@@ -331,12 +322,9 @@ export function AuraEdge({
 
       const I = Math.abs(currentArray[idx] || 0);
       setCurrent(I);
-      
-      animationFrame = requestAnimationFrame(animate);
-    };
+    });
 
-    animationFrame = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animationFrame);
+    return unsubscribe;
   }, [data?.current_array, data?.time_points]);
 
   const points = useMemo(() => {
@@ -423,4 +411,4 @@ export function AuraEdge({
       ))}
     </>
   );
-}
+});

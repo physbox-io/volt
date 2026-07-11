@@ -1,7 +1,8 @@
 import { Handle, Position } from '@xyflow/react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, memo } from 'react';
+import { playbackTicker } from '../../utils/playbackTicker';
 
-export function LEDNode({ data, selected }: any) {
+export const LEDNode = memo(function LEDNode({ data, selected }: any) {
   const isHorizontal = data.orientation === 'horizontal';
   const color = (data.color as string) || 'red';
   const isExploded = !!data.isExploded;
@@ -22,17 +23,7 @@ export function LEDNode({ data, selected }: any) {
       return;
     }
     
-    let animationFrame: number;
-    let startTime = Date.now();
-    const duration = data.time_points[data.time_points.length - 1] || 1000;
-    
-    const animate = () => {
-      let elapsedMs = Date.now() - startTime;
-      if (elapsedMs > duration) {
-        startTime = Date.now();
-        elapsedMs = 0;
-      }
-      
+    const unsubscribe = playbackTicker.subscribe((elapsedMs) => {
       let idx = 0;
       for (let i = 0; i < data.time_points.length; i++) {
         if (data.time_points[i] >= elapsedMs) {
@@ -54,12 +45,9 @@ export function LEDNode({ data, selected }: any) {
       if (textRef.current) {
         textRef.current.innerText = currentmA.toFixed(1) + 'mA';
       }
-      
-      animationFrame = requestAnimationFrame(animate);
-    };
+    });
     
-    animationFrame = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animationFrame);
+    return unsubscribe;
   }, [data.current_array, data.time_points, isExploded, max_current, color, isSimulating]);
 
   // static fallback
@@ -186,4 +174,4 @@ export function LEDNode({ data, selected }: any) {
       />
     </div>
   );
-}
+});

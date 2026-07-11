@@ -48,7 +48,7 @@ import { SwitchNode } from './components/nodes/SwitchNode';
 import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
 import { Play, Square, Trash2, Info, Menu, X, AlertCircle, Settings, Save, Crosshair, Sparkles, Sun, Moon, Zap, Activity } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
-import { Simulation } from 'eecircuit-engine';
+import { playbackTicker } from './utils/playbackTicker';
 import { presets } from './utils/presets';
 import { AuraEdge, EdgePathProvider } from './components/AuraEdge';
 import { SettingsModal } from './components/SettingsModal';
@@ -102,7 +102,58 @@ const nodeTypes = {
   currentsource: CurrentSourceNode,
 };
 
-let engineInstance: any = null;
+let simulationWorker: Worker | null = null;
+const pendingSimulations = new Map<string, { resolve: (res: any) => void; reject: (err: any) => void }>();
+
+const getSimulationWorker = () => {
+  if (!simulationWorker) {
+    simulationWorker = new Worker(new URL('./workers/simulation.worker.ts', import.meta.url), { type: 'module' });
+    simulationWorker.onmessage = (evt) => {
+      const { type, id, result, ok, error } = evt.data;
+      if (type === 'RESULT') {
+        const pending = pendingSimulations.get(id);
+        if (pending) {
+          pendingSimulations.delete(id);
+          if (ok) {
+            pending.resolve(result);
+          } else {
+            pending.reject(new Error(error));
+          }
+        }
+      }
+    };
+    simulationWorker.onerror = (err) => {
+      console.error("[SimulationWorker] General error:", err);
+      terminateWorker();
+    };
+  }
+  return simulationWorker;
+};
+
+const terminateWorker = () => {
+  if (simulationWorker) {
+    simulationWorker.terminate();
+    simulationWorker = null;
+  }
+  for (const pending of pendingSimulations.values()) {
+    pending.reject(new Error("Simulation worker terminated."));
+  }
+  pendingSimulations.clear();
+};
+
+const runSimInWorker = (netlist: string): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    const id = Math.random().toString(36).slice(2);
+    pendingSimulations.set(id, { resolve, reject });
+    try {
+      const worker = getSimulationWorker();
+      worker.postMessage({ type: 'RUN', id, netlist });
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
 let nodeId = 1;
 
 function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -966,18 +1017,15 @@ function ProbeTooltip({ probeData, isSimulating, onClose }: { probeData: any; is
       return;
     }
 
-    let animationFrame: number;
-    let startTime = Date.now();
+    if (!isSimulating) {
+      setCurrentTimeMs(0);
+      setCurrentVoltage(probeData.history[probeData.history.length - 1] ?? 0);
+      return;
+    }
+
     const times = probeData.timePoints;
-    const duration = times[times.length - 1] || 1000;
 
-    const animate = () => {
-      let elapsedMs = Date.now() - startTime;
-      if (elapsedMs > duration) {
-        startTime = Date.now();
-        elapsedMs = 0;
-      }
-
+    const unsubscribe = playbackTicker.subscribe((elapsedMs) => {
       setCurrentTimeMs(elapsedMs);
 
       // Find index corresponding to elapsedMs
@@ -990,11 +1038,9 @@ function ProbeTooltip({ probeData, isSimulating, onClose }: { probeData: any; is
       }
 
       setCurrentVoltage(probeData.history[idx] ?? 0);
-      animationFrame = requestAnimationFrame(animate);
-    };
+    });
 
-    animationFrame = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animationFrame);
+    return unsubscribe;
   }, [probeData, isSimulating]);
 
   return (
@@ -1243,11 +1289,6 @@ export default function App() {
       // Yield to allow React/browser to render the "SPICE Simulating" notice
       await new Promise(resolve => setTimeout(resolve, 50));
 
-      if (!engineInstance) {
-        engineInstance = new Simulation();
-        await engineInstance.start();
-      }
-      
       let { netlist, portToNet, mcuLogs } = generateSpiceNetlist(currentNodes, edges, simLength, simResolution);
       
       const mcuNodes = currentNodes.filter(n => n.type === 'mcu');
@@ -1256,8 +1297,7 @@ export default function App() {
         return code.includes('Read');
       });
 
-      engineInstance.setNetList(netlist);
-      let result = await engineInstance.runSim();
+      let result = await runSimInWorker(netlist);
 
       const findGraphFromSim = (res: any, netName: string) => {
         if (!netName || !res) return null;
@@ -1297,8 +1337,7 @@ export default function App() {
          netlist = pass2.netlist;
          portToNet = pass2.portToNet;
          mcuLogs = pass2.mcuLogs;
-         engineInstance.setNetList(netlist);
-         result = await engineInstance.runSim();
+         result = await runSimInWorker(netlist);
       }
       
       const findGraph = (netName: string) => findGraphFromSim(result, netName);
@@ -1307,7 +1346,6 @@ export default function App() {
         let newNode = { ...n } as any;
         newNode.data = { ...newNode.data, isSimulating: true };
         
-        // 1. Calculate current_array for nodes with terminals
         const v1Net = portToNet[`${n.id}-in`] || portToNet[`${n.id}-pos`] || portToNet[`${n.id}-anode`] || portToNet[`${n.id}-c`];
         const v2Net = portToNet[`${n.id}-out`] || portToNet[`${n.id}-neg`] || portToNet[`${n.id}-gnd`] || portToNet[`${n.id}-cathode`] || portToNet[`${n.id}-e`];
         const v1G = findGraph(v1Net);
@@ -1421,8 +1459,19 @@ export default function App() {
       const updatedEdges = edges.map(e => {
         const srcNode = updatedNodes.find(n => n.id === e.source);
         const tgtNode = updatedNodes.find(n => n.id === e.target);
-        const curArr = srcNode?.data.current_array || tgtNode?.data.current_array;
-        const tPts = srcNode?.data.time_points || tgtNode?.data.time_points;
+        let curArr = srcNode?.data.current_array || tgtNode?.data.current_array;
+        let tPts = srcNode?.data.time_points || tgtNode?.data.time_points;
+        
+        if (!curArr) {
+          const netName = portToNet[`${e.target}-${e.targetHandle}`] || portToNet[`${e.source}-${e.sourceHandle}`];
+          const vG = findGraphFromSim(result, netName);
+          if (vG) {
+            // Virtual current based on 10k virtual input impedance to animate logic signals
+            curArr = vG.voltage_levels.map((v: number) => Math.abs(v) / 10000);
+            tPts = vG.timestamps_ms;
+          }
+        }
+
         return { 
           ...e, 
           type: showAura ? 'aura' : 'smoothstep', 
@@ -1431,6 +1480,7 @@ export default function App() {
       });
       setEdges(updatedEdges);
       setIsSpiceRunning(false);
+      playbackTicker.start(simLength * 1000);
       
       return {
         ok: true,
@@ -1449,6 +1499,7 @@ export default function App() {
 
   const stopSimulation = () => {
     setIsSimulating(false);
+    playbackTicker.stop();
     setProbeData(null);
     setNodes(nds => nds.map(n => {
       if (n.type === 'led') {

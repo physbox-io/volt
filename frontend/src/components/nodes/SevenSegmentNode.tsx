@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo } from 'react';
+import { playbackTicker } from '../../utils/playbackTicker';
 
 const SEGMENT_PATHS: Record<string, string> = {
   a: 'M6,2 L18,2 L16,4 L8,4 Z',
@@ -16,7 +17,7 @@ const SEG_COLORS: Record<string, string> = {
   d: 'bg-green-400', e: 'bg-teal-400', f: 'bg-blue-400', g: 'bg-purple-400',
 };
 
-export function SevenSegmentNode({ data }: any) {
+export const SevenSegmentNode = memo(function SevenSegmentNode({ data }: any) {
   const segs = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
   const [currentVoltages, setCurrentVoltages] = useState<Record<string, number>>(data.segmentVoltages || {});
   const isSimulating = !!data.isSimulating;
@@ -27,17 +28,7 @@ export function SevenSegmentNode({ data }: any) {
       return;
     }
 
-    let animationFrame: number;
-    let startTime = Date.now();
-    const duration = data.timePoints[data.timePoints.length - 1] || 1000;
-
-    const animate = () => {
-      let elapsedMs = Date.now() - startTime;
-      if (elapsedMs > duration) {
-        startTime = Date.now();
-        elapsedMs = 0;
-      }
-
+    const unsubscribe = playbackTicker.subscribe((elapsedMs) => {
       let idx = 0;
       for (let i = 0; i < data.timePoints.length; i++) {
         if (data.timePoints[i] >= elapsedMs) {
@@ -51,12 +42,9 @@ export function SevenSegmentNode({ data }: any) {
         nextVoltages[s] = data.segmentVoltageArrays[s]?.[idx] || 0;
       });
       setCurrentVoltages(nextVoltages);
-      
-      animationFrame = requestAnimationFrame(animate);
-    };
+    });
 
-    animationFrame = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animationFrame);
+    return unsubscribe;
   }, [data.segmentVoltageArrays, data.timePoints, data.segmentVoltages, isSimulating]);
 
   return (
@@ -85,4 +73,4 @@ export function SevenSegmentNode({ data }: any) {
       <div className="text-[8px] text-gray-500 font-mono mt-0.5">7-SEG</div>
     </div>
   );
-}
+});
