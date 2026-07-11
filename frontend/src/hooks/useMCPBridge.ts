@@ -17,6 +17,8 @@ interface BridgeProps {
   setNodes: (nodes: Node[] | ((prev: Node[]) => Node[])) => void;
   setEdges: (edges: Edge[] | ((prev: Edge[]) => Edge[])) => void;
   loadPreset?: (name: string) => void;
+  onTransactionStart?: () => void;
+  onTransactionEnd?: () => void;
 }
 
 function getSpeakerAudio(
@@ -108,14 +110,20 @@ export function useMCPBridge(props: BridgeProps) {
         const { cmd, id } = msg;
         if (!cmd) return;
 
+        p.current.onTransactionStart?.();
+
         let result: unknown;
         try { result = handle(cmd, msg); } catch (e) {
           ws?.send(JSON.stringify({ event: 'ERROR', cmd, id, error: String(e) }));
+          p.current.onTransactionEnd?.();
           return;
         }
         Promise.resolve(result)
           .then(data => ws?.send(JSON.stringify({ event: 'RESULT', cmd, id, data })))
-          .catch(e  => ws?.send(JSON.stringify({ event: 'ERROR', cmd, id, error: String(e) })));
+          .catch(e  => ws?.send(JSON.stringify({ event: 'ERROR', cmd, id, error: String(e) })))
+          .finally(() => {
+            p.current.onTransactionEnd?.();
+          });
       };
 
       ws.onclose = () => { if (!dead) retryTimer = setTimeout(connect, 2000); };

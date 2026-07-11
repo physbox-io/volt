@@ -46,7 +46,7 @@ import { XorNode } from './components/nodes/XorNode';
 import { InductorNode } from './components/nodes/InductorNode';
 import { SwitchNode } from './components/nodes/SwitchNode';
 import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
-import { Play, Square, Trash2, Info, Menu, X, AlertCircle, Settings, Save, Crosshair, Sparkles, Sun, Moon } from 'lucide-react';
+import { Play, Square, Trash2, Info, Menu, X, AlertCircle, Settings, Save, Crosshair, Sparkles, Sun, Moon, Zap, Activity } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
 import { Simulation } from 'eecircuit-engine';
 import { presets } from './utils/presets';
@@ -805,6 +805,28 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
           </div>
         </>
       )}
+      {selectedNode.type === 'multimeter' && (
+        <div className="mb-3">
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-xs font-medium text-gray-700">Display Mode</label>
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${selectedNode.data.isRms ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
+              {selectedNode.data.isRms ? 'RMS' : 'DC'}
+            </span>
+          </div>
+          <div className="mb-2 flex items-center gap-2">
+            <input 
+              type="checkbox" 
+              id="mm-rms" 
+              checked={!!selectedNode.data.isRms} 
+              onChange={e => updateData('isRms', e.target.checked)} 
+              className="cursor-pointer"
+            />
+            <label htmlFor="mm-rms" className="text-xs text-gray-700 select-none cursor-pointer">
+              Show RMS Value (reduces fluctuations)
+            </label>
+          </div>
+        </div>
+      )}
       {selectedNode.type === 'potentiometer' && (
         <>
           <div className="mb-3">
@@ -1103,6 +1125,8 @@ export default function App() {
   const [nodes, setNodes] = useState<Node[]>(presets.basicBlink.nodes);
   const [edges, setEdges] = useState<Edge[]>(presets.basicBlink.edges);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [mcpActiveCount, setMcpActiveCount] = useState(0);
+  const [isSpiceRunning, setIsSpiceRunning] = useState(false);
   const [simLength, setSimLength] = useState(savedSettings.simLength ?? 1.0);
   const [simResolution, setSimResolution] = useState<'normal' | 'high'>(savedSettings.simResolution ?? 'normal');
   const [selectedPreset, setSelectedPreset] = useState('basicBlink');
@@ -1214,7 +1238,11 @@ export default function App() {
   const runSimulation = async (nodesOverride?: Node[]) => {
     try {
       const currentNodes = nodesOverride || nodes;
+      setIsSpiceRunning(true);
       setIsSimulating(true);
+      // Yield to allow React/browser to render the "SPICE Simulating" notice
+      await new Promise(resolve => setTimeout(resolve, 50));
+
       if (!engineInstance) {
         engineInstance = new Simulation();
         await engineInstance.start();
@@ -1402,6 +1430,7 @@ export default function App() {
         };
       });
       setEdges(updatedEdges);
+      setIsSpiceRunning(false);
       
       return {
         ok: true,
@@ -1412,6 +1441,7 @@ export default function App() {
       
     } catch (e: any) {
       console.error("Simulation failed:", e);
+      setIsSpiceRunning(false);
       setIsSimulating(false);
       return { ok: false, error: e.message || String(e) };
     }
@@ -1520,6 +1550,8 @@ export default function App() {
         setSelectedPreset(name);
       }
     },
+    onTransactionStart: () => setMcpActiveCount(prev => prev + 1),
+    onTransactionEnd: () => setMcpActiveCount(prev => Math.max(0, prev - 1)),
   });
 
   return (
@@ -1731,6 +1763,31 @@ export default function App() {
 
       <div className="flex flex-1 relative min-h-0 overflow-hidden">
         <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+        
+        {/* Floating Status Indicators */}
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20 flex flex-col gap-2 pointer-events-none items-center">
+          {isSpiceRunning && (
+            <div className="bg-white/90 dark:bg-slate-900/90 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-800/80 px-3.5 py-1.5 rounded-full shadow-md flex items-center gap-2.5 text-xs font-semibold backdrop-blur-md transition-all duration-300 pointer-events-auto">
+              <div className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+              </div>
+              <Activity className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
+              <span className="tracking-wide">SPICE Simulating</span>
+            </div>
+          )}
+          {mcpActiveCount > 0 && (
+            <div className="bg-white/90 dark:bg-slate-900/90 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-800/80 px-3.5 py-1.5 rounded-full shadow-md flex items-center gap-2.5 text-xs font-semibold backdrop-blur-md transition-all duration-300 pointer-events-auto">
+              <div className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </div>
+              <Zap className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
+              <span className="tracking-wide">MCP Active</span>
+            </div>
+          )}
+        </div>
+
         <EdgePathProvider edges={edges}>
           <ReactFlowProvider>
             <FlowArea 

@@ -8,8 +8,28 @@ export function OpAmpNode({ selected }: any) {
         width="100%" 
         height="100%" 
         viewBox="0 0 100 100" 
+        style={{ overflow: 'visible' }}
         className={`absolute top-0 left-0 transition-all ${selected ? 'drop-shadow-[0_0_4px_rgba(59,130,246,0.8)]' : 'drop-shadow-md'}`}
       >
+        {/* Connection Leads */}
+        <g 
+          className="stroke-slate-800 dark:stroke-slate-200 transition-colors"
+          style={{ stroke: selected ? '#3b82f6' : undefined }}
+          strokeWidth="3.0"
+          strokeLinecap="round"
+        >
+          {/* Inverting input lead */}
+          <path d="M -4 30 H 10" />
+          {/* Non-inverting input lead */}
+          <path d="M -4 70 H 10" />
+          {/* Output lead */}
+          <path d="M 90 50 H 104" />
+          {/* VCC lead */}
+          <path d="M 50 -4 V 30" />
+          {/* VEE lead */}
+          <path d="M 50 70 V 104" />
+        </g>
+
         <polygon 
           points="10,10 10,90 90,50" 
           className="fill-white dark:fill-slate-900 stroke-slate-800 dark:stroke-slate-200 transition-colors"

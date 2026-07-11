@@ -447,42 +447,48 @@ export const mixedLogicBlink: CircuitPreset = {
 export const opAmpAmp: CircuitPreset = {
   name: 'Op-Amp Audio Amp',
   nodes: [
-    { id: 'vcc', type: 'voltage', position: { x: 50, y: 50 }, data: { label: '12V' } },
-    { id: 'mic1', type: 'microphone', position: { x: 50, y: 300 }, data: { label: 'Mic', amplification: 1 } },
-    { id: 'cin', type: 'capacitor', position: { x: 200, y: 300 }, data: { label: '0.1uF' } },
+    { id: 'vcc', type: 'voltage', position: { x: 350, y: 50 }, data: { label: '12V' } },
+    { id: 'g_vcc', type: 'ground', position: { x: 350, y: 120 }, data: { label: 'GND' } },
+    
+    { id: 'mic1', type: 'microphone', position: { x: 50, y: 180 }, data: { label: 'Mic', amplification: 1 } },
+    { id: 'g_mic', type: 'ground', position: { x: 50, y: 280 }, data: { label: 'GND' } },
+    
+    { id: 'cin', type: 'capacitor', position: { x: 200, y: 192 }, data: { label: '0.1uF' } },
     
     // Bias divider for single supply op-amp
-    { id: 'r_b1', type: 'resistor', position: { x: 350, y: 150 }, data: { label: '100k' } },
-    { id: 'r_b2', type: 'resistor', position: { x: 350, y: 450 }, data: { label: '100k' } },
+    { id: 'r_b1', type: 'resistor', position: { x: 350, y: 152 }, data: { label: '100k', orientation: 'vertical' } },
+    { id: 'r_b2', type: 'resistor', position: { x: 350, y: 252 }, data: { label: '100k', orientation: 'vertical' } },
+    { id: 'g_rb2', type: 'ground', position: { x: 350, y: 332 }, data: { label: 'GND' } },
     
     // Op-amp
-    { id: 'oa1', type: 'opamp', position: { x: 550, y: 300 }, data: { label: 'LM358' } },
+    { id: 'oa1', type: 'opamp', position: { x: 450, y: 154 }, data: { label: 'LM358' } },
+    { id: 'g_oa', type: 'ground', position: { x: 474, y: 260 }, data: { label: 'GND' } },
     
     // Feedback network (Gain = 1 + Rf/Rg)
-    { id: 'rg', type: 'resistor', position: { x: 550, y: 450 }, data: { label: '1k' } },
-    { id: 'rf', type: 'resistor', position: { x: 750, y: 450 }, data: { label: '10k' } },
-    { id: 'cg', type: 'capacitor', position: { x: 450, y: 450 }, data: { label: '100uF' } },
+    { id: 'rf', type: 'resistor', position: { x: 462, y: 50 }, data: { label: '10k' } },
+    { id: 'rg', type: 'resistor', position: { x: 300, y: 152 }, data: { label: '1k', orientation: 'vertical' } },
+    { id: 'cg', type: 'capacitor', position: { x: 300, y: 232 }, data: { label: '100uF', orientation: 'vertical' } },
+    { id: 'g_cg', type: 'ground', position: { x: 300, y: 312 }, data: { label: 'GND' } },
     
     // Output coupling
-    { id: 'cout', type: 'capacitor', position: { x: 900, y: 320 }, data: { label: '47uF' } },
-    { id: 'spk1', type: 'speaker', position: { x: 1100, y: 320 }, data: { label: 'Speaker', acCouple: true, normalize: true } },
-    
-    { id: 'g1', type: 'ground', position: { x: 50, y: 600 }, data: { label: 'GND' } },
+    { id: 'cout', type: 'capacitor', position: { x: 600, y: 178 }, data: { label: '47uF' } },
+    { id: 'spk1', type: 'speaker', position: { x: 720, y: 150 }, data: { label: 'Speaker', acCouple: true, normalize: true } },
+    { id: 'g_spk', type: 'ground', position: { x: 720, y: 270 }, data: { label: 'GND' } },
   ],
   edges: [
     // Power
     { id: 'e-vcc-rb1', source: 'vcc', target: 'r_b1', sourceHandle: 'pos', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-vcc-oa', source: 'vcc', target: 'oa1', sourceHandle: 'pos', targetHandle: 'vcc', type: 'smoothstep' },
-    { id: 'e-vcc-gnd', source: 'vcc', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
-    { id: 'e-oa-vee', source: 'oa1', target: 'g1', sourceHandle: 'vee', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-vcc-gnd', source: 'vcc', target: 'g_vcc', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-oa-vee', source: 'oa1', target: 'g_oa', sourceHandle: 'vee', targetHandle: 'in', type: 'smoothstep' },
     
     // Bias Divider
     { id: 'e-rb1-rb2', source: 'r_b1', target: 'r_b2', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
-    { id: 'e-rb2-gnd', source: 'r_b2', target: 'g1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-rb2-gnd', source: 'r_b2', target: 'g_rb2', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
     
     // Input Signal
     { id: 'e-mic-cin', source: 'mic1', target: 'cin', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
-    { id: 'e-mic-gnd', source: 'mic1', target: 'g1', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-mic-gnd', source: 'mic1', target: 'g_mic', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-cin-oanon', source: 'cin', target: 'oa1', sourceHandle: 'out', targetHandle: 'in_non', type: 'smoothstep' },
     { id: 'e-rb1-oanon', source: 'r_b1', target: 'oa1', sourceHandle: 'out', targetHandle: 'in_non', type: 'smoothstep' },
     
@@ -490,13 +496,13 @@ export const opAmpAmp: CircuitPreset = {
     { id: 'e-oaout-rf', source: 'oa1', target: 'rf', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-rf-oainv', source: 'rf', target: 'oa1', sourceHandle: 'out', targetHandle: 'in_inv', type: 'smoothstep' },
     { id: 'e-rg-oainv', source: 'rg', target: 'oa1', sourceHandle: 'out', targetHandle: 'in_inv', type: 'smoothstep' },
-    { id: 'e-rg-cg', source: 'rg', target: 'cg', sourceHandle: 'in', targetHandle: 'in', type: 'smoothstep' },
-    { id: 'e-cg-gnd', source: 'cg', target: 'g1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-rg-cg', source: 'rg', target: 'cg', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-cg-gnd', source: 'cg', target: 'g_cg', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
     
     // Output
     { id: 'e-oaout-cout', source: 'oa1', target: 'cout', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-cout-spk', source: 'cout', target: 'spk1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
-    { id: 'e-spk-gnd', source: 'spk1', target: 'g1', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-spk-gnd', source: 'spk1', target: 'g_spk', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
   ]
 };
 
@@ -507,7 +513,7 @@ export const boostConverter: CircuitPreset = {
     { id: 'v5v', type: 'voltage', position: { x: 50, y: 250 }, data: { label: '5V IN' } },
     { id: 'l1', type: 'inductor', position: { x: 250, y: 150 }, data: { label: '100uH' } },
     { id: 'sw1', type: 'nmos', position: { x: 450, y: 300 }, data: { label: 'Switch', vto: 2.0, kp: 0.5 } },
-    { id: 'pwm1', type: 'signalgen', position: { x: 50, y: 450 }, data: { label: 'PWM 50kHz', waveform: 'square', frequency: 50000, amplitude: 5, dutyCycle: 80 } },
+    { id: 'pwm1', type: 'signalgen', position: { x: 50, y: 450 }, data: { label: 'PWM 50kHz', waveform: 'square', frequency: 50000, amplitude: 5, dutyCycle: 50 } },
     
     { id: 'd1', type: 'diode', position: { x: 550, y: 150 }, data: { label: 'Schottky', v_drop: 0.3 } },
     { id: 'c1', type: 'capacitor', position: { x: 750, y: 250 }, data: { label: '100uF' } },
