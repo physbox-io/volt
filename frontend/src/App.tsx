@@ -1796,6 +1796,7 @@ export default function App() {
     y: number;
   } | null>(null);
   const simResultRef = useRef<{ portToNet: Record<string, string>; result: any } | null>(null);
+  const [initialConditions, setInitialConditions] = useState<Record<string, number>>({});
   const [noteCards, setNoteCards] = useState<{ id: string; markdown: string; minimized: boolean; x: number; y: number }[]>([]);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
 
@@ -1900,7 +1901,7 @@ export default function App() {
 
 
 
-  const runSimulation = async (nodesOverride?: Node[]) => {
+  const runSimulation = async (nodesOverride?: Node[], customICs?: Record<string, number>) => {
     try {
       const currentNodes = nodesOverride || nodes;
       setIsSpiceRunning(true);
@@ -1908,7 +1909,7 @@ export default function App() {
       // Yield to allow React/browser to render the "SPICE Simulating" notice
       await new Promise(resolve => setTimeout(resolve, 50));
 
-      let { netlist, portToNet, mcuLogs } = generateSpiceNetlist(currentNodes, edges, simLength, simResolution);
+      let { netlist, portToNet, mcuLogs } = generateSpiceNetlist(currentNodes, edges, simLength, simResolution, {}, customICs !== undefined ? customICs : initialConditions);
       
       const mcuNodes = currentNodes.filter(n => n.type === 'mcu');
       const needsTwoPass = mcuNodes.some(n => {
@@ -1963,7 +1964,7 @@ export default function App() {
            }
          }
          
-         const pass2 = generateSpiceNetlist(currentNodes, edges, simLength, simResolution, mcuWaveforms);
+         const pass2 = generateSpiceNetlist(currentNodes, edges, simLength, simResolution, mcuWaveforms, customICs !== undefined ? customICs : initialConditions);
          netlist = pass2.netlist;
          portToNet = pass2.portToNet;
          mcuLogs = pass2.mcuLogs;
@@ -2122,6 +2123,23 @@ export default function App() {
         };
       });
       setEdges(updatedEdges);
+      
+      // Save final voltages for initial conditions in subsequent interactive runs
+      const nextICs: Record<string, number> = {};
+      if (result && result.variableNames && result.data) {
+        result.variableNames.forEach((varName: string, idx: number) => {
+          const name = varName.toLowerCase();
+          if (name.startsWith('v(') && name.endsWith(')')) {
+            const net = name.slice(2, -1);
+            const vals = result.data[idx]?.values;
+            if (vals && vals.length > 0) {
+              nextICs[net] = vals[vals.length - 1];
+            }
+          }
+        });
+      }
+      setInitialConditions(nextICs);
+
       setIsSpiceRunning(false);
       playbackTicker.start(simLength * 1000);
       
@@ -2263,6 +2281,11 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [nodes, edges, isSimulating, pushHistory]);
 
+  // Clear initial conditions on structural changes
+  useEffect(() => {
+    setInitialConditions({});
+  }, [nodes.length, edges.length]);
+
   const onNodeClick = useCallback((_: any, node: Node) => {
     if (node.type === 'switch') {
       setNodes((nds) => {
@@ -2275,12 +2298,12 @@ export default function App() {
         
         // Auto-re-trigger simulation with the NEW state
         if (isSimulating) {
-          setTimeout(() => runSimulation(nextNodes), 50);
+          setTimeout(() => runSimulation(nextNodes, initialConditions), 50);
         }
         return nextNodes;
       });
     }
-  }, [setNodes, runSimulation, isSimulating]);
+  }, [setNodes, runSimulation, isSimulating, initialConditions]);
 
   const deleteSelected = () => {
     setNodes(nds => nds.filter(n => !n.selected));
@@ -2296,6 +2319,7 @@ export default function App() {
     const preset = allPresets[key];
     if (preset) {
       stopSimulation();
+      setInitialConditions({});
       setNodes(preset.nodes);
       setEdges(preset.edges);
       if (preset.recommendedSimLength) {
@@ -2387,6 +2411,7 @@ export default function App() {
       const preset = allPresets[name];
       if (preset) {
         stopSimulation();
+        setInitialConditions({});
         setNodes(preset.nodes);
         setEdges(preset.edges);
         setSelectedPreset(name);
@@ -2506,7 +2531,7 @@ export default function App() {
           {/* Simulation Controller Block */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
             <button 
-              onClick={() => runSimulation()}
+              onClick={() => { setInitialConditions({}); runSimulation(undefined, {}); }}
               disabled={isSimulating}
               className={`flex items-center justify-center gap-1.5 px-3 py-1 rounded-md font-semibold text-xs transition-all disabled:opacity-50 flex-shrink-0 cursor-pointer ${
                 isSimulating

@@ -13,7 +13,7 @@ export function sanitizeSpiceValue(val: string): string {
   return cleaned.replace(/[^\x20-\x7E]/g, '');
 }
 
-export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: number = 1.0, simResolution: 'normal' | 'high' = 'normal', mcuWaveforms: Record<string, Record<string, PWLPoint[]>> = {}): { netlist: string; portToNet: Record<string, string>; mcuLogs: Record<string, string[]> } {
+export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: number = 1.0, simResolution: 'normal' | 'high' = 'normal', mcuWaveforms: Record<string, Record<string, PWLPoint[]>> = {}, initialConditions?: Record<string, number>): { netlist: string; portToNet: Record<string, string>; mcuLogs: Record<string, string[]> } {
   let netlist = "Circuit Simulation\n";
   const mcuLogs: Record<string, string[]> = {};
   
@@ -496,6 +496,16 @@ B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
   // Save all voltages to ensure they are returned
   netlist += `.save all\n`;
   
+  // Apply initial conditions if present
+  if (initialConditions && Object.keys(initialConditions).length > 0) {
+    const icParts = Object.entries(initialConditions)
+      .map(([net, val]) => `V(${net})=${val.toFixed(6)}`)
+      .join(' ');
+    if (icParts) {
+      netlist += `.ic ${icParts}\n`;
+    }
+  }
+
   // Basic transient analysis (variable total)
   // Audio circuits need much finer time steps for proper frequency resolution
   if (hasAudio) {
