@@ -19,6 +19,7 @@ export function PnpNode({ data, selected }: any) {
         strokeWidth="1.2" 
         strokeLinecap="round" 
         strokeLinejoin="round"
+        style={{ overflow: 'visible' }}
         className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
       >
         {/* Base Lead */}

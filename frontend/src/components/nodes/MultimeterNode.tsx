@@ -70,6 +70,11 @@ export const MultimeterNode = memo(function MultimeterNode({ id, data }: any) {
 
   return (
     <div className="bg-gray-800 border-2 border-gray-900 rounded-md p-3 w-36 flex flex-col items-center justify-center relative shadow-lg">
+      {data.label && (
+        <div className="text-[9px] font-bold text-gray-300 mb-1 truncate max-w-[120px] tracking-wider uppercase">
+          {data.label}
+        </div>
+      )}
       <div 
         className="bg-green-900 w-full h-10 rounded text-green-400 font-mono text-lg flex items-center justify-between px-2 mb-1.5 shadow-inner relative"
       >

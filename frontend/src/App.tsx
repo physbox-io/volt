@@ -46,7 +46,7 @@ import { XorNode } from './components/nodes/XorNode';
 import { InductorNode } from './components/nodes/InductorNode';
 import { SwitchNode } from './components/nodes/SwitchNode';
 import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
-import { Play, Square, Trash2, Info, Menu, X, AlertCircle, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity } from 'lucide-react';
+import { Play, Square, Trash2, Info, Menu, X, AlertCircle, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, FileText, Edit3, ChevronDown, ChevronUp } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
 import { playbackTicker } from './utils/playbackTicker';
 import { presets } from './utils/presets';
@@ -107,6 +107,102 @@ const nodeTypes = {
   dff: DFlipFlopNode,
   ldr: LDRNode,
 };
+
+// Simple robust markdown parser to convert basic markdown text to safe HTML
+// Markdown parser for note cards
+function parseNoteMarkdown(md: string): string {
+  if (!md) return '';
+  let html = md.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  html = html.replace(/^### (.*$)/gim, '<h3 class="text-xs font-bold text-slate-800 dark:text-slate-200 mt-2 mb-1 uppercase tracking-wide">$1</h3>');
+  html = html.replace(/^## (.*$)/gim, '<h2 class="text-sm font-bold text-slate-800 dark:text-slate-200 mt-3 mb-1 border-b border-slate-100 dark:border-slate-800 pb-0.5">$1</h2>');
+  html = html.replace(/^# (.*$)/gim, '<h1 class="text-base font-extrabold text-slate-900 dark:text-slate-100 mt-3 mb-2 border-b border-slate-200 dark:border-slate-800 pb-1">$1</h1>');
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-slate-900 dark:text-slate-100">$1</strong>');
+  html = html.replace(/\*(.*?)\*/g, '<em class="italic text-slate-700 dark:text-slate-300">$1</em>');
+  html = html.replace(/`(.*?)`/g, '<code class="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[10px] font-mono text-pink-600 dark:text-pink-400">$1</code>');
+  html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline">$1</a>');
+  html = html.replace(/^\s*-\s+(.*$)/gim, '<li class="ml-4 list-disc text-slate-650 dark:text-slate-300 text-xs mb-0.5">$1</li>');
+  html = html.split('\n').map(line => {
+    const t = line.trim();
+    if (t.startsWith('<h') || t.startsWith('<li') || t === '') return line;
+    return `<p class="text-xs text-slate-600 dark:text-slate-300 mb-1.5 leading-relaxed">${line}</p>`;
+  }).join('\n');
+  return html;
+}
+
+// Floating note card overlay component
+function NoteCardOverlay({ card, isEditing, onToggleEdit, onToggleMinimize, onMarkdownChange, onClose, onMove }: {
+  card: { id: string; markdown: string; minimized: boolean; x: number; y: number };
+  isEditing: boolean;
+  onToggleEdit: () => void;
+  onToggleMinimize: () => void;
+  onMarkdownChange: (md: string) => void;
+  onClose: () => void;
+  onMove: (x: number, y: number) => void;
+}) {
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  const handleTitleMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: card.x, origY: card.y };
+    const handleMouseMove = (me: MouseEvent) => {
+      if (!dragRef.current) return;
+      onMove(dragRef.current.origX + me.clientX - dragRef.current.startX, dragRef.current.origY + me.clientY - dragRef.current.startY);
+    };
+    const handleMouseUp = () => { dragRef.current = null; window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  return (
+    <div
+      style={{ position: 'absolute', left: card.x, top: card.y, zIndex: 100, width: 300 }}
+      className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl overflow-hidden"
+    >
+      {/* Title bar */}
+      <div
+        className="flex items-center justify-between px-3 py-2 bg-slate-50/80 dark:bg-slate-950/40 border-b border-slate-100 dark:border-slate-800 cursor-move select-none"
+        onMouseDown={handleTitleMouseDown}
+      >
+        <div className="flex items-center gap-1.5">
+          <FileText className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+          <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Note Card</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={onToggleEdit} className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors" title={isEditing ? 'Preview' : 'Edit'}>
+            <Edit3 className="w-3 h-3 text-slate-500 dark:text-slate-400" />
+          </button>
+          <button onClick={onToggleMinimize} className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors" title={card.minimized ? 'Expand' : 'Minimize'}>
+            {card.minimized ? <ChevronDown className="w-3 h-3 text-slate-500 dark:text-slate-400" /> : <ChevronUp className="w-3 h-3 text-slate-500 dark:text-slate-400" />}
+          </button>
+          <button onClick={onClose} className="p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-950/40 transition-colors" title="Close">
+            <X className="w-3 h-3 text-slate-500 dark:text-slate-400 hover:text-red-500" />
+          </button>
+        </div>
+      </div>
+
+      {/* Body */}
+      {!card.minimized && (
+        <div className="p-3">
+          {isEditing ? (
+            <textarea
+              autoFocus
+              rows={8}
+              value={card.markdown}
+              onChange={(e) => onMarkdownChange(e.target.value)}
+              className="w-full px-2 py-1.5 border border-slate-200 dark:border-slate-800 rounded text-xs bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-200 outline-none focus:border-violet-400 font-mono resize-y shadow-sm"
+              placeholder="Write markdown here..."
+            />
+          ) : (
+            <div
+              className="prose-sm dark:prose-invert max-h-64 overflow-y-auto text-slate-700 dark:text-slate-300 font-normal text-slate-650 dark:text-slate-400 leading-normal"
+              dangerouslySetInnerHTML={{ __html: parseNoteMarkdown(card.markdown) }}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 let simulationWorker: Worker | null = null;
 const pendingSimulations = new Map<string, { resolve: (res: any) => void; reject: (err: any) => void }>();
@@ -649,31 +745,24 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
 function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, simLength }: { selectedNode: any, setNodes: any, isSimulating: boolean, runSimulation: () => void, simLength: number }) {
   const simDebounceTimerRef = useRef<any>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const webcamIntervalRef = useRef<any>(null);
   const [isRecordingWebcam, setIsRecordingWebcam] = useState(false);
   const webcamRecordingDataRef = useRef<{ t: number; v: number }[]>([]);
   const webcamRecordingStartRef = useRef<number>(0);
 
-  const ldrId = selectedNode?.type === 'ldr' ? selectedNode.id : null;
-
+  // Sync streamRef with stream state for unmount cleanup
   useEffect(() => {
-    return () => {
-      if (webcamIntervalRef.current) {
-        clearInterval(webcamIntervalRef.current);
-        webcamIntervalRef.current = null;
-      }
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [stream, ldrId]);
+    streamRef.current = stream;
+  }, [stream]);
 
-  if (!selectedNode) return null;
+  const ldrId = (selectedNode?.type === 'ldr' || (selectedNode?.type === 'led' && selectedNode?.data.photodiodeMode)) ? selectedNode.id : null;
+  const isWebcamActive = (selectedNode?.type === 'ldr' || (selectedNode?.type === 'led' && selectedNode?.data.photodiodeMode)) ? !!selectedNode.data.isWebcamActive : false;
 
   const updateData = (key: string, value: any) => {
     setNodes((nds: Node[]) => nds.map(n => {
-      if (n.id !== selectedNode.id) return n;
+      if (n.id !== selectedNode?.id) return n;
       const newData = { ...n.data, [key]: value };
       
       // If label is edited, clear the "hardcoded" numeric overrides so SPICE parses the new label
@@ -686,6 +775,40 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
       
       return { ...n, data: newData };
     }));
+
+    if (key === 'orientation' && selectedNode && ['diode', 'zener', 'led'].includes(selectedNode.type || '')) {
+      const prevOrientation = selectedNode.data.orientation || 'horizontal';
+      const newOrientation = value;
+      const isPrevFlipped = prevOrientation === 'left' || prevOrientation === 'up';
+      const isNewFlipped = newOrientation === 'left' || newOrientation === 'up';
+      
+      if (isPrevFlipped !== isNewFlipped) {
+        setEdges((eds: Edge[]) => eds.map(e => {
+          let updated = { ...e };
+          let changed = false;
+          if (e.source === selectedNode.id) {
+            if (e.sourceHandle === 'anode') {
+              updated.sourceHandle = 'cathode';
+              changed = true;
+            } else if (e.sourceHandle === 'cathode') {
+              updated.sourceHandle = 'anode';
+              changed = true;
+            }
+          }
+          if (e.target === selectedNode.id) {
+            if (e.targetHandle === 'anode') {
+              updated.targetHandle = 'cathode';
+              changed = true;
+            } else if (e.targetHandle === 'cathode') {
+              updated.targetHandle = 'anode';
+              changed = true;
+            }
+          }
+          return changed ? updated : e;
+        }));
+      }
+    }
+
     if (isSimulating) {
       if (simDebounceTimerRef.current) {
         clearTimeout(simDebounceTimerRef.current);
@@ -700,7 +823,9 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
       setStream(mediaStream);
-      updateData('isWebcamActive', true);
+      if (selectedNode && !selectedNode.data.isWebcamActive) {
+        updateData('isWebcamActive', true);
+      }
 
       setTimeout(() => {
         if (videoRef.current) {
@@ -719,15 +844,21 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
               ctx.drawImage(videoRef.current, 0, 0, 40, 30);
               const imgData = ctx.getImageData(0, 0, 40, 30);
               const data = imgData.data;
-              let totalLuma = 0;
+              const lumas: number[] = [];
               for (let i = 0; i < data.length; i += 4) {
                 const r = data[i];
                 const g = data[i+1];
                 const b = data[i+2];
                 const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-                totalLuma += luma;
+                lumas.push(luma);
               }
-              const avgBrightness = (totalLuma / (data.length / 4)) / 255;
+              lumas.sort((a, b) => b - a);
+              const topCount = Math.max(1, Math.floor(lumas.length * 0.05));
+              let topSum = 0;
+              for (let i = 0; i < topCount; i++) {
+                topSum += lumas[i];
+              }
+              const avgBrightness = (topSum / topCount) / 255;
               updateData('lightLevel', avgBrightness);
             } catch (err) {
               console.error("Error analyzing frame:", err);
@@ -750,8 +881,32 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
       stream.getTracks().forEach(track => track.stop());
       setStream(null);
     }
-    updateData('isWebcamActive', false);
+    if (selectedNode && selectedNode.data.isWebcamActive) {
+      updateData('isWebcamActive', false);
+    }
   };
+
+  // Reactive Effect to handle webcam stream lifecycle matching selection & node state
+  useEffect(() => {
+    if (stream && (!ldrId || !isWebcamActive)) {
+      stopWebcam();
+    } else if (ldrId && isWebcamActive && !stream) {
+      startWebcam();
+    }
+  }, [ldrId, isWebcamActive, stream]);
+
+  // Unmount cleanup effect
+  useEffect(() => {
+    return () => {
+      if (webcamIntervalRef.current) {
+        clearInterval(webcamIntervalRef.current);
+        webcamIntervalRef.current = null;
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
 
   const startRecordingWebcam = () => {
     webcamRecordingDataRef.current = [];
@@ -760,7 +915,7 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
 
     const recordInterval = setInterval(() => {
       const elapsed = (Date.now() - webcamRecordingStartRef.current) / 1000;
-      const currentLight = selectedNode.data.lightLevel ?? 0.5;
+      const currentLight = selectedNode?.data.lightLevel ?? 0.5;
       webcamRecordingDataRef.current.push({ t: elapsed, v: currentLight });
     }, 33);
 
@@ -772,6 +927,7 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
     }, duration * 1000);
   };
 
+  if (!selectedNode) return null;
   return (
     <aside className="fixed inset-y-0 right-0 w-64 glass-panel border-l border-slate-200 dark:border-slate-800 p-4 bg-white/95 dark:bg-slate-900/95 shadow-xl lg:shadow-none z-40 lg:relative lg:z-10 overflow-y-auto transition-colors">
       <div className="flex items-center justify-between mb-4">
@@ -792,11 +948,40 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
           <select 
             value={(selectedNode.data.orientation as string) || 'horizontal'} 
             onChange={e => updateData('orientation', e.target.value)} 
-            className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+            className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none mb-2"
           >
             <option value="horizontal">Horizontal</option>
+            {['diode', 'zener', 'led'].includes(selectedNode.type || '') && (
+              <option value="left">Horizontal (Left)</option>
+            )}
             <option value="vertical">Vertical</option>
+            {['diode', 'zener', 'led'].includes(selectedNode.type || '') && (
+              <option value="up">Vertical (Up)</option>
+            )}
           </select>
+          {['diode', 'zener', 'led'].includes(selectedNode.type || '') && (
+            <div className="flex items-center gap-2 mt-2">
+              <input 
+                type="checkbox" 
+                id="node-flip" 
+                checked={['left', 'up'].includes((selectedNode.data.orientation as string) || 'horizontal')} 
+                onChange={e => {
+                  const current = (selectedNode.data.orientation as string) || 'horizontal';
+                  if (e.target.checked) {
+                    if (current === 'horizontal') updateData('orientation', 'left');
+                    if (current === 'vertical') updateData('orientation', 'up');
+                  } else {
+                    if (current === 'left') updateData('orientation', 'horizontal');
+                    if (current === 'up') updateData('orientation', 'vertical');
+                  }
+                }} 
+                className="cursor-pointer"
+              />
+              <label htmlFor="node-flip" className="text-xs text-gray-750 dark:text-slate-300 select-none cursor-pointer">
+                Flip Direction
+              </label>
+            </div>
+          )}
         </div>
       )}
       
@@ -888,11 +1073,67 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
               <>
                 <div className="mb-3">
                   <label className="block text-xs font-medium text-gray-700 mb-1">Reverse Sensitivity (μA)</label>
-                  <input type="number" min="0" step="1" value={selectedNode.data.lightSensitivity !== undefined ? selectedNode.data.lightSensitivity : 10} onChange={e => updateData('lightSensitivity', parseInt(e.target.value) || 0)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+                  <input type="number" min="0" step="1" value={selectedNode.data.lightSensitivity !== undefined ? selectedNode.data.lightSensitivity : 10} onChange={e => updateData('lightSensitivity', parseInt(e.target.value) || 0)} className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" />
                 </div>
+                
+                <div className="mb-3 flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="led-webcam" 
+                    checked={!!selectedNode.data.isWebcamActive} 
+                    onChange={e => updateData('isWebcamActive', e.target.checked)} 
+                    className="cursor-pointer"
+                  />
+                  <label htmlFor="led-webcam" className="text-xs font-semibold text-gray-700 dark:text-gray-300 select-none cursor-pointer">
+                    Use Webcam Sensor
+                  </label>
+                </div>
+
+                {stream && (
+                  <div className="mb-3 rounded-lg overflow-hidden border border-gray-300 dark:border-slate-800 h-28 bg-black relative flex items-center justify-center shadow-inner">
+                    <video 
+                      ref={videoRef} 
+                      className="w-full h-full object-cover" 
+                      muted 
+                      playsInline
+                    />
+                    <div className="absolute bottom-1.5 right-1.5 bg-black/70 text-white text-[8px] font-mono px-1.5 py-0.5 rounded shadow-sm">
+                      Live LED Light: {Math.round((selectedNode.data.lightLevel ?? 0) * 100)}%
+                    </div>
+                  </div>
+                )}
+
+                {!!selectedNode.data.isWebcamActive && (
+                  <div className="mb-3">
+                    <button
+                      onClick={isRecordingWebcam ? undefined : startRecordingWebcam}
+                      className={`w-full py-2 rounded-lg font-bold text-xs shadow-md transition-all text-white ${
+                        isRecordingWebcam ? 'bg-red-500 animate-pulse' : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg'
+                      }`}
+                    >
+                      {isRecordingWebcam ? '🔴 Recording Webcam...' : '📹 Record Light Stream'}
+                    </button>
+                    {selectedNode.data.pwlData && (
+                      <div className="text-[9px] text-green-600 dark:text-green-400 font-bold mt-1.5 flex items-center gap-1">
+                        <span>✓</span> PWL Light Stream Loaded ({selectedNode.data.pwlData.length} pts)
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="mb-3">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Light Exposure (0-100%)</label>
-                  <input type="range" min="0" max="100" value={Math.round((selectedNode.data.lightLevel ?? 0) * 100)} onChange={e => updateData('lightLevel', parseInt(e.target.value) / 100)} className="w-full" />
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Light Exposure (0-100%)
+                  </label>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    disabled={!!selectedNode.data.isWebcamActive}
+                    value={Math.round((selectedNode.data.lightLevel ?? 0) * 100)} 
+                    onChange={e => updateData('lightLevel', parseInt(e.target.value) / 100)} 
+                    className="w-full" 
+                  />
                   <div className="text-[9px] text-gray-400 mt-1">Simulates photocurrent generated when light shines on reverse-biased LED.</div>
                 </div>
               </>
@@ -1036,26 +1277,37 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
         </>
       )}
       {selectedNode.type === 'multimeter' && (
-        <div className="mb-3">
-          <div className="flex items-center justify-between mb-2">
-            <label className="block text-xs font-medium text-gray-700">Display Mode</label>
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${selectedNode.data.isRms ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
-              {selectedNode.data.isRms ? 'RMS' : 'DC'}
-            </span>
-          </div>
-          <div className="mb-2 flex items-center gap-2">
+        <>
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Label</label>
             <input 
-              type="checkbox" 
-              id="mm-rms" 
-              checked={!!selectedNode.data.isRms} 
-              onChange={e => updateData('isRms', e.target.checked)} 
-              className="cursor-pointer"
+              type="text" 
+              value={(selectedNode.data.label as string) || 'Multimeter'} 
+              onChange={e => updateData('label', e.target.value)} 
+              className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" 
             />
-            <label htmlFor="mm-rms" className="text-xs text-gray-700 select-none cursor-pointer">
-              Show RMS Value (reduces fluctuations)
-            </label>
           </div>
-        </div>
+          <div className="mb-3">
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-xs font-medium text-gray-700">Display Mode</label>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${selectedNode.data.isRms ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
+                {selectedNode.data.isRms ? 'RMS' : 'DC'}
+              </span>
+            </div>
+            <div className="mb-2 flex items-center gap-2">
+              <input 
+                type="checkbox" 
+                id="mm-rms" 
+                checked={!!selectedNode.data.isRms} 
+                onChange={e => updateData('isRms', e.target.checked)} 
+                className="cursor-pointer"
+              />
+              <label htmlFor="mm-rms" className="text-xs text-gray-700 select-none cursor-pointer">
+                Show RMS Value (reduces fluctuations)
+              </label>
+            </div>
+          </div>
+        </>
       )}
       {selectedNode.type === 'potentiometer' && (
         <>
@@ -1135,7 +1387,7 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
               type="checkbox" 
               id="ldr-webcam" 
               checked={!!selectedNode.data.isWebcamActive} 
-              onChange={e => e.target.checked ? startWebcam() : stopWebcam()} 
+              onChange={e => updateData('isWebcamActive', e.target.checked)} 
               className="cursor-pointer"
             />
             <label htmlFor="ldr-webcam" className="text-xs font-semibold text-gray-700 dark:text-gray-300 select-none cursor-pointer">
@@ -1462,6 +1714,8 @@ function ProbeTooltip({ probeData, isSimulating, onClose }: { probeData: any; is
   );
 }
 
+
+
 export default function App() {
   // ── Initialise from localStorage ────────────────────────────────────────────
   const savedSettings = loadSettings();
@@ -1511,6 +1765,26 @@ export default function App() {
     y: number;
   } | null>(null);
   const simResultRef = useRef<{ portToNet: Record<string, string>; result: any } | null>(null);
+  const [noteCards, setNoteCards] = useState<{ id: string; markdown: string; minimized: boolean; x: number; y: number }[]>([]);
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
+
+
+  useEffect(() => {
+    const allPresets = { ...presets, ...userPresets };
+    const preset = allPresets[selectedPreset];
+    if (preset && preset.noteCard) {
+      const defaultX = Math.max(20, window.innerWidth - 300 - 256 - 20);
+      setNoteCards([{
+        id: `preset_note_${selectedPreset}`,
+        markdown: preset.noteCard,
+        minimized: false,
+        x: defaultX,
+        y: 20
+      }]);
+    } else {
+      setNoteCards([]);
+    }
+  }, [selectedPreset, userPresets]);
 
   // Scope resize handler — inject into every scope node's data
   const scopeResizeHandler = useCallback((nodeId: string, w: number, h: number) => {
@@ -1616,6 +1890,17 @@ export default function App() {
       const findGraphFromSim = (res: any, netName: string) => {
         if (!netName || !res) return null;
         const search = netName.toLowerCase();
+        
+        if (search === '0') {
+          if (res.variableNames && res.data && res.data.length > 0 && res.data[0].values) {
+            const timeVals = res.data[0].values.map((t: number) => t * 1000);
+            return {
+              name: '0',
+              timestamps_ms: timeVals,
+              voltage_levels: new Array(timeVals.length).fill(0)
+            };
+          }
+        }
         
         // Handle eecircuit-engine format
         if (res.variableNames && res.data && res.data.length > 0 && res.data[0].values) {
@@ -2124,7 +2409,7 @@ export default function App() {
               step="0.1" 
               value={simLength} 
               onChange={e => setSimLength(parseFloat(e.target.value) || 1.0)} 
-              className="w-12 text-xs border-none bg-transparent focus:ring-0 text-center text-slate-800 dark:text-slate-100 font-medium"
+              className="w-12 text-xs border-none bg-transparent focus:ring-0 text-center text-slate-800 dark:text-slate-100 font-medium h-6 py-0"
             />
             <span className="text-xs text-slate-500 dark:text-slate-400 mr-1.5">s</span>
           </div>
@@ -2135,7 +2420,7 @@ export default function App() {
             <select
               value={simResolution}
               onChange={e => setSimResolution(e.target.value as 'normal' | 'high')}
-              className="bg-transparent border-none text-slate-850 dark:text-slate-100 text-xs focus:ring-0 font-medium cursor-pointer"
+              className="bg-transparent border-none text-slate-850 dark:text-slate-100 text-xs focus:ring-0 font-medium cursor-pointer h-6 py-0"
             >
               <option value="normal" className="bg-white dark:bg-slate-900 text-slate-750 dark:text-slate-355">Normal</option>
               <option value="high" className="bg-white dark:bg-slate-900 text-slate-750 dark:text-slate-355">High</option>
@@ -2381,6 +2666,18 @@ export default function App() {
             simLength={simLength}
           />
         )}
+        {noteCards.map(card => (
+          <NoteCardOverlay
+            key={card.id}
+            card={card}
+            isEditing={editingCardId === card.id}
+            onToggleEdit={() => setEditingCardId(editingCardId === card.id ? null : card.id)}
+            onToggleMinimize={() => setNoteCards(prev => prev.map(c => c.id === card.id ? { ...c, minimized: !c.minimized } : c))}
+            onMarkdownChange={(md) => setNoteCards(prev => prev.map(c => c.id === card.id ? { ...c, markdown: md } : c))}
+            onClose={() => setNoteCards(prev => prev.filter(c => c.id !== card.id))}
+            onMove={(x, y) => setNoteCards(prev => prev.map(c => c.id === card.id ? { ...c, x, y } : c))}
+          />
+        ))}
         {showAICopilot && (
           <AICopilotPanel
             nodes={nodes}

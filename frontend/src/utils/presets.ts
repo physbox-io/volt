@@ -5,6 +5,7 @@ export interface CircuitPreset {
   nodes: Node[];
   edges: Edge[];
   recommendedSimLength?: number;
+  noteCard?: string;
 }
 
 export const empty: CircuitPreset = {
@@ -246,7 +247,7 @@ export const bridgeRectifier: CircuitPreset = {
     { id: 'd1', type: 'diode', position: { x: 300, y: 100 }, data: { label: 'D1' } },
     { id: 'd2', type: 'diode', position: { x: 300, y: 300 }, data: { label: 'D2' } },
     { id: 'd3', type: 'diode', position: { x: 500, y: 100 }, data: { label: 'D3' } },
-    { id: 'd4', type: 'diode', position: { x: 500, y: 300 }, data: { label: 'D4' } },
+    { id: 'd4', type: 'diode', position: { x: 500, y: 300 }, data: { label: 'D4', orientation: 'left' } },
     
     // Load & Filter
     { id: 'rload', type: 'resistor', position: { x: 750, y: 200 }, data: { label: '1k' } },
@@ -758,7 +759,7 @@ export const buckConverter: CircuitPreset = {
     { id: 'v1',    type: 'voltage',    position: { x: 50,   y: 250 }, data: { label: '24V IN', value: 24 } },
     { id: 'sw1',   type: 'nmos',       position: { x: 300,  y: 300 }, data: { label: 'NMOS Switch', vto: 2.0, kp: 0.5 } },
     { id: 'pwm1',  type: 'signalgen',  position: { x: 300,  y: 500 }, data: { label: 'PWM 1kHz 14%', waveform: 'square', frequency: 1000, amplitude: 10, dutyCycle: 14 } },
-    { id: 'd1',    type: 'diode',      position: { x: 500,  y: 400 }, data: { label: 'Schottky', v_drop: 0.3 } },
+    { id: 'd1',    type: 'diode',      position: { x: 500,  y: 400 }, data: { label: 'Schottky', v_drop: 0.3, orientation: 'left' } },
     { id: 'l1',    type: 'inductor',   position: { x: 650,  y: 250 }, data: { label: '2mH' } },
     { id: 'c1',    type: 'capacitor',  position: { x: 850,  y: 350 }, data: { label: '1000uF' } },
     { id: 'rload', type: 'resistor',   position: { x: 1000, y: 350 }, data: { label: '5R Load' } },
@@ -786,11 +787,11 @@ export const transformerRectifier: CircuitPreset = {
   recommendedSimLength: 0.1,
   nodes: [
     { id: 'vac1', type: 'acvoltage', position: { x: 50, y: 200 }, data: { label: '24V 60Hz', amplitude: 24, frequency: 60 } },
-    { id: 'xfmr1', type: 'transformer', position: { x: 250, y: 180 }, data: { label: 'Step Down', l_pri: '1H', l_sec: '10mH', k: 0.99, l_pri_label: '1H', l_sec_label: '10mH' } },
+    { id: 'xfmr1', type: 'transformer', position: { x: 250, y: 180 }, data: { label: 'Step Down', l_pri: '1H', l_sec: '75mH', k: 0.99, l_pri_label: '1H', l_sec_label: '75mH' } },
     { id: 'd1', type: 'diode', position: { x: 450, y: 120 }, data: { label: 'D1' } },
-    { id: 'd2', type: 'diode', position: { x: 450, y: 280 }, data: { label: 'D2' } },
+    { id: 'd2', type: 'diode', position: { x: 450, y: 280 }, data: { label: 'D2', orientation: 'left' } },
     { id: 'd3', type: 'diode', position: { x: 580, y: 120 }, data: { label: 'D3' } },
-    { id: 'd4', type: 'diode', position: { x: 580, y: 280 }, data: { label: 'D4' } },
+    { id: 'd4', type: 'diode', position: { x: 580, y: 280 }, data: { label: 'D4', orientation: 'left' } },
     { id: 'c1', type: 'capacitor', position: { x: 750, y: 200 }, data: { label: '220u' } },
     { id: 'r1', type: 'resistor', position: { x: 900, y: 200 }, data: { label: '1kΩ' } },
     { id: 'mm1', type: 'multimeter', position: { x: 1050, y: 200 }, data: { label: 'DC Output' } },
@@ -840,52 +841,142 @@ export const ldrWebcamDemo: CircuitPreset = {
   name: 'Webcam LDR / LED Photodiode Demo',
   recommendedSimLength: 1.0,
   nodes: [
-    { id: 'v1', type: 'voltage', position: { x: 50, y: 150 }, data: { label: '5V' } },
-    { id: 'ldr1', type: 'ldr', position: { x: 250, y: 100 }, data: { label: 'LDR Sensor', r_dark: 100000, r_dark_label: '100k', lightLevel: 0.5 } },
-    { id: 'r1', type: 'resistor', position: { x: 250, y: 250 }, data: { label: '10kΩ', orientation: 'vertical' } },
-    { id: 'led1', type: 'led', position: { x: 450, y: 150 }, data: { label: 'Photo-LED', color: 'gold', photodiodeMode: true, lightSensitivity: 50, lightLevel: 0.5, orientation: 'vertical' } },
-    { id: 'mm1', type: 'multimeter', position: { x: 650, y: 150 }, data: { label: 'Photo-Current' } },
-    { id: 'g1', type: 'ground', position: { x: 450, y: 380 }, data: { label: 'GND' } },
+    { id: 'v1', type: 'voltage', position: { x: 50, y: 180 }, data: { label: '5V' } },
+    { id: 'ldr1', type: 'ldr', position: { x: 220, y: 80 }, data: { label: 'LDR Sensor', r_dark: 100000, r_dark_label: '100k', lightLevel: 0.5 } },
+    { id: 'r1', type: 'resistor', position: { x: 220, y: 220 }, data: { label: '10kΩ', orientation: 'vertical' } },
+    { id: 'mm1', type: 'multimeter', position: { x: 370, y: 100 }, data: { label: 'LDR Out V' } },
+    { id: 'led1', type: 'led', position: { x: 550, y: 80 }, data: { label: 'Photo-LED', color: 'gold', photodiodeMode: true, lightSensitivity: 50, lightLevel: 0.5, orientation: 'vertical' } },
+    { id: 'r2', type: 'resistor', position: { x: 550, y: 220 }, data: { label: '100kΩ', orientation: 'vertical' } },
+    { id: 'mm2', type: 'multimeter', position: { x: 700, y: 100 }, data: { label: 'LED Out V' } },
+    { id: 'g1', type: 'ground', position: { x: 450, y: 400 }, data: { label: 'GND' } },
   ],
   edges: [
+    // LDR voltage divider
     { id: 'e-v1-ldr', source: 'v1', target: 'ldr1', sourceHandle: 'pos', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-ldr-r1', source: 'ldr1', target: 'r1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-r1-gnd', source: 'r1', target: 'g1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
-    { id: 'e-v1-gnd', source: 'v1', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-mm1-pos', source: 'ldr1', target: 'mm1', sourceHandle: 'out', targetHandle: 'pos', type: 'smoothstep' },
+    { id: 'e-mm1-neg', source: 'mm1', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
     
-    // Reverse-biased Photo-LED: Connect 5V to Cathode, Anode to Ground through Multimeter
+    // Reverse-biased Photo-LED divider
     { id: 'e-v1-led-cathode', source: 'v1', target: 'led1', sourceHandle: 'pos', targetHandle: 'cathode', type: 'smoothstep' },
-    { id: 'e-led-anode-mm', source: 'led1', target: 'mm1', sourceHandle: 'anode', targetHandle: 'pos', type: 'smoothstep' },
-    { id: 'e-mm-gnd', source: 'mm1', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-led-r2', source: 'led1', target: 'r2', sourceHandle: 'anode', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-r2-gnd', source: 'r2', target: 'g1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-mm2-pos', source: 'led1', target: 'mm2', sourceHandle: 'anode', targetHandle: 'pos', type: 'smoothstep' },
+    { id: 'e-mm2-neg', source: 'mm2', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
+
+    // Ground reference for source
+    { id: 'e-v1-gnd', source: 'v1', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
   ]
 };
 
 export const presets: Record<string, CircuitPreset> = {
-  empty,
-  basicBlink,
-  astableMultivibrator,
-  timer555Blink,
-  sineAudio,
-  micSpeaker,
-  bjtAmp,
-  opAmpAmp,
-  bistableMultivibrator,
-  classBamp,
-  classABamp,
-  bridgeRectifier,
-  boostConverter,
-  buckConverter,
-  potDimmer,
-  sevenSegDirect,
-  currentMirror,
-  mcuBlink,
-  mcuSpeaker,
-  mcuAnalogOut,
-  mcuAnalogIn,
-  mcuPassThrough,
-  mcuCleanAudioSampler,
-  mixedLogicBlink,
-  transformerRectifier,
-  dffBlinker,
-  ldrWebcamDemo
+  empty: {
+    ...empty,
+    noteCard: `# Empty Canvas ⬜\n\nDrag and drop components from the left sidebar to start building your own custom circuits!\n\n- Click and drag components to move them.\n- Hover over handles and drag to make wire connections.\n- Click components to edit their properties in the sidebar.\n- Click **Run** in the toolbar to start simulating.`
+  },
+  basicBlink: {
+    ...basicBlink,
+    noteCard: `# Basic Blink 💡\n\nA simple circuit that blinks an LED using a square-wave signal generator.\n\n### How it works:\n- **Signal Generator**: Outputs a 1Hz square wave (0V to 5V).\n- **Resistor (330Ω)**: Limits current to prevent the LED from burning out.\n- **LED**: Emits light when forward-biased.`
+  },
+  astableMultivibrator: {
+    ...astableMultivibrator,
+    noteCard: `# Astable Multivibrator 🔄\n\nA classic analog oscillator circuit that uses two BJTs (bipolar transistors) to alternately blink two LEDs.\n\n### How it works:\n- **BJTs**: Act as electronic switches.\n- **Capacitors**: Charge and discharge to control the switching timing.\n- **Feedback Loop**: Keeps the circuit oscillating continuously.`
+  },
+  timer555Blink: {
+    ...timer555Blink,
+    noteCard: `# 555 Blinker ⏱️\n\nUses the iconic NE555 Timer chip configured in Astable mode to flash a blue LED.\n\n### How it works:\n- **Astable Mode**: Generates a continuous square wave output.\n- **RC Network (R1, R2, C1)**: Determines the frequency and duty cycle of the pulses.`
+  },
+  sineAudio: {
+    ...sineAudio,
+    noteCard: `# Sine Wave Audio 🎵\n\nRoutes a 440Hz sine wave tone from a signal generator directly to the Speaker component.\n\n### How it works:\n- **Signal Generator**: Outputs a 440Hz A4 pitch.\n- **Speaker**: Plays the audio stream when you run the simulation.`
+  },
+  micSpeaker: {
+    ...micSpeaker,
+    noteCard: `# Mic to Speaker 🎤\n\nConnects the Microphone input directly to the Speaker output.\n\n### How it works:\n- **Microphone**: Records your live audio stream.\n- **Speaker**: Plays back the live recording, showcasing the real-time audio pipeline.`
+  },
+  bjtAmp: {
+    ...bjtAmp,
+    noteCard: `# BJT Audio Amp 🔊\n\nA common-emitter transistor amplifier that boosts a small microphone signal to drive a speaker.\n\n### How it works:\n- **BJT (NPN)**: Amplifies the base current.\n- **Coupling Capacitors**: Block DC voltages while passing AC audio signals.\n- **Voltage Divider Bias**: Sets the transistor's operating point.`
+  },
+  opAmpAmp: {
+    ...opAmpAmp,
+    noteCard: `# Op-Amp Amplifier ⚡\n\nAn active amplifier using an operational amplifier in a non-inverting configuration.\n\n### How it works:\n- **Op-Amp**: Multiplies the input voltage.\n- **Feedback Resistors**: Set the amplifier gain.`
+  },
+  bistableMultivibrator: {
+    ...bistableMultivibrator,
+    noteCard: `# Bistable Multivibrator (Flip-Flop) 🔀\n\nA two-button latch circuit (Set/Reset) using cross-coupled transistors.\n\n### How it works:\n- **Bistable**: Holds either of its two states (ON or OFF) indefinitely.\n- **Switches**: Pressing a switch changes the active latch state.`
+  },
+  classBamp: {
+    ...classBamp,
+    noteCard: `# Class B Amplifier 🔌\n\nUses complementary push-pull transistors (NPN and PNP) to drive a speaker.\n\n### How it works:\n- **Push-Pull**: NPN amplifies positive cycles; PNP amplifies negative cycles.\n- **Crossover Distortion**: Noticeable flat spot in the output waveform near 0V.`
+  },
+  classABamp: {
+    ...classABamp,
+    noteCard: `# Class AB Amplifier 📈\n\nImproves on Class B by adding diode biasing to eliminate crossover distortion.\n\n### How it works:\n- **Diodes**: Pre-bias the transistors so they conduct slightly even at 0V input.\n- **Efficiency/Clarity**: Provides high fidelity audio amplification.`
+  },
+  bridgeRectifier: {
+    ...bridgeRectifier,
+    noteCard: `# Bridge Rectifier 🌉\n\nUses four diodes in a bridge configuration to convert alternating current (AC) to direct current (DC).\n\n### How it works:\n- **Full-Bridge**: Rectifies both the positive and negative halves of the AC wave.\n- **Filter Capacitor**: Smoothes out the ripples into steady DC.`
+  },
+  boostConverter: {
+    ...boostConverter,
+    noteCard: `# Boost Converter (5V → 12V) 🚀\n\nA step-up DC-DC power converter that increases voltage from 5V to 12V.\n\n### How it works:\n- **Inductor**: Stores energy in a magnetic field.\n- **MOSFET Switch**: Toggles at high speed to transfer energy.\n- **Diode/Capacitor**: Rectify and filter the boosted output.`
+  },
+  buckConverter: {
+    ...buckConverter,
+    noteCard: `# Buck Converter (24V → 5V) 📉\n\nA step-down DC-DC power converter that decreases voltage from 24V to 5V.\n\n### How it works:\n- **MOSFET Switch**: Controls duty cycle of input power.\n- **Schottky Diode**: Provides a freewheeling path for inductor current.\n- **LC Filter**: Filters pulsed output into smooth DC.`
+  },
+  potDimmer: {
+    ...potDimmer,
+    noteCard: `# Potentiometer Dimmer 🎛️\n\nAdjusts the brightness of a red LED using a potentiometer as a variable voltage divider.\n\n### How it works:\n- **Potentiometer**: Changes the resistance ratio as you drag the Wiper slider.\n- **Current limiting**: Resistor prevents LED damage at 100% position.`
+  },
+  sevenSegDirect: {
+    ...sevenSegDirect,
+    noteCard: `# Seven-Segment Display 🔢\n\nConnects seven segment inputs directly to 5V control lines to form numeric digits.\n\n### How it works:\n- **Common Cathode**: Connected to GND.\n- **Anodes (a-g)**: Connected through resistors to illuminate individual segments.`
+  },
+  currentMirror: {
+    ...currentMirror,
+    noteCard: `# BJT Current Mirror 🪞\n\nA circuit designed to copy the current flowing through one branch into another branch.\n\n### How it works:\n- **Matched BJTs**: Base-emitter voltages are tied together.\n- **Constant Current**: Output current is regulated regardless of output voltage.`
+  },
+  mcuBlink: {
+    ...mcuBlink,
+    noteCard: `# MCU Blinky 🤖\n\nAn idealized microcontroller board running a script to toggle pin PB0 and blink a yellow LED.\n\n### How it works:\n- **MCU Script**: Controls pin state dynamically.\n- **Frequency**: 1Hz toggle loop.`
+  },
+  mcuSpeaker: {
+    ...mcuSpeaker,
+    noteCard: `# MCU Speaker Output 🔊\n\nAn MCU programmed to output a square-wave audio frequency tone on a GPIO pin.\n\n### How it works:\n- **GPIO Output**: Drives a speaker to play a programmed sound pitch.`
+  },
+  mcuAnalogOut: {
+    ...mcuAnalogOut,
+    noteCard: `# MCU Analog Output (DAC/PWM) 🎚️\n\nUses the MCU's analog write API to output a smooth sine wave voltage.\n\n### How it works:\n- **DAC/PWM**: Synthesizes analog voltage waveforms.\n- **Oscilloscope**: Visualizes the smooth output wave.`
+  },
+  mcuAnalogIn: {
+    ...mcuAnalogIn,
+    noteCard: `# MCU Analog Input 📊\n\nReads analog voltage from a signal generator and prints the value to the serial console.\n\n### How it works:\n- **ADC (Analog-to-Digital)**: Samples input voltage.\n- **Serial Console**: Displays the converted raw reading.`
+  },
+  mcuPassThrough: {
+    ...mcuPassThrough,
+    noteCard: `# MCU Audio Pass-Through 🔄\n\nMicrocontroller acts as a digital pass-through, sampling mic audio and writing it directly to the speaker.\n\n### How it works:\n- **ADC / DAC**: Digitizes and reconstructs audio signals.`
+  },
+  mcuCleanAudioSampler: {
+    ...mcuCleanAudioSampler,
+    noteCard: `# MCU Clean Audio Sampler 🎵\n\nMicrocontroller runs a high-speed DSP processing loop to sample, filter, and output mic audio.\n\n### How it works:\n- **DSP Loop**: Demonstrates real-time audio sampling and processing.`
+  },
+  mixedLogicBlink: {
+    ...mixedLogicBlink,
+    noteCard: `# Mixed Logic Blinky 🔣\n\nAn MCU pin output routed through AND/OR digital logic gates to control an LED.\n\n### How it works:\n- **Logic Gates**: AND, OR gates combine signals to determine the LED state.`
+  },
+  transformerRectifier: {
+    ...transformerRectifier,
+    noteCard: `# Transformer Rectifier (AC → DC) 🔌\n\nSteps down a 24V AC source to a 5V DC output.\n\n### How it works:\n- **Transformer**: Magnetically steps down the AC voltage from 24V peak to ~6.5V peak (using a 75mH secondary for a ~3.65:1 turns ratio: N = √(L_pri/L_sec) = √(1H/75mH) ≈ 3.65).\n- **Diode Bridge**: Full-wave rectifies the secondary voltage, dropping ~1.4V across two series diodes.\n- **Capacitor (220µF)**: Smoothes AC ripple to a steady 5V DC.`
+  },
+  dffBlinker: {
+    ...dffBlinker,
+    noteCard: `# D Flip-Flop Clock-Divider ⏱️\n\nUses a D Flip-Flop connected in a toggle configuration to divide a clock signal's frequency by 2.\n\n### How it works:\n- **CLK Input**: Driven by a 2Hz square wave.\n- **D Input**: Tied to Q̅, forcing Q to toggle on every positive clock edge.\n- **Output (Q)**: Blinks a cyan LED at 1Hz (half the input frequency).`
+  },
+  ldrWebcamDemo: {
+    ...ldrWebcamDemo,
+    noteCard: `# LDR & Photodiode Demo 📸\n\nThis preset compares two methods of sensing light:\n- **Left (LDR Sensor)**: A Light Dependent Resistor. Higher light decreases resistance, raising the output voltage on the **LDR Out V** multimeter.\n- **Right (Photo-LED)**: An LED operated in reverse-bias. Higher light generates reverse photocurrent, raising the output voltage on the **LED Out V** multimeter.\n\n### How to use:\n1. Select either the **LDR Sensor** or **Photo-LED** node to view its properties in the sidebar.\n2. Toggle **Use Webcam Sensor** to activate your webcam.\n3. Wave your hand or shine a phone flash at your camera to see the exposure levels update.\n4. Click **Run** in the top toolbar to see the live voltage levels change on the multimeters!\n5. Or, click **Record Light Stream** to capture a light recording, then click **Run** to simulate that recording over time!`
+  }
 };

@@ -3,7 +3,11 @@ import { useEffect, useRef, memo } from 'react';
 import { playbackTicker } from '../../utils/playbackTicker';
 
 export const LEDNode = memo(function LEDNode({ data, selected }: any) {
-  const isHorizontal = data.orientation === 'horizontal';
+  const orientation = data.orientation || 'horizontal';
+  const isHorizontal = orientation === 'horizontal' || orientation === 'left';
+  const isVertical = orientation === 'vertical' || orientation === 'up';
+  const isLeft = orientation === 'left';
+  const isUp = orientation === 'up';
   const color = (data.color as string) || 'red';
   const isExploded = !!data.isExploded;
   const max_current = data.max_current || 20;
@@ -55,21 +59,21 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
   const glowShadow = staticBrightness > 0 && !isExploded ? `0 0 ${10 + staticBrightness * 20}px ${color}` : 'none';
   const opacity = isExploded ? 0 : 0.3 + (staticBrightness * 0.7);
 
-    return (
+  return (
     <div className={`schematic-node flex items-center justify-center relative select-none w-[32px] h-[32px]`}>
       <Handle 
         type="target" 
-        position={isHorizontal ? Position.Left : Position.Top} 
+        position={isHorizontal ? (isLeft ? Position.Right : Position.Left) : (isUp ? Position.Bottom : Position.Top)} 
         id="anode" 
         className="w-2 h-2 bg-blue-500 !border-0" 
-        style={isHorizontal ? { top: '50%', left: '0%' } : { left: '50%', top: '0%' }}
+        style={isHorizontal ? { top: '50%', left: isLeft ? '100%' : '0%' } : { left: '50%', top: isUp ? '100%' : '0%' }}
       />
       <Handle 
         type="source" 
-        position={isHorizontal ? Position.Left : Position.Top} 
+        position={isHorizontal ? (isLeft ? Position.Right : Position.Left) : (isUp ? Position.Bottom : Position.Top)} 
         id="anode" 
         className="w-2 h-2 bg-blue-500 !border-0" 
-        style={isHorizontal ? { top: '50%', left: '0%' } : { left: '50%', top: '0%' }}
+        style={isHorizontal ? { top: '50%', left: isLeft ? '100%' : '0%' } : { left: '50%', top: isUp ? '100%' : '0%' }}
       />
       
       {/* Glow Halo behind SVG */}
@@ -108,7 +112,7 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
           strokeWidth="1.2" 
           strokeLinecap="round" 
           strokeLinejoin="round"
-          style={{ overflow: 'visible' }}
+          style={{ overflow: 'visible', transform: isLeft ? 'scaleX(-1)' : isUp ? 'scaleY(-1)' : undefined }}
           className={`text-slate-855 dark:text-slate-145 transition-colors z-10 ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
         >
           {isHorizontal ? (
@@ -160,17 +164,17 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
  
       <Handle 
         type="source" 
-        position={isHorizontal ? Position.Right : Position.Bottom} 
+        position={isHorizontal ? (isLeft ? Position.Left : Position.Right) : (isUp ? Position.Top : Position.Bottom)} 
         id="cathode" 
         className="w-2 h-2 bg-blue-500 !border-0" 
-        style={isHorizontal ? { top: '50%', left: '100%' } : { left: '50%', top: '100%' }}
+        style={isHorizontal ? { top: '50%', left: isLeft ? '0%' : '100%' } : { left: '50%', top: isUp ? '0%' : '100%' }}
       />
       <Handle 
         type="target" 
-        position={isHorizontal ? Position.Right : Position.Bottom} 
+        position={isHorizontal ? (isLeft ? Position.Left : Position.Right) : (isUp ? Position.Top : Position.Bottom)} 
         id="cathode" 
         className="w-2 h-2 bg-blue-500 !border-0" 
-        style={isHorizontal ? { top: '50%', left: '100%' } : { left: '50%', top: '100%' }}
+        style={isHorizontal ? { top: '50%', left: isLeft ? '0%' : '100%' } : { left: '50%', top: isUp ? '0%' : '100%' }}
       />
     </div>
   );

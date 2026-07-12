@@ -1,23 +1,26 @@
 import { Handle, Position } from '@xyflow/react';
 
 export function DiodeNode({ data, selected }: any) {
-  const isVertical = data.orientation === 'vertical';
+  const orientation = data.orientation || 'horizontal';
+  const isVertical = orientation === 'vertical' || orientation === 'up';
+  const isLeft = orientation === 'left';
+  const isUp = orientation === 'up';
 
   return (
     <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[24px] h-[48px]' : 'w-[48px] h-[24px]'}`}>
       <Handle 
         type="target" 
-        position={isVertical ? Position.Top : Position.Left} 
+        position={isVertical ? (isUp ? Position.Bottom : Position.Top) : (isLeft ? Position.Right : Position.Left)} 
         id="anode" 
         className="w-2 h-2 bg-blue-500 !border-0" 
-        style={isVertical ? { left: '50%', top: '0%' } : { top: '50%', left: '0%' }}
+        style={isVertical ? { left: '50%', top: isUp ? '100%' : '0%' } : { top: '50%', left: isLeft ? '100%' : '0%' }}
       />
       <Handle 
         type="source" 
-        position={isVertical ? Position.Top : Position.Left} 
+        position={isVertical ? (isUp ? Position.Bottom : Position.Top) : (isLeft ? Position.Right : Position.Left)} 
         id="anode" 
         className="w-2 h-2 bg-blue-500 !border-0" 
-        style={isVertical ? { left: '50%', top: '0%' } : { top: '50%', left: '0%' }}
+        style={isVertical ? { left: '50%', top: isUp ? '100%' : '0%' } : { top: '50%', left: isLeft ? '100%' : '0%' }}
       />
       
       <svg 
@@ -29,7 +32,7 @@ export function DiodeNode({ data, selected }: any) {
         strokeWidth="1.2" 
         strokeLinecap="round" 
         strokeLinejoin="round"
-        style={{ overflow: 'visible' }}
+        style={{ overflow: 'visible', transform: isLeft ? 'scaleX(-1)' : isUp ? 'scaleY(-1)' : undefined }}
         className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
       >
         {isVertical ? (
@@ -66,17 +69,17 @@ export function DiodeNode({ data, selected }: any) {
       
       <Handle 
         type="source" 
-        position={isVertical ? Position.Bottom : Position.Right} 
+        position={isVertical ? (isUp ? Position.Top : Position.Bottom) : (isLeft ? Position.Left : Position.Right)} 
         id="cathode" 
         className="w-2 h-2 bg-blue-500 !border-0" 
-        style={isVertical ? { left: '50%', top: '100%' } : { top: '50%', left: '100%' }}
+        style={isVertical ? { left: '50%', top: isUp ? '0%' : '100%' } : { top: '50%', left: isLeft ? '0%' : '100%' }}
       />
       <Handle 
         type="target" 
-        position={isVertical ? Position.Bottom : Position.Right} 
+        position={isVertical ? (isUp ? Position.Top : Position.Bottom) : (isLeft ? Position.Left : Position.Right)} 
         id="cathode" 
         className="w-2 h-2 bg-blue-500 !border-0" 
-        style={isVertical ? { left: '50%', top: '100%' } : { top: '50%', left: '100%' }}
+        style={isVertical ? { left: '50%', top: isUp ? '0%' : '100%' } : { top: '50%', left: isLeft ? '0%' : '100%' }}
       />
     </div>
   );

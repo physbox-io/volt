@@ -5,6 +5,7 @@ export interface CircuitPreset {
   nodes: Node[];
   edges: Edge[];
   recommendedSimLength?: number;
+  noteCard?: string;
 }
 
 export interface AppSettings {
