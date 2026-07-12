@@ -181,7 +181,11 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
     else if (node.type === 'multimeter') {
       const n1 = getNet(node.id, 'pos');
       const n2 = getNet(node.id, 'neg');
-      netlist += `R_${node.id} ${n1} ${n2} 1G\n`;
+      if (node.data.mode === 'current') {
+        netlist += `V_ammeter_${node.id} ${n1} ${n2} DC 0\n`;
+      } else {
+        netlist += `R_${node.id} ${n1} ${n2} 1G\n`;
+      }
     }
     else if (node.type === 'signalgen') {
       const freq = Number(node.data.frequency || 1);

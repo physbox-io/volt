@@ -742,7 +742,7 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
   );
 }
 
-function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, simLength }: { selectedNode: any, setNodes: any, isSimulating: boolean, runSimulation: () => void, simLength: number }) {
+function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSimulation, simLength }: { selectedNode: any, setNodes: any, setEdges: any, isSimulating: boolean, runSimulation: () => void, simLength: number }) {
   const simDebounceTimerRef = useRef<any>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -1291,7 +1291,7 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
             <div className="flex items-center justify-between mb-2">
               <label className="block text-xs font-medium text-gray-700">Display Mode</label>
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${selectedNode.data.isRms ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
-                {selectedNode.data.isRms ? 'RMS' : 'DC'}
+                {selectedNode.data.isRms ? 'RMS' : (selectedNode.data.mode === 'current' ? 'AMPS' : 'VOLTS')}
               </span>
             </div>
             <div className="mb-2 flex items-center gap-2">
@@ -1304,6 +1304,18 @@ function PropertiesPanel({ selectedNode, setNodes, isSimulating, runSimulation, 
               />
               <label htmlFor="mm-rms" className="text-xs text-gray-700 select-none cursor-pointer">
                 Show RMS Value (reduces fluctuations)
+              </label>
+            </div>
+            <div className="mb-2 flex items-center gap-2">
+              <input 
+                type="checkbox" 
+                id="mm-mode" 
+                checked={selectedNode.data.mode === 'current'} 
+                onChange={e => updateData('mode', e.target.checked ? 'current' : 'voltage')} 
+                className="cursor-pointer"
+              />
+              <label htmlFor="mm-mode" className="text-xs text-gray-700 select-none cursor-pointer">
+                Ammeter Mode (measures current in series)
               </label>
             </div>
           </div>
@@ -1992,20 +2004,33 @@ export default function App() {
             newNode.data = { ...newNode.data, brightness, isExploded, current_array: curArray, time_points: anodeGraph.timestamps_ms };
           }
         } else if (n.type === 'multimeter') {
-          const vPos = findGraph(portToNet[`${n.id}-pos`]);
-          const vNeg = findGraph(portToNet[`${n.id}-neg`]);
-          const valPos = vPos ? vPos.voltage_levels[vPos.voltage_levels.length - 1] : 0;
-          const valNeg = vNeg ? vNeg.voltage_levels[vNeg.voltage_levels.length - 1] : 0;
-          const timePoints = vPos ? vPos.timestamps_ms : (vNeg ? vNeg.timestamps_ms : null);
-          const vArr = vPos && vNeg 
-            ? vPos.voltage_levels.map((v, i) => v - (vNeg.voltage_levels[i] || 0))
-            : (vPos ? vPos.voltage_levels : (vNeg ? vNeg.voltage_levels.map(v => -v) : null));
-          newNode.data = { 
-            ...newNode.data, 
-            voltage: valPos - valNeg,
-            voltage_array: vArr,
-            time_points: timePoints
-          };
+          if (n.data.mode === 'current') {
+            const currentGraph = findGraph(`i(v_ammeter_${n.id})`);
+            const valCurrent = currentGraph ? currentGraph.voltage_levels[currentGraph.voltage_levels.length - 1] : 0;
+            const timePoints = currentGraph ? currentGraph.timestamps_ms : null;
+            const cArr = currentGraph ? currentGraph.voltage_levels : null;
+            newNode.data = {
+              ...newNode.data,
+              voltage: valCurrent,
+              voltage_array: cArr,
+              time_points: timePoints
+            };
+          } else {
+            const vPos = findGraph(portToNet[`${n.id}-pos`]);
+            const vNeg = findGraph(portToNet[`${n.id}-neg`]);
+            const valPos = vPos ? vPos.voltage_levels[vPos.voltage_levels.length - 1] : 0;
+            const valNeg = vNeg ? vNeg.voltage_levels[vNeg.voltage_levels.length - 1] : 0;
+            const timePoints = vPos ? vPos.timestamps_ms : (vNeg ? vNeg.timestamps_ms : null);
+            const vArr = vPos && vNeg 
+              ? vPos.voltage_levels.map((v, i) => v - (vNeg.voltage_levels[i] || 0))
+              : (vPos ? vPos.voltage_levels : (vNeg ? vNeg.voltage_levels.map(v => -v) : null));
+            newNode.data = { 
+              ...newNode.data, 
+              voltage: valPos - valNeg,
+              voltage_array: vArr,
+              time_points: timePoints
+            };
+          }
         } else if (n.type === 'scope') {
           const ch1 = findGraph(portToNet[`${n.id}-ch1`]);
           const ch2 = findGraph(portToNet[`${n.id}-ch2`]);
@@ -2661,6 +2686,7 @@ export default function App() {
           <PropertiesPanel 
             selectedNode={nodes.find(n => n.selected)!} 
             setNodes={setNodes} 
+            setEdges={setEdges} 
             isSimulating={isSimulating} 
             runSimulation={runSimulation}
             simLength={simLength}

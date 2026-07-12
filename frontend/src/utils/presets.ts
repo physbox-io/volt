@@ -496,7 +496,7 @@ export const opAmpAmp: CircuitPreset = {
     // Feedback
     { id: 'e-oaout-rf', source: 'oa1', target: 'rf', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-rf-oainv', source: 'rf', target: 'oa1', sourceHandle: 'out', targetHandle: 'in_inv', type: 'smoothstep' },
-    { id: 'e-rg-oainv', source: 'rg', target: 'oa1', sourceHandle: 'out', targetHandle: 'in_inv', type: 'smoothstep' },
+    { id: 'e-rg-oainv', source: 'rg', target: 'oa1', sourceHandle: 'in', targetHandle: 'in_inv', type: 'smoothstep' },
     { id: 'e-rg-cg', source: 'rg', target: 'cg', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-cg-gnd', source: 'cg', target: 'g_cg', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
     
@@ -721,34 +721,31 @@ export const currentMirror: CircuitPreset = {
   recommendedSimLength: 0.5,
   nodes: [
     { id: 'v1', type: 'voltage', position: { x: 300, y: 50 }, data: { label: '12V' } },
-    { id: 'isrc', type: 'currentsource', position: { x: 100, y: 250 }, data: { label: '5m' } },
-    { id: 'q1', type: 'npn', position: { x: 200, y: 350 }, data: { label: 'Q1 (ref)' } },
-    { id: 'q2', type: 'npn', position: { x: 400, y: 350 }, data: { label: 'Q2 (mirror)' } },
-    { id: 'rload', type: 'resistor', position: { x: 400, y: 200 }, data: { label: '1k' } },
-    { id: 'mm1', type: 'multimeter', position: { x: 50, y: 150 }, data: { label: 'I_ref' } },
-    { id: 'mm2', type: 'multimeter', position: { x: 550, y: 200 }, data: { label: 'I_mirror' } },
-    { id: 'g1', type: 'ground', position: { x: 300, y: 500 }, data: { label: 'GND' } },
+    { id: 'isrc', type: 'currentsource', position: { x: 150, y: 180 }, data: { label: '5m' } },
+    { id: 'q1', type: 'npn', position: { x: 220, y: 450 }, data: { label: 'Q1 (ref)' } },
+    { id: 'q2', type: 'npn', position: { x: 380, y: 450 }, data: { label: 'Q2 (mirror)' } },
+    { id: 'rload', type: 'resistor', position: { x: 450, y: 180 }, data: { label: '1k' } },
+    { id: 'mm1', type: 'multimeter', position: { x: 50, y: 300 }, data: { label: 'I_ref', mode: 'current' } },
+    { id: 'mm2', type: 'multimeter', position: { x: 550, y: 300 }, data: { label: 'I_mirror', mode: 'current' } },
+    { id: 'g1', type: 'ground', position: { x: 300, y: 580 }, data: { label: 'GND' } },
   ],
   edges: [
-    // Reference branch: V+ → current source → Q1 collector (diode-connected)
+    // Reference branch: V+ → current source → mm1 → Q1 collector (diode-connected)
     { id: 'e-v-isrc', source: 'v1', target: 'isrc', sourceHandle: 'pos', targetHandle: 'pos', type: 'smoothstep' },
-    { id: 'e-isrc-q1c', source: 'isrc', target: 'q1', sourceHandle: 'neg', targetHandle: 'c', type: 'smoothstep' },
+    { id: 'e-isrc-mm1', source: 'isrc', target: 'mm1', sourceHandle: 'neg', targetHandle: 'pos', type: 'smoothstep' },
+    { id: 'e-mm1-q1c', source: 'mm1', target: 'q1', sourceHandle: 'neg', targetHandle: 'c', type: 'smoothstep' },
     // Q1 diode-connected: base tied to collector
     { id: 'e-q1c-q1b', source: 'q1', target: 'q1', sourceHandle: 'c', targetHandle: 'b', type: 'smoothstep' },
     // Mirror: Q1.base → Q2.base
     { id: 'e-q1b-q2b', source: 'q1', target: 'q2', sourceHandle: 'b', targetHandle: 'b', type: 'smoothstep' },
-    // Mirror branch: V+ → Rload → Q2 collector
+    // Mirror branch: V+ → Rload → mm2 → Q2 collector
     { id: 'e-v-rload', source: 'v1', target: 'rload', sourceHandle: 'pos', targetHandle: 'in', type: 'smoothstep' },
-    { id: 'e-rload-q2c', source: 'rload', target: 'q2', sourceHandle: 'out', targetHandle: 'c', type: 'smoothstep' },
+    { id: 'e-rload-mm2', source: 'rload', target: 'mm2', sourceHandle: 'out', targetHandle: 'pos', type: 'smoothstep' },
+    { id: 'e-mm2-q2c', source: 'mm2', target: 'q2', sourceHandle: 'neg', targetHandle: 'c', type: 'smoothstep' },
     // Emitters to ground
     { id: 'e-q1e-gnd', source: 'q1', target: 'g1', sourceHandle: 'e', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-q2e-gnd', source: 'q2', target: 'g1', sourceHandle: 'e', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-v-gnd', source: 'v1', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
-    // Multimeters
-    { id: 'e-mm1-pos', source: 'isrc', target: 'mm1', sourceHandle: 'neg', targetHandle: 'pos', type: 'smoothstep' },
-    { id: 'e-mm1-neg', source: 'mm1', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
-    { id: 'e-mm2-pos', source: 'rload', target: 'mm2', sourceHandle: 'out', targetHandle: 'pos', type: 'smoothstep' },
-    { id: 'e-mm2-neg', source: 'mm2', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
   ]
 };
 
@@ -758,7 +755,7 @@ export const buckConverter: CircuitPreset = {
   nodes: [
     { id: 'v1',    type: 'voltage',    position: { x: 50,   y: 250 }, data: { label: '24V IN', value: 24 } },
     { id: 'sw1',   type: 'nmos',       position: { x: 300,  y: 300 }, data: { label: 'NMOS Switch', vto: 2.0, kp: 0.5 } },
-    { id: 'pwm1',  type: 'signalgen',  position: { x: 300,  y: 500 }, data: { label: 'PWM 1kHz 14%', waveform: 'square', frequency: 1000, amplitude: 10, dutyCycle: 14 } },
+    { id: 'pwm1',  type: 'signalgen',  position: { x: 300,  y: 500 }, data: { label: 'PWM 1kHz 22%', waveform: 'square', frequency: 1000, amplitude: 10, dutyCycle: 22 } },
     { id: 'd1',    type: 'diode',      position: { x: 500,  y: 400 }, data: { label: 'Schottky', v_drop: 0.3, orientation: 'left' } },
     { id: 'l1',    type: 'inductor',   position: { x: 650,  y: 250 }, data: { label: '2mH' } },
     { id: 'c1',    type: 'capacitor',  position: { x: 850,  y: 350 }, data: { label: '1000uF' } },
@@ -771,7 +768,7 @@ export const buckConverter: CircuitPreset = {
     { id: 'e-v1-gnd',     source: 'v1',   target: 'g1',    sourceHandle: 'neg',     targetHandle: 'in',  type: 'smoothstep' },
     { id: 'e-sw-s-l1',    source: 'sw1',  target: 'l1',    sourceHandle: 's',       targetHandle: 'in',  type: 'smoothstep' },
     { id: 'e-pwm-gate',   source: 'pwm1', target: 'sw1',   sourceHandle: 'out',     targetHandle: 'g',   type: 'smoothstep' },
-    { id: 'e-pwm-gnd',    source: 'pwm1', target: 'g1',    sourceHandle: 'gnd',     targetHandle: 'in',  type: 'smoothstep' },
+    { id: 'e-pwm-source', source: 'pwm1', target: 'sw1',   sourceHandle: 'gnd',     targetHandle: 's',   type: 'smoothstep' },
     { id: 'e-d1-sw-node', source: 'd1',   target: 'sw1',   sourceHandle: 'cathode', targetHandle: 's',   type: 'smoothstep' },
     { id: 'e-d1-gnd',     source: 'd1',   target: 'g1',    sourceHandle: 'anode',   targetHandle: 'in',  type: 'smoothstep' },
     { id: 'e-l1-c1',      source: 'l1',   target: 'c1',    sourceHandle: 'out',     targetHandle: 'in',  type: 'smoothstep' },
@@ -937,7 +934,7 @@ export const presets: Record<string, CircuitPreset> = {
   },
   currentMirror: {
     ...currentMirror,
-    noteCard: `# BJT Current Mirror 🪞\n\nA circuit designed to copy the current flowing through one branch into another branch.\n\n### How it works:\n- **Matched BJTs**: Base-emitter voltages are tied together.\n- **Constant Current**: Output current is regulated regardless of output voltage.`
+    noteCard: `# BJT Current Mirror 🪞\n\nA circuit designed to copy the current flowing through one branch into another branch.\n\n### How it works:\n- **Matched BJTs**: Base-emitter voltages are tied together.\n- **Constant Current**: Output current is regulated regardless of output voltage.\n- **Ammeter Multimeters**: The multimeters are connected in series with the branches in **Ammeter Mode** to measure the reference and mirror currents (both should show ~5mA).`
   },
   mcuBlink: {
     ...mcuBlink,

@@ -5,7 +5,6 @@ import { playbackTicker } from '../../utils/playbackTicker';
 export const LEDNode = memo(function LEDNode({ data, selected }: any) {
   const orientation = data.orientation || 'horizontal';
   const isHorizontal = orientation === 'horizontal' || orientation === 'left';
-  const isVertical = orientation === 'vertical' || orientation === 'up';
   const isLeft = orientation === 'left';
   const isUp = orientation === 'up';
   const color = (data.color as string) || 'red';
