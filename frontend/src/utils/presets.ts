@@ -555,31 +555,31 @@ export const bistableMultivibrator: CircuitPreset = {
   name: 'Bistable Multivibrator',
   recommendedSimLength: 2.0,
   nodes: [
-    { id: 'vcc', type: 'voltage', position: { x: 300, y: 50 }, data: { label: '5V' } },
-    { id: 'q1', type: 'npn', position: { x: 200, y: 300 }, data: { label: 'Q1' } },
-    { id: 'q2', type: 'npn', position: { x: 400, y: 300 }, data: { label: 'Q2' } },
+    { id: 'vcc', type: 'voltage', position: { x: 320, y: 48 }, data: { label: '5V' } },
+    { id: 'q1', type: 'npn', position: { x: 208, y: 352 }, data: { label: 'Q1' } },
+    { id: 'q2', type: 'npn', position: { x: 400, y: 352 }, data: { label: 'Q2' } },
     
     // Collector loads
-    { id: 'rc1', type: 'resistor', position: { x: 200, y: 150 }, data: { label: '1k' } },
-    { id: 'rc2', type: 'resistor', position: { x: 400, y: 150 }, data: { label: '1.02k' } },
+    { id: 'rc1', type: 'resistor', position: { x: 220, y: 144 }, data: { label: '1k', orientation: 'vertical' } },
+    { id: 'rc2', type: 'resistor', position: { x: 412, y: 144 }, data: { label: '1.02k', orientation: 'vertical' } },
     
     // LEDs to show state
-    { id: 'led1', type: 'led', position: { x: 100, y: 150 }, data: { label: 'L1', color: 'red' } },
-    { id: 'led2', type: 'led', position: { x: 500, y: 150 }, data: { label: 'L2', color: 'blue' } },
-    { id: 'rl1', type: 'resistor', position: { x: 100, y: 100 }, data: { label: '330' } },
-    { id: 'rl2', type: 'resistor', position: { x: 500, y: 100 }, data: { label: '330' } },
+    { id: 'led1', type: 'led', position: { x: 116, y: 224 }, data: { label: 'L1', color: 'red', orientation: 'vertical' } },
+    { id: 'led2', type: 'led', position: { x: 508, y: 224 }, data: { label: 'L2', color: 'blue', orientation: 'vertical' } },
+    { id: 'rl1', type: 'resistor', position: { x: 120, y: 144 }, data: { label: '330', orientation: 'vertical' } },
+    { id: 'rl2', type: 'resistor', position: { x: 512, y: 144 }, data: { label: '330', orientation: 'vertical' } },
 
     // Cross-coupling resistors
-    { id: 'rb1', type: 'resistor', position: { x: 300, y: 250 }, data: { label: '10k' } },
-    { id: 'rb2', type: 'resistor', position: { x: 300, y: 350 }, data: { label: '10k' } },
+    { id: 'rb1', type: 'resistor', position: { x: 300, y: 240 }, data: { label: '10k' } },
+    { id: 'rb2', type: 'resistor', position: { x: 300, y: 300 }, data: { label: '10k' } },
     
     // Triggers (Set/Reset switches)
-    { id: 'sw1', type: 'switch', position: { x: 50, y: 450 }, data: { label: 'SET', isOpen: true } },
-    { id: 'sw2', type: 'switch', position: { x: 550, y: 450 }, data: { label: 'RESET', isOpen: true } },
-    { id: 'r_trig1', type: 'resistor', position: { x: 150, y: 450 }, data: { label: '1k' } },
-    { id: 'r_trig2', type: 'resistor', position: { x: 450, y: 450 }, data: { label: '1k' } },
+    { id: 'sw1', type: 'switch', position: { x: 50, y: 448 }, data: { label: 'SET', isOpen: true } },
+    { id: 'sw2', type: 'switch', position: { x: 550, y: 448 }, data: { label: 'RESET', isOpen: true, orientation: 'left' } },
+    { id: 'r_trig1', type: 'resistor', position: { x: 132, y: 448 }, data: { label: '1k' } },
+    { id: 'r_trig2', type: 'resistor', position: { x: 468, y: 448 }, data: { label: '1k', orientation: 'left' } },
     
-    { id: 'g1', type: 'ground', position: { x: 300, y: 550 }, data: { label: 'GND' } },
+    { id: 'g1', type: 'ground', position: { x: 320, y: 560 }, data: { label: 'GND' } },
   ],
   edges: [
     // Power
@@ -602,8 +602,8 @@ export const bistableMultivibrator: CircuitPreset = {
     // Cross-coupling: Collector of one to Base of other
     { id: 'e-q1c-rb2', source: 'q1', target: 'rb2', sourceHandle: 'c', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-rb2-q2b', source: 'rb2', target: 'q2', sourceHandle: 'out', targetHandle: 'b', type: 'smoothstep' },
-    { id: 'e-q2c-rb1', source: 'q2', target: 'rb1', sourceHandle: 'c', targetHandle: 'in', type: 'smoothstep' },
-    { id: 'e-rb1-q1b', source: 'rb1', target: 'q1', sourceHandle: 'out', targetHandle: 'b', type: 'smoothstep' },
+    { id: 'e-q2c-rb1', source: 'q2', target: 'rb1', sourceHandle: 'c', targetHandle: 'out', type: 'smoothstep' },
+    { id: 'e-rb1-q1b', source: 'rb1', target: 'q1', sourceHandle: 'in', targetHandle: 'b', type: 'smoothstep' },
 
     // Emitters to ground
     { id: 'e-q1-gnd', source: 'q1', target: 'g1', sourceHandle: 'e', targetHandle: 'in', type: 'smoothstep' },
@@ -630,10 +630,10 @@ export const astableMultivibrator: CircuitPreset = {
     { id: 'rc2', type: 'resistor', position: { x: 412, y: 144 }, data: { label: '330', orientation: 'vertical' } },
     { id: 'rb1', type: 'resistor', position: { x: 292, y: 144 }, data: { label: '47k', orientation: 'vertical' } },
     { id: 'rb2', type: 'resistor', position: { x: 340, y: 144 }, data: { label: '48k', orientation: 'vertical' } },
-    { id: 'c1', type: 'capacitor', position: { x: 256, y: 240 }, data: { label: '10uF' } },
-    { id: 'c2', type: 'capacitor', position: { x: 368, y: 240 }, data: { label: '10uF' } },
-    { id: 'led1', type: 'led', position: { x: 216, y: 240 }, data: { label: 'L1', color: 'red' } },
-    { id: 'led2', type: 'led', position: { x: 408, y: 240 }, data: { label: 'L2', color: 'green' } },
+    { id: 'c1', type: 'capacitor', position: { x: 256, y: 288 }, data: { label: '10uF' } },
+    { id: 'c2', type: 'capacitor', position: { x: 320, y: 288 }, data: { label: '10uF' } },
+    { id: 'led1', type: 'led', position: { x: 216, y: 224 }, data: { label: 'L1', color: 'red', orientation: 'vertical' } },
+    { id: 'led2', type: 'led', position: { x: 408, y: 224 }, data: { label: 'L2', color: 'green', orientation: 'vertical' } },
     { id: 'g1', type: 'ground', position: { x: 320, y: 504 }, data: { label: 'GND' } },
   ],
   edges: [

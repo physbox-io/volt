@@ -157,8 +157,8 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
         {data.label || 'LED'}
       </div>
       <div ref={textRef} className={isHorizontal
-        ? "absolute -bottom-3.5 right-0 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 pointer-events-none"
-        : "absolute right-[24px] bottom-[6px] text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 text-right pointer-events-none whitespace-nowrap"
+        ? "absolute -top-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 text-center pointer-events-none whitespace-nowrap"
+        : "absolute left-[24px] top-[6px] text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 text-left pointer-events-none whitespace-nowrap"
       }></div>
  
       <Handle 

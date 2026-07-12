@@ -742,6 +742,18 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
   );
 }
 
+export function getNodeDefaultName(id: string, type: string) {
+  const match = id.match(/^(resistor|capacitor|inductor)-(\d+)$/i);
+  if (match) {
+    const prefix = type === 'resistor' ? 'R' : (type === 'capacitor' ? 'C' : 'L');
+    return `${prefix}${match[2]}`;
+  }
+  if (/^[rcl]\d+$/i.test(id)) {
+    return id.toUpperCase();
+  }
+  return id;
+}
+
 function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSimulation, simLength }: { selectedNode: any, setNodes: any, setEdges: any, isSimulating: boolean, runSimulation: () => void, simLength: number }) {
   const simDebounceTimerRef = useRef<any>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -776,7 +788,7 @@ function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSi
       return { ...n, data: newData };
     }));
 
-    if (key === 'orientation' && selectedNode && ['diode', 'zener', 'led'].includes(selectedNode.type || '')) {
+    if (key === 'orientation' && selectedNode && ['diode', 'zener', 'led', 'resistor', 'capacitor', 'inductor', 'switch'].includes(selectedNode.type || '')) {
       const prevOrientation = selectedNode.data.orientation || 'horizontal';
       const newOrientation = value;
       const isPrevFlipped = prevOrientation === 'left' || prevOrientation === 'up';
@@ -787,22 +799,18 @@ function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSi
           let updated = { ...e };
           let changed = false;
           if (e.source === selectedNode.id) {
-            if (e.sourceHandle === 'anode') {
-              updated.sourceHandle = 'cathode';
-              changed = true;
-            } else if (e.sourceHandle === 'cathode') {
-              updated.sourceHandle = 'anode';
-              changed = true;
-            }
+            const sh = e.sourceHandle;
+            if (sh === 'anode') { updated.sourceHandle = 'cathode'; changed = true; }
+            else if (sh === 'cathode') { updated.sourceHandle = 'anode'; changed = true; }
+            else if (sh === 'in') { updated.sourceHandle = 'out'; changed = true; }
+            else if (sh === 'out') { updated.sourceHandle = 'in'; changed = true; }
           }
           if (e.target === selectedNode.id) {
-            if (e.targetHandle === 'anode') {
-              updated.targetHandle = 'cathode';
-              changed = true;
-            } else if (e.targetHandle === 'cathode') {
-              updated.targetHandle = 'anode';
-              changed = true;
-            }
+            const th = e.targetHandle;
+            if (th === 'anode') { updated.targetHandle = 'cathode'; changed = true; }
+            else if (th === 'cathode') { updated.targetHandle = 'anode'; changed = true; }
+            else if (th === 'in') { updated.targetHandle = 'out'; changed = true; }
+            else if (th === 'out') { updated.targetHandle = 'in'; changed = true; }
           }
           return changed ? updated : e;
         }));
@@ -951,15 +959,15 @@ function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSi
             className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none mb-2"
           >
             <option value="horizontal">Horizontal</option>
-            {['diode', 'zener', 'led'].includes(selectedNode.type || '') && (
+            {['diode', 'zener', 'led', 'resistor', 'capacitor', 'inductor', 'switch'].includes(selectedNode.type || '') && (
               <option value="left">Horizontal (Left)</option>
             )}
             <option value="vertical">Vertical</option>
-            {['diode', 'zener', 'led'].includes(selectedNode.type || '') && (
+            {['diode', 'zener', 'led', 'resistor', 'capacitor', 'inductor', 'switch'].includes(selectedNode.type || '') && (
               <option value="up">Vertical (Up)</option>
             )}
           </select>
-          {['diode', 'zener', 'led'].includes(selectedNode.type || '') && (
+          {['diode', 'zener', 'led', 'resistor', 'capacitor', 'inductor', 'switch'].includes(selectedNode.type || '') && (
             <div className="flex items-center gap-2 mt-2">
               <input 
                 type="checkbox" 
@@ -1002,6 +1010,17 @@ function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSi
             <input type="number" step="1" value={(selectedNode.data.frequency as number) || 60} onChange={e => { updateData('frequency', parseFloat(e.target.value)); updateData('label', `${selectedNode.data.amplitude || 10}V ${e.target.value}Hz`); }} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
           </div>
         </>
+      )}
+      {['resistor', 'capacitor', 'inductor'].includes(selectedNode.type || '') && (
+        <div className="mb-3">
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Name</label>
+          <input 
+            type="text" 
+            value={selectedNode.data.name !== undefined ? selectedNode.data.name : getNodeDefaultName(selectedNode.id, selectedNode.type)} 
+            onChange={e => updateData('name', e.target.value)} 
+            className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" 
+          />
+        </div>
       )}
       {selectedNode.type === 'resistor' && (
         <div className="mb-3">
@@ -2162,7 +2181,8 @@ export default function App() {
       source: e.source,
       target: e.target,
       sourceHandle: e.sourceHandle,
-      targetHandle: e.targetHandle
+      targetHandle: e.targetHandle,
+      data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined
     }));
 
     const lastState = historyRef.current[historyIndexRef.current];
@@ -2182,7 +2202,8 @@ export default function App() {
         source: e.source,
         target: e.target,
         sourceHandle: e.sourceHandle,
-        targetHandle: e.targetHandle
+        targetHandle: e.targetHandle,
+        data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined
       }));
 
       const nodesEqual = JSON.stringify(cleanLastNodes) === JSON.stringify(cleanNewNodes);
@@ -2195,7 +2216,13 @@ export default function App() {
     const nextHistory = historyRef.current.slice(0, historyIndexRef.current + 1);
     nextHistory.push({
       nodes: newNodes.map(n => ({ ...n })),
-      edges: newEdges.map(e => ({ ...e }))
+      edges: newEdges.map(e => ({
+        ...e,
+        data: e.data ? {
+          ...e.data,
+          waypoints: (e.data as any).waypoints ? (e.data as any).waypoints.map((w: any) => ({ ...w })) : undefined
+        } : undefined
+      }))
     });
     if (nextHistory.length > 50) {
       nextHistory.shift();
@@ -2285,7 +2312,10 @@ export default function App() {
     const preset: CircuitPreset = {
       name: `User: ${trimmed}`,
       nodes: nodes.map(n => ({ ...n, selected: false })),
-      edges: edges.map(e => ({ ...e, data: undefined })),
+      edges: edges.map(e => ({
+        ...e,
+        data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined
+      })),
     };
     const updated = addUserPreset(key, preset);
     setUserPresets(updated);

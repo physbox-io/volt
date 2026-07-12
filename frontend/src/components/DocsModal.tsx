@@ -133,6 +133,7 @@ export function DocsModal({ onClose }: DocsModalProps) {
                 <ul className="list-disc pl-6 mb-4 space-y-1">
                   <li><strong>Add Components:</strong> Drag components from the left sidebar onto the canvas.</li>
                   <li><strong>Wiring:</strong> Click and drag from any circular port (handle) to another to create a connection. Handles are bidirectional.</li>
+                  <li><strong>Custom Wire Routing:</strong> Grab and drag a wire directly from anywhere to create a custom orthogonal bend. Double-click the wire to reset it to default routing.</li>
                   <li><strong>Select & Edit:</strong> Click a component to select it and view its properties in the right panel. You can change labels, frequencies, voltages, and more.</li>
                   <li><strong>Multi-Select:</strong> Hold <strong>Shift</strong> and drag a box over multiple components to select them together.</li>
                   <li><strong>Delete:</strong> Press the <strong>Delete</strong> or <strong>Backspace</strong> key, or use the trash icon in the header, to remove selected items.</li>

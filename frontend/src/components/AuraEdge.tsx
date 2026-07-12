@@ -1,4 +1,4 @@
-import { BaseEdge, type EdgeProps, getSmoothStepPath } from '@xyflow/react';
+import { BaseEdge, type EdgeProps, getSmoothStepPath, useReactFlow } from '@xyflow/react';
 import { useEffect, useState, createContext, useContext, useMemo, useCallback, memo } from 'react';
 import { playbackTicker } from '../utils/playbackTicker';
 
@@ -258,6 +258,59 @@ function getSchematicPath({
   return standardPath;
 }
 
+function getOrthogonalPathThroughWaypoint(
+  sourceX: number,
+  sourceY: number,
+  sourcePosition: string,
+  targetX: number,
+  targetY: number,
+  targetPosition: string,
+  W: { x: number; y: number }
+) {
+  const isSourceVert = sourcePosition === 'top' || sourcePosition === 'bottom';
+  const isTargetVert = targetPosition === 'top' || targetPosition === 'bottom';
+
+  let path = `M ${sourceX} ${sourceY}`;
+
+  // S -> W
+  if (isSourceVert) {
+    path += ` L ${sourceX} ${W.y}`;
+    path += ` L ${W.x} ${W.y}`;
+  } else {
+    path += ` L ${W.x} ${sourceY}`;
+    path += ` L ${W.x} ${W.y}`;
+  }
+
+  // W -> T
+  if (isTargetVert) {
+    const minX = Math.min(sourceX, targetX);
+    const maxX = Math.max(sourceX, targetX);
+    const isOutside = W.x < minX || W.x > maxX;
+
+    if (isOutside) {
+      path += ` L ${W.x} ${targetY}`;
+      path += ` L ${targetX} ${targetY}`;
+    } else {
+      path += ` L ${targetX} ${W.y}`;
+      path += ` L ${targetX} ${targetY}`;
+    }
+  } else {
+    const minY = Math.min(sourceY, targetY);
+    const maxY = Math.max(sourceY, targetY);
+    const isOutside = W.y < minY || W.y > maxY;
+
+    if (isOutside) {
+      path += ` L ${targetX} ${W.y}`;
+      path += ` L ${targetX} ${targetY}`;
+    } else {
+      path += ` L ${W.x} ${targetY}`;
+      path += ` L ${targetX} ${targetY}`;
+    }
+  }
+
+  return path;
+}
+
 export const AuraEdge = memo(function AuraEdge({
   id,
   sourceX,
@@ -271,6 +324,7 @@ export const AuraEdge = memo(function AuraEdge({
   markerEnd,
   type,
 }: EdgeProps) {
+  const { setEdges, screenToFlowPosition, getViewport } = useReactFlow();
   const defaultOffset = 4;
   let dynamicOffset = defaultOffset;
 
@@ -289,15 +343,31 @@ export const AuraEdge = memo(function AuraEdge({
     }
   }
 
-  const edgePath = getSchematicPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetPosition,
-    targetX,
-    targetY,
-    offset: dynamicOffset,
-  });
+  const waypoints: { x: number; y: number }[] = (data as any)?.waypoints || [];
+  const [isDragging, setIsDragging] = useState(false);
+
+  let edgePath = '';
+  if (waypoints.length > 0) {
+    edgePath = getOrthogonalPathThroughWaypoint(
+      sourceX,
+      sourceY,
+      sourcePosition,
+      targetX,
+      targetY,
+      targetPosition,
+      waypoints[0]
+    );
+  } else {
+    edgePath = getSchematicPath({
+      sourceX,
+      sourceY,
+      sourcePosition,
+      targetPosition,
+      targetX,
+      targetY,
+      offset: dynamicOffset,
+    });
+  }
 
   const [current, setCurrent] = useState(0);
   
@@ -390,6 +460,70 @@ export const AuraEdge = memo(function AuraEdge({
     : auraClass === 'edge-aura-faint'
     ? '#fcd34d'
     : (style?.stroke as string) || '#555';
+
+  const handleWireMouseDown = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setIsDragging(true);
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    const clickPos = screenToFlowPosition({ x: startX, y: startY });
+
+    const initialW = waypoints[0] || { x: clickPos.x, y: clickPos.y };
+    const initialX = initialW.x;
+    const initialY = initialW.y;
+
+    const { zoom } = getViewport();
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      
+      const flowDx = dx / zoom;
+      const flowDy = dy / zoom;
+
+      const newX = Math.round((initialX + flowDx) / 4) * 4;
+      const newY = Math.round((initialY + flowDy) / 4) * 4;
+
+      setEdges((eds: any[]) => eds.map(edge => {
+        if (edge.id !== id) return edge;
+        return {
+          ...edge,
+          data: {
+            ...edge.data,
+            waypoints: [{ x: newX, y: newY }]
+          }
+        };
+      }));
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [id, waypoints, screenToFlowPosition, getViewport, setEdges]);
+
+  const handleWireDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    setEdges((eds: any[]) => eds.map(edge => {
+      if (edge.id !== id) return edge;
+      return {
+        ...edge,
+        data: {
+          ...edge.data,
+          waypoints: []
+        }
+      };
+    }));
+  }, [id, setEdges]);
   
   return (
     <>
@@ -398,6 +532,15 @@ export const AuraEdge = memo(function AuraEdge({
         markerEnd={markerEnd} 
         style={style} 
         className={auraClass}
+      />
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={15}
+        style={{ cursor: isDragging ? 'grabbing' : 'grab', pointerEvents: 'all' }}
+        onMouseDown={handleWireMouseDown}
+        onDoubleClick={handleWireDoubleClick}
       />
       {myJunctions.map((pt, idx) => (
         <circle 

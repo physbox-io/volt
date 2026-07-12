@@ -1,23 +1,40 @@
 import { Handle, Position } from '@xyflow/react';
 
-export function ResistorNode({ data, selected }: any) {
-  const isVertical = data.orientation === 'vertical';
+function getNodeDefaultName(id: string, type: string) {
+  const match = id.match(/^(resistor|capacitor|inductor)-(\d+)$/i);
+  if (match) {
+    const prefix = type === 'resistor' ? 'R' : (type === 'capacitor' ? 'C' : 'L');
+    return `${prefix}${match[2]}`;
+  }
+  if (/^[rcl]\d+$/i.test(id)) {
+    return id.toUpperCase();
+  }
+  return id;
+}
+
+export function ResistorNode({ id, data, selected }: any) {
+  const orientation = data.orientation || 'horizontal';
+  const isVertical = orientation === 'vertical' || orientation === 'up';
+  const isLeft = orientation === 'left';
+  const isUp = orientation === 'up';
+
+  const name = data.name !== undefined ? data.name : getNodeDefaultName(id, 'resistor');
 
   return (
     <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[24px] h-[48px]' : 'w-[48px] h-[24px]'}`}>
       <Handle 
         type="target" 
-        position={isVertical ? Position.Top : Position.Left} 
+        position={isVertical ? (isUp ? Position.Bottom : Position.Top) : (isLeft ? Position.Right : Position.Left)} 
         id="in" 
         className="w-2 h-2 bg-blue-500 !border-0" 
-        style={isVertical ? { left: '50%', top: '0%' } : { top: '50%', left: '0%' }}
+        style={isVertical ? { left: '50%', top: isUp ? '100%' : '0%' } : { top: '50%', left: isLeft ? '100%' : '0%' }}
       />
       <Handle 
         type="source" 
-        position={isVertical ? Position.Top : Position.Left} 
+        position={isVertical ? (isUp ? Position.Bottom : Position.Top) : (isLeft ? Position.Right : Position.Left)} 
         id="in" 
         className="w-2 h-2 bg-blue-500 !border-0" 
-        style={isVertical ? { left: '50%', top: '0%' } : { top: '50%', left: '0%' }}
+        style={isVertical ? { left: '50%', top: isUp ? '100%' : '0%' } : { top: '50%', left: isLeft ? '100%' : '0%' }}
       />
       
       <svg 
@@ -29,13 +46,13 @@ export function ResistorNode({ data, selected }: any) {
         strokeWidth="1.2" 
         strokeLinecap="round" 
         strokeLinejoin="round"
-        style={{ overflow: 'visible' }}
+        style={{ overflow: 'visible', transform: isLeft ? 'scaleX(-1)' : isUp ? 'scaleY(-1)' : undefined }}
         className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
       >
         {isVertical ? (
-          <path d="M 12 -4 V 12 L 6 14 L 18 18 L 6 22 L 18 26 L 6 30 L 18 34 L 12 36 V 52" />
+          <path d="M 12 -8 V 12 L 6 14 L 18 18 L 6 22 L 18 26 L 6 30 L 18 34 L 12 36 V 56" />
         ) : (
-          <path d="M -4 12 H 12 L 14 6 L 18 18 L 22 6 L 26 18 L 30 6 L 34 18 L 36 12 H 52" />
+          <path d="M -8 12 H 12 L 14 6 L 18 18 L 22 6 L 26 18 L 30 6 L 34 18 L 36 12 H 56" />
         )}
       </svg>
 
@@ -43,25 +60,23 @@ export function ResistorNode({ data, selected }: any) {
         ? "absolute left-[20px] top-1/2 -translate-y-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 pointer-events-none whitespace-nowrap" 
         : "absolute -bottom-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 text-center pointer-events-none whitespace-nowrap"
       }>
-        {data.label || '1kΩ'}
+        {name}: {data.label || '1k'}
       </div>
       
       <Handle 
         type="source" 
-        position={isVertical ? Position.Bottom : Position.Right} 
+        position={isVertical ? (isUp ? Position.Top : Position.Bottom) : (isLeft ? Position.Left : Position.Right)} 
         id="out" 
         className="w-2 h-2 bg-blue-500 !border-0" 
-        style={isVertical ? { left: '50%', top: '100%' } : { top: '50%', left: '100%' }}
+        style={isVertical ? { left: '50%', top: isUp ? '0%' : '100%' } : { top: '50%', left: isLeft ? '0%' : '100%' }}
       />
       <Handle 
         type="target" 
-        position={isVertical ? Position.Bottom : Position.Right} 
+        position={isVertical ? (isUp ? Position.Top : Position.Bottom) : (isLeft ? Position.Left : Position.Right)} 
         id="out" 
         className="w-2 h-2 bg-blue-500 !border-0" 
-        style={isVertical ? { left: '50%', top: '100%' } : { top: '50%', left: '100%' }}
+        style={isVertical ? { left: '50%', top: isUp ? '0%' : '100%' } : { top: '50%', left: isLeft ? '0%' : '100%' }}
       />
     </div>
   );
 }
-
-
