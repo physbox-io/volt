@@ -1,6 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import { useEffect, useState, memo } from 'react';
-import { playbackTicker } from '../../utils/playbackTicker';
+import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
 
 const SEGMENT_PATHS: Record<string, string> = {
   a: 'M6,2 L18,2 L16,4 L8,4 Z',
@@ -29,13 +29,7 @@ export const SevenSegmentNode = memo(function SevenSegmentNode({ data }: any) {
     }
 
     const unsubscribe = playbackTicker.subscribe((elapsedMs) => {
-      let idx = 0;
-      for (let i = 0; i < data.timePoints.length; i++) {
-        if (data.timePoints[i] >= elapsedMs) {
-          idx = i;
-          break;
-        }
-      }
+      const idx = findIndexForTime(data.timePoints, elapsedMs);
 
       const nextVoltages: Record<string, number> = {};
       segs.forEach(s => {

@@ -48,7 +48,7 @@ import { SwitchNode } from './components/nodes/SwitchNode';
 import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
 import { Play, Square, Trash2, Info, Menu, X, AlertCircle, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, FileText, Edit3, ChevronDown, ChevronUp } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
-import { playbackTicker } from './utils/playbackTicker';
+import { playbackTicker, findIndexForTime } from './utils/playbackTicker';
 import { presets } from './utils/presets';
 import { AuraEdge, EdgePathProvider } from './components/AuraEdge';
 import { SettingsModal } from './components/SettingsModal';
@@ -1624,16 +1624,7 @@ function ProbeTooltip({ probeData, isSimulating, onClose }: { probeData: any; is
 
     const unsubscribe = playbackTicker.subscribe((elapsedMs) => {
       setCurrentTimeMs(elapsedMs);
-
-      // Find index corresponding to elapsedMs
-      let idx = 0;
-      for (let i = 0; i < times.length; i++) {
-        if (times[i] >= elapsedMs) {
-          idx = i;
-          break;
-        }
-      }
-
+      const idx = findIndexForTime(times, elapsedMs);
       setCurrentVoltage(probeData.history[idx] ?? 0);
     });
 
@@ -1846,6 +1837,16 @@ export default function App() {
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Preload SPICE simulation module on mount
+  useEffect(() => {
+    try {
+      const worker = getSimulationWorker();
+      worker.postMessage({ type: 'INIT' });
+    } catch (e) {
+      console.error("[App] Failed to preload simulation worker:", e);
+    }
   }, []);
 
   // Keep microphone nodes aware of the simulation duration
@@ -2079,8 +2080,7 @@ export default function App() {
             const segGraph = findGraph(portToNet[`${n.id}-${s}`]);
             if (segGraph) {
               if (timePoints.length === 0) timePoints = segGraph.timestamps_ms;
-              const vComArr = commonGraph ? commonGraph.voltage_levels : new Array(segGraph.voltage_levels.length).fill(0);
-              const diffs = segGraph.voltage_levels.map((v, i) => v - (vComArr[i] || 0));
+              const diffs = segGraph.voltage_levels.map((v, i) => v - (commonGraph ? commonGraph.voltage_levels[i] : 0));
               segmentVoltageArrays[s] = diffs;
               
               let peak = 0;

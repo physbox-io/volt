@@ -1,6 +1,6 @@
 import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { useEffect, useRef, memo } from 'react';
-import { playbackTicker } from '../../utils/playbackTicker';
+import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
 
 function calculateRms(arr: number[]): number {
   if (!arr || arr.length === 0) return 0;
@@ -64,13 +64,7 @@ export const MultimeterNode = memo(function MultimeterNode({ id, data }: any) {
     }
 
     const unsubscribe = playbackTicker.subscribe((elapsedMs) => {
-      let idx = 0;
-      for (let i = 0; i < data.time_points.length; i++) {
-        if (data.time_points[i] >= elapsedMs) {
-          idx = i;
-          break;
-        }
-      }
+      const idx = findIndexForTime(data.time_points, elapsedMs);
 
       const val = data.voltage_array[idx] ?? 0;
       if (displayRef.current) {

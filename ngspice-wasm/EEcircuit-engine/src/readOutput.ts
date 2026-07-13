@@ -62,34 +62,39 @@ export function readRawOutput(rawData: Uint8Array): RawResultType {
   log(`file-> ${offset}`);
   const header = resultStr.substring(0, offset) + "\n";
 
-  //let out: number[];
-  const out: number[] = [] as number[];
   const param = findParams(header);
   log(header);
   log(param);
 
-  const view = new DataView(rawData.buffer, offset + 8);
+  const binaryByteOffset = offset + 8;
+  const expectedFloats = param.varNum * param.pointNum * (param.dataType === "complex" ? 2 : 1);
+  const expectedBytes = expectedFloats * 8;
 
-  for (let i = 0; i < view.byteLength; i = i + 8) {
-    const d = view.getFloat64(i, true);
-    out.push(d);
-    //log(`float -> ${d}`);
-  }
+  // Slice out the exact binary portion
+  const binaryBytes = rawData.subarray(binaryByteOffset, binaryByteOffset + expectedBytes);
+
+  // Copy to an aligned buffer to avoid start offset alignment errors for Float64Array
+  const alignedBuffer = new ArrayBuffer(expectedBytes);
+  new Uint8Array(alignedBuffer).set(binaryBytes);
+  const out = new Float64Array(alignedBuffer);
 
   log("🤔", out);
 
   if (param.dataType === "complex") {
-    const out2 = new Array(param.varNum)
-      .fill(0)
-      .map(() => new Array(param.pointNum).fill(0)) as ComplexNumber[][];
-    //https://gregstoll.com/~gregstoll/floattohex/
-    //
-    for (let i = 0; i < out.length; i = i + 2) {
-      const complex = { real: out[i], img: out[i + 1] };
-      const index = i / 2;
-      out2[index % param.varNum][Math.floor(index / param.varNum)] = {
-        ...complex,
-      };
+    const out2: ComplexNumber[][] = [];
+    for (let v = 0; v < param.varNum; v++) {
+      out2.push(new Array(param.pointNum));
+    }
+
+    for (let p = 0; p < param.pointNum; p++) {
+      const base = p * param.varNum * 2;
+      for (let v = 0; v < param.varNum; v++) {
+        const offset = base + v * 2;
+        out2[v][p] = {
+          real: out[offset],
+          img: out[offset + 1]
+        };
+      }
     }
     log(out2);
 
@@ -101,14 +106,17 @@ export function readRawOutput(rawData: Uint8Array): RawResultType {
     return rawResult;
   } else {
     // Real
-    const out2 = new Array(param.varNum)
-      .fill(0)
-      .map(() => new Array(param.pointNum).fill(0)) as RealNumber[][];
-    //https://gregstoll.com/~gregstoll/floattohex/
-    //
-    out.forEach((e, i) => {
-      out2[i % param.varNum][Math.floor(i / param.varNum)] = e;
-    });
+    const out2: RealNumber[][] = [];
+    for (let v = 0; v < param.varNum; v++) {
+      out2.push(new Array(param.pointNum));
+    }
+
+    for (let p = 0; p < param.pointNum; p++) {
+      const base = p * param.varNum;
+      for (let v = 0; v < param.varNum; v++) {
+        out2[v][p] = out[base + v];
+      }
+    }
     //log(out2);
 
     const rawResult: RawResultType = {

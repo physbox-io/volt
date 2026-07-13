@@ -58,3 +58,21 @@ class PlaybackTicker {
 }
 
 export const playbackTicker = new PlaybackTicker();
+
+export function findIndexForTime(timePoints: number[], timeMs: number): number {
+  let low = 0;
+  let high = timePoints.length - 1;
+  if (timePoints.length === 0) return 0;
+  if (timeMs >= timePoints[high]) {
+    return high;
+  }
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (timePoints[mid] >= timeMs) {
+      high = mid;
+    } else {
+      low = mid + 1;
+    }
+  }
+  return low;
+}

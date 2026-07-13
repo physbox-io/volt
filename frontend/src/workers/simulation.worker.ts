@@ -6,7 +6,16 @@ let engine: Simulation | null = null;
 self.onmessage = async (evt: MessageEvent) => {
   const { type, id, netlist } = evt.data;
   
-  if (type === 'RUN') {
+  if (type === 'INIT') {
+    try {
+      if (!engine) {
+        engine = new Simulation();
+        await engine.start();
+      }
+    } catch (err: any) {
+      console.error("[SimulationWorker] error preloading simulation engine:", err);
+    }
+  } else if (type === 'RUN') {
     try {
       if (!engine) {
         engine = new Simulation();

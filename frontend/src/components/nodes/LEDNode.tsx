@@ -1,6 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import { useEffect, useRef, memo } from 'react';
-import { playbackTicker } from '../../utils/playbackTicker';
+import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
 
 export const LEDNode = memo(function LEDNode({ data, selected }: any) {
   const orientation = data.orientation || 'horizontal';
@@ -27,13 +27,7 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
     }
     
     const unsubscribe = playbackTicker.subscribe((elapsedMs) => {
-      let idx = 0;
-      for (let i = 0; i < data.time_points.length; i++) {
-        if (data.time_points[i] >= elapsedMs) {
-          idx = i;
-          break;
-        }
-      }
+      const idx = findIndexForTime(data.time_points, elapsedMs);
       
       const currentmA = (data.current_array[idx] || 0) * 1000;
       let brightness = 0;

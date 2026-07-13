@@ -42,7 +42,7 @@ export const timer555Blink: CircuitPreset = {
     { id: 'r2', type: 'resistor', position: { x: 250, y: 150 }, data: { label: '47kΩ', orientation: 'vertical' } },
     { id: 'c1', type: 'capacitor', position: { x: 250, y: 250 }, data: { label: '10µF', orientation: 'vertical' } },
     { id: 'r3', type: 'resistor', position: { x: 600, y: 200 }, data: { label: '330Ω' } },
-    { id: 'led1', type: 'led', position: { x: 800, y: 200 }, data: { label: 'LED', color: 'blue', v_drop: 2.0, max_current: 20 } },
+    { id: 'led1', type: 'led', position: { x: 800, y: 200 }, data: { label: 'LED', color: 'blue', v_drop: 2.0, max_current: 20, orientation: 'left' } },
     { id: 'g1', type: 'ground', position: { x: 100, y: 400 }, data: { label: 'GND' } },
   ],
   edges: [

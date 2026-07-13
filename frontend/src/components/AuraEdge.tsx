@@ -1,6 +1,6 @@
 import { BaseEdge, type EdgeProps, getSmoothStepPath, useReactFlow } from '@xyflow/react';
 import { useEffect, useState, createContext, useContext, useMemo, useCallback, memo } from 'react';
-import { playbackTicker } from '../utils/playbackTicker';
+import { playbackTicker, findIndexForTime } from '../utils/playbackTicker';
 
 export const EdgePathContext = createContext<{
   registerPath: (id: string, points: {x: number; y: number}[]) => void;
@@ -208,7 +208,10 @@ function getSchematicPath({
   targetX,
   targetY,
   targetPosition,
-  offset = 8,
+  sourceOffset = 24,
+  sourceIndex = 0,
+  targetIndex = 0,
+  minWireGap = 24,
 }: {
   sourceX: number;
   sourceY: number;
@@ -216,7 +219,10 @@ function getSchematicPath({
   targetX: number;
   targetY: number;
   targetPosition: string;
-  offset?: number;
+  sourceOffset?: number;
+  sourceIndex?: number;
+  targetIndex?: number;
+  minWireGap?: number;
 }) {
   // If aligned horizontally or vertically, return straight line
   if (sourceX === targetX && (sourcePosition === 'top' || sourcePosition === 'bottom') && (targetPosition === 'top' || targetPosition === 'bottom')) {
@@ -234,6 +240,10 @@ function getSchematicPath({
     const exitDir = sourcePosition === 'bottom' ? 1 : -1;
     if ((targetY - sourceY) * exitDir > 0) {
       return `M ${sourceX} ${sourceY} L ${sourceX} ${targetY} L ${targetX} ${targetY}`;
+    } else {
+      const exitY = sourceY + exitDir * sourceOffset;
+      const midX = (sourceX + targetX) / 2 + (sourceIndex - targetIndex) * minWireGap;
+      return `M ${sourceX} ${sourceY} L ${sourceX} ${exitY} L ${midX} ${exitY} L ${midX} ${targetY} L ${targetX} ${targetY}`;
     }
   }
 
@@ -241,6 +251,10 @@ function getSchematicPath({
     const exitDir = sourcePosition === 'right' ? 1 : -1;
     if ((targetX - sourceX) * exitDir > 0) {
       return `M ${sourceX} ${sourceY} L ${targetX} ${sourceY} L ${targetX} ${targetY}`;
+    } else {
+      const exitX = sourceX + exitDir * sourceOffset;
+      const midY = (sourceY + targetY) / 2 + (sourceIndex - targetIndex) * minWireGap;
+      return `M ${sourceX} ${sourceY} L ${exitX} ${sourceY} L ${exitX} ${midY} L ${targetX} ${midY} L ${targetX} ${targetY}`;
     }
   }
 
@@ -253,7 +267,7 @@ function getSchematicPath({
     targetX,
     targetY,
     borderRadius: 0,
-    offset,
+    offset: sourceOffset,
   });
   return standardPath;
 }
@@ -311,37 +325,41 @@ function getOrthogonalPathThroughWaypoint(
   return path;
 }
 
-export const AuraEdge = memo(function AuraEdge({
-  id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  sourcePosition,
-  targetPosition,
-  data,
-  style = {},
-  markerEnd,
-  type,
-}: EdgeProps) {
-  const { setEdges, screenToFlowPosition, getViewport } = useReactFlow();
-  const defaultOffset = 4;
-  let dynamicOffset = defaultOffset;
+export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
+  const {
+    id,
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+    data,
+    style = {},
+    markerEnd,
+    type,
+    source,
+    target,
+  } = props;
+  const sourceHandle = (props as any).sourceHandleId || (props as any).sourceHandle;
+  const targetHandle = (props as any).targetHandleId || (props as any).targetHandle;
 
-  const isSourceVert = sourcePosition === 'top' || sourcePosition === 'bottom';
-  const isTargetVert = targetPosition === 'top' || targetPosition === 'bottom';
+  const { setEdges, screenToFlowPosition, getViewport, getEdges } = useReactFlow();
+  
+  // Calculate distinct index for overlapping/sharing terminals to prevent wire overlaps
+  const allEdges = getEdges();
+  
+  const sharingSource = allEdges
+    .filter(e => e.source === source && (e.sourceHandle === sourceHandle || (e as any).sourceHandleId === sourceHandle))
+    .map(e => e.id)
+    .sort();
+  const sourceIndex = Math.max(0, sharingSource.indexOf(id));
 
-  if (isSourceVert && isTargetVert) {
-    const distanceY = Math.abs(targetY - sourceY);
-    if (distanceY < 2 * defaultOffset) {
-      dynamicOffset = Math.max(2, Math.floor(distanceY / 2) - 1);
-    }
-  } else if (!isSourceVert && !isTargetVert) {
-    const distanceX = Math.abs(targetX - sourceX);
-    if (distanceX < 2 * defaultOffset) {
-      dynamicOffset = Math.max(2, Math.floor(distanceX / 2) - 1);
-    }
-  }
+  const sharingTarget = allEdges
+    .filter(e => e.target === target && (e.targetHandle === targetHandle || (e as any).targetHandleId === targetHandle))
+    .map(e => e.id)
+    .sort();
+  const targetIndex = Math.max(0, sharingTarget.indexOf(id));
 
   const waypoints: { x: number; y: number }[] = (data as any)?.waypoints || [];
   const [isDragging, setIsDragging] = useState(false);
@@ -358,6 +376,9 @@ export const AuraEdge = memo(function AuraEdge({
       waypoints[0]
     );
   } else {
+    const minWireGap = 24;
+    const sourceOffset = minWireGap + sourceIndex * minWireGap;
+
     edgePath = getSchematicPath({
       sourceX,
       sourceY,
@@ -365,7 +386,10 @@ export const AuraEdge = memo(function AuraEdge({
       targetPosition,
       targetX,
       targetY,
-      offset: dynamicOffset,
+      sourceOffset,
+      sourceIndex,
+      targetIndex,
+      minWireGap,
     });
   }
 
@@ -381,15 +405,7 @@ export const AuraEdge = memo(function AuraEdge({
     }
 
     const unsubscribe = playbackTicker.subscribe((elapsed) => {
-      // Find current at this time
-      let idx = 0;
-      for (let i = 0; i < timePoints.length; i++) {
-        if (timePoints[i] >= elapsed) {
-          idx = i;
-          break;
-        }
-      }
-
+      const idx = findIndexForTime(timePoints, elapsed);
       const I = Math.abs(currentArray[idx] || 0);
       setCurrent(I);
     });
