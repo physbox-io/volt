@@ -36,8 +36,8 @@ export function CurrentSourceNode({ data, selected }: any) {
         {isHorizontal ? (
           <>
             {/* Left & Right Leads */}
-            <path d="M -4 24 H 8" />
-            <path d="M 40 24 H 52" />
+            <path d="M -2 24 H 8" />
+            <path d="M 40 24 H 50" />
             {/* Circle */}
             <circle cx="24" cy="24" r="16" />
             {/* Arrow (current direction pointing right) */}
@@ -47,8 +47,8 @@ export function CurrentSourceNode({ data, selected }: any) {
         ) : (
           <>
             {/* Top & Bottom Leads */}
-            <path d="M 24 -4 V 8" />
-            <path d="M 24 40 V 52" />
+            <path d="M 24 -2 V 8" />
+            <path d="M 24 40 V 50" />
             {/* Circle */}
             <circle cx="24" cy="24" r="16" />
             {/* Arrow (current direction pointing up) */}

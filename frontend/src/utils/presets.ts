@@ -44,6 +44,7 @@ export const timer555Blink: CircuitPreset = {
     { id: 'r3', type: 'resistor', position: { x: 600, y: 200 }, data: { label: '330Ω' } },
     { id: 'led1', type: 'led', position: { x: 800, y: 200 }, data: { label: 'LED', color: 'blue', v_drop: 2.0, max_current: 20, orientation: 'left' } },
     { id: 'g1', type: 'ground', position: { x: 100, y: 400 }, data: { label: 'GND' } },
+    { id: 'g2', type: 'ground', position: { x: 250, y: 350 }, data: { label: 'GND' } },
   ],
   edges: [
     // Power
@@ -58,8 +59,8 @@ export const timer555Blink: CircuitPreset = {
     { id: 'e-r1-t7', source: 'r1', target: 't555', sourceHandle: 'out', targetHandle: '7', type: 'smoothstep' }, // DIS
     { id: 'e-r2-c1', source: 'r2', target: 'c1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-r2-t6', source: 'r2', target: 't555', sourceHandle: 'out', targetHandle: '6', type: 'smoothstep' }, // THR
-    { id: 'e-r2-t2', source: 'r2', target: 't555', sourceHandle: 'out', targetHandle: '2', type: 'smoothstep' }, // TRIG
-    { id: 'e-c1-g1', source: 'c1', target: 'g1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-c1-t2', source: 'c1', target: 't555', sourceHandle: 'in', targetHandle: '2', type: 'smoothstep' }, // TRIG (connected at R2/C1 junction)
+    { id: 'e-c1-g2', source: 'c1', target: 'g2', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
     
     // Output
     { id: 'e-t3-r3', source: 't555', target: 'r3', sourceHandle: '3', targetHandle: 'in', type: 'smoothstep' },

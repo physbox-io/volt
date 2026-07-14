@@ -6,10 +6,13 @@ export const EdgePathContext = createContext<{
   registerPath: (id: string, points: {x: number; y: number}[]) => void;
   unregisterPath: (id: string) => void;
   junctions: {x: number; y: number}[];
+  hoveredEdgeId: string | null;
+  setHoveredEdgeId: (id: string | null) => void;
 } | null>(null);
 
 export function EdgePathProvider({ children, edges = [] }: { children: React.ReactNode; edges?: any[] }) {
   const [paths, setPaths] = useState<Record<string, {x: number; y: number}[]>>({});
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
 
   const registerPath = useCallback((id: string, points: {x: number; y: number}[]) => {
     setPaths(prev => {
@@ -192,7 +195,13 @@ export function EdgePathProvider({ children, edges = [] }: { children: React.Rea
     return juncs;
   }, [paths, edges]);
 
-  const value = useMemo(() => ({ registerPath, unregisterPath, junctions }), [registerPath, unregisterPath, junctions]);
+  const value = useMemo(() => ({ 
+    registerPath, 
+    unregisterPath, 
+    junctions, 
+    hoveredEdgeId, 
+    setHoveredEdgeId 
+  }), [registerPath, unregisterPath, junctions, hoveredEdgeId]);
 
   return (
     <EdgePathContext.Provider value={value}>
@@ -201,7 +210,42 @@ export function EdgePathProvider({ children, edges = [] }: { children: React.Rea
   );
 }
 
-function getSchematicPath({
+export function getNodeDimensions(type: string, data: any) {
+  const orientation = data?.orientation || 'horizontal';
+  const isHorizontal = orientation === 'horizontal' || orientation === 'left';
+  
+  switch (type) {
+    case 'resistor':
+    case 'inductor':
+      return isHorizontal ? { width: 40, height: 32 } : { width: 32, height: 40 };
+    case 'capacitor':
+      return isHorizontal ? { width: 36, height: 32 } : { width: 32, height: 36 };
+    case 'diode':
+    case 'zener':
+      return isHorizontal ? { width: 36, height: 32 } : { width: 32, height: 36 };
+    case 'led':
+      return { width: 32, height: 32 };
+    case 'switch':
+      return isHorizontal ? { width: 48, height: 32 } : { width: 32, height: 48 };
+    case 'voltage':
+    case 'ground':
+      return { width: 24, height: 24 };
+    case 'timer555':
+    case 'dFlipFlop':
+      return { width: 128, height: 156 };
+    case 'potentiometer':
+      return { width: 48, height: 48 };
+    case 'transistorNPN':
+    case 'transistorPNP':
+      return { width: 48, height: 48 };
+    default:
+      return { width: 48, height: 32 };
+  }
+}
+
+
+
+export function getSchematicPath({
   sourceX,
   sourceY,
   sourcePosition,
@@ -209,9 +253,6 @@ function getSchematicPath({
   targetY,
   targetPosition,
   sourceOffset = 24,
-  sourceIndex = 0,
-  targetIndex = 0,
-  minWireGap = 24,
 }: {
   sourceX: number;
   sourceY: number;
@@ -220,46 +261,29 @@ function getSchematicPath({
   targetY: number;
   targetPosition: string;
   sourceOffset?: number;
-  sourceIndex?: number;
-  targetIndex?: number;
-  minWireGap?: number;
+  [key: string]: any;
 }) {
-  // If aligned horizontally or vertically, return straight line
-  if (sourceX === targetX && (sourcePosition === 'top' || sourcePosition === 'bottom') && (targetPosition === 'top' || targetPosition === 'bottom')) {
-    return `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
-  }
-  if (sourceY === targetY && (sourcePosition === 'left' || sourcePosition === 'right') && (targetPosition === 'left' || targetPosition === 'right')) {
-    return `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
-  }
-
-  // Otherwise, use a simple Manhattan layout for vertical-horizontal mixed connections
-  const isSourceVert = sourcePosition === 'top' || sourcePosition === 'bottom';
-  const isTargetVert = targetPosition === 'top' || targetPosition === 'bottom';
-
-  if (isSourceVert && !isTargetVert) {
-    const exitDir = sourcePosition === 'bottom' ? 1 : -1;
-    if ((targetY - sourceY) * exitDir > 0) {
-      return `M ${sourceX} ${sourceY} L ${sourceX} ${targetY} L ${targetX} ${targetY}`;
+  const dx = Math.abs(targetX - sourceX);
+  const dy = Math.abs(targetY - sourceY);
+  
+  // Calculate dynamic offset to prevent visual detours/turns when components are close
+  let offset = sourceOffset;
+  if (sourcePosition === 'left' || sourcePosition === 'right') {
+    if (targetPosition === 'left' || targetPosition === 'right') {
+      offset = Math.min(sourceOffset, dx / 2 - 4);
     } else {
-      const exitY = sourceY + exitDir * sourceOffset;
-      const midX = (sourceX + targetX) / 2 + (sourceIndex - targetIndex) * minWireGap;
-      return `M ${sourceX} ${sourceY} L ${sourceX} ${exitY} L ${midX} ${exitY} L ${midX} ${targetY} L ${targetX} ${targetY}`;
+      offset = Math.min(sourceOffset, dx - 4);
+    }
+  } else {
+    if (targetPosition === 'top' || targetPosition === 'bottom') {
+      offset = Math.min(sourceOffset, dy / 2 - 4);
+    } else {
+      offset = Math.min(sourceOffset, dy - 4);
     }
   }
+  offset = Math.max(4, offset);
 
-  if (!isSourceVert && isTargetVert) {
-    const exitDir = sourcePosition === 'right' ? 1 : -1;
-    if ((targetX - sourceX) * exitDir > 0) {
-      return `M ${sourceX} ${sourceY} L ${targetX} ${sourceY} L ${targetX} ${targetY}`;
-    } else {
-      const exitX = sourceX + exitDir * sourceOffset;
-      const midY = (sourceY + targetY) / 2 + (sourceIndex - targetIndex) * minWireGap;
-      return `M ${sourceX} ${sourceY} L ${exitX} ${sourceY} L ${exitX} ${midY} L ${targetX} ${midY} L ${targetX} ${targetY}`;
-    }
-  }
-
-  // Fallback to React Flow's standard smoothstep path
-  const [standardPath] = getSmoothStepPath({
+  const [path] = getSmoothStepPath({
     sourceX,
     sourceY,
     sourcePosition: sourcePosition as any,
@@ -267,9 +291,9 @@ function getSchematicPath({
     targetX,
     targetY,
     borderRadius: 0,
-    offset: sourceOffset,
+    offset,
   });
-  return standardPath;
+  return path;
 }
 
 function getOrthogonalPathThroughWaypoint(
@@ -344,10 +368,11 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
   const sourceHandle = (props as any).sourceHandleId || (props as any).sourceHandle;
   const targetHandle = (props as any).targetHandleId || (props as any).targetHandle;
 
-  const { setEdges, screenToFlowPosition, getViewport, getEdges } = useReactFlow();
+  const { setEdges, screenToFlowPosition, getViewport, getEdges, getNodes } = useReactFlow();
   
   // Calculate distinct index for overlapping/sharing terminals to prevent wire overlaps
   const allEdges = getEdges();
+  const allNodes = getNodes();
   
   const sharingSource = allEdges
     .filter(e => e.source === source && (e.sourceHandle === sourceHandle || (e as any).sourceHandleId === sourceHandle))
@@ -360,6 +385,76 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     .map(e => e.id)
     .sort();
   const targetIndex = Math.max(0, sharingTarget.indexOf(id));
+
+  const minWireGap = 24;
+
+  // Find the edge incoming to our source handle
+  const incomingEdge = allEdges.find(e =>
+    e.target === source &&
+    (e.targetHandle === sourceHandle || (e as any).targetHandleId === sourceHandle)
+  );
+
+  let sourceOffset = minWireGap;
+  if (incomingEdge) {
+    // Get the source and target node of the incoming edge to see if they are facing
+    const incSrcNode = allNodes.find(n => n.id === incomingEdge.source);
+    const incTgtNode = allNodes.find(n => n.id === incomingEdge.target);
+    if (incSrcNode && incTgtNode) {
+      const incSrcOrient = incSrcNode.data?.orientation || 'horizontal';
+      const incTgtOrient = incTgtNode.data?.orientation || 'horizontal';
+      const incSrcVert = incSrcNode.type === 'timer555' ? false : (incSrcOrient === 'vertical' || incSrcOrient === 'up');
+      const incTgtVert = incTgtNode.type === 'timer555' ? false : (incTgtOrient === 'vertical' || incTgtOrient === 'up');
+      
+      if (incSrcVert === incTgtVert) {
+        // Facing connection — get their actual handle coordinates
+        const getHandleCoord = (node: any, handleId: string) => {
+          const orientation = node.data?.orientation || 'horizontal';
+          const isLeft = orientation === 'left';
+          const isUp = orientation === 'up';
+          const isVertical = orientation === 'vertical' || isUp;
+          
+          const x = node.position.x;
+          const y = node.position.y;
+          const w = node.measured?.width || getNodeDimensions(node.type, node.data).width;
+          const h = node.measured?.height || getNodeDimensions(node.type, node.data).height;
+          
+          if (node.type === 'timer555') {
+            const row = parseInt(handleId);
+            if (row >= 1 && row <= 4) {
+              return { x: x, y: y + 26 + (row - 1) * 32 };
+            }
+            if (row >= 5 && row <= 8) {
+              const rightRow = 8 - row;
+              return { x: x + w, y: y + 26 + rightRow * 32 };
+            }
+          }
+          if (node.type === 'ground') return { x: x + w / 2, y: y };
+          if (node.type === 'voltage' || node.type === 'acvoltage') {
+            if (handleId === 'pos') return { x: x + w / 2, y: y };
+            if (handleId === 'neg') return { x: x + w / 2, y: y + h };
+          }
+          if (node.type === 'junction') return { x: x, y: y };
+          if (handleId === 'in') {
+            if (isVertical) return { x: x + w / 2, y: isUp ? y + h : y };
+            return { x: isLeft ? x + w : x, y: y + h / 2 };
+          }
+          if (handleId === 'out') {
+            if (isVertical) return { x: x + w / 2, y: isUp ? y : y + h };
+            return { x: isLeft ? x : x + w, y: y + h / 2 };
+          }
+          return { x: x + w / 2, y: y + h / 2 };
+        };
+        const pSrc = getHandleCoord(incSrcNode, incomingEdge.sourceHandle || 'out');
+        const pTgt = getHandleCoord(incTgtNode, incomingEdge.targetHandle || 'in');
+        
+        if (incSrcVert) {
+          sourceOffset = Math.abs(pSrc.y - pTgt.y) / 2;
+        } else {
+          sourceOffset = Math.abs(pSrc.x - pTgt.x) / 2;
+        }
+      }
+    }
+  }
 
   const waypoints: { x: number; y: number }[] = (data as any)?.waypoints || [];
   const [isDragging, setIsDragging] = useState(false);
@@ -376,8 +471,6 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
       waypoints[0]
     );
   } else {
-    const minWireGap = 24;
-    const sourceOffset = minWireGap + sourceIndex * minWireGap;
 
     edgePath = getSchematicPath({
       sourceX,
@@ -389,7 +482,11 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
       sourceOffset,
       sourceIndex,
       targetIndex,
-      minWireGap,
+      nodes: allNodes,
+      sourceId: source,
+      targetId: target,
+      edgeId: id,
+      allEdges,
     });
   }
 
@@ -436,46 +533,14 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     }
   }, [id, pointsKey, registerPath, unregisterPath]);
 
-  const myJunctions = useMemo(() => {
-    if (!context) return [];
-    
-    // Convert current edge points to segments
-    const segments: { p1: {x: number; y: number}; p2: {x: number; y: number} }[] = [];
-    for (let i = 0; i < points.length - 1; i++) {
-      segments.push({ p1: points[i], p2: points[i + 1] });
-    }
-
-    // Filter junctions that lie on any of our segments
-    return context.junctions.filter(j => {
-      return segments.some(s => {
-        const isHoriz = Math.abs(s.p1.y - s.p2.y) < 3;
-        const isVert = Math.abs(s.p1.x - s.p2.x) < 3;
-        if (isHoriz) {
-          const minY = Math.min(s.p1.y, s.p2.y);
-          const minX = Math.min(s.p1.x, s.p2.x);
-          const maxX = Math.max(s.p1.x, s.p2.x);
-          return Math.abs(j.y - minY) < 3 && j.x >= minX - 3 && j.x <= maxX + 3;
-        } else if (isVert) {
-          const minX = Math.min(s.p1.x, s.p2.x);
-          const minY = Math.min(s.p1.y, s.p2.y);
-          const maxY = Math.max(s.p1.y, s.p2.y);
-          return Math.abs(j.x - minX) < 3 && j.y >= minY - 3 && j.y <= maxY + 3;
-        }
-        return false;
-      });
-    });
-  }, [points, context]);
+  const myJunctions: {x: number; y: number}[] = [];
 
   const isAuraEnabled = type === 'aura';
   const auraClass = isAuraEnabled
     ? (current > 0.004 ? 'edge-aura' : (current > 0.0001 ? 'edge-aura-faint' : ''))
     : '';
 
-  const strokeColor = auraClass === 'edge-aura'
-    ? '#fbbf24'
-    : auraClass === 'edge-aura-faint'
-    ? '#fcd34d'
-    : (style?.stroke as string) || '#555';
+  const isHovered = context?.hoveredEdgeId === id;
 
   const handleWireMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -546,7 +611,12 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
       <BaseEdge 
         path={edgePath} 
         markerEnd={markerEnd} 
-        style={style} 
+        style={isHovered ? { 
+          ...style, 
+          stroke: '#10b981', 
+          strokeWidth: 4,
+          transition: 'stroke 0.15s ease, stroke-width 0.15s ease'
+        } : style} 
         className={auraClass}
       />
       <path
@@ -564,7 +634,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
           cx={pt.x} 
           cy={pt.y} 
           r={2} 
-          fill={strokeColor}
+          fill={(style?.stroke as string) || '#555'}
           style={{ pointerEvents: 'none' }}
         />
       ))}

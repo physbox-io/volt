@@ -21,7 +21,7 @@ export function InductorNode({ id, data, selected }: any) {
   const name = data.name !== undefined ? data.name : getNodeDefaultName(id, 'inductor');
 
   return (
-    <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[24px] h-[48px]' : 'w-[48px] h-[24px]'}`}>
+    <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[24px] h-[40px]' : 'w-[40px] h-[24px]'}`}>
       <Handle 
         type="target" 
         position={isVertical ? (isUp ? Position.Bottom : Position.Top) : (isLeft ? Position.Right : Position.Left)} 
@@ -38,9 +38,9 @@ export function InductorNode({ id, data, selected }: any) {
       />
       
       <svg 
-        width={isVertical ? 24 : 48} 
-        height={isVertical ? 48 : 24} 
-        viewBox={isVertical ? "0 0 24 48" : "0 0 48 24"} 
+        width={isVertical ? 24 : 40} 
+        height={isVertical ? 40 : 24} 
+        viewBox={isVertical ? "0 0 24 40" : "0 0 40 24"} 
         fill="none" 
         stroke={selected ? '#3b82f6' : 'currentColor'} 
         strokeWidth="1.2" 
@@ -49,9 +49,9 @@ export function InductorNode({ id, data, selected }: any) {
         className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
       >
         {isVertical ? (
-          <path d="M 12 -8 V 12 A 4,4 0 0,1 12,20 A 4,4 0 0,1 12,28 A 4,4 0 0,1 12,36 V 56" />
+          <path d="M 12 -2 V 8 A 4,4 0 0,1 12,16 A 4,4 0 0,1 12,24 A 4,4 0 0,1 12,32 V 42" />
         ) : (
-          <path d="M -8 12 H 12 A 4,4 0 0,1 20,12 A 4,4 0 0,1 28,12 A 4,4 0 0,1 36,12 H 56" />
+          <path d="M -2 12 H 8 A 4,4 0 0,1 16,12 A 4,4 0 0,1 24,12 A 4,4 0 0,1 32,12 H 42" />
         )}
       </svg>
 

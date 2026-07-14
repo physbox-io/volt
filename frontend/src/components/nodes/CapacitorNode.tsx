@@ -21,7 +21,7 @@ export function CapacitorNode({ id, data, selected }: any) {
   const name = data.name !== undefined ? data.name : getNodeDefaultName(id, 'capacitor');
 
   return (
-    <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[24px] h-[48px]' : 'w-[48px] h-[24px]'}`}>
+    <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[24px] h-[36px]' : 'w-[36px] h-[24px]'}`}>
       <Handle 
         type="target" 
         position={isVertical ? (isUp ? Position.Bottom : Position.Top) : (isLeft ? Position.Right : Position.Left)} 
@@ -38,9 +38,9 @@ export function CapacitorNode({ id, data, selected }: any) {
       />
       
       <svg 
-        width={isVertical ? 24 : 48} 
-        height={isVertical ? 48 : 24} 
-        viewBox={isVertical ? "0 0 24 48" : "0 0 48 24"} 
+        width={isVertical ? 24 : 36} 
+        height={isVertical ? 36 : 24} 
+        viewBox={isVertical ? "0 0 24 36" : "0 0 36 24"} 
         fill="none" 
         stroke={selected ? '#3b82f6' : 'currentColor'} 
         strokeWidth="1.2" 
@@ -52,20 +52,20 @@ export function CapacitorNode({ id, data, selected }: any) {
         {isVertical ? (
           <>
             {/* Top lead and plate */}
-            <path d="M 12 -8 V 22" />
-            <path d="M 4 22 H 20" strokeWidth="2.0" />
+            <path d="M 12 -2 V 16" />
+            <path d="M 4 16 H 20" strokeWidth="2.0" />
             {/* Bottom plate and lead */}
-            <path d="M 4 26 H 20" strokeWidth="2.0" />
-            <path d="M 12 26 V 56" />
+            <path d="M 4 20 H 20" strokeWidth="2.0" />
+            <path d="M 12 20 V 38" />
           </>
         ) : (
           <>
             {/* Left lead and plate */}
-            <path d="M -8 12 H 22" />
-            <path d="M 22 4 V 20" strokeWidth="2.0" />
+            <path d="M -2 12 H 16" />
+            <path d="M 16 4 V 20" strokeWidth="2.0" />
             {/* Right plate and lead */}
-            <path d="M 26 4 V 20" strokeWidth="2.0" />
-            <path d="M 26 12 H 56" />
+            <path d="M 20 4 V 20" strokeWidth="2.0" />
+            <path d="M 20 12 H 38" />
           </>
         )}
       </svg>

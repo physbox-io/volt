@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, type DragEvent } from 'react';
+import { useState, useCallback, useRef, useEffect, useContext, type DragEvent } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -50,7 +50,7 @@ import { Play, Square, Trash2, Info, Menu, X, AlertCircle, Settings, Save, Downl
 import AICopilotPanel from './components/AICopilotPanel';
 import { playbackTicker, findIndexForTime } from './utils/playbackTicker';
 import { presets } from './utils/presets';
-import { AuraEdge, EdgePathProvider } from './components/AuraEdge';
+import { AuraEdge, EdgePathProvider, getNodeDimensions, getSchematicPath, EdgePathContext } from './components/AuraEdge';
 import { SettingsModal } from './components/SettingsModal';
 import { loadSettings, saveSettings, loadUserPresets, addUserPreset, removeUserPreset, nameToKey, type CircuitPreset } from './utils/storage';
 import { PotentiometerNode } from './components/nodes/PotentiometerNode';
@@ -59,6 +59,7 @@ import { CurrentSourceNode } from './components/nodes/CurrentSourceNode';
 import { TransformerNode } from './components/nodes/TransformerNode';
 import { DFlipFlopNode } from './components/nodes/DFlipFlopNode';
 import { LDRNode } from './components/nodes/LDRNode';
+import { JunctionNode } from './components/nodes/JunctionNode';
 import { datasheets } from './utils/datasheets';
 import { useMCPBridge } from './hooks/useMCPBridge';
 
@@ -106,7 +107,451 @@ const nodeTypes = {
   transformer: TransformerNode,
   dff: DFlipFlopNode,
   ldr: LDRNode,
+  junction: JunctionNode,
 };
+
+function buildPortAdjacency(nodes: Node[], edges: Edge[], skipEdgeId?: string): Record<string, string[]> {
+  const adj: Record<string, string[]> = {};
+  
+  const addAdjacency = (p1: string, p2: string) => {
+    if (!adj[p1]) adj[p1] = [];
+    if (!adj[p2]) adj[p2] = [];
+    adj[p1].push(p2);
+    adj[p2].push(p1);
+  };
+
+  // 1. Add edges
+  edges.forEach(edge => {
+    if (edge.id === skipEdgeId) return;
+    const p1 = `${edge.source}-${edge.sourceHandle || 'out'}`;
+    const p2 = `${edge.target}-${edge.targetHandle || 'in'}`;
+    addAdjacency(p1, p2);
+  });
+
+  // 2. Add internal short connections for junction nodes
+  nodes.forEach(node => {
+    if (node.type === 'junction') {
+      const p1 = `${node.id}-in`;
+      const p2 = `${node.id}-out`;
+      addAdjacency(p1, p2);
+    }
+  });
+
+  // 3. Connect all ground node ports to a virtual global ground port 'GND-global'
+  const groundNodes = nodes.filter(n => n.type === 'ground');
+  groundNodes.forEach(gNode => {
+    const p1 = `${gNode.id}-in`;
+    const p2 = `GND-global`;
+    addAdjacency(p1, p2);
+  });
+  
+  return adj;
+}
+
+function isPortConnected(
+  portA: string,
+  portB: string,
+  nodes: Node[],
+  edges: Edge[],
+  skipEdgeId?: string
+): boolean {
+  if (portA === portB) return true;
+  const adj = buildPortAdjacency(nodes, edges, skipEdgeId);
+  if (!adj[portA] || !adj[portB]) return false;
+
+  const visited = new Set<string>();
+  const queue = [portA];
+  visited.add(portA);
+
+  while (queue.length > 0) {
+    const curr = queue.shift()!;
+    if (curr === portB) return true;
+    const neighbors = adj[curr] || [];
+    for (const n of neighbors) {
+      if (!visited.has(n)) {
+        visited.add(n);
+        queue.push(n);
+      }
+    }
+  }
+  return false;
+}
+
+function simplifyEdges(nodes: Node[], edges: Edge[]): Edge[] {
+  const activeEdges = [...edges];
+  const keepEdges: Edge[] = [];
+  
+  for (const edge of edges) {
+    const portA = `${edge.source}-${edge.sourceHandle || 'out'}`;
+    const portB = `${edge.target}-${edge.targetHandle || 'in'}`;
+    
+    // Check if portA and portB are connected in the graph consisting of:
+    // keepEdges + remaining edges in edges (excluding the current edge)
+    const otherEdges = [
+      ...keepEdges,
+      ...activeEdges.filter(e => e.id !== edge.id && !keepEdges.includes(e))
+    ];
+    
+    if (isPortConnected(portA, portB, nodes, otherEdges)) {
+      // It is redundant! We don't add it to keepEdges, and we remove it from activeEdges
+      const idx = activeEdges.findIndex(e => e.id === edge.id);
+      if (idx !== -1) {
+        activeEdges.splice(idx, 1);
+      }
+    } else {
+      keepEdges.push(edge);
+    }
+  }
+  
+  return keepEdges;
+}
+
+function mergeOverlappingNodesAndJunctions(nodes: Node[], edges: Edge[]): { nodes: Node[], edges: Edge[] } {
+  let updatedNodes = [...nodes];
+  let updatedEdges = [...edges];
+
+  const getHandlesForNode = (node: Node): string[] => {
+    if (node.type === 'timer555') {
+      return ['1', '2', '3', '4', '5', '6', '7', '8'];
+    }
+    if (node.type === 'ground') {
+      return ['in'];
+    }
+    if (node.type === 'voltage' || node.type === 'acvoltage') {
+      return ['pos', 'neg'];
+    }
+    if (node.type === 'junction') {
+      return ['in', 'out'];
+    }
+    return ['in', 'out'];
+  };
+
+  const getHandleCoord = (node: any, handleId: string) => {
+    const orientation = node.data?.orientation || 'horizontal';
+    const isLeft = orientation === 'left';
+    const isUp = orientation === 'up';
+    const isVertical = orientation === 'vertical' || isUp;
+    
+    const x = node.position.x;
+    const y = node.position.y;
+    const w = node.measured?.width || getNodeDimensions(node.type, node.data).width;
+    const h = node.measured?.height || getNodeDimensions(node.type, node.data).height;
+    
+    if (node.type === 'timer555') {
+      const row = parseInt(handleId);
+      if (row >= 1 && row <= 4) {
+        return { x: x, y: y + 26 + (row - 1) * 32 };
+      }
+      if (row >= 5 && row <= 8) {
+        const rightRow = 8 - row;
+        return { x: x + w, y: y + 26 + rightRow * 32 };
+      }
+    }
+    
+    if (node.type === 'ground') {
+      return { x: x + w / 2, y: y };
+    }
+    
+    if (node.type === 'voltage' || node.type === 'acvoltage') {
+      if (handleId === 'pos') return { x: x + w / 2, y: y };
+      if (handleId === 'neg') return { x: x + w / 2, y: y + h };
+    }
+
+    if (node.type === 'junction') {
+      return { x: x, y: y };
+    }
+    
+    if (handleId === 'in') {
+      if (isVertical) {
+        return { x: x + w / 2, y: isUp ? y + h : y };
+      } else {
+        return { x: isLeft ? x + w : x, y: y + h / 2 };
+      }
+    }
+    if (handleId === 'out') {
+      if (isVertical) {
+        return { x: x + w / 2, y: isUp ? y : y + h };
+      } else {
+        return { x: isLeft ? x : x + w, y: y + h / 2 };
+      }
+    }
+    
+    return { x: x + w / 2, y: y + h / 2 };
+  };
+
+  // Find all junctions
+  const junctions = updatedNodes.filter(n => n.type === 'junction');
+  
+  for (const junc of junctions) {
+    // Check if it's close to another junction
+    const otherJunc = updatedNodes.find(n => n.type === 'junction' && n.id !== junc.id && 
+      Math.hypot(n.position.x - junc.position.x, n.position.y - junc.position.y) < 12
+    );
+    
+    if (otherJunc) {
+      // Merge junc into otherJunc
+      updatedEdges = updatedEdges.map(edge => {
+        let updated = { ...edge };
+        if (edge.source === junc.id) {
+          updated.source = otherJunc.id;
+          updated.sourceHandle = 'out';
+        }
+        if (edge.target === junc.id) {
+          updated.target = otherJunc.id;
+          updated.targetHandle = 'in';
+        }
+        return updated;
+      }).filter(edge => {
+        return edge.source !== edge.target;
+      });
+      
+      updatedNodes = updatedNodes.filter(n => n.id !== junc.id);
+      continue;
+    }
+
+    // Check if it's close to a non-junction component handle
+    let mergedToHandle = false;
+    for (const node of updatedNodes) {
+      if (node.type === 'junction') continue;
+      const handles = getHandlesForNode(node);
+      for (const handle of handles) {
+        const coord = getHandleCoord(node, handle);
+        if (Math.hypot(coord.x - junc.position.x, coord.y - junc.position.y) < 12) {
+          // Merge junction junc into this handle
+          updatedEdges = updatedEdges.map(edge => {
+            let updated = { ...edge };
+            if (edge.source === junc.id) {
+              updated.source = node.id;
+              updated.sourceHandle = handle;
+            }
+            if (edge.target === junc.id) {
+              updated.target = node.id;
+              updated.targetHandle = handle;
+            }
+            return updated;
+          }).filter(edge => {
+            return edge.source !== edge.target;
+          });
+          
+          updatedNodes = updatedNodes.filter(n => n.id !== junc.id);
+          mergedToHandle = true;
+          break;
+        }
+      }
+      if (mergedToHandle) break;
+    }
+  }
+
+  // Also check if any ground node is close to another ground node
+  const grounds = updatedNodes.filter(n => n.type === 'ground');
+  for (const g of grounds) {
+    const otherG = updatedNodes.find(n => n.type === 'ground' && n.id !== g.id && 
+      Math.hypot(n.position.x - g.position.x, n.position.y - g.position.y) < 12
+    );
+    if (otherG) {
+      updatedEdges = updatedEdges.map(edge => {
+        let updated = { ...edge };
+        if (edge.source === g.id) {
+          updated.source = otherG.id;
+        }
+        if (edge.target === g.id) {
+          updated.target = otherG.id;
+        }
+        return updated;
+      }).filter(edge => edge.source !== edge.target);
+      
+      updatedNodes = updatedNodes.filter(n => n.id !== g.id);
+    }
+  }
+
+  return { nodes: updatedNodes, edges: updatedEdges };
+}
+
+function splitEdgesOnOverlappingNodes(nodes: Node[], edges: Edge[]): { nodes: Node[], edges: Edge[] } {
+  let updatedNodes = [...nodes];
+  let updatedEdges = [...edges];
+
+  const getHandleCoord = (node: any, handleId: string) => {
+    const orientation = node.data?.orientation || 'horizontal';
+    const isLeft = orientation === 'left';
+    const isUp = orientation === 'up';
+    const isVertical = orientation === 'vertical' || isUp;
+    
+    const x = node.position.x;
+    const y = node.position.y;
+    const w = node.measured?.width || getNodeDimensions(node.type, node.data).width;
+    const h = node.measured?.height || getNodeDimensions(node.type, node.data).height;
+    
+    if (node.type === 'timer555') {
+      const row = parseInt(handleId);
+      if (row >= 1 && row <= 4) {
+        return { x: x, y: y + 26 + (row - 1) * 32 };
+      }
+      if (row >= 5 && row <= 8) {
+        const rightRow = 8 - row;
+        return { x: x + w, y: y + 26 + rightRow * 32 };
+      }
+    }
+    
+    if (node.type === 'ground') {
+      return { x: x + w / 2, y: y };
+    }
+    
+    if (node.type === 'voltage' || node.type === 'acvoltage') {
+      if (handleId === 'pos') return { x: x + w / 2, y: y };
+      if (handleId === 'neg') return { x: x + w / 2, y: y + h };
+    }
+
+    if (node.type === 'junction') {
+      return { x: x, y: y };
+    }
+    
+    if (handleId === 'in') {
+      if (isVertical) {
+        return { x: x + w / 2, y: isUp ? y + h : y };
+      } else {
+        return { x: isLeft ? x + w : x, y: y + h / 2 };
+      }
+    }
+    if (handleId === 'out') {
+      if (isVertical) {
+        return { x: x + w / 2, y: isUp ? y : y + h };
+      } else {
+        return { x: isLeft ? x : x + w, y: y + h / 2 };
+      }
+    }
+    
+    return { x: x + w / 2, y: y + h / 2 };
+  };
+
+  const connectableNodes = updatedNodes.filter(n => n.type === 'junction' || n.type === 'ground');
+
+  for (const node of connectableNodes) {
+    const nodeX = node.position.x;
+    const nodeY = node.position.y;
+
+    let matchedEdge: Edge | null = null;
+    const maxDist = 8; // 8px tolerance
+
+    for (const edge of updatedEdges) {
+      if (edge.source === node.id || edge.target === node.id) {
+        continue;
+      }
+
+      const srcNode = updatedNodes.find(n => n.id === edge.source);
+      const tgtNode = updatedNodes.find(n => n.id === edge.target);
+      if (!srcNode || !tgtNode) continue;
+
+      const pSrc = getHandleCoord(srcNode, edge.sourceHandle || 'out');
+      const pTgt = getHandleCoord(tgtNode, edge.targetHandle || 'in');
+
+      const pathD = getSchematicPath({
+        sourceX: pSrc.x,
+        sourceY: pSrc.y,
+        sourcePosition: srcNode.type === 'timer555' ? 'left' : (srcNode.data?.orientation === 'vertical' ? 'bottom' : 'right'),
+        targetX: pTgt.x,
+        targetY: pTgt.y,
+        targetPosition: tgtNode.type === 'timer555' ? 'left' : (tgtNode.data?.orientation === 'vertical' ? 'top' : 'left'),
+        nodes: updatedNodes,
+        sourceId: edge.source,
+        targetId: edge.target,
+      });
+
+      const points: { x: number; y: number }[] = [];
+      const matches = pathD.matchAll(/[ML]\s*(-?\d+\.?\d*)\s*(-?\d+\.?\d*)/g);
+      for (const match of matches) {
+        points.push({ x: parseFloat(match[1]), y: parseFloat(match[2]) });
+      }
+
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        
+        if (Math.abs(p1.y - p2.y) < 1) { // Horizontal segment
+          const minX = Math.min(p1.x, p2.x);
+          const maxX = Math.max(p1.x, p2.x);
+          if (nodeX >= minX - 4 && nodeX <= maxX + 4) {
+            const dist = Math.abs(nodeY - p1.y);
+            if (dist < maxDist) {
+              matchedEdge = edge;
+              break;
+            }
+          }
+        }
+        else if (Math.abs(p1.x - p2.x) < 1) { // Vertical segment
+          const minY = Math.min(p1.y, p2.y);
+          const maxY = Math.max(p1.y, p2.y);
+          if (nodeY >= minY - 4 && nodeY <= maxY + 4) {
+            const dist = Math.abs(nodeX - p1.x);
+            if (dist < maxDist) {
+              matchedEdge = edge;
+              break;
+            }
+          }
+        }
+      }
+
+      if (matchedEdge) break;
+    }
+
+    if (matchedEdge) {
+      const edgeType = matchedEdge.type || 'aura';
+
+      if (node.type === 'junction') {
+        const edgeToJunction: Edge = {
+          id: `e-${matchedEdge.source}-${node.id}-${Date.now()}`,
+          source: matchedEdge.source,
+          sourceHandle: matchedEdge.sourceHandle,
+          target: node.id,
+          targetHandle: 'in',
+          type: edgeType,
+        };
+
+        const edgeFromJunction: Edge = {
+          id: `e-${node.id}-${matchedEdge.target}-${Date.now()}`,
+          source: node.id,
+          sourceHandle: 'out',
+          target: matchedEdge.target,
+          targetHandle: matchedEdge.targetHandle,
+          type: edgeType,
+        };
+
+        updatedEdges = [
+          ...updatedEdges.filter(e => e.id !== matchedEdge.id),
+          edgeToJunction,
+          edgeFromJunction
+        ];
+      } 
+      else if (node.type === 'ground') {
+        const edgeToGround: Edge = {
+          id: `e-${matchedEdge.source}-${node.id}-${Date.now()}`,
+          source: matchedEdge.source,
+          sourceHandle: matchedEdge.sourceHandle,
+          target: node.id,
+          targetHandle: 'in',
+          type: edgeType,
+        };
+
+        const edgeFromGround: Edge = {
+          id: `e-${node.id}-${matchedEdge.target}-${Date.now()}`,
+          source: node.id,
+          sourceHandle: 'in',
+          target: matchedEdge.target,
+          targetHandle: matchedEdge.targetHandle,
+          type: edgeType,
+        };
+
+        updatedEdges = [
+          ...updatedEdges.filter(e => e.id !== matchedEdge.id),
+          edgeToGround,
+          edgeFromGround
+        ];
+      }
+    }
+  }
+
+  return { nodes: updatedNodes, edges: updatedEdges };
+}
 
 // Simple robust markdown parser to convert basic markdown text to safe HTML
 // Markdown parser for note cards
@@ -1523,11 +1968,414 @@ function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSi
 }
 
 function FlowArea({ 
-  nodes, edges, setNodes, onNodesChange, onEdgesChange, onConnect, onNodeClick,
+  nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange, onConnect, onNodeClick,
   probeMode, onEdgeProbe
 }: any) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getViewport } = useReactFlow();
+
+  const context = useContext(EdgePathContext);
+  const setHoveredEdgeId = context?.setHoveredEdgeId;
+
+  const [previewJunction, setPreviewJunction] = useState<{ x: number; y: number } | null>(null);
+  const connectingStartRef = useRef<{ nodeId: string; handleId: string; handleType: string } | null>(null);
+
+  const onConnectStart = useCallback((_event: any, { nodeId, handleId, handleType }: any) => {
+    connectingStartRef.current = { nodeId, handleId, handleType };
+  }, []);
+
+  const handleMouseMove = useCallback((event: React.MouseEvent) => {
+    if (!connectingStartRef.current || !setHoveredEdgeId) {
+      if (previewJunction) setPreviewJunction(null);
+      if (context?.hoveredEdgeId) setHoveredEdgeId(null);
+      return;
+    }
+
+    const dropPoint = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    const snapX = Math.round(dropPoint.x / 8) * 8;
+    const snapY = Math.round(dropPoint.y / 8) * 8;
+
+    let matchedEdge: any = null;
+    let projectionPoint = { x: snapX, y: snapY };
+    const maxDist = 16; // 16px search radius
+
+    for (const edge of edges) {
+      // Skip if edge is connected to the starting node
+      if (edge.source === connectingStartRef.current.nodeId || edge.target === connectingStartRef.current.nodeId) {
+        continue;
+      }
+
+      // Compute edge path points
+      const srcNode = nodes.find((n: any) => n.id === edge.source);
+      const tgtNode = nodes.find((n: any) => n.id === edge.target);
+      if (!srcNode || !tgtNode) continue;
+
+      // Estimate handle positions based on position and dimensions
+      const getHandleCoord = (node: any, handleId: string) => {
+        const orientation = node.data?.orientation || 'horizontal';
+        const isLeft = orientation === 'left';
+        const isUp = orientation === 'up';
+        const isVertical = orientation === 'vertical' || isUp;
+        
+        const x = node.position.x;
+        const y = node.position.y;
+        const w = node.measured?.width || getNodeDimensions(node.type, node.data).width;
+        const h = node.measured?.height || getNodeDimensions(node.type, node.data).height;
+        
+        if (node.type === 'timer555') {
+          const row = parseInt(handleId);
+          if (row >= 1 && row <= 4) {
+            return { x: x, y: y + 26 + (row - 1) * 32 };
+          }
+          if (row >= 5 && row <= 8) {
+            const rightRow = 8 - row;
+            return { x: x + w, y: y + 26 + rightRow * 32 };
+          }
+        }
+        
+        if (node.type === 'ground') {
+          return { x: x + w / 2, y: y };
+        }
+        
+        if (node.type === 'voltage' || node.type === 'acvoltage') {
+          if (handleId === 'pos') return { x: x + w / 2, y: y };
+          if (handleId === 'neg') return { x: x + w / 2, y: y + h };
+        }
+
+        if (node.type === 'junction') {
+          return { x: x, y: y };
+        }
+        
+        if (handleId === 'in') {
+          if (isVertical) {
+            return { x: x + w / 2, y: isUp ? y + h : y };
+          } else {
+            return { x: isLeft ? x + w : x, y: y + h / 2 };
+          }
+        }
+        if (handleId === 'out') {
+          if (isVertical) {
+            return { x: x + w / 2, y: isUp ? y : y + h };
+          } else {
+            return { x: isLeft ? x : x + w, y: y + h / 2 };
+          }
+        }
+        
+        return { x: x + w / 2, y: y + h / 2 };
+      };
+
+      const sourceHandle = edge.sourceHandle || 'out';
+      const targetHandle = edge.targetHandle || 'in';
+      const pSrc = getHandleCoord(srcNode, sourceHandle);
+      const pTgt = getHandleCoord(tgtNode, targetHandle);
+
+      const pathD = getSchematicPath({
+        sourceX: pSrc.x,
+        sourceY: pSrc.y,
+        sourcePosition: srcNode.type === 'timer555' ? 'left' : (srcNode.data?.orientation === 'vertical' ? 'bottom' : 'right'),
+        targetX: pTgt.x,
+        targetY: pTgt.y,
+        targetPosition: tgtNode.type === 'timer555' ? 'left' : (tgtNode.data?.orientation === 'vertical' ? 'top' : 'left'),
+        nodes,
+        sourceId: edge.source,
+        targetId: edge.target,
+      });
+
+      // Parse points
+      const points: { x: number; y: number }[] = [];
+      const matches = pathD.matchAll(/[ML]\s*(-?\d+\.?\d*)\s*(-?\d+\.?\d*)/g);
+      for (const match of matches) {
+        points.push({ x: parseFloat(match[1]), y: parseFloat(match[2]) });
+      }
+
+      // Check segments
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        
+        if (Math.abs(p1.y - p2.y) < 1) {
+          const minX = Math.min(p1.x, p2.x);
+          const maxX = Math.max(p1.x, p2.x);
+          if (dropPoint.x >= minX - 4 && dropPoint.x <= maxX + 4) {
+            const dist = Math.abs(dropPoint.y - p1.y);
+            if (dist < maxDist) {
+              matchedEdge = edge;
+              projectionPoint = { x: snapX, y: Math.round(p1.y / 8) * 8 };
+              break;
+            }
+          }
+        }
+        else if (Math.abs(p1.x - p2.x) < 1) {
+          const minY = Math.min(p1.y, p2.y);
+          const maxY = Math.max(p1.y, p2.y);
+          if (dropPoint.y >= minY - 4 && dropPoint.y <= maxY + 4) {
+            const dist = Math.abs(dropPoint.x - p1.x);
+            if (dist < maxDist) {
+              matchedEdge = edge;
+              projectionPoint = { x: Math.round(p1.x / 8) * 8, y: snapY };
+              break;
+            }
+          }
+        }
+      }
+
+      if (matchedEdge) break;
+    }
+
+    if (matchedEdge) {
+      setPreviewJunction(projectionPoint);
+      setHoveredEdgeId(matchedEdge.id);
+    } else {
+      setPreviewJunction(null);
+      setHoveredEdgeId(null);
+    }
+  }, [nodes, edges, screenToFlowPosition, setHoveredEdgeId, context?.hoveredEdgeId, previewJunction]);
+
+  const onConnectEnd = useCallback((event: any) => {
+    if (setHoveredEdgeId) setHoveredEdgeId(null);
+    setPreviewJunction(null);
+
+    if (!connectingStartRef.current) return;
+
+    // Get drop point screen coordinates
+    let clientX = 0;
+    let clientY = 0;
+    if (event.clientX !== undefined) {
+      clientX = event.clientX;
+      clientY = event.clientY;
+    } else if (event.changedTouches && event.changedTouches.length > 0) {
+      clientX = event.changedTouches[0].clientX;
+      clientY = event.changedTouches[0].clientY;
+    } else {
+      connectingStartRef.current = null;
+      return;
+    }
+
+    // Check if clientX, clientY are within ReactFlow bounds
+    if (!reactFlowWrapper.current) {
+      connectingStartRef.current = null;
+      return;
+    }
+
+    // Check if the drop target was a react-flow pane or canvas, or if it dropped on a handle/node
+    const target = event.target as HTMLElement;
+    const isPaneOrEdge = target.classList.contains('react-flow__pane') || 
+                         target.classList.contains('react-flow__edge') || 
+                         target.classList.contains('react-flow__edge-path') ||
+                         target.closest('.react-flow__edge');
+                         
+    if (!isPaneOrEdge) {
+      connectingStartRef.current = null;
+      return;
+    }
+
+    // Convert drop coordinates to flow coordinates
+    const dropPoint = screenToFlowPosition({ x: clientX, y: clientY });
+
+    // Snap to grid of 8px to align with grid channels
+    const snapX = Math.round(dropPoint.x / 8) * 8;
+    const snapY = Math.round(dropPoint.y / 8) * 8;
+
+    // Find if the drop point is close to any existing edge
+    let matchedEdge: any = null;
+    let projectionPoint = { x: snapX, y: snapY };
+    const maxDist = 16; // 16px search radius
+
+    for (const edge of edges) {
+      // Skip if edge is connected to the starting node
+      if (edge.source === connectingStartRef.current.nodeId || edge.target === connectingStartRef.current.nodeId) {
+        continue;
+      }
+
+      // Compute edge path points
+      const srcNode = nodes.find((n: any) => n.id === edge.source);
+      const tgtNode = nodes.find((n: any) => n.id === edge.target);
+      if (!srcNode || !tgtNode) continue;
+
+      // Estimate handle positions based on position and dimensions
+      const getHandleCoord = (node: any, handleId: string) => {
+        const orientation = node.data?.orientation || 'horizontal';
+        const isLeft = orientation === 'left';
+        const isUp = orientation === 'up';
+        const isVertical = orientation === 'vertical' || isUp;
+        
+        const x = node.position.x;
+        const y = node.position.y;
+        const w = node.measured?.width || getNodeDimensions(node.type, node.data).width;
+        const h = node.measured?.height || getNodeDimensions(node.type, node.data).height;
+        
+        if (node.type === 'timer555') {
+          const row = parseInt(handleId);
+          if (row >= 1 && row <= 4) {
+            return { x: x, y: y + 26 + (row - 1) * 32 };
+          }
+          if (row >= 5 && row <= 8) {
+            const rightRow = 8 - row;
+            return { x: x + w, y: y + 26 + rightRow * 32 };
+          }
+        }
+        
+        if (node.type === 'ground') {
+          return { x: x + w / 2, y: y };
+        }
+        
+        if (node.type === 'voltage' || node.type === 'acvoltage') {
+          if (handleId === 'pos') return { x: x + w / 2, y: y };
+          if (handleId === 'neg') return { x: x + w / 2, y: y + h };
+        }
+
+        if (node.type === 'junction') {
+          return { x: x, y: y };
+        }
+        
+        if (handleId === 'in') {
+          if (isVertical) {
+            return { x: x + w / 2, y: isUp ? y + h : y };
+          } else {
+            return { x: isLeft ? x + w : x, y: y + h / 2 };
+          }
+        }
+        if (handleId === 'out') {
+          if (isVertical) {
+            return { x: x + w / 2, y: isUp ? y : y + h };
+          } else {
+            return { x: isLeft ? x : x + w, y: y + h / 2 };
+          }
+        }
+        
+        return { x: x + w / 2, y: y + h / 2 };
+      };
+
+      const sourceHandle = edge.sourceHandle || 'out';
+      const targetHandle = edge.targetHandle || 'in';
+      const pSrc = getHandleCoord(srcNode, sourceHandle);
+      const pTgt = getHandleCoord(tgtNode, targetHandle);
+
+      const pathD = getSchematicPath({
+        sourceX: pSrc.x,
+        sourceY: pSrc.y,
+        sourcePosition: srcNode.type === 'timer555' ? 'left' : (srcNode.data?.orientation === 'vertical' ? 'bottom' : 'right'),
+        targetX: pTgt.x,
+        targetY: pTgt.y,
+        targetPosition: tgtNode.type === 'timer555' ? 'left' : (tgtNode.data?.orientation === 'vertical' ? 'top' : 'left'),
+        nodes,
+        sourceId: edge.source,
+        targetId: edge.target,
+      });
+
+      // Parse points
+      const points: { x: number; y: number }[] = [];
+      const matches = pathD.matchAll(/[ML]\s*(-?\d+\.?\d*)\s*(-?\d+\.?\d*)/g);
+      for (const match of matches) {
+        points.push({ x: parseFloat(match[1]), y: parseFloat(match[2]) });
+      }
+
+      // Check segments
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        
+        if (Math.abs(p1.y - p2.y) < 1) {
+          const minX = Math.min(p1.x, p2.x);
+          const maxX = Math.max(p1.x, p2.x);
+          if (dropPoint.x >= minX - 4 && dropPoint.x <= maxX + 4) {
+            const dist = Math.abs(dropPoint.y - p1.y);
+            if (dist < maxDist) {
+              matchedEdge = edge;
+              projectionPoint = { x: snapX, y: Math.round(p1.y / 8) * 8 };
+              break;
+            }
+          }
+        }
+        else if (Math.abs(p1.x - p2.x) < 1) {
+          const minY = Math.min(p1.y, p2.y);
+          const maxY = Math.max(p1.y, p2.y);
+          if (dropPoint.y >= minY - 4 && dropPoint.y <= maxY + 4) {
+            const dist = Math.abs(dropPoint.x - p1.x);
+            if (dist < maxDist) {
+              matchedEdge = edge;
+              projectionPoint = { x: Math.round(p1.x / 8) * 8, y: snapY };
+              break;
+            }
+          }
+        }
+      }
+
+      if (matchedEdge) break;
+    }
+
+    if (matchedEdge) {
+      // Check for redundancy first
+      const draggedNodeId = connectingStartRef.current.nodeId;
+      const draggedHandleId = connectingStartRef.current.handleId;
+      const draggedHandleType = connectingStartRef.current.handleType;
+      const draggedPort = `${draggedNodeId}-${draggedHandleId || (draggedHandleType === 'source' ? 'out' : 'in')}`;
+      const sourcePortOfEdge = `${matchedEdge.source}-${matchedEdge.sourceHandle || 'out'}`;
+      if (isPortConnected(draggedPort, sourcePortOfEdge, nodes, edges)) {
+        alert("Connection is redundant (these points are already electrically connected).");
+        connectingStartRef.current = null;
+        return;
+      }
+
+      // Split the matchedEdge by creating a new junction node
+      const junctionId = `junction-${Date.now()}`;
+      const newJunctionNode: any = {
+        id: junctionId,
+        type: 'junction',
+        position: projectionPoint,
+        data: {},
+      };
+
+      const edgeType = matchedEdge.type || 'aura';
+
+      // Create new edges — preserve original edge type and style
+      const edgeToJunction: any = {
+        id: `e-${matchedEdge.source}-${junctionId}`,
+        source: matchedEdge.source,
+        sourceHandle: matchedEdge.sourceHandle,
+        target: junctionId,
+        targetHandle: 'in',
+        type: edgeType,
+      };
+
+      const edgeFromJunction: any = {
+        id: `e-${junctionId}-${matchedEdge.target}`,
+        source: junctionId,
+        sourceHandle: 'out',
+        target: matchedEdge.target,
+        targetHandle: matchedEdge.targetHandle,
+        type: edgeType,
+      };
+
+      // Edge from the dragged handle to junction
+      const newConnectionEdge: any = draggedHandleType === 'source' ? {
+        id: `e-${draggedNodeId}-${junctionId}`,
+        source: draggedNodeId,
+        sourceHandle: draggedHandleId,
+        target: junctionId,
+        targetHandle: 'in',
+        type: edgeType,
+      } : {
+        id: `e-${junctionId}-${draggedNodeId}`,
+        source: junctionId,
+        sourceHandle: 'out',
+        target: draggedNodeId,
+        targetHandle: draggedHandleId,
+        type: edgeType,
+      };
+
+      // Update state
+      setNodes((nds: any[]) => [...nds, newJunctionNode]);
+      setEdges((eds: any[]) => [
+        ...eds.filter(e => e.id !== matchedEdge.id),
+        edgeToJunction,
+        edgeFromJunction,
+        newConnectionEdge
+      ]);
+    }
+
+    connectingStartRef.current = null;
+  }, [nodes, edges, setNodes, setEdges, screenToFlowPosition, setHoveredEdgeId]);
 
   const onDragOver = useCallback((event: DragEvent) => {
     event.preventDefault();
@@ -1558,17 +2406,27 @@ function FlowArea({
         initialData = { label: 'DFF' };
       }
 
-      const newNode: Node = {
+      const newNode: any = {
         id: `${type}-${nodeId++}`,
         type,
         position,
         data: initialData,
       };
 
-      setNodes((nds: Node[]) => nds.concat(newNode));
+      setNodes((nds: any[]) => nds.concat(newNode));
     },
     [screenToFlowPosition, setNodes]
   );
+
+  const onNodeDragStop = useCallback((_event: any, draggedNode: Node) => {
+    const updatedNodes = nodes.map(n => n.id === draggedNode.id ? draggedNode : n);
+    const merged = mergeOverlappingNodesAndJunctions(updatedNodes, edges);
+    const split = splitEdgesOnOverlappingNodes(merged.nodes, merged.edges);
+    const simplifiedEdges = simplifyEdges(split.nodes, split.edges);
+    
+    setNodes(split.nodes);
+    setEdges(simplifiedEdges);
+  }, [nodes, edges, setNodes, setEdges]);
 
   const handleEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
     if (probeMode && onEdgeProbe) {
@@ -1576,14 +2434,25 @@ function FlowArea({
     }
   }, [probeMode, onEdgeProbe]);
 
+  // Read viewport scale and offsets to position the preview dot overlay correctly
+  const { zoom, x: vpX, y: vpY } = getViewport();
+
   return (
-    <div className="flex-1 h-full" ref={reactFlowWrapper} style={probeMode ? { cursor: 'crosshair' } : undefined}>
+    <div 
+      className="flex-1 h-full relative" 
+      ref={reactFlowWrapper} 
+      style={probeMode ? { cursor: 'crosshair' } : undefined}
+      onMouseMove={handleMouseMove}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onConnectStart={onConnectStart}
+        onConnectEnd={onConnectEnd}
+        onNodeDragStop={onNodeDragStop}
         onDrop={onDrop}
         onDragOver={onDragOver}
         onNodeClick={onNodeClick}
@@ -1599,6 +2468,26 @@ function FlowArea({
         <Background color="#ccc" gap={8} />
         <Controls />
       </ReactFlow>
+
+      {/* Connection point drop preview dot */}
+      {previewJunction && (
+        <>
+          <div 
+            className="absolute w-4 h-4 rounded-full bg-emerald-500/40 animate-ping pointer-events-none z-50 -translate-x-1/2 -translate-y-1/2"
+            style={{
+              left: previewJunction.x * zoom + vpX,
+              top: previewJunction.y * zoom + vpY,
+            }}
+          />
+          <div 
+            className="absolute w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white shadow-md pointer-events-none z-50 -translate-x-1/2 -translate-y-1/2"
+            style={{
+              left: previewJunction.x * zoom + vpX,
+              top: previewJunction.y * zoom + vpY,
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -1896,8 +2785,16 @@ export default function App() {
   );
 
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
-    []
+    (params: Connection) => {
+      const sourcePort = `${params.source}-${params.sourceHandle || 'out'}`;
+      const targetPort = `${params.target}-${params.targetHandle || 'in'}`;
+      if (isPortConnected(sourcePort, targetPort, nodes, edges)) {
+        alert("Connection is redundant (these points are already electrically connected).");
+        return;
+      }
+      setEdges((eds) => addEdge(params, eds));
+    },
+    [nodes, edges]
   );
 
 
@@ -2697,7 +3594,7 @@ export default function App() {
           <ReactFlowProvider>
             <FlowArea 
             nodes={nodes} edges={edges} 
-            setNodes={setNodes}
+            setNodes={setNodes} setEdges={setEdges}
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
             onNodeClick={onNodeClick}
             probeMode={probeMode}

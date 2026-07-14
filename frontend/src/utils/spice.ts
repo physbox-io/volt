@@ -23,6 +23,17 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
   let netIdCounter = 1;
   const portToNet: Record<string, string> = {};
 
+  // Pre-populate junction nodes so in/out ports are electrically connected
+  nodes.forEach(node => {
+    if (node.type === 'junction') {
+      const portIn = `${node.id}-in`;
+      const portOut = `${node.id}-out`;
+      const netId = `N_junc_${node.id}`;
+      portToNet[portIn] = netId;
+      portToNet[portOut] = netId;
+    }
+  });
+
   // Initialize each edge connection as a net
   edges.forEach(edge => {
     const sourcePort = `${edge.source}-${edge.sourceHandle || 'out'}`;
@@ -445,7 +456,7 @@ S_SET 8 state 61 2 SMOD_ON
 S_RST state 1 6 5 SMOD_ON
 C1 state 1 100p
 * Add parallel resistor to guarantee DC convergence
-R4 state 1 100MEG
+R4 state 1 10G
 
 * Output buffer
 E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
@@ -453,8 +464,8 @@ E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
 * Discharge
 S_DIS 7 1 8 state SMOD_DIS
 
-.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=100MEG)
-.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=100MEG)
+.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
+.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
 .ENDS NE555
 `;
   }

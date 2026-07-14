@@ -39,8 +39,8 @@ export function SwitchNode({ data, selected }: any) {
         {isVertical ? (
           <>
             {/* Top & Bottom Leads */}
-            <path d="M 24 -4 V 20" />
-            <path d="M 24 44 V 68" />
+            <path d="M 24 -2 V 20" />
+            <path d="M 24 44 V 66" />
             {/* Contacts */}
             <circle cx="24" cy="20" r="2.5" fill="currentColor" stroke="none" />
             <circle cx="24" cy="44" r="2.5" fill="currentColor" stroke="none" />
@@ -57,8 +57,8 @@ export function SwitchNode({ data, selected }: any) {
         ) : (
           <>
             {/* Left and Right Leads */}
-            <path d="M -4 24 H 20" />
-            <path d="M 44 24 H 68" />
+            <path d="M -2 24 H 20" />
+            <path d="M 44 24 H 66" />
             {/* Contacts */}
             <circle cx="20" cy="24" r="2.5" fill="currentColor" stroke="none" />
             <circle cx="44" cy="24" r="2.5" fill="currentColor" stroke="none" />

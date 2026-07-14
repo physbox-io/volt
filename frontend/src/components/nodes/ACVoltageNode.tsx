@@ -35,14 +35,14 @@ export function ACVoltageNode({ data, selected }: any) {
         {isHorizontal ? (
           <>
             {/* Left & Right Leads */}
-            <path d="M -4 24 H 8" />
-            <path d="M 40 24 H 52" />
+            <path d="M -2 24 H 8" />
+            <path d="M 40 24 H 50" />
           </>
         ) : (
           <>
             {/* Top & Bottom Leads */}
-            <path d="M 24 -4 V 8" />
-            <path d="M 24 40 V 52" />
+            <path d="M 24 -2 V 8" />
+            <path d="M 24 40 V 50" />
           </>
         )}
         
