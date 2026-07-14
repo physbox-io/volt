@@ -182,10 +182,9 @@ export function EdgePathProvider({ children, edges = [] }: { children: React.Rea
         });
       });
 
-      const H = (hasLeft ? 1 : 0) + (hasRight ? 1 : 0);
-      const V = (hasUp ? 1 : 0) + (hasDown ? 1 : 0);
+      const totalConnections = (hasLeft ? 1 : 0) + (hasRight ? 1 : 0) + (hasUp ? 1 : 0) + (hasDown ? 1 : 0);
 
-      if (H > 1 || V > 1) {
+      if (totalConnections >= 3) {
         if (!juncs.some(j => Math.abs(j.x - p.x) < 3 && Math.abs(j.y - p.y) < 3)) {
           juncs.push(p);
         }
@@ -533,7 +532,35 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     }
   }, [id, pointsKey, registerPath, unregisterPath]);
 
-  const myJunctions: {x: number; y: number}[] = [];
+  const myJunctions = useMemo(() => {
+    if (!context) return [];
+    
+    // Convert current edge points to segments
+    const segments: { p1: {x: number; y: number}; p2: {x: number; y: number} }[] = [];
+    for (let i = 0; i < points.length - 1; i++) {
+      segments.push({ p1: points[i], p2: points[i + 1] });
+    }
+
+    // Filter junctions that lie on any of our segments
+    return context.junctions.filter(j => {
+      return segments.some(s => {
+        const isHoriz = Math.abs(s.p1.y - s.p2.y) < 3;
+        const isVert = Math.abs(s.p1.x - s.p2.x) < 3;
+        if (isHoriz) {
+          const minY = Math.min(s.p1.y, s.p2.y);
+          const minX = Math.min(s.p1.x, s.p2.x);
+          const maxX = Math.max(s.p1.x, s.p2.x);
+          return Math.abs(j.y - minY) < 3 && j.x >= minX - 3 && j.x <= maxX + 3;
+        } else if (isVert) {
+          const minX = Math.min(s.p1.x, s.p2.x);
+          const minY = Math.min(s.p1.y, s.p2.y);
+          const maxY = Math.max(s.p1.y, s.p2.y);
+          return Math.abs(j.x - minX) < 3 && j.y >= minY - 3 && j.y <= maxY + 3;
+        }
+        return false;
+      });
+    });
+  }, [points, context]);
 
   const isAuraEnabled = type === 'aura';
   const auraClass = isAuraEnabled
