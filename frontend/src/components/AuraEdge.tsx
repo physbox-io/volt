@@ -244,6 +244,269 @@ export function getNodeDimensions(type: string, data: any) {
 
 
 
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface Obstacle {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function manhattanDistance(p1: Point, p2: Point): number {
+  return Math.abs(p1.x - p2.x) + Math.abs(p1.y - p2.y);
+}
+
+function snapToGrid(val: number, step = 8): number {
+  return Math.round(val / step) * step;
+}
+
+function routeOrthogonal({
+  sourceX,
+  sourceY,
+  sourcePosition,
+  targetX,
+  targetY,
+  targetPosition,
+  obstacles = [],
+  gridStep = 8,
+  bendPenalty = 50,
+}: {
+  sourceX: number;
+  sourceY: number;
+  sourcePosition: string;
+  targetX: number;
+  targetY: number;
+  targetPosition: string;
+  obstacles: Obstacle[];
+  gridStep?: number;
+  bendPenalty?: number;
+}): string | null {
+  const start = { x: snapToGrid(sourceX, gridStep), y: snapToGrid(sourceY, gridStep) };
+  const end = { x: snapToGrid(targetX, gridStep), y: snapToGrid(targetY, gridStep) };
+
+  const obstacleXs = obstacles.map(o => o.x);
+  const obstacleX2s = obstacles.map(o => o.x + o.width);
+  const obstacleYs = obstacles.map(o => o.y);
+  const obstacleY2s = obstacles.map(o => o.y + o.height);
+
+  const minX = Math.min(start.x, end.x, ...obstacleXs, 0) - 100;
+  const maxX = Math.max(start.x, end.x, ...obstacleX2s, 1000) + 100;
+  const minY = Math.min(start.y, end.y, ...obstacleYs, 0) - 100;
+  const maxY = Math.max(start.y, end.y, ...obstacleY2s, 1000) + 100;
+
+  const snappedObstacles = obstacles.map(o => ({
+    x1: snapToGrid(o.x - 2, gridStep),
+    y1: snapToGrid(o.y - 2, gridStep),
+    x2: snapToGrid(o.x + o.width + 2, gridStep),
+    y2: snapToGrid(o.y + o.height + 2, gridStep),
+  }));
+
+  function isBlocked(x: number, y: number): boolean {
+    if ((x === start.x && y === start.y) || (x === end.x && y === end.y)) {
+      return false;
+    }
+    if (x < minX || x > maxX || y < minY || y > maxY) return true;
+    
+    for (let i = 0; i < snappedObstacles.length; i++) {
+      const obs = snappedObstacles[i];
+      if (x >= obs.x1 && x <= obs.x2 && y >= obs.y1 && y <= obs.y2) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  interface State {
+    x: number;
+    y: number;
+    dir: 'none' | 'left' | 'right' | 'up' | 'down';
+    f: number;
+  }
+
+  const openSet: State[] = [];
+  const gScore = new Map<string, number>();
+  const cameFrom = new Map<string, State>();
+  const closedSet = new Set<string>();
+
+  const startStateKey = `${start.x},${start.y},none`;
+  gScore.set(startStateKey, 0);
+
+  openSet.push({
+    x: start.x,
+    y: start.y,
+    dir: 'none',
+    f: manhattanDistance(start, end),
+  });
+
+  const getNeighbors = (curr: State): State[] => {
+    const dirs: { dx: number; dy: number; name: 'left' | 'right' | 'up' | 'down' }[] = [
+      { dx: gridStep, dy: 0, name: 'right' },
+      { dx: -gridStep, dy: 0, name: 'left' },
+      { dx: 0, dy: gridStep, name: 'down' },
+      { dx: 0, dy: -gridStep, name: 'up' },
+    ];
+    
+    return dirs
+      .map(d => ({
+        x: curr.x + d.dx,
+        y: curr.y + d.dy,
+        dir: d.name,
+        f: 0,
+      }))
+      .filter(n => !isBlocked(n.x, n.y));
+  };
+
+  let endState: State | null = null;
+  let iterations = 0;
+  const maxIterations = 800;
+
+  while (openSet.length > 0 && iterations < maxIterations) {
+    iterations++;
+    
+    // Optimized linear scan instead of sorting
+    let minIdx = 0;
+    for (let i = 1; i < openSet.length; i++) {
+      if (openSet[i].f < openSet[minIdx].f) {
+        minIdx = i;
+      }
+    }
+    const curr = openSet.splice(minIdx, 1)[0];
+
+    if (curr.x === end.x && curr.y === end.y) {
+      endState = curr;
+      break;
+    }
+
+    const currKey = `${curr.x},${curr.y},${curr.dir}`;
+    if (closedSet.has(currKey)) continue;
+    closedSet.add(currKey);
+
+    const currG = gScore.get(currKey) ?? Infinity;
+
+    for (const neighbor of getNeighbors(curr)) {
+      const isBend = curr.dir !== 'none' && curr.dir !== neighbor.dir;
+      const stepCost = gridStep + (isBend ? bendPenalty : 0);
+      const tentativeG = currG + stepCost;
+
+      const neighborKey = `${neighbor.x},${neighbor.y},${neighbor.dir}`;
+      const neighborG = gScore.get(neighborKey) ?? Infinity;
+
+      if (tentativeG < neighborG) {
+        gScore.set(neighborKey, tentativeG);
+        cameFrom.set(neighborKey, curr);
+        
+        openSet.push({
+          x: neighbor.x,
+          y: neighbor.y,
+          dir: neighbor.dir,
+          f: tentativeG + manhattanDistance(neighbor, end),
+        });
+      }
+    }
+  }
+
+  if (!endState) return null;
+
+  const pathPoints: Point[] = [];
+  let temp: State | null = endState;
+  while (temp) {
+    pathPoints.push({ x: temp.x, y: temp.y });
+    const key = `${temp.x},${temp.y},${temp.dir}`;
+    temp = cameFrom.get(key) || null;
+  }
+  pathPoints.reverse();
+
+  if (pathPoints.length === 0) return null;
+
+  // Simplify intermediate points
+  const simplifiedPoints: Point[] = [pathPoints[0]];
+  for (let i = 1; i < pathPoints.length - 1; i++) {
+    const prev = pathPoints[i - 1];
+    const curr = pathPoints[i];
+    const next = pathPoints[i + 1];
+    
+    const dx1 = curr.x - prev.x;
+    const dy1 = curr.y - prev.y;
+    const dx2 = next.x - curr.x;
+    const dy2 = next.y - curr.y;
+    
+    if ((dx1 !== 0 && dy2 !== 0) || (dy1 !== 0 && dx2 !== 0)) {
+      simplifiedPoints.push(curr);
+    }
+  }
+  if (pathPoints.length > 1) {
+    simplifiedPoints.push(pathPoints[pathPoints.length - 1]);
+  }
+
+  // Calculate orthogonal connector leads
+  const startPts: Point[] = [{ x: sourceX, y: sourceY }];
+  if (sourcePosition === 'left' || sourcePosition === 'right') {
+    if (sourceY !== start.y) {
+      startPts.push({ x: start.x, y: sourceY });
+    }
+  } else {
+    if (sourceX !== start.x) {
+      startPts.push({ x: sourceX, y: start.y });
+    }
+  }
+  startPts.push(start);
+
+  const endPts: Point[] = [end];
+  if (targetPosition === 'left' || targetPosition === 'right') {
+    if (targetY !== end.y) {
+      endPts.push({ x: end.x, y: targetY });
+    }
+  } else {
+    if (targetX !== end.x) {
+      endPts.push({ x: targetX, y: end.y });
+    }
+  }
+  endPts.push({ x: targetX, y: targetY });
+
+  // Merge segments orthogonally
+  const finalPoints: Point[] = [...startPts];
+  for (let i = 1; i < simplifiedPoints.length - 1; i++) {
+    finalPoints.push(simplifiedPoints[i]);
+  }
+  for (const pt of endPts) {
+    if (finalPoints.length > 0) {
+      const last = finalPoints[finalPoints.length - 1];
+      if (last.x === pt.x && last.y === pt.y) continue;
+    }
+    finalPoints.push(pt);
+  }
+
+  // Collinear point reduction
+  const resultPoints: Point[] = [finalPoints[0]];
+  for (let i = 1; i < finalPoints.length - 1; i++) {
+    const prev = finalPoints[i - 1];
+    const curr = finalPoints[i];
+    const next = finalPoints[i + 1];
+    
+    const dx1 = curr.x - prev.x;
+    const dy1 = curr.y - prev.y;
+    const dx2 = next.x - curr.x;
+    const dy2 = next.y - curr.y;
+    
+    if ((dx1 !== 0 && dy2 !== 0) || (dy1 !== 0 && dx2 !== 0)) {
+      resultPoints.push(curr);
+    }
+  }
+  if (finalPoints.length > 1) {
+    resultPoints.push(finalPoints[finalPoints.length - 1]);
+  }
+
+  let d = `M ${resultPoints[0].x} ${resultPoints[0].y}`;
+  for (let i = 1; i < resultPoints.length; i++) {
+    d += ` L ${resultPoints[i].x} ${resultPoints[i].y}`;
+  }
+  return d;
+}
+
 export function getSchematicPath({
   sourceX,
   sourceY,
@@ -252,6 +515,11 @@ export function getSchematicPath({
   targetY,
   targetPosition,
   sourceOffset = 24,
+  allEdges = [],
+  edgeId = '',
+  nodes = [],
+  sourceId = '',
+  targetId = '',
 }: {
   sourceX: number;
   sourceY: number;
@@ -260,27 +528,83 @@ export function getSchematicPath({
   targetY: number;
   targetPosition: string;
   sourceOffset?: number;
+  allEdges?: any[];
+  edgeId?: string;
+  nodes?: any[];
+  sourceId?: string;
+  targetId?: string;
   [key: string]: any;
 }) {
+  // Try obstacle-avoiding A* router first
+  if (nodes && nodes.length > 0) {
+    const obstacles: Obstacle[] = nodes
+      .filter((n: any) => n.id !== sourceId && n.id !== targetId && n.type !== 'junction')
+      .map((n: any) => {
+        const w = n.measured?.width || getNodeDimensions(n.type, n.data).width;
+        const h = n.measured?.height || getNodeDimensions(n.type, n.data).height;
+        return {
+          x: n.position.x,
+          y: n.position.y,
+          width: w,
+          height: h,
+        };
+      });
+
+    const aStarPath = routeOrthogonal({
+      sourceX,
+      sourceY,
+      sourcePosition,
+      targetX,
+      targetY,
+      targetPosition,
+      obstacles,
+      gridStep: 8,
+      bendPenalty: 50,
+    });
+    
+    if (aStarPath) {
+      return aStarPath;
+    }
+  }
+
+  // Fallback to step-path router if A* fails
   const dx = Math.abs(targetX - sourceX);
   const dy = Math.abs(targetY - sourceY);
   
-  // Calculate dynamic offset to prevent visual detours/turns when components are close
   let offset = sourceOffset;
+  
+  let maxOffset = sourceOffset;
   if (sourcePosition === 'left' || sourcePosition === 'right') {
     if (targetPosition === 'left' || targetPosition === 'right') {
-      offset = Math.min(sourceOffset, dx / 2 - 4);
+      maxOffset = dx / 2 - 4;
     } else {
-      offset = Math.min(sourceOffset, dx - 4);
+      maxOffset = dx - 4;
     }
   } else {
     if (targetPosition === 'top' || targetPosition === 'bottom') {
-      offset = Math.min(sourceOffset, dy / 2 - 4);
+      maxOffset = dy / 2 - 4;
     } else {
-      offset = Math.min(sourceOffset, dy - 4);
+      maxOffset = dy - 4;
     }
   }
-  offset = Math.max(4, offset);
+
+  const sortedEdgeIds = allEdges.map((e: any) => e.id).sort();
+  const edgeIndex = Math.max(0, sortedEdgeIds.indexOf(edgeId));
+  
+  const shiftStep = 8;
+  const shiftPattern = [0, 1, -1, 2, -2];
+  const shiftMultiplier = shiftPattern[edgeIndex % shiftPattern.length];
+  
+  offset = offset + shiftMultiplier * shiftStep;
+  
+  if (maxOffset > 4) {
+    offset = Math.min(maxOffset, Math.max(4, offset));
+    if (offset === maxOffset && shiftMultiplier > 0) {
+      offset = Math.max(4, maxOffset - shiftMultiplier * shiftStep);
+    }
+  } else {
+    offset = Math.max(4, offset);
+  }
 
   const [path] = getSmoothStepPath({
     sourceX,
