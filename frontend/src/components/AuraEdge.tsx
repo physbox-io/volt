@@ -272,8 +272,8 @@ function routeOrthogonal({
   targetY,
   targetPosition,
   obstacles = [],
-  gridStep = 8,
-  bendPenalty = 50,
+  gridStep = 4,
+  bendPenalty = 20,
 }: {
   sourceX: number;
   sourceY: number;
@@ -285,18 +285,47 @@ function routeOrthogonal({
   gridStep?: number;
   bendPenalty?: number;
 }): string | null {
-  const start = { x: snapToGrid(sourceX, gridStep), y: snapToGrid(sourceY, gridStep) };
-  const end = { x: snapToGrid(targetX, gridStep), y: snapToGrid(targetY, gridStep) };
+  const leadLength = 8;
+  // Offset start and end points in their exit/entry directions to guarantee clean leads
+  let startX = sourceX;
+  let startY = sourceY;
+  if (sourcePosition === 'right') startX += leadLength;
+  else if (sourcePosition === 'left') startX -= leadLength;
+  else if (sourcePosition === 'bottom') startY += leadLength;
+  else if (sourcePosition === 'top') startY -= leadLength;
 
-  const obstacleXs = obstacles.map(o => o.x);
-  const obstacleX2s = obstacles.map(o => o.x + o.width);
-  const obstacleYs = obstacles.map(o => o.y);
-  const obstacleY2s = obstacles.map(o => o.y + o.height);
+  let endX = targetX;
+  let endY = targetY;
+  if (targetPosition === 'right') endX += leadLength;
+  else if (targetPosition === 'left') endX -= leadLength;
+  else if (targetPosition === 'bottom') endY += leadLength;
+  else if (targetPosition === 'top') endY -= leadLength;
 
-  const minX = Math.min(start.x, end.x, ...obstacleXs, 0) - 100;
-  const maxX = Math.max(start.x, end.x, ...obstacleX2s, 1000) + 100;
-  const minY = Math.min(start.y, end.y, ...obstacleYs, 0) - 100;
-  const maxY = Math.max(start.y, end.y, ...obstacleY2s, 1000) + 100;
+  const start = { x: snapToGrid(startX, gridStep), y: snapToGrid(startY, gridStep) };
+  const end = { x: snapToGrid(endX, gridStep), y: snapToGrid(endY, gridStep) };
+
+  // Map handle positions to entry/exit directions
+  const exitDirMap: Record<string, 'left' | 'right' | 'up' | 'down'> = {
+    right: 'right',
+    left: 'left',
+    top: 'up',
+    bottom: 'down',
+  };
+  const entryDirMap: Record<string, 'left' | 'right' | 'up' | 'down'> = {
+    right: 'left',
+    left: 'right',
+    top: 'down',
+    bottom: 'up',
+  };
+
+  const startDir = exitDirMap[sourcePosition] || 'none';
+  const expectedEndDir = entryDirMap[targetPosition] || 'none';
+
+  // Define search area boundary with 160px padding
+  const minX = Math.min(start.x, end.x) - 160;
+  const maxX = Math.max(start.x, end.x) + 160;
+  const minY = Math.min(start.y, end.y) - 160;
+  const maxY = Math.max(start.y, end.y) + 160;
 
   const snappedObstacles = obstacles.map(o => ({
     x1: snapToGrid(o.x - 2, gridStep),
@@ -332,14 +361,14 @@ function routeOrthogonal({
   const cameFrom = new Map<string, State>();
   const closedSet = new Set<string>();
 
-  const startStateKey = `${start.x},${start.y},none`;
+  const startStateKey = `${start.x},${start.y},${startDir}`;
   gScore.set(startStateKey, 0);
 
   openSet.push({
     x: start.x,
     y: start.y,
-    dir: 'none',
-    f: manhattanDistance(start, end),
+    dir: startDir,
+    f: 1.5 * manhattanDistance(start, end),
   });
 
   const getNeighbors = (curr: State): State[] => {
@@ -362,7 +391,7 @@ function routeOrthogonal({
 
   let endState: State | null = null;
   let iterations = 0;
-  const maxIterations = 800;
+  const maxIterations = 2000;
 
   while (openSet.length > 0 && iterations < maxIterations) {
     iterations++;
@@ -389,7 +418,15 @@ function routeOrthogonal({
 
     for (const neighbor of getNeighbors(curr)) {
       const isBend = curr.dir !== 'none' && curr.dir !== neighbor.dir;
-      const stepCost = gridStep + (isBend ? bendPenalty : 0);
+      let stepCost = gridStep + (isBend ? bendPenalty : 0);
+      
+      // Check target entry direction alignment
+      if (neighbor.x === end.x && neighbor.y === end.y) {
+        if (expectedEndDir !== 'none' && neighbor.dir !== expectedEndDir) {
+          stepCost += bendPenalty;
+        }
+      }
+      
       const tentativeG = currG + stepCost;
 
       const neighborKey = `${neighbor.x},${neighbor.y},${neighbor.dir}`;
@@ -403,7 +440,7 @@ function routeOrthogonal({
           x: neighbor.x,
           y: neighbor.y,
           dir: neighbor.dir,
-          f: tentativeG + manhattanDistance(neighbor, end),
+          f: tentativeG + 1.5 * manhattanDistance(neighbor, end),
         });
       }
     }
@@ -518,8 +555,6 @@ export function getSchematicPath({
   allEdges = [],
   edgeId = '',
   nodes = [],
-  sourceId = '',
-  targetId = '',
 }: {
   sourceX: number;
   sourceY: number;
@@ -538,7 +573,7 @@ export function getSchematicPath({
   // Try obstacle-avoiding A* router first
   if (nodes && nodes.length > 0) {
     const obstacles: Obstacle[] = nodes
-      .filter((n: any) => n.id !== sourceId && n.id !== targetId && n.type !== 'junction')
+      .filter((n: any) => n.type !== 'junction')
       .map((n: any) => {
         const w = n.measured?.width || getNodeDimensions(n.type, n.data).width;
         const h = n.measured?.height || getNodeDimensions(n.type, n.data).height;
@@ -558,8 +593,8 @@ export function getSchematicPath({
       targetY,
       targetPosition,
       obstacles,
-      gridStep: 8,
-      bendPenalty: 50,
+      gridStep: 4,
+      bendPenalty: 20,
     });
     
     if (aStarPath) {

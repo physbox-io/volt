@@ -213,9 +213,11 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       netlist += `V_${node.id} ${n1} ${n2} ${type}\n`;
     }
     else if (node.type === 'scope') {
-      const n1 = getNet(node.id, 'in');
-      const n2 = getNet(node.id, 'gnd');
-      netlist += `R_${node.id} ${n1} ${n2} 1G\n`;
+      const ch1 = getNet(node.id, 'ch1');
+      const ch2 = getNet(node.id, 'ch2');
+      const gnd = getNet(node.id, 'gnd');
+      netlist += `R_scope_ch1_${node.id} ${ch1} ${gnd} 1G\n`;
+      netlist += `R_scope_ch2_${node.id} ${ch2} ${gnd} 1G\n`;
     }
     else if (node.type === 'potentiometer') {
       const rawLabel = String(node.data.label || '10k');
@@ -292,7 +294,14 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       const ne = getNet(node.id, 'e');
       const bf = node.data.bf || 300;
       netlist += `Q_${node.id} ${nc} ${nb} ${ne} NPN_MODEL_${node.id}\n`;
-      netlist += `.model NPN_MODEL_${node.id} NPN(IS=1e-14 VAF=100 BF=${bf} IKF=0.4 XTB=1.5 BR=3 CJC=8e-12 CJE=25e-12 TR=100e-9 TF=400e-12 ITF=1 VTF=2 XTF=3 RB=10)\n`;
+      // CJC/CJE/TR/TF intentionally non-zero (small-signal-BJT scale, picofarads/nanoseconds):
+      // at all zero, transistor switching has no physical timescale at all, which is fine for
+      // simple stages but makes regenerative/astable circuits mathematically discontinuous —
+      // ngspice's adaptive timestep shrinks toward zero trying to resolve an infinitely sharp
+      // edge ("Timestep too small... trouble with node X"). These values are many orders of
+      // magnitude faster than any RC time constant a UI-built circuit will realistically have,
+      // so they don't change simulated behavior, only give the solver something finite to grab.
+      netlist += `.model NPN_MODEL_${node.id} NPN(IS=1e-14 VAF=100 BF=${bf} IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)\n`;
     }
     else if (node.type === 'pnp') {
       const nc = getNet(node.id, 'c');
@@ -300,7 +309,8 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       const ne = getNet(node.id, 'e');
       const bf = node.data.bf || 300;
       netlist += `Q_${node.id} ${nc} ${nb} ${ne} PNP_MODEL_${node.id}\n`;
-      netlist += `.model PNP_MODEL_${node.id} PNP(IS=1e-14 VAF=100 BF=${bf} IKF=0.4 XTB=1.5 BR=3 CJC=8e-12 CJE=25e-12 TR=100e-9 TF=400e-12 ITF=1 VTF=2 XTF=3 RB=10)\n`;
+      // See NPN model comment above — same reasoning, same fix.
+      netlist += `.model PNP_MODEL_${node.id} PNP(IS=1e-14 VAF=100 BF=${bf} IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)\n`;
     }
     else if (node.type === 'nmos') {
       const nd = getNet(node.id, 'd');
@@ -420,6 +430,29 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
         netlist += `R_${node.id} ${n1} ${n2} ${resVal.toFixed(2)}\n`;
       }
     }
+    else if (node.type === 'heltec_v4') {
+      const pins = ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41'];
+      const pinModes = node.data.pins || {};
+      const pinVoltages = node.data.pinVoltages || {};
+
+      for (const pin of pins) {
+        const net = getNet(node.id, pin);
+        const mode = pinModes[pin] || 'digital_in';
+
+        if (mode === 'analog_in' || mode === 'digital_in') {
+          const v = pinVoltages[pin] !== undefined ? Number(pinVoltages[pin]) : 0.0;
+          netlist += `V_heltec_${node.id}_${pin} ${net} 0 DC ${v.toFixed(4)}\n`;
+        } else if (mode === 'digital_out') {
+          netlist += `R_heltec_${node.id}_${pin} ${net} 0 100k\n`;
+        }
+      }
+
+      const vccNet = getNet(node.id, '3V3');
+      const gndNet = getNet(node.id, 'GND');
+      
+      netlist += `V_heltec_${node.id}_3V3 ${vccNet} 0 DC 3.3\n`;
+      netlist += `R_heltec_${node.id}_GND ${gndNet} 0 1m\n`;
+    }
   });
   
   // (Logic gates now use native B-sources, no XSPICE .model required)
@@ -519,13 +552,14 @@ B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
 
   // Basic transient analysis (variable total)
   // Audio circuits need much finer time steps for proper frequency resolution
+  const useUic = (initialConditions && Object.keys(initialConditions).length > 0) ? ' uic' : '';
   if (hasAudio) {
     // 0.05ms step → 20kHz Nyquist → captures full audio bandwidth
-    netlist += `.tran 0.05m ${simLength}s 0 0.05m\n`;
+    netlist += `.tran 0.05m ${simLength}s 0 0.05m${useUic}\n`;
   } else if (simResolution === 'high') {
-    netlist += `.tran 1m ${simLength}s 0 0.1m\n`;
+    netlist += `.tran 1m ${simLength}s 0 0.1m${useUic}\n`;
   } else {
-    netlist += `.tran 1m ${simLength}s uic\n`;
+    netlist += `.tran 1m ${simLength}s${useUic}\n`;
   }
   netlist += `.end\n`;
 

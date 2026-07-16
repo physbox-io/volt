@@ -59,7 +59,7 @@ export class Simulation {
     } else {
       this.cmd = 0;
     }
-    console.log(`cmd -> ${strCmd}`);
+    this.log_debug(`cmd -> ${strCmd}`);
     return strCmd;
   };
 
@@ -75,16 +75,19 @@ export class Simulation {
     const moduleOptions: ModuleOptions = {
       noInitialRun: true,
       print: (e: string = "") => {
-        console.log(e);
+        this.log_debug(e);
         this.info = (this.info + e + "\n").slice(-Simulation.MAX_INFO_CHARS);
       },
       printErr: (e: string = "") => {
         this.info = (this.info + e + "\n\n").slice(-Simulation.MAX_INFO_CHARS);
         if (
           e !== "Warning: can't find the initialization file spinit." &&
-          e !== "Using SPARSE 1.3 as Direct Linear Solver"
+          e !== "Using SPARSE 1.3 as Direct Linear Solver" &&
+          !e.includes("code models") &&
+          !e.includes("Any of the following steps may fail") &&
+          !e.includes("OSDI")
         ) {
-          console.error(e);
+          // console.error(e);
           this.error.push(e);
         } else {
           this.log_debug(e);
@@ -186,7 +189,7 @@ export class Simulation {
 
     // Set the handler to process simulation events.
     module.setHandleThings(async () => { 
-      console.log(`handleThings: cmd=${this.cmd} init=${this.initialized} start=${this.hasStartedCommands}`);
+      this.log_debug(`handleThings: cmd=${this.cmd} init=${this.initialized} start=${this.hasStartedCommands}`);
       if (this.cmd === 0 && this.initialized && this.hasStartedCommands) {
         if (this.runPromiseResolve) {
           try {
@@ -307,9 +310,9 @@ export class Simulation {
       this.commandList = [" ", "source test.cir", "destroy all", "run", "setplot noise1", "write out.raw"];
       if (!this.isNoiseMode) {
         this.isNoiseMode = true;
-        console.info(
-          "[EEcircuit-engine] .noise analysis detected; activating noise export mode (setplot noise1 -> write out.raw)."
-        );
+        // console.info(
+        //   "[EEcircuit-engine] .noise analysis detected; activating noise export mode (setplot noise1 -> write out.raw)."
+        // );
       }
       return;
     }

@@ -37,6 +37,7 @@ import { DiodeNode } from './components/nodes/DiodeNode';
 import { ZenerDiodeNode } from './components/nodes/ZenerDiodeNode';
 import { ACVoltageNode } from './components/nodes/ACVoltageNode';
 import { MicrocontrollerNode } from './components/nodes/MicrocontrollerNode';
+import { HeltecV4Node } from './components/nodes/HeltecV4Node';
 import { AndNode } from './components/nodes/AndNode';
 import { OrNode } from './components/nodes/OrNode';
 import { NotNode } from './components/nodes/NotNode';
@@ -93,6 +94,7 @@ const nodeTypes = {
   zener: ZenerDiodeNode,
   acvoltage: ACVoltageNode,
   mcu: MicrocontrollerNode,
+  heltec_v4: HeltecV4Node,
   and: AndNode,
   or: OrNode,
   not: NotNode,
@@ -448,10 +450,10 @@ function splitEdgesOnOverlappingNodes(nodes: Node[], edges: Edge[]): { nodes: No
       const pathD = getSchematicPath({
         sourceX: pSrc.x,
         sourceY: pSrc.y,
-        sourcePosition: srcNode.type === 'timer555' ? 'left' : (srcNode.data?.orientation === 'vertical' ? 'bottom' : 'right'),
+        sourcePosition: getHandlePosition(srcNode, edge.sourceHandle || 'out'),
         targetX: pTgt.x,
         targetY: pTgt.y,
-        targetPosition: tgtNode.type === 'timer555' ? 'left' : (tgtNode.data?.orientation === 'vertical' ? 'top' : 'left'),
+        targetPosition: getHandlePosition(tgtNode, edge.targetHandle || 'in'),
         nodes: updatedNodes,
         sourceId: edge.source,
         targetId: edge.target,
@@ -978,6 +980,17 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
             <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">MCU</span>
           </div>
 
+          {/* Heltec V4 HIL */}
+          <div 
+            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
+            onDragStart={(e) => onDragStart(e, 'heltec_v4')} draggable
+          >
+            <div className="mb-1 group-hover:scale-105 transition-transform">
+              <div className="border border-slate-300 dark:border-slate-700 rounded px-1.5 py-0.5 text-[9px] font-bold text-slate-700 dark:text-slate-300">HELTEC</div>
+            </div>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Heltec V4</span>
+          </div>
+
           {/* Op-Amp */}
           <div 
             className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
@@ -1187,7 +1200,7 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
   );
 }
 
-export function getNodeDefaultName(id: string, type: string) {
+function getNodeDefaultName(id: string, type: string) {
   const match = id.match(/^(resistor|capacitor|inductor)-(\d+)$/i);
   if (match) {
     const prefix = type === 'resistor' ? 'R' : (type === 'capacitor' ? 'C' : 'L');
@@ -1936,6 +1949,44 @@ function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSi
           <div className="text-[10px] text-gray-400 mt-1">e.g. 10m = 10mA, 1 = 1A</div>
         </div>
       )}
+      {selectedNode.type === 'heltec_v4' && (
+        <>
+          <div className="mb-3">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">CYD Board Wi-Fi IP</label>
+            <input 
+              type="text" 
+              value={(selectedNode.data.ip as string) || '192.168.1.244'} 
+              onChange={e => updateData('ip', e.target.value)} 
+              className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none mb-2" 
+            />
+          </div>
+          
+          <div className="border-t border-slate-200 dark:border-slate-800 pt-2 mt-2">
+            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Pin Configurations</h4>
+            {['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41'].map(pinId => {
+              const currentPins = selectedNode.data.pins || {};
+              const pinVal = currentPins[pinId] || 'digital_in';
+              return (
+                <div key={pinId} className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-mono text-slate-600 dark:text-slate-400">{pinId.replace('_', ' ')}</span>
+                  <select 
+                    value={pinVal} 
+                    onChange={e => {
+                      const nextPins = { ...currentPins, [pinId]: e.target.value };
+                      updateData('pins', nextPins);
+                    }}
+                    className="text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-0.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="digital_in">Digital In</option>
+                    <option value="analog_in">Analog In (ADC)</option>
+                    <option value="digital_out">Digital Out</option>
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {/* Datasheet Section */}
       {selectedNode.type && datasheets[selectedNode.type] && (() => {
@@ -2072,10 +2123,10 @@ function FlowArea({
       const pathD = getSchematicPath({
         sourceX: pSrc.x,
         sourceY: pSrc.y,
-        sourcePosition: srcNode.type === 'timer555' ? 'left' : (srcNode.data?.orientation === 'vertical' ? 'bottom' : 'right'),
+        sourcePosition: getHandlePosition(srcNode, sourceHandle),
         targetX: pTgt.x,
         targetY: pTgt.y,
-        targetPosition: tgtNode.type === 'timer555' ? 'left' : (tgtNode.data?.orientation === 'vertical' ? 'top' : 'left'),
+        targetPosition: getHandlePosition(tgtNode, targetHandle),
         nodes,
         sourceId: edge.source,
         targetId: edge.target,
@@ -2254,10 +2305,10 @@ function FlowArea({
       const pathD = getSchematicPath({
         sourceX: pSrc.x,
         sourceY: pSrc.y,
-        sourcePosition: srcNode.type === 'timer555' ? 'left' : (srcNode.data?.orientation === 'vertical' ? 'bottom' : 'right'),
+        sourcePosition: getHandlePosition(srcNode, sourceHandle),
         targetX: pTgt.x,
         targetY: pTgt.y,
-        targetPosition: tgtNode.type === 'timer555' ? 'left' : (tgtNode.data?.orientation === 'vertical' ? 'top' : 'left'),
+        targetPosition: getHandlePosition(tgtNode, targetHandle),
         nodes,
         sourceId: edge.source,
         targetId: edge.target,
@@ -2404,6 +2455,28 @@ function FlowArea({
         initialData = { label: 'LDR', r_dark: 100000, r_dark_label: '100k', lightLevel: 0.5 };
       } else if (type === 'dff') {
         initialData = { label: 'DFF' };
+      } else if (type === 'heltec_v4') {
+        initialData = {
+          label: 'Heltec V4',
+          ip: '192.168.1.244',
+          pins: {
+            GPIO_1: 'analog_in',
+            GPIO_3: 'digital_out',
+            GPIO_33: 'digital_in',
+            GPIO_36: 'digital_in',
+            GPIO_37: 'digital_in',
+            GPIO_41: 'digital_in'
+          },
+          pinVoltages: {
+            GPIO_1: 0.0,
+            GPIO_3: 0.0,
+            GPIO_33: 0.0,
+            GPIO_36: 0.0,
+            GPIO_37: 0.0,
+            GPIO_41: 0.0
+          },
+          isConnected: false
+        };
       }
 
       const newNode: any = {
@@ -2625,7 +2698,42 @@ function ProbeTooltip({ probeData, isSimulating, onClose }: { probeData: any; is
   );
 }
 
-
+const getHandlePosition = (node: any, handleId: string): string => {
+  if (node.type === 'timer555') {
+    const pin = parseInt(handleId);
+    if (pin >= 1 && pin <= 4) return 'left';
+    if (pin >= 5 && pin <= 8) return 'right';
+  }
+  if (node.type === 'opamp') {
+    if (handleId === 'vcc') return 'top';
+    if (handleId === 'vee') return 'bottom';
+    if (handleId === 'out') return 'right';
+    return 'left';
+  }
+  if (node.type === 'voltage' || node.type === 'acvoltage') {
+    const isHorizontal = node.data?.orientation === 'horizontal';
+    if (handleId === 'pos') return isHorizontal ? 'left' : 'top';
+    if (handleId === 'neg') return isHorizontal ? 'right' : 'bottom';
+  }
+  if (node.type === 'ground') {
+    return 'top';
+  }
+  if (node.type === 'junction') {
+    return 'left';
+  }
+  // Default components
+  const orientation = node.data?.orientation || 'horizontal';
+  const isLeft = orientation === 'left';
+  const isUp = orientation === 'up';
+  const isVertical = orientation === 'vertical' || isUp;
+  if (handleId === 'in' || handleId === 'anode') {
+    return isVertical ? (isUp ? 'bottom' : 'top') : (isLeft ? 'right' : 'left');
+  }
+  if (handleId === 'out' || handleId === 'cathode') {
+    return isVertical ? (isUp ? 'top' : 'bottom') : (isLeft ? 'left' : 'right');
+  }
+  return 'right';
+};
 
 export default function App() {
   // ── Initialise from localStorage ────────────────────────────────────────────
@@ -2652,7 +2760,10 @@ export default function App() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [mcpActiveCount, setMcpActiveCount] = useState(0);
   const [isSpiceRunning, setIsSpiceRunning] = useState(false);
-  const [simLength, setSimLength] = useState(savedSettings.simLength ?? 1.0);
+  const [simLength, setSimLength] = useState(() => {
+    const val = savedSettings.simLength;
+    return val === 0.05 ? 1.0 : (val ?? 1.0);
+  });
   const [simResolution, setSimResolution] = useState<'normal' | 'high'>(savedSettings.simResolution ?? 'normal');
   const [selectedPreset, setSelectedPreset] = useState('basicBlink');
   const [isDocsOpen, setIsDocsOpen] = useState(false);
@@ -2677,6 +2788,32 @@ export default function App() {
   } | null>(null);
   const simResultRef = useRef<{ portToNet: Record<string, string>; result: any } | null>(null);
   const [initialConditions, setInitialConditions] = useState<Record<string, number>>({});
+  
+  // Hardware-in-the-Loop (HIL) state refs
+  const hilSocketRef = useRef<WebSocket | null>(null);
+  const hilConnectedRef = useRef(false);
+  const hilValuesRef = useRef<Record<string, number>>({});
+  const hilHistoryRef = useRef<Record<string, { t: number; v: number }[]>>({});
+  const hilAccumTimeRef = useRef(0);
+  const hilNetlistAccumTimeRef = useRef(0);
+  const hilStartTimeRef = useRef<number | null>(null);
+  const hilBackgroundPollActiveRef = useRef(true);
+  const hilRunningRef = useRef(false);
+  const lastHILTimeRef = useRef<number | null>(null);
+  const lastSendTimeRef = useRef<number | null>(null);
+  const lastSimulatedVoltagesRef = useRef<Record<string, number>>({});
+  const lastSimulatedResultRef = useRef<any>(null);
+  const lastPortToNetRef = useRef<Record<string, string>>({});
+  const lastSliceDurationRef = useRef<number>(50);
+  const hilInitialConditionsRef = useRef<Record<string, number>>({});
+  const hilBufferRef = useRef('');
+  const nextHILCommandRef = useRef<string | null>(null);
+  const hilWaitingForCommandRef = useRef(false);
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  useEffect(() => { edgesRef.current = edges; }, [edges]);
+
   const [noteCards, setNoteCards] = useState<{ id: string; markdown: string; minimized: boolean; x: number; y: number }[]>([]);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
 
@@ -2755,6 +2892,7 @@ export default function App() {
   useEffect(() => { saveSettings({ showAura }); }, [showAura]);
   useEffect(() => { saveSettings({ simResolution }); }, [simResolution]);
   useEffect(() => {
+    if (simLength <= 0.05) return;
     const t = setTimeout(() => saveSettings({ simLength }), 500);
     return () => clearTimeout(t);
   }, [simLength]);
@@ -2774,6 +2912,35 @@ export default function App() {
       data: { ...n.data, isSimulating }
     })));
   }, [isSimulating, setNodes]);
+
+  // Background connection effect for Heltec HIL node
+  const heltecNode = nodes.find(n => n.type === 'heltec_v4');
+  const heltecId = heltecNode?.id;
+  const heltecIp = heltecNode?.data?.ip;
+
+  useEffect(() => {
+    if (heltecId && heltecIp) {
+      if (!hilConnectedRef.current && (!hilSocketRef.current || hilSocketRef.current.readyState === WebSocket.CLOSED)) {
+        const node = nodes.find(n => n.id === heltecId);
+        if (node) {
+          ensureHILConnection(heltecIp as string, node);
+        }
+      }
+    }
+    return () => {
+      // Clean up connection if no Heltec V4 node is present on the canvas
+      if (!nodes.some(n => n.type === 'heltec_v4')) {
+        hilRunningRef.current = false;
+        hilConnectedRef.current = false;
+        if (hilSocketRef.current) {
+          try {
+            hilSocketRef.current.close();
+          } catch (e) {}
+          hilSocketRef.current = null;
+        }
+      }
+    };
+  }, [heltecId, heltecIp, nodes]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -2799,9 +2966,570 @@ export default function App() {
 
 
 
+  const findGraphFromSim = (res: any, netName: string) => {
+    if (!netName || !res) return null;
+    const search = netName.toLowerCase();
+    
+    if (search === '0') {
+      if (res.variableNames && res.data && res.data.length > 0 && res.data[0].values) {
+        const timeVals = res.data[0].values.map((t: number) => t * 1000);
+        return {
+          name: '0',
+          timestamps_ms: timeVals,
+          voltage_levels: new Array(timeVals.length).fill(0)
+        };
+      }
+    }
+    
+    if (res.variableNames && res.data && res.data.length > 0 && res.data[0].values) {
+      const idx = res.variableNames.findIndex((v: string) => v.toLowerCase() === search || v.toLowerCase() === `v(${search})`);
+      if (idx !== -1 && res.data[idx]) {
+        return {
+          name: res.variableNames[idx],
+          timestamps_ms: res.data[0].values.map((t: number) => t * 1000), // Time is variable 0
+          voltage_levels: res.data[idx].values
+        };
+      }
+    }
+    
+    return null;
+  };
+
+  const ensureHILConnection = (ip: string, node: Node) => {
+    if (hilSocketRef.current && (hilSocketRef.current.readyState === WebSocket.OPEN || hilSocketRef.current.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    console.log(`[HIL] Connecting to CYD board at ws://${ip}`);
+    setNodes(nds => nds.map(n => n.id === node.id ? { ...n, data: { ...n.data, isConnected: false } } : n));
+    
+    try {
+      const ws = new WebSocket(`ws://${ip}`);
+      hilSocketRef.current = ws;
+
+      ws.onopen = () => {
+        console.log(`[HIL] WebSocket connected to CYD at ws://${ip}`);
+        hilConnectedRef.current = true;
+        setNodes(nds => nds.map(n => n.id === node.id ? { ...n, data: { ...n.data, isConnected: true } } : n));
+
+        const pins = (node.data.pins as Record<string, string>) || {};
+        let code = "print('[HIL] Bootstrap: starting...')\n";
+        code += "import lib.webserver as ws\n";
+        code += "import machine, utime\n";
+        code += "h = ws._mesh_get_heltec()\n";
+        code += "print('[HIL] Bootstrap: h =', h)\n";
+        if (hilRunningRef.current) {
+          // HIL is latency-sensitive: mesh relaying blocks the Heltec's main loop
+          // for 100-500ms per relayed packet, and GPS parsing adds more overhead.
+          // Disable both while running so gpio round-trips aren't stalled behind them.
+          code += "h.lora_mode('raw')\n";
+          code += "h.gps_power(0)\n";
+        }
+        const connectedBootPins = getConnectedHeltecPins(node.id, edgesRef.current);
+        Object.entries(pins).forEach(([pinId, mode]) => {
+          if (!connectedBootPins.has(pinId)) return;
+          const pinNum = parseInt(pinId.replace('GPIO_', ''));
+          const modeStr = mode === 'digital_out' ? 'out' : 'in';
+          code += `h.gpio_mode(${pinNum}, '${modeStr}')\n`;
+        });
+        ws.send(JSON.stringify({ cmd: 'repl_input', code }));
+
+        if (hilRunningRef.current) {
+          startHILPipeline();
+        } else {
+          setTimeout(runBackgroundHILPoll, 100);
+        }
+      };
+
+      ws.onmessage = async (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+
+          if (msg.type === 'hil_slice_result') {
+            // Fast path: structured response from the fixed hil_slice handler (no exec()).
+            if (msg.ok && msg.values) {
+              const activeHILNode = nodesRef.current.find(n => n.type === 'heltec_v4') || node;
+              const pins = (activeHILNode.data.pins as Record<string, string>) || {};
+              for (const pinId of ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41']) {
+                const pinNum = parseInt(pinId.replace('GPIO_', ''));
+                const raw = msg.values[String(pinNum)];
+                if (raw === undefined) continue;
+                let volt = raw;
+                if (pins[pinId] === 'analog_in') {
+                  volt = raw / 4095 * 3.3;
+                  if (pinId === 'GPIO_1') {
+                    const minPhys = 0.45;
+                    const maxPhys = 2.2;
+                    const minVirt = 0.73;
+                    const maxVirt = 3.3;
+                    const norm = Math.min(Math.max((volt - minPhys) / (maxPhys - minPhys), 0), 1);
+                    volt = minVirt + norm * (maxVirt - minVirt);
+                  }
+                }
+                hilValuesRef.current[pinId] = volt;
+              }
+
+              setNodes(nds => nds.map(n => {
+                if (n.type === 'heltec_v4') {
+                  return { ...n, data: { ...n.data, pinVoltages: { ...hilValuesRef.current } } };
+                }
+                return n;
+              }));
+            }
+
+            // Pipeline dispatch: immediately send buffered command if ready
+            if (nextHILCommandRef.current && ws.readyState === WebSocket.OPEN) {
+              const t0 = performance.now();
+              lastSendTimeRef.current = t0;
+              ws.send(nextHILCommandRef.current);
+              nextHILCommandRef.current = null;
+              hilWaitingForCommandRef.current = false;
+            } else {
+              hilWaitingForCommandRef.current = true;
+            }
+
+            // Run simulation asynchronously in the background to calculate the NEXT slice
+            runHILSimulationSlice().catch(err => {
+              console.error("[HIL] Async simulation slice failed:", err);
+            });
+            return;
+          }
+
+          if (msg.type === 'repl_output') {
+            if (msg.output && !msg.output.includes('HIL_BG_DATA:')) {
+              console.log("[HIL REPL Output]:", msg.output);
+            }
+            // Buffer the incoming REPL output chunks
+            hilBufferRef.current += msg.output;
+
+            // Process all complete lines in the buffer
+            let newlineIdx;
+            while ((newlineIdx = hilBufferRef.current.indexOf('\n')) !== -1) {
+              const line = hilBufferRef.current.slice(0, newlineIdx).trim();
+              hilBufferRef.current = hilBufferRef.current.slice(newlineIdx + 1);
+
+              if (line.startsWith('HIL_BG_DATA:')) {
+                const dataStr = line.replace('HIL_BG_DATA:', '').trim();
+
+                // Parse readings
+                if (dataStr !== 'ok') {
+                  const parts = dataStr.split(',');
+                  const activeHILNode = nodesRef.current.find(n => n.type === 'heltec_v4') || node;
+                  const pins = (activeHILNode.data.pins as Record<string, string>) || {};
+                  const connectedPins = getConnectedHeltecPins(activeHILNode.id, edgesRef.current);
+                  const inputPins = ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41']
+                    .filter(pinId => connectedPins.has(pinId) && (pins[pinId] === 'analog_in' || pins[pinId] === 'digital_in'));
+
+                  parts.forEach((valStr, idx) => {
+                    const pinId = inputPins[idx];
+                    if (pinId) {
+                      let volt = parseFloat(valStr) || 0.0;
+                      if (pinId === 'GPIO_1') {
+                        const minPhys = 0.45;
+                        const maxPhys = 2.2;
+                        const minVirt = 0.73;
+                        const maxVirt = 3.3;
+                        const norm = Math.min(Math.max((volt - minPhys) / (maxPhys - minPhys), 0), 1);
+                        volt = minVirt + norm * (maxVirt - minVirt);
+                      }
+                      hilValuesRef.current[pinId] = volt;
+                    }
+                  });
+
+                  // Update UI node voltages immediately
+                  setNodes(nds => nds.map(n => {
+                    if (n.type === 'heltec_v4') {
+                      return {
+                        ...n,
+                        data: {
+                          ...n.data,
+                          pinVoltages: { ...hilValuesRef.current }
+                        }
+                      };
+                    }
+                    return n;
+                  }));
+                }
+
+                setTimeout(runBackgroundHILPoll, 250);
+              }
+            }
+          }
+        } catch (e) {
+          console.error("[HIL] Error parsing websocket message:", e);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log("[HIL] WebSocket connection closed");
+        hilConnectedRef.current = false;
+        setNodes(nds => nds.map(n => n.type === 'heltec_v4' ? { ...n, data: { ...n.data, isConnected: false } } : n));
+      };
+
+      ws.onerror = (err) => {
+        console.error("[HIL] WebSocket error:", err);
+      };
+    } catch (err) {
+      console.error("[HIL] Failed to open WebSocket:", err);
+    }
+  };
+
+  // Which of the heltec node's GPIO pins actually have a wire attached in the circuit graph.
+  // Pin *mode* (digital_in/analog_in/digital_out) still comes from the node's `pins` config,
+  // but polling/writing a pin that's configured yet unwired wastes a round trip for nothing —
+  // this bit us once already (a stale preset had 4 unconnected pins configured as digital_in,
+  // each costing its own UART round trip every slice for no reason).
+  const getConnectedHeltecPins = (nodeId: string, edgeList: Edge[]): Set<string> => {
+    const connected = new Set<string>();
+    for (const edge of edgeList) {
+      if (edge.source === nodeId && edge.sourceHandle && edge.sourceHandle.startsWith('GPIO_')) {
+        connected.add(edge.sourceHandle);
+      }
+      if (edge.target === nodeId && edge.targetHandle && edge.targetHandle.startsWith('GPIO_')) {
+        connected.add(edge.targetHandle);
+      }
+    }
+    return connected;
+  };
+
+  // Builds the fast-path "hil_slice" WS payload (see handle_hil_slice in cyd-native's
+  // lib/webserver.py) instead of a Python source string to exec() — exec() measured
+  // 700-800ms+ per call on-device even for a ~15-line script (compile overhead on this
+  // PSRAM-backed heap), which dominated HIL round-trip time. This is a fixed, already-loaded
+  // handler taking structured JSON, so there's no per-slice compilation at all.
+  const buildHILSlicePayload = (pins: Record<string, string>, voltages: Record<string, any>, connectedPins: Set<string>) => {
+    const writes: { pin: number; seq: [number, number][] }[] = [];
+    const reads: { pin: number; type: 'analog' | 'digital' }[] = [];
+    for (const pinId of ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41']) {
+      if (!connectedPins.has(pinId)) continue;
+      const pinNum = parseInt(pinId.replace('GPIO_', ''));
+      if (pins[pinId] === 'digital_out') {
+        writes.push({ pin: pinNum, seq: voltages[pinId] || [[0, 0]] });
+      } else if (pins[pinId] === 'analog_in') {
+        reads.push({ pin: pinNum, type: 'analog' });
+      } else if (pins[pinId] === 'digital_in') {
+        reads.push({ pin: pinNum, type: 'digital' });
+      }
+    }
+    return JSON.stringify({ cmd: 'hil_slice', writes, reads });
+  };
+
+  function runBackgroundHILPoll() {
+    if (!hilBackgroundPollActiveRef.current || hilRunningRef.current || !hilConnectedRef.current || !hilSocketRef.current) return;
+    
+    const activeHILNode = nodesRef.current.find(n => n.type === 'heltec_v4');
+    if (!activeHILNode) return;
+    
+    const pins = (activeHILNode.data.pins as Record<string, string>) || {};
+    const connectedPins = getConnectedHeltecPins(activeHILNode.id, edgesRef.current);
+    let code = "print('HIL_BG_DATA:', ";
+    const reads: string[] = [];
+    for (const pinId of ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41']) {
+      if (!connectedPins.has(pinId)) continue;
+      if (pins[pinId] === 'analog_in') {
+        const pinNum = parseInt(pinId.replace('GPIO_', ''));
+        reads.push(`h.adc_read(${pinNum}) / 4095 * 3.3`);
+      } else if (pins[pinId] === 'digital_in') {
+        const pinNum = parseInt(pinId.replace('GPIO_', ''));
+        reads.push(`h.gpio_read(${pinNum})`);
+      }
+    }
+    if (reads.length > 0) {
+      code += reads.map(r => `str(${r})`).join(" + ',' + ");
+    } else {
+      code += "'ok'";
+    }
+    code += ")\n";
+    
+    try {
+      hilSocketRef.current.send(JSON.stringify({ cmd: "repl_input", code }));
+    } catch (e) {
+      console.error("[HIL] Background poll send failed:", e);
+    }
+  }
+
+  const startHILPipeline = async () => {
+    if (!hilConnectedRef.current || !hilSocketRef.current) return;
+    
+    // Reset pipeline state
+    nextHILCommandRef.current = null;
+    hilWaitingForCommandRef.current = false;
+    
+    try {
+      // Pre-calculate Slice 1
+      await runHILSimulationSlice();
+      
+      if (nextHILCommandRef.current && hilSocketRef.current && hilSocketRef.current.readyState === WebSocket.OPEN) {
+        const payload = nextHILCommandRef.current;
+        nextHILCommandRef.current = null;
+        lastSendTimeRef.current = performance.now();
+        hilSocketRef.current.send(payload);
+
+        // Pre-calculate Slice 2 in background so it's buffered when Slice 1 finishes
+        runHILSimulationSlice().catch(err => {
+          console.error("[HIL] Pre-calculation of Slice 2 failed:", err);
+        });
+      }
+    } catch (err) {
+      console.error("[HIL] Pipeline start failed:", err);
+    }
+  };
+
+  const runHILSimulationSlice = async () => {
+    if (!hilRunningRef.current) return;
+
+    const activeHILNode = nodesRef.current.find(n => n.type === 'heltec_v4');
+    if (!activeHILNode) return;
+
+    try {
+      const nextNodes = nodesRef.current.map(n => {
+        if (n.id === activeHILNode.id) {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              pinVoltages: { ...hilValuesRef.current },
+              isConnected: hilConnectedRef.current
+            }
+          };
+        }
+        return n;
+      });
+
+      const now = performance.now();
+      const elapsed = lastHILTimeRef.current ? now - lastHILTimeRef.current : 50;
+      lastHILTimeRef.current = now;
+      if (hilStartTimeRef.current === null) hilStartTimeRef.current = now;
+      // The GPIO toggle sequence (e.g. the GPIO_3 blink) must track real round-trip time,
+      // not an assumed constant — otherwise it's computed against a virtual clock that drifts
+      // from wall-clock time whenever a round trip takes longer than expected, making the
+      // real-world blink rate slower than intended. Sized as "how far has the toggle clock
+      // fallen behind wall-clock time since HIL started" (an absolute reference), NOT as
+      // "how long did the last round trip take" — the latter is self-referential (this
+      // slice's chosen duration directly controls the next slice's play_seq execution time,
+      // which then feeds back into the next elapsed measurement), which runs away unboundedly
+      // once per-round-trip overhead is nonzero. Clamped to bound worst-case pause length.
+      const sliceDurationMs = Math.min(Math.max((now - hilStartTimeRef.current) - hilAccumTimeRef.current, 20), 500);
+      // The netlist must simulate the full slice duration, not a fixed smaller window — GPIO_3's
+      // hardware toggle sequence is now derived from the astable multivibrator's own simulated
+      // oscillation (see below), so it needs a waveform covering the whole real-time gap this
+      // burst has to fill. This used to be decoupled and fixed at 50ms as a workaround for
+      // ngspice convergence failure, but that was caused by the transistor model having zero
+      // switching timescale (CJC=0/CJE=0/TR=0/TF=0, see spice.ts), now fixed there — so longer
+      // simulated durations no longer blow up compute time or point counts unboundedly.
+      const netlistDurationMs = sliceDurationMs;
+      const { netlist, portToNet } = generateSpiceNetlist(nextNodes, edgesRef.current, netlistDurationMs / 1000, simResolution, {}, hilInitialConditionsRef.current);
+
+      const result = await runSimInWorker(netlist);
+      lastSimulatedResultRef.current = result;
+      lastPortToNetRef.current = portToNet;
+      lastSliceDurationRef.current = netlistDurationMs;
+
+      const lastIndex = result.numPoints - 1;
+      const nextICs: Record<string, number> = {};
+      if (result.variableNames && result.data && result.data.length > 0) {
+        result.variableNames.forEach((name: string, i: number) => {
+          if (name.startsWith('v(') && name.endsWith(')')) {
+            const nodeName = name.slice(2, -1);
+            nextICs[nodeName] = result.data[i].values[lastIndex];
+          }
+        });
+      }
+      // Carry ICs forward so the VCO's oscillation phase continues seamlessly across slice
+      // boundaries instead of restarting each time. This previously caused escalating
+      // ngspice convergence failure ("Timestep too small... trouble with node X") — root cause
+      // was the transistor model having CJC=0/CJE=0/TR=0/TF=0 (zero switching timescale, see
+      // spice.ts), not IC-carrying itself; fixed there.
+      hilInitialConditionsRef.current = nextICs;
+      setInitialConditions(nextICs);
+
+      const newAccum = hilAccumTimeRef.current + sliceDurationMs;
+      hilAccumTimeRef.current = newAccum;
+      const newNetlistAccum = hilNetlistAccumTimeRef.current + netlistDurationMs;
+      hilNetlistAccumTimeRef.current = newNetlistAccum;
+
+      const outputs: Record<string, any> = {};
+      const pins = (activeHILNode.data.pins as Record<string, string>) || {};
+      for (const pinId of ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41']) {
+        if (pins[pinId] === 'digital_out') {
+          if (pinId === 'GPIO_3') {
+            // GPIO_3's hardware toggle sequence is the astable multivibrator's own simulated
+            // oscillation at this pin's net — a VCO whose frequency is set by the LDR voltage
+            // on GPIO_1 via the base-bias resistors — turned into a digital sequence by
+            // threshold-crossing detection, NOT a fixed rate.
+            const seq: [number, number][] = [];
+            const net = portToNet[`${activeHILNode.id}-${pinId}`];
+            const graph = findGraphFromSim(result, net);
+            const threshold = 1.65; // half of 3.3V logic level
+            if (graph && graph.timestamps_ms.length > 0) {
+              let lastState = graph.voltage_levels[0] > threshold ? 1 : 0;
+              let lastT = 0;
+              for (let i = 1; i < graph.timestamps_ms.length; i++) {
+                const state = graph.voltage_levels[i] > threshold ? 1 : 0;
+                if (state !== lastState) {
+                  const t = graph.timestamps_ms[i];
+                  seq.push([lastState, Math.round((t - lastT) * 1000)]);
+                  lastState = state;
+                  lastT = t;
+                }
+              }
+              seq.push([lastState, Math.round((sliceDurationMs - lastT) * 1000)]);
+            } else {
+              seq.push([0, Math.round(sliceDurationMs * 1000)]);
+            }
+            outputs[pinId] = seq;
+          } else {
+            outputs[pinId] = [[0, 0]];
+          }
+        }
+      }
+      lastSimulatedVoltagesRef.current = outputs;
+
+      // Buffer command for the next slice
+      const connectedPins = getConnectedHeltecPins(activeHILNode.id, edgesRef.current);
+      const nextPayload = buildHILSlicePayload(pins, outputs, connectedPins);
+      nextHILCommandRef.current = nextPayload;
+
+      if (hilWaitingForCommandRef.current && hilSocketRef.current && hilSocketRef.current.readyState === WebSocket.OPEN) {
+        lastSendTimeRef.current = performance.now();
+        hilSocketRef.current.send(nextPayload);
+        nextHILCommandRef.current = null;
+        hilWaitingForCommandRef.current = false;
+      }
+
+      const finalNodes = nextNodes.map(n => {
+        let newNode = { ...n } as any;
+
+        if (n.type === 'scope') {
+          const ch1Net = portToNet[`${n.id}-ch1`];
+          const ch2Net = portToNet[`${n.id}-ch2`];
+          const gndNet = portToNet[`${n.id}-gnd`];
+          
+          const ch1Graph = findGraphFromSim(result, ch1Net);
+          const ch2Graph = findGraphFromSim(result, ch2Net);
+          const gndGraph = findGraphFromSim(result, gndNet);
+          
+          let relativePoints1: any[] = [];
+          let relativePoints2: any[] = [];
+          
+          if (ch1Graph) {
+            const newPoints = ch1Graph.timestamps_ms.map((t: number, idx: number) => ({
+              t: hilNetlistAccumTimeRef.current - netlistDurationMs + t,
+              v: ch1Graph.voltage_levels[idx] - (gndGraph ? gndGraph.voltage_levels[idx] : 0.0)
+            }));
+            let hist = hilHistoryRef.current[`${n.id}-ch1`] || [];
+            hist = [...hist, ...newPoints].filter(p => p.t >= newNetlistAccum - 1000);
+            hilHistoryRef.current[`${n.id}-ch1`] = hist;
+            relativePoints1 = hist.map(p => ({ t: p.t - (newNetlistAccum - 1000), v: p.v }));
+          }
+          
+          if (ch2Graph) {
+            const newPoints = ch2Graph.timestamps_ms.map((t: number, idx: number) => ({
+              t: hilNetlistAccumTimeRef.current - netlistDurationMs + t,
+              v: ch2Graph.voltage_levels[idx] - (gndGraph ? gndGraph.voltage_levels[idx] : 0.0)
+            }));
+            let hist = hilHistoryRef.current[`${n.id}-ch2`] || [];
+            hist = [...hist, ...newPoints].filter(p => p.t >= newNetlistAccum - 1000);
+            hilHistoryRef.current[`${n.id}-ch2`] = hist;
+            relativePoints2 = hist.map(p => ({ t: p.t - (newNetlistAccum - 1000), v: p.v }));
+          }
+          
+          newNode.data = {
+            ...newNode.data,
+            voltageData: relativePoints1,
+            voltageData1: relativePoints1,
+            voltageData2: relativePoints2
+          };
+        }
+
+        if (n.type === 'led') {
+          const net = portToNet[`${n.id}-anode`];
+          const anodeGraph = findGraphFromSim(result, net);
+          const intGraph = findGraphFromSim(result, `int_led_${n.id}`);
+          if (anodeGraph && intGraph) {
+            const newPoints = anodeGraph.timestamps_ms.map((t: number, idx: number) => {
+              const vA = anodeGraph.voltage_levels[idx];
+              const vI = intGraph.voltage_levels[idx];
+              return {
+                t: hilNetlistAccumTimeRef.current - netlistDurationMs + t,
+                v: vA - vI
+              };
+            });
+            let hist = hilHistoryRef.current[n.id] || [];
+            hist = [...hist, ...newPoints].filter(p => p.t >= newNetlistAccum - 1000);
+            hilHistoryRef.current[n.id] = hist;
+            newNode.data = {
+              ...newNode.data,
+              time_points: hist.map(p => p.t - (newNetlistAccum - 1000)),
+              current_array: hist.map(p => p.v)
+            };
+          }
+        }
+
+        return newNode;
+      });
+
+      setNodes(finalNodes);
+    } catch (e) {
+      console.error("[HIL] Simulation slice run failed:", e);
+    }
+  };
+
   const runSimulation = async (nodesOverride?: Node[], customICs?: Record<string, number>) => {
     try {
       const currentNodes = nodesOverride || nodes;
+      const heltecNode = currentNodes.find(n => n.type === 'heltec_v4');
+      if (heltecNode) {
+        if (hilRunningRef.current) {
+          // HIL pipeline is already active — starting a second one would double up
+          // repl_input traffic to the device and stall both, so no-op instead.
+          return { ok: true };
+        }
+        setIsSpiceRunning(true);
+        setIsSimulating(true);
+        hilRunningRef.current = true;
+        hilBackgroundPollActiveRef.current = true;
+        hilAccumTimeRef.current = 0;
+        hilNetlistAccumTimeRef.current = 0;
+        hilStartTimeRef.current = null;
+        hilHistoryRef.current = {};
+        hilInitialConditionsRef.current = {};
+        hilBufferRef.current = '';
+        lastHILTimeRef.current = null;
+        setInitialConditions({});
+        
+        const ip = (heltecNode.data.ip as string) || '192.168.1.244';
+        if (hilConnectedRef.current && hilSocketRef.current) {
+          const ws = hilSocketRef.current;
+          if (ws.readyState === WebSocket.OPEN) {
+            const pins = (heltecNode.data.pins as Record<string, string>) || {};
+            let code = "print('[HIL] Bootstrap: starting (existing ws)...')\n";
+            code += "import lib.webserver as ws\n";
+            code += "import machine, utime\n";
+            code += "h = ws._mesh_get_heltec()\n";
+            code += "print('[HIL] Bootstrap: h =', h)\n";
+            code += "h.lora_mode('raw')\n";
+            code += "h.gps_power(0)\n";
+            const connectedBootPins = getConnectedHeltecPins(heltecNode.id, edgesRef.current);
+            Object.entries(pins).forEach(([pinId, mode]) => {
+              if (!connectedBootPins.has(pinId)) return;
+              const pinNum = parseInt(pinId.replace('GPIO_', ''));
+              const modeStr = mode === 'digital_out' ? 'out' : 'in';
+              code += `h.gpio_mode(${pinNum}, '${modeStr}')\n`;
+            });
+            ws.send(JSON.stringify({ cmd: 'repl_input', code }));
+          }
+          setTimeout(() => {
+            if (hilRunningRef.current) {
+              startHILPipeline();
+            }
+          }, 150);
+        } else {
+          ensureHILConnection(ip, heltecNode);
+        }
+        return { ok: true };
+      }
+
       setIsSpiceRunning(true);
       setIsSimulating(true);
       // Yield to allow React/browser to render the "SPICE Simulating" notice
@@ -3059,12 +3787,42 @@ export default function App() {
     setIsSimulating(false);
     playbackTicker.stop();
     setProbeData(null);
+
+    // Stop and teardown HIL
+    // Stop HIL and stay quiet — do not resume background polling automatically
+    // (it self-perpetuates via recursive setTimeout with no other way to cancel it).
+    hilRunningRef.current = false;
+    hilBackgroundPollActiveRef.current = false;
+    if (hilSocketRef.current && hilConnectedRef.current) {
+      try {
+        const heltecNode = nodes.find(n => n.type === 'heltec_v4');
+        if (heltecNode) {
+          let code = "import lib.webserver as ws\n";
+          code += "h = ws._mesh_get_heltec()\n";
+          code += "h.gpio_write(3, 0)\n";
+          code += "h.lora_mode('mesh')\n";
+          code += "h.gps_power(1)\n";
+          hilSocketRef.current.send(JSON.stringify({ cmd: "repl_input", code }));
+        }
+      } catch (e) {
+        console.error("[HIL] Failed to send stop state:", e);
+      }
+    }
+    hilHistoryRef.current = {};
+    hilAccumTimeRef.current = 0;
+    hilNetlistAccumTimeRef.current = 0;
+    hilStartTimeRef.current = null;
+    lastHILTimeRef.current = null;
+
     setNodes(nds => nds.map(n => {
       if (n.type === 'led') {
         return { ...n, data: { ...n.data, brightness: 0, current_array: undefined, time_points: undefined } };
       }
       if (n.type === 'speaker' || n.type === 'scope') {
         return { ...n, data: { ...n.data, voltageData: undefined } };
+      }
+      if (n.type === 'heltec_v4') {
+        return { ...n, data: { ...n.data, isConnected: false } };
       }
       return n;
     }));
@@ -3378,26 +4136,30 @@ export default function App() {
         
         <div className="flex items-center gap-1 md:gap-2">
           {/* Duration Block */}
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner hidden xl:flex">
+          <div className={`flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner hidden xl:flex ${nodes.some(n => n.type === 'heltec_v4') ? 'opacity-50 cursor-not-allowed' : ''}`}>
             <span className="text-xs font-semibold text-slate-755 dark:text-slate-350 px-1.5">Duration:</span>
             <input 
               type="number" 
               min="0.1" 
               step="0.1" 
-              value={simLength} 
+              value={nodes.some(n => n.type === 'heltec_v4') ? 0.05 : simLength} 
+              disabled={nodes.some(n => n.type === 'heltec_v4')}
               onChange={e => setSimLength(parseFloat(e.target.value) || 1.0)} 
-              className="w-12 text-xs border-none bg-transparent focus:ring-0 text-center text-slate-800 dark:text-slate-100 font-medium h-6 py-0"
+              className={`w-12 text-xs border-none bg-transparent focus:ring-0 text-center text-slate-800 dark:text-slate-100 font-medium h-6 py-0 ${nodes.some(n => n.type === 'heltec_v4') ? 'cursor-not-allowed' : ''}`}
+              title={nodes.some(n => n.type === 'heltec_v4') ? "Locked to 50ms transient slices in Hardware-in-the-Loop mode." : "Simulation duration (seconds)"}
             />
-            <span className="text-xs text-slate-500 dark:text-slate-400 mr-1.5">s</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400 mr-1.5">{nodes.some(n => n.type === 'heltec_v4') ? 's (HIL)' : 's'}</span>
           </div>
 
           {/* Resolution Block */}
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner mx-1 hidden 2xl:flex">
+          <div className={`flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner mx-1 hidden 2xl:flex ${nodes.some(n => n.type === 'heltec_v4') ? 'opacity-50 cursor-not-allowed' : ''}`}>
             <span className="text-xs font-semibold text-slate-755 dark:text-slate-350 px-1.5">Res:</span>
             <select
               value={simResolution}
+              disabled={nodes.some(n => n.type === 'heltec_v4')}
               onChange={e => setSimResolution(e.target.value as 'normal' | 'high')}
-              className="bg-transparent border-none text-slate-850 dark:text-slate-100 text-xs focus:ring-0 font-medium cursor-pointer h-6 py-0"
+              className={`bg-transparent border-none text-slate-850 dark:text-slate-100 text-xs focus:ring-0 font-medium cursor-pointer h-6 py-0 ${nodes.some(n => n.type === 'heltec_v4') ? 'cursor-not-allowed' : ''}`}
+              title={nodes.some(n => n.type === 'heltec_v4') ? "Locked in Hardware-in-the-Loop mode." : "Solver timestep resolution"}
             >
               <option value="normal" className="bg-white dark:bg-slate-900 text-slate-750 dark:text-slate-355">Normal</option>
               <option value="high" className="bg-white dark:bg-slate-900 text-slate-750 dark:text-slate-355">High</option>

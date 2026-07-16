@@ -36,30 +36,30 @@ export const timer555Blink: CircuitPreset = {
   name: '555 Blinker',
   recommendedSimLength: 1.0,
   nodes: [
-    { id: 'v1', type: 'voltage', position: { x: 100, y: 50 }, data: { label: '5V' } },
+    { id: 'v1', type: 'voltage', position: { x: 100, y: 80 }, data: { label: '5V' } },
     { id: 't555', type: 'timer555', position: { x: 400, y: 200 }, data: { label: '555 Timer' } },
-    { id: 'r1', type: 'resistor', position: { x: 250, y: 50 }, data: { label: '10kΩ', orientation: 'vertical' } },
-    { id: 'r2', type: 'resistor', position: { x: 250, y: 150 }, data: { label: '47kΩ', orientation: 'vertical' } },
-    { id: 'c1', type: 'capacitor', position: { x: 250, y: 250 }, data: { label: '10µF', orientation: 'vertical' } },
-    { id: 'r3', type: 'resistor', position: { x: 600, y: 200 }, data: { label: '330Ω' } },
-    { id: 'led1', type: 'led', position: { x: 800, y: 200 }, data: { label: 'LED', color: 'blue', v_drop: 2.0, max_current: 20, orientation: 'left' } },
-    { id: 'g1', type: 'ground', position: { x: 100, y: 400 }, data: { label: 'GND' } },
-    { id: 'g2', type: 'ground', position: { x: 250, y: 350 }, data: { label: 'GND' } },
+    { id: 'r1', type: 'resistor', position: { x: 580, y: 48 }, data: { label: '10kΩ', orientation: 'vertical' } },
+    { id: 'r2', type: 'resistor', position: { x: 580, y: 148 }, data: { label: '47kΩ', orientation: 'vertical' } },
+    { id: 'c1', type: 'capacitor', position: { x: 580, y: 248 }, data: { label: '10µF', orientation: 'vertical' } },
+    { id: 'r3', type: 'resistor', position: { x: 280, y: 280 }, data: { label: '330Ω', orientation: 'left' } },
+    { id: 'led1', type: 'led', position: { x: 180, y: 280 }, data: { label: 'LED', color: 'blue', v_drop: 2.0, max_current: 20, orientation: 'left' } },
+    { id: 'g1', type: 'ground', position: { x: 100, y: 280 }, data: { label: 'GND' } },
+    { id: 'g2', type: 'ground', position: { x: 580, y: 348 }, data: { label: 'GND' } },
   ],
   edges: [
     // Power
-    { id: 'e-v1-t8', source: 'v1', target: 't555', sourceHandle: 'pos', targetHandle: '8', type: 'smoothstep' },
-    { id: 'e-v1-t4', source: 'v1', target: 't555', sourceHandle: 'pos', targetHandle: '4', type: 'smoothstep' }, // RST to VCC
     { id: 'e-v1-r1', source: 'v1', target: 'r1', sourceHandle: 'pos', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-v1-t4', source: 'v1', target: 't555', sourceHandle: 'pos', targetHandle: '4', type: 'smoothstep' }, // RST to VCC
+    { id: 'e-t8-r1', source: 't555', target: 'r1', sourceHandle: '8', targetHandle: 'in', type: 'smoothstep' }, // VCC pin 8 to R1 top
     { id: 'e-v1-g1', source: 'v1', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-t1-g1', source: 't555', target: 'g1', sourceHandle: '1', targetHandle: 'in', type: 'smoothstep' },
     
     // Astable network
     { id: 'e-r1-r2', source: 'r1', target: 'r2', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
-    { id: 'e-r1-t7', source: 'r1', target: 't555', sourceHandle: 'out', targetHandle: '7', type: 'smoothstep' }, // DIS
+    { id: 'e-t7-r2', source: 't555', target: 'r2', sourceHandle: '7', targetHandle: 'in', type: 'smoothstep' }, // DIS connects directly to R2 top
     { id: 'e-r2-c1', source: 'r2', target: 'c1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
-    { id: 'e-r2-t6', source: 'r2', target: 't555', sourceHandle: 'out', targetHandle: '6', type: 'smoothstep' }, // THR
-    { id: 'e-c1-t2', source: 'c1', target: 't555', sourceHandle: 'in', targetHandle: '2', type: 'smoothstep' }, // TRIG (connected at R2/C1 junction)
+    { id: 'e-t6-c1', source: 't555', target: 'c1', sourceHandle: '6', targetHandle: 'in', type: 'smoothstep' }, // THR connects directly to C1 top
+    { id: 'e-t2-c1', source: 't555', target: 'c1', sourceHandle: '2', targetHandle: 'in', type: 'smoothstep' }, // TRIG connects directly to C1 top
     { id: 'e-c1-g2', source: 'c1', target: 'g2', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
     
     // Output
@@ -93,18 +93,19 @@ export const bjtAmp: CircuitPreset = {
     { id: 'mic1', type: 'microphone', position: { x: 100, y: 300 }, data: { label: 'Mic', pwlData: [{t:0,v:0}, {t:0.001,v:0.02}, {t:0.002,v:-0.02}, {t:0.003,v:0}] } },
     
     // Input coupling
-    { id: 'cin', type: 'capacitor', position: { x: 250, y: 300 }, data: { label: '10µF' } },
+    { id: 'cin', type: 'capacitor', position: { x: 252, y: 316 }, data: { label: '10µF' } },
     
     // Bias
     { id: 'r1', type: 'resistor', position: { x: 400, y: 150 }, data: { label: '47kΩ', orientation: 'vertical' } },
     { id: 'r2', type: 'resistor', position: { x: 400, y: 400 }, data: { label: '10kΩ', orientation: 'vertical' } },
+    { id: 'j_bias', type: 'junction', position: { x: 400, y: 316 }, data: {} },
     
     // Transistor
     { id: 'q1', type: 'npn', position: { x: 600, y: 300 }, data: { label: '2N3904', bf: 300 } },
     
     // Collector & Emitter resistors
-    { id: 'rc', type: 'resistor', position: { x: 600, y: 150 }, data: { label: '2.2kΩ', orientation: 'vertical' } },
-    { id: 're', type: 'resistor', position: { x: 600, y: 450 }, data: { label: '1kΩ', orientation: 'vertical' } },
+    { id: 'rc', type: 'resistor', position: { x: 612, y: 150 }, data: { label: '2.2kΩ', orientation: 'vertical' } },
+    { id: 're', type: 'resistor', position: { x: 612, y: 450 }, data: { label: '1kΩ', orientation: 'vertical' } },
     
     // Output coupling & Speaker
     { id: 'cout', type: 'capacitor', position: { x: 800, y: 300 }, data: { label: '470µF' } },
@@ -124,10 +125,11 @@ export const bjtAmp: CircuitPreset = {
     { id: 'e-mic-g1', source: 'mic1', target: 'g1', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
     
     // Bias divider & Base
-    { id: 'e-r1-b', source: 'r1', target: 'q1', sourceHandle: 'out', targetHandle: 'b', type: 'smoothstep' },
-    { id: 'e-r2-b', source: 'q1', target: 'r2', sourceHandle: 'b', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-r1-j', source: 'r1', target: 'j_bias', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-j-r2', source: 'j_bias', target: 'r2', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-cin-j', source: 'cin', target: 'j_bias', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-j-b', source: 'j_bias', target: 'q1', sourceHandle: 'out', targetHandle: 'b', type: 'smoothstep' },
     { id: 'e-r2-g1', source: 'r2', target: 'g1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
-    { id: 'e-cin-b', source: 'cin', target: 'q1', sourceHandle: 'out', targetHandle: 'b', type: 'smoothstep' },
     
     // Collector
     { id: 'e-rc-c', source: 'rc', target: 'q1', sourceHandle: 'out', targetHandle: 'c', type: 'smoothstep' },
@@ -449,18 +451,19 @@ export const mixedLogicBlink: CircuitPreset = {
 export const opAmpAmp: CircuitPreset = {
   name: 'Op-Amp Audio Amp',
   nodes: [
-    { id: 'vcc', type: 'voltage', position: { x: 350, y: 50 }, data: { label: '12V' } },
-    { id: 'g_vcc', type: 'ground', position: { x: 350, y: 120 }, data: { label: 'GND' } },
+    { id: 'vcc', type: 'voltage', position: { x: 100, y: 50 }, data: { label: '12V' } },
+    { id: 'g_vcc', type: 'ground', position: { x: 100, y: 120 }, data: { label: 'GND' } },
     
     { id: 'mic1', type: 'microphone', position: { x: 50, y: 180 }, data: { label: 'Mic', amplification: 1 } },
     { id: 'g_mic', type: 'ground', position: { x: 50, y: 280 }, data: { label: 'GND' } },
     
-    { id: 'cin', type: 'capacitor', position: { x: 200, y: 192 }, data: { label: '0.1uF' } },
+    { id: 'cin', type: 'capacitor', position: { x: 200, y: 232 }, data: { label: '0.1uF' } },
     
     // Bias divider for single supply op-amp
-    { id: 'r_b1', type: 'resistor', position: { x: 350, y: 152 }, data: { label: '100k', orientation: 'vertical' } },
-    { id: 'r_b2', type: 'resistor', position: { x: 350, y: 252 }, data: { label: '100k', orientation: 'vertical' } },
-    { id: 'g_rb2', type: 'ground', position: { x: 350, y: 332 }, data: { label: 'GND' } },
+    { id: 'r_b1', type: 'resistor', position: { x: 352, y: 152 }, data: { label: '100k', orientation: 'vertical' } },
+    { id: 'r_b2', type: 'resistor', position: { x: 352, y: 252 }, data: { label: '100k', orientation: 'vertical' } },
+    { id: 'g_rb2', type: 'ground', position: { x: 352, y: 332 }, data: { label: 'GND' } },
+    { id: 'j_op_bias', type: 'junction', position: { x: 352, y: 232 }, data: {} },
     
     // Op-amp
     { id: 'oa1', type: 'opamp', position: { x: 450, y: 154 }, data: { label: 'LM358' } },
@@ -485,14 +488,15 @@ export const opAmpAmp: CircuitPreset = {
     { id: 'e-oa-vee', source: 'oa1', target: 'g_oa', sourceHandle: 'vee', targetHandle: 'in', type: 'smoothstep' },
     
     // Bias Divider
-    { id: 'e-rb1-rb2', source: 'r_b1', target: 'r_b2', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-rb1-j', source: 'r_b1', target: 'j_op_bias', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-j-rb2', source: 'j_op_bias', target: 'r_b2', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-rb2-gnd', source: 'r_b2', target: 'g_rb2', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
     
     // Input Signal
     { id: 'e-mic-cin', source: 'mic1', target: 'cin', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-mic-gnd', source: 'mic1', target: 'g_mic', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
-    { id: 'e-cin-oanon', source: 'cin', target: 'oa1', sourceHandle: 'out', targetHandle: 'in_non', type: 'smoothstep' },
-    { id: 'e-rb1-oanon', source: 'r_b1', target: 'oa1', sourceHandle: 'out', targetHandle: 'in_non', type: 'smoothstep' },
+    { id: 'e-cin-j', source: 'cin', target: 'j_op_bias', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-j-oanon', source: 'j_op_bias', target: 'oa1', sourceHandle: 'out', targetHandle: 'in_non', type: 'smoothstep' },
     
     // Feedback
     { id: 'e-oaout-rf', source: 'oa1', target: 'rf', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
@@ -835,6 +839,60 @@ export const dffBlinker: CircuitPreset = {
   ]
 };
 
+export const heltecLightToFreqHIL: CircuitPreset = {
+  name: 'Heltec LDR Light-to-Freq HIL',
+  recommendedSimLength: 0.05,
+  nodes: [
+    { id: 'heltec1', type: 'heltec_v4', position: { x: 100, y: 150 }, data: {
+      label: 'Heltec V4',
+      ip: '192.168.1.244',
+      pins: {
+        GPIO_1: 'analog_in',
+        GPIO_3: 'digital_out'
+      },
+      pinVoltages: {
+        GPIO_1: 0.0,
+        GPIO_3: 0.0
+      },
+      isConnected: false
+    } },
+    
+    // VCO
+    { id: 'r_c1', type: 'resistor', position: { x: 400, y: 100 }, data: { label: '1kΩ', resistance: 1000, orientation: 'vertical' } },
+    { id: 'r_b1', type: 'resistor', position: { x: 480, y: 100 }, data: { label: '27kΩ', resistance: 27000, orientation: 'vertical' } },
+    { id: 'r_b2', type: 'resistor', position: { x: 560, y: 100 }, data: { label: '28kΩ', resistance: 28000, orientation: 'vertical' } },
+    { id: 'r_c2', type: 'resistor', position: { x: 640, y: 100 }, data: { label: '1kΩ', resistance: 1000, orientation: 'vertical' } },
+    { id: 'c1', type: 'capacitor', position: { x: 480, y: 200 }, data: { label: '0.47µF', capacitance: 4.7e-7 } },
+    { id: 'c2', type: 'capacitor', position: { x: 560, y: 200 }, data: { label: '0.47µF', capacitance: 4.7e-7 } },
+    { id: 'q1', type: 'npn', position: { x: 440, y: 280 }, data: { label: 'Q1' } },
+    { id: 'q2', type: 'npn', position: { x: 600, y: 280 }, data: { label: 'Q2' } },
+    { id: 'scope1', type: 'scope', position: { x: 740, y: 120 }, data: { label: 'Oscilloscope', width: 240, height: 160 } },
+    { id: 'gnd_osc', type: 'ground', position: { x: 520, y: 400 }, data: { label: 'GND' } },
+  ],
+  edges: [
+    { id: 'e-3v3-rc1', source: 'heltec1', target: 'r_c1', sourceHandle: '3V3', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-gpio1-rb1', source: 'heltec1', target: 'r_b1', sourceHandle: 'GPIO_1', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-gpio1-rb2', source: 'heltec1', target: 'r_b2', sourceHandle: 'GPIO_1', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-3v3-rc2', source: 'heltec1', target: 'r_c2', sourceHandle: '3V3', targetHandle: 'in', type: 'smoothstep' },
+    
+    { id: 'e-rc1-q1c', source: 'r_c1', target: 'q1', sourceHandle: 'out', targetHandle: 'c', type: 'smoothstep' },
+    { id: 'e-c1-q1c', source: 'c1', target: 'q1', sourceHandle: 'in', targetHandle: 'c', type: 'smoothstep' },
+    { id: 'e-c2-q1b', source: 'c2', target: 'q1', sourceHandle: 'out', targetHandle: 'b', type: 'smoothstep' },
+    { id: 'e-rb1-q1b', source: 'r_b1', target: 'q1', sourceHandle: 'out', targetHandle: 'b', type: 'smoothstep' },
+    { id: 'e-q1e-gnd', source: 'q1', target: 'gnd_osc', sourceHandle: 'e', targetHandle: 'in', type: 'smoothstep' },
+    
+    { id: 'e-rc2-q2c', source: 'r_c2', target: 'q2', sourceHandle: 'out', targetHandle: 'c', type: 'smoothstep' },
+    { id: 'e-c2-q2c', source: 'c2', target: 'q2', sourceHandle: 'in', targetHandle: 'c', type: 'smoothstep' },
+    { id: 'e-c1-q2b', source: 'c1', target: 'q2', sourceHandle: 'out', targetHandle: 'b', type: 'smoothstep' },
+    { id: 'e-rb2-q2b', source: 'r_b2', target: 'q2', sourceHandle: 'out', targetHandle: 'b', type: 'smoothstep' },
+    { id: 'e-q2e-gnd', source: 'q2', target: 'gnd_osc', sourceHandle: 'e', targetHandle: 'in', type: 'smoothstep' },
+    
+    { id: 'e-q2c-gpio3', source: 'q2', target: 'heltec1', sourceHandle: 'c', targetHandle: 'GPIO_3', type: 'smoothstep' },
+    { id: 'e-q2c-scope', source: 'q2', target: 'scope1', sourceHandle: 'c', targetHandle: 'ch1', type: 'smoothstep' },
+    { id: 'e-scope-gnd', source: 'scope1', target: 'gnd_osc', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' }
+  ]
+};
+
 export const ldrWebcamDemo: CircuitPreset = {
   name: 'Webcam LDR / LED Photodiode Demo',
   recommendedSimLength: 1.0,
@@ -976,5 +1034,9 @@ export const presets: Record<string, CircuitPreset> = {
   ldrWebcamDemo: {
     ...ldrWebcamDemo,
     noteCard: `# LDR & Photodiode Demo 📸\n\nThis preset compares two methods of sensing light:\n- **Left (LDR Sensor)**: A Light Dependent Resistor. Higher light decreases resistance, raising the output voltage on the **LDR Out V** multimeter.\n- **Right (Photo-LED)**: An LED operated in reverse-bias. Higher light generates reverse photocurrent, raising the output voltage on the **LED Out V** multimeter.\n\n### How to use:\n1. Select either the **LDR Sensor** or **Photo-LED** node to view its properties in the sidebar.\n2. Toggle **Use Webcam Sensor** to activate your webcam.\n3. Wave your hand or shine a phone flash at your camera to see the exposure levels update.\n4. Click **Run** in the top toolbar to see the live voltage levels change on the multimeters!\n5. Or, click **Record Light Stream** to capture a light recording, then click **Run** to simulate that recording over time!`
+  },
+  heltecLightToFreqHIL: {
+    ...heltecLightToFreqHIL,
+    noteCard: `# Heltec LDR Light-to-Freq HIL 🌐\n\nThis is a Hardware-in-the-Loop (HIL) preset linking the physical Heltec CYD Board with the SPICE simulator!\n\n### Connections:\n- Connect a physical **LDR sensor** to **GPIO 1** of your Heltec V4 board.\n- Connect a physical **LED** (with a series resistor) to **GPIO 3** of your Heltec board.\n\n### Simulation Details:\n- **Physical Input**: The simulator reads the analog voltage from the LDR via **GPIO 1**.\n- **Virtual Oscillator**: The read voltage acts as the power supply for a virtual BJT astable multivibrator.\n- **Oscillation Output**: The frequency of the virtual oscillator controls the blinking of a virtual LED, and is sent back via WebSocket to blink the physical LED connected to **GPIO 3**.\n- **Real-Time Scope**: Use the virtual Oscilloscope to visualize the real-time blinking frequency!`
   }
 };
