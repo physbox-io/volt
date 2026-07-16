@@ -264,6 +264,60 @@ function snapToGrid(val: number, step = 8): number {
   return Math.round(val / step) * step;
 }
 
+class MinHeap<T extends { f: number }> {
+  private data: T[] = [];
+  get size() { return this.data.length; }
+  push(item: T) {
+    this.data.push(item);
+    let i = this.data.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.data[p].f <= this.data[i].f) break;
+      [this.data[p], this.data[i]] = [this.data[i], this.data[p]];
+      i = p;
+    }
+  }
+  pop(): T | undefined {
+    const top = this.data[0];
+    const last = this.data.pop();
+    if (this.data.length > 0 && last !== undefined) {
+      this.data[0] = last;
+      let i = 0;
+      const n = this.data.length;
+      while (true) {
+        let smallest = i;
+        const l = 2 * i + 1;
+        const r = 2 * i + 2;
+        if (l < n && this.data[l].f < this.data[smallest].f) smallest = l;
+        if (r < n && this.data[r].f < this.data[smallest].f) smallest = r;
+        if (smallest === i) break;
+        [this.data[i], this.data[smallest]] = [this.data[smallest], this.data[i]];
+        i = smallest;
+      }
+    }
+    return top;
+  }
+}
+
+// Removes points that are redundant because their neighbors are already
+// collinear with them (handles both same-list runs and points introduced by
+// splicing separate point lists, e.g. lead-in + route + lead-out).
+function simplifyCollinear(points: Point[]): Point[] {
+  if (points.length < 3) return points;
+  const result: Point[] = [points[0]];
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = result[result.length - 1];
+    const curr = points[i];
+    const next = points[i + 1];
+    const isCollinear = (prev.x === curr.x && curr.x === next.x) || (prev.y === curr.y && curr.y === next.y);
+    if (!isCollinear) {
+      result.push(curr);
+    }
+  }
+  result.push(points[points.length - 1]);
+  return result;
+}
+
 function routeOrthogonal({
   sourceX,
   sourceY,
@@ -274,6 +328,9 @@ function routeOrthogonal({
   obstacles = [],
   gridStep = 4,
   bendPenalty = 20,
+  padding = 160,
+  softObstacles,
+  tieBreak = 0,
 }: {
   sourceX: number;
   sourceY: number;
@@ -284,6 +341,9 @@ function routeOrthogonal({
   obstacles: Obstacle[];
   gridStep?: number;
   bendPenalty?: number;
+  padding?: number;
+  softObstacles?: Map<string, number>;
+  tieBreak?: number;
 }): string | null {
   const leadLength = 8;
   // Offset start and end points in their exit/entry directions to guarantee clean leads
@@ -321,11 +381,11 @@ function routeOrthogonal({
   const startDir = exitDirMap[sourcePosition] || 'none';
   const expectedEndDir = entryDirMap[targetPosition] || 'none';
 
-  // Define search area boundary with 160px padding
-  const minX = Math.min(start.x, end.x) - 160;
-  const maxX = Math.max(start.x, end.x) + 160;
-  const minY = Math.min(start.y, end.y) - 160;
-  const maxY = Math.max(start.y, end.y) + 160;
+  // Define search area boundary with padding
+  const minX = Math.min(start.x, end.x) - padding;
+  const maxX = Math.max(start.x, end.x) + padding;
+  const minY = Math.min(start.y, end.y) - padding;
+  const maxY = Math.max(start.y, end.y) + padding;
 
   const snappedObstacles = obstacles.map(o => ({
     x1: snapToGrid(o.x - 2, gridStep),
@@ -356,7 +416,7 @@ function routeOrthogonal({
     f: number;
   }
 
-  const openSet: State[] = [];
+  const openSet = new MinHeap<State>();
   const gScore = new Map<string, number>();
   const cameFrom = new Map<string, State>();
   const closedSet = new Set<string>();
@@ -368,7 +428,7 @@ function routeOrthogonal({
     x: start.x,
     y: start.y,
     dir: startDir,
-    f: 1.5 * manhattanDistance(start, end),
+    f: 1.5 * manhattanDistance(start, end) + tieBreak,
   });
 
   const getNeighbors = (curr: State): State[] => {
@@ -391,19 +451,12 @@ function routeOrthogonal({
 
   let endState: State | null = null;
   let iterations = 0;
-  const maxIterations = 2000;
+  const maxIterations = 8000;
 
-  while (openSet.length > 0 && iterations < maxIterations) {
+  while (openSet.size > 0 && iterations < maxIterations) {
     iterations++;
-    
-    // Optimized linear scan instead of sorting
-    let minIdx = 0;
-    for (let i = 1; i < openSet.length; i++) {
-      if (openSet[i].f < openSet[minIdx].f) {
-        minIdx = i;
-      }
-    }
-    const curr = openSet.splice(minIdx, 1)[0];
+
+    const curr = openSet.pop()!;
 
     if (curr.x === end.x && curr.y === end.y) {
       endState = curr;
@@ -419,14 +472,21 @@ function routeOrthogonal({
     for (const neighbor of getNeighbors(curr)) {
       const isBend = curr.dir !== 'none' && curr.dir !== neighbor.dir;
       let stepCost = gridStep + (isBend ? bendPenalty : 0);
-      
+
       // Check target entry direction alignment
       if (neighbor.x === end.x && neighbor.y === end.y) {
         if (expectedEndDir !== 'none' && neighbor.dir !== expectedEndDir) {
           stepCost += bendPenalty;
         }
       }
-      
+
+      // Soft-obstacle nudge to keep parallel wires from routing on top of
+      // each other; exempt own start/end so a route is never repelled from
+      // its own required entry/exit point.
+      if (softObstacles && !(neighbor.x === end.x && neighbor.y === end.y) && !(neighbor.x === start.x && neighbor.y === start.y)) {
+        stepCost += softObstacles.get(`${neighbor.x},${neighbor.y}`) || 0;
+      }
+
       const tentativeG = currG + stepCost;
 
       const neighborKey = `${neighbor.x},${neighbor.y},${neighbor.dir}`;
@@ -435,12 +495,12 @@ function routeOrthogonal({
       if (tentativeG < neighborG) {
         gScore.set(neighborKey, tentativeG);
         cameFrom.set(neighborKey, curr);
-        
+
         openSet.push({
           x: neighbor.x,
           y: neighbor.y,
           dir: neighbor.dir,
-          f: tentativeG + 1.5 * manhattanDistance(neighbor, end),
+          f: tentativeG + 1.5 * manhattanDistance(neighbor, end) + tieBreak,
         });
       }
     }
@@ -460,33 +520,19 @@ function routeOrthogonal({
   if (pathPoints.length === 0) return null;
 
   // Simplify intermediate points
-  const simplifiedPoints: Point[] = [pathPoints[0]];
-  for (let i = 1; i < pathPoints.length - 1; i++) {
-    const prev = pathPoints[i - 1];
-    const curr = pathPoints[i];
-    const next = pathPoints[i + 1];
-    
-    const dx1 = curr.x - prev.x;
-    const dy1 = curr.y - prev.y;
-    const dx2 = next.x - curr.x;
-    const dy2 = next.y - curr.y;
-    
-    if ((dx1 !== 0 && dy2 !== 0) || (dy1 !== 0 && dx2 !== 0)) {
-      simplifiedPoints.push(curr);
-    }
-  }
-  if (pathPoints.length > 1) {
-    simplifiedPoints.push(pathPoints[pathPoints.length - 1]);
-  }
+  const simplifiedPoints = simplifyCollinear(pathPoints);
 
-  // Calculate orthogonal connector leads
+  // Calculate orthogonal connector leads. Only insert an elbow point when the
+  // diff from grid-snapping exceeds a full grid step — sub-grid rounding
+  // diffs (1-3px) would otherwise produce phantom micro-jogs.
+  const LEAD_EPS = gridStep;
   const startPts: Point[] = [{ x: sourceX, y: sourceY }];
   if (sourcePosition === 'left' || sourcePosition === 'right') {
-    if (sourceY !== start.y) {
+    if (Math.abs(sourceY - start.y) >= LEAD_EPS) {
       startPts.push({ x: start.x, y: sourceY });
     }
   } else {
-    if (sourceX !== start.x) {
+    if (Math.abs(sourceX - start.x) >= LEAD_EPS) {
       startPts.push({ x: sourceX, y: start.y });
     }
   }
@@ -494,11 +540,11 @@ function routeOrthogonal({
 
   const endPts: Point[] = [end];
   if (targetPosition === 'left' || targetPosition === 'right') {
-    if (targetY !== end.y) {
+    if (Math.abs(targetY - end.y) >= LEAD_EPS) {
       endPts.push({ x: end.x, y: targetY });
     }
   } else {
-    if (targetX !== end.x) {
+    if (Math.abs(targetX - end.x) >= LEAD_EPS) {
       endPts.push({ x: targetX, y: end.y });
     }
   }
@@ -517,25 +563,10 @@ function routeOrthogonal({
     finalPoints.push(pt);
   }
 
-  // Collinear point reduction
-  const resultPoints: Point[] = [finalPoints[0]];
-  for (let i = 1; i < finalPoints.length - 1; i++) {
-    const prev = finalPoints[i - 1];
-    const curr = finalPoints[i];
-    const next = finalPoints[i + 1];
-    
-    const dx1 = curr.x - prev.x;
-    const dy1 = curr.y - prev.y;
-    const dx2 = next.x - curr.x;
-    const dy2 = next.y - curr.y;
-    
-    if ((dx1 !== 0 && dy2 !== 0) || (dy1 !== 0 && dx2 !== 0)) {
-      resultPoints.push(curr);
-    }
-  }
-  if (finalPoints.length > 1) {
-    resultPoints.push(finalPoints[finalPoints.length - 1]);
-  }
+  // Collinear point reduction — run again post-merge since splicing
+  // startPts/route/endPts together can introduce redundant points that
+  // weren't collinear within any single sub-list.
+  const resultPoints = simplifyCollinear(finalPoints);
 
   let d = `M ${resultPoints[0].x} ${resultPoints[0].y}`;
   for (let i = 1; i < resultPoints.length; i++) {

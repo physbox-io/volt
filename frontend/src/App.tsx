@@ -3061,7 +3061,7 @@ export default function App() {
                     const minPhys = 0.45;
                     const maxPhys = 2.2;
                     const minVirt = 0.73;
-                    const maxVirt = 3.3;
+                    const maxVirt = 0.92;
                     const norm = Math.min(Math.max((volt - minPhys) / (maxPhys - minPhys), 0), 1);
                     volt = minVirt + norm * (maxVirt - minVirt);
                   }
@@ -3128,7 +3128,7 @@ export default function App() {
                         const minPhys = 0.45;
                         const maxPhys = 2.2;
                         const minVirt = 0.73;
-                        const maxVirt = 3.3;
+                        const maxVirt = 0.92;
                         const norm = Math.min(Math.max((volt - minPhys) / (maxPhys - minPhys), 0), 1);
                         volt = minVirt + norm * (maxVirt - minVirt);
                       }
