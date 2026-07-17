@@ -2793,6 +2793,7 @@ export default function App() {
   const hilSocketRef = useRef<WebSocket | null>(null);
   const hilConnectedRef = useRef(false);
   const hilValuesRef = useRef<Record<string, number>>({});
+  const hilSmoothedValuesRef = useRef<Record<string, number>>({});
   const hilHistoryRef = useRef<Record<string, { t: number; v: number }[]>>({});
   const hilAccumTimeRef = useRef(0);
   const hilNetlistAccumTimeRef = useRef(0);
@@ -3065,6 +3066,15 @@ export default function App() {
                     const norm = Math.min(Math.max((volt - minPhys) / (maxPhys - minPhys), 0), 1);
                     volt = minVirt + norm * (maxVirt - minVirt);
                   }
+                  // Low-pass filter analog readings before they drive the sim: the VCO's
+                  // operating point sits close to the transistor's turn-on threshold (needed
+                  // to get the requested frequency range), which amplifies ordinary ADC/light
+                  // sensor noise into visible oscillation-frequency jitter. Smoothing the input
+                  // damps that out while still tracking real light-level changes.
+                  const prevSmoothed = hilSmoothedValuesRef.current[pinId];
+                  const alpha = 0.15;
+                  volt = prevSmoothed === undefined ? volt : alpha * volt + (1 - alpha) * prevSmoothed;
+                  hilSmoothedValuesRef.current[pinId] = volt;
                 }
                 hilValuesRef.current[pinId] = volt;
               }
@@ -3493,6 +3503,7 @@ export default function App() {
         hilNetlistAccumTimeRef.current = 0;
         hilStartTimeRef.current = null;
         hilHistoryRef.current = {};
+        hilSmoothedValuesRef.current = {};
         hilInitialConditionsRef.current = {};
         hilBufferRef.current = '';
         lastHILTimeRef.current = null;
@@ -3809,6 +3820,7 @@ export default function App() {
       }
     }
     hilHistoryRef.current = {};
+    hilSmoothedValuesRef.current = {};
     hilAccumTimeRef.current = 0;
     hilNetlistAccumTimeRef.current = 0;
     hilStartTimeRef.current = null;

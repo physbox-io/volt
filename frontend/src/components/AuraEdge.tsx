@@ -2,15 +2,25 @@ import { BaseEdge, type EdgeProps, getSmoothStepPath, useReactFlow } from '@xyfl
 import { useEffect, useState, createContext, useContext, useMemo, useCallback, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../utils/playbackTicker';
 
+// Junction dots are owned entirely by JunctionNode.tsx: every real electrical
+// T-tap in this app is created via the wire-drop-splice flow in App.tsx,
+// which always inserts an explicit `type: 'junction'` node (JunctionNode
+// renders its own dot). AuraEdge previously also tried to *infer* junction
+// dots from where same-net wire paths geometrically crossed, but that was
+// never able to trigger at a real JunctionNode (terminal coordinates were
+// explicitly excluded) — it only produced false positives/negatives at
+// incidental A* route crossings. That inference has been removed; if a
+// future code path ever merges 3+ wires onto a net without going through a
+// JunctionNode, dots for that case won't appear.
 export const EdgePathContext = createContext<{
   registerPath: (id: string, points: {x: number; y: number}[]) => void;
   unregisterPath: (id: string) => void;
-  junctions: {x: number; y: number}[];
+  paths: Record<string, {x: number; y: number}[]>;
   hoveredEdgeId: string | null;
   setHoveredEdgeId: (id: string | null) => void;
 } | null>(null);
 
-export function EdgePathProvider({ children, edges = [] }: { children: React.ReactNode; edges?: any[] }) {
+export function EdgePathProvider({ children }: { children: React.ReactNode; edges?: any[] }) {
   const [paths, setPaths] = useState<Record<string, {x: number; y: number}[]>>({});
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
 
@@ -30,177 +40,13 @@ export function EdgePathProvider({ children, edges = [] }: { children: React.Rea
     });
   }, []);
 
-  const junctions = useMemo(() => {
-    const juncs: {x: number; y: number}[] = [];
-    const edgeIds = Object.keys(paths);
-
-    // 1. Group edges into connected nets (union-find)
-    const parent: Record<string, string> = {};
-    const find = (id: string): string => {
-      if (!parent[id]) parent[id] = id;
-      if (parent[id] === id) return id;
-      return parent[id] = find(parent[id]);
-    };
-    const union = (id1: string, id2: string) => {
-      const root1 = find(id1);
-      const root2 = find(id2);
-      if (root1 !== root2) {
-        parent[root1] = root2;
-      }
-    };
-
-    // Group edges by terminal key: "nodeId/handleId"
-    const terminalToEdges: Record<string, string[]> = {};
-    edges.forEach(e => {
-      const term1 = `${e.source}/${e.sourceHandle || ''}`;
-      const term2 = `${e.target}/${e.targetHandle || ''}`;
-      if (!terminalToEdges[term1]) terminalToEdges[term1] = [];
-      if (!terminalToEdges[term2]) terminalToEdges[term2] = [];
-      terminalToEdges[term1].push(e.id);
-      terminalToEdges[term2].push(e.id);
-    });
-
-    // Union edges that share a terminal
-    Object.values(terminalToEdges).forEach(edgeIdsList => {
-      for (let i = 1; i < edgeIdsList.length; i++) {
-        union(edgeIdsList[0], edgeIdsList[i]);
-      }
-    });
-
-    // 2. Identify all component terminals (source and target coordinates of all edges)
-    // We should not place junction dots at component terminals.
-    const terminalCoords: {x: number; y: number}[] = [];
-    edgeIds.forEach(id => {
-      const pts = paths[id];
-      if (pts && pts.length > 0) {
-        terminalCoords.push(pts[0]);
-        terminalCoords.push(pts[pts.length - 1]);
-      }
-    });
-
-    const isTerminalCoord = (p: {x: number; y: number}) => {
-      return terminalCoords.some(tc => Math.abs(tc.x - p.x) < 1.5 && Math.abs(tc.y - p.y) < 1.5);
-    };
-
-    // 3. Convert paths to segments for each edge
-    const edgeSegments: Record<string, { p1: {x: number; y: number}; p2: {x: number; y: number} }[]> = {};
-    edgeIds.forEach(id => {
-      const pts = paths[id];
-      const segments: { p1: {x: number; y: number}; p2: {x: number; y: number} }[] = [];
-      for (let i = 0; i < pts.length - 1; i++) {
-        segments.push({ p1: pts[i], p2: pts[i + 1] });
-      }
-      edgeSegments[id] = segments;
-    });
-
-    // 4. Find intersections between horizontal segments of one edge and vertical segments of another connected edge
-    const candidates: { x: number; y: number; netRoot: string }[] = [];
-    const epsilon = 3;
-
-    for (let i = 0; i < edgeIds.length; i++) {
-      const id1 = edgeIds[i];
-      const segs1 = edgeSegments[id1] || [];
-
-      for (let j = i + 1; j < edgeIds.length; j++) {
-        const id2 = edgeIds[j];
-        // Only check if they are in the same net
-        if (find(id1) !== find(id2)) continue;
-
-        const segs2 = edgeSegments[id2] || [];
-
-        segs1.forEach(s1 => {
-          segs2.forEach(s2 => {
-            const isS1Horiz = Math.abs(s1.p1.y - s1.p2.y) < 3;
-            const isS1Vert = Math.abs(s1.p1.x - s1.p2.x) < 3;
-            const isS2Horiz = Math.abs(s2.p1.y - s2.p2.y) < 3;
-            const isS2Vert = Math.abs(s2.p1.x - s2.p2.x) < 3;
-
-            if (isS1Horiz && isS2Vert) {
-              const x = s2.p1.x;
-              const y = s1.p1.y;
-              const minX1 = Math.min(s1.p1.x, s1.p2.x);
-              const maxX1 = Math.max(s1.p1.x, s1.p2.x);
-              const minY2 = Math.min(s2.p1.y, s2.p2.y);
-              const maxY2 = Math.max(s2.p1.y, s2.p2.y);
-
-              if (x >= minX1 - epsilon && x <= maxX1 + epsilon && y >= minY2 - epsilon && y <= maxY2 + epsilon) {
-                candidates.push({ x, y, netRoot: find(id1) });
-              }
-            } else if (isS1Vert && isS2Horiz) {
-              const x = s1.p1.x;
-              const y = s2.p1.y;
-              const minY1 = Math.min(s1.p1.y, s1.p2.y);
-              const maxY1 = Math.max(s1.p1.y, s1.p2.y);
-              const minX2 = Math.min(s2.p1.x, s2.p2.x);
-              const maxX2 = Math.max(s2.p1.x, s2.p2.x);
-
-              if (x >= minX2 - epsilon && x <= maxX2 + epsilon && y >= minY1 - epsilon && y <= maxY1 + epsilon) {
-                candidates.push({ x, y, netRoot: find(id1) });
-              }
-            }
-          });
-        });
-      }
-    }
-
-    // 5. Filter candidates using topological check
-    candidates.forEach(p => {
-      if (isTerminalCoord(p)) return;
-
-      const netEdges = edgeIds.filter(id => find(id) === p.netRoot);
-      
-      let hasLeft = false;
-      let hasRight = false;
-      let hasUp = false;
-      let hasDown = false;
-
-      netEdges.forEach(id => {
-        const segs = edgeSegments[id] || [];
-        segs.forEach(s => {
-          const isHoriz = Math.abs(s.p1.y - s.p2.y) < 3;
-          const isVert = Math.abs(s.p1.x - s.p2.x) < 3;
-
-          if (isHoriz) {
-            const minY = Math.min(s.p1.y, s.p2.y);
-            const minX = Math.min(s.p1.x, s.p2.x);
-            const maxX = Math.max(s.p1.x, s.p2.x);
-
-            if (Math.abs(p.y - minY) < 3 && p.x >= minX - 3 && p.x <= maxX + 3) {
-              if (minX < p.x - 3) hasLeft = true;
-              if (maxX > p.x + 3) hasRight = true;
-            }
-          } else if (isVert) {
-            const minX = Math.min(s.p1.x, s.p2.x);
-            const minY = Math.min(s.p1.y, s.p2.y);
-            const maxY = Math.max(s.p1.y, s.p2.y);
-
-            if (Math.abs(p.x - minX) < 3 && p.y >= minY - 3 && p.y <= maxY + 3) {
-              if (minY < p.y - 3) hasUp = true;
-              if (maxY > p.y + 3) hasDown = true;
-            }
-          }
-        });
-      });
-
-      const totalConnections = (hasLeft ? 1 : 0) + (hasRight ? 1 : 0) + (hasUp ? 1 : 0) + (hasDown ? 1 : 0);
-
-      if (totalConnections >= 3) {
-        if (!juncs.some(j => Math.abs(j.x - p.x) < 3 && Math.abs(j.y - p.y) < 3)) {
-          juncs.push(p);
-        }
-      }
-    });
-
-    return juncs;
-  }, [paths, edges]);
-
-  const value = useMemo(() => ({ 
-    registerPath, 
-    unregisterPath, 
-    junctions, 
-    hoveredEdgeId, 
-    setHoveredEdgeId 
-  }), [registerPath, unregisterPath, junctions, hoveredEdgeId]);
+  const value = useMemo(() => ({
+    registerPath,
+    unregisterPath,
+    paths,
+    hoveredEdgeId,
+    setHoveredEdgeId
+  }), [registerPath, unregisterPath, paths, hoveredEdgeId]);
 
   return (
     <EdgePathContext.Provider value={value}>
@@ -575,6 +421,77 @@ function routeOrthogonal({
   return d;
 }
 
+const SOFT_PENALTY = 14; // < bendPenalty (20) so a lane-shift beats a new bend
+const SELF_EXEMPT_RADIUS = 12; // px around own start/end; never soft-penalize there
+
+function buildSoftObstacles(
+  otherEdgesPaths: Record<string, Point[]>,
+  edgeId: string,
+  sourceX: number,
+  sourceY: number,
+  targetX: number,
+  targetY: number,
+  gridStep: number
+): Map<string, number> {
+  const softObstacles = new Map<string, number>();
+  const otherIds = Object.keys(otherEdgesPaths);
+  if (otherIds.length === 0) return softObstacles;
+
+  // Deterministic lower-id-only ordering: an edge only avoids edges that
+  // sort before it. This makes avoidance a DAG (no A-avoids-B-avoids-A
+  // flip-flop) so the layout provably settles instead of oscillating.
+  const sortedIds = [...otherIds, edgeId].sort();
+  const myRank = sortedIds.indexOf(edgeId);
+
+  for (const otherId of otherIds) {
+    if (sortedIds.indexOf(otherId) > myRank) continue;
+    const pts = otherEdgesPaths[otherId];
+    if (!pts || pts.length < 2) continue;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      const isHoriz = p1.y === p2.y;
+      const isVert = p1.x === p2.x;
+      if (!isHoriz && !isVert) continue;
+      const minX = Math.min(p1.x, p2.x);
+      const maxX = Math.max(p1.x, p2.x);
+      const minY = Math.min(p1.y, p2.y);
+      const maxY = Math.max(p1.y, p2.y);
+      for (let x = snapToGrid(minX, gridStep); x <= maxX; x += gridStep) {
+        for (let y = snapToGrid(minY, gridStep); y <= maxY; y += gridStep) {
+          if (isHoriz && y !== snapToGrid(p1.y, gridStep)) continue;
+          if (isVert && x !== snapToGrid(p1.x, gridStep)) continue;
+          if (manhattanDistance({ x, y }, { x: sourceX, y: sourceY }) < SELF_EXEMPT_RADIUS) continue;
+          if (manhattanDistance({ x, y }, { x: targetX, y: targetY }) < SELF_EXEMPT_RADIUS) continue;
+          const key = `${x},${y}`;
+          softObstacles.set(key, Math.max(softObstacles.get(key) || 0, SOFT_PENALTY));
+        }
+      }
+    }
+  }
+  return softObstacles;
+}
+
+function segmentIntersectsObstacle(p1: Point, p2: Point, obstacles: Obstacle[]): boolean {
+  const minX = Math.min(p1.x, p2.x);
+  const maxX = Math.max(p1.x, p2.x);
+  const minY = Math.min(p1.y, p2.y);
+  const maxY = Math.max(p1.y, p2.y);
+  return obstacles.some(o => minX < o.x + o.width && maxX > o.x && minY < o.y + o.height && maxY > o.y);
+}
+
+function pathIntersectsObstacles(path: string, obstacles: Obstacle[]): boolean {
+  const points: Point[] = [];
+  const matches = path.matchAll(/[ML]\s*(-?\d+\.?\d*)\s*[\s,]\s*(-?\d+\.?\d*)/g);
+  for (const match of matches) {
+    points.push({ x: parseFloat(match[1]), y: parseFloat(match[2]) });
+  }
+  for (let i = 0; i < points.length - 1; i++) {
+    if (segmentIntersectsObstacle(points[i], points[i + 1], obstacles)) return true;
+  }
+  return false;
+}
+
 export function getSchematicPath({
   sourceX,
   sourceY,
@@ -586,6 +503,9 @@ export function getSchematicPath({
   allEdges = [],
   edgeId = '',
   nodes = [],
+  otherEdgesPaths = {},
+  sourceIndex = 0,
+  targetIndex = 0,
 }: {
   sourceX: number;
   sourceY: number;
@@ -599,6 +519,9 @@ export function getSchematicPath({
   nodes?: any[];
   sourceId?: string;
   targetId?: string;
+  otherEdgesPaths?: Record<string, Point[]>;
+  sourceIndex?: number;
+  targetIndex?: number;
   [key: string]: any;
 }) {
   // Try obstacle-avoiding A* router first
@@ -616,7 +539,14 @@ export function getSchematicPath({
         };
       });
 
-    const aStarPath = routeOrthogonal({
+    const otherPaths: Record<string, Point[]> = {};
+    for (const [id, pts] of Object.entries(otherEdgesPaths)) {
+      if (id !== edgeId) otherPaths[id] = pts;
+    }
+    const softObstacles = buildSoftObstacles(otherPaths, edgeId, sourceX, sourceY, targetX, targetY, 4);
+    const tieBreak = (sourceIndex + targetIndex) * 0.001;
+
+    let aStarPath = routeOrthogonal({
       sourceX,
       sourceY,
       sourcePosition,
@@ -626,8 +556,29 @@ export function getSchematicPath({
       obstacles,
       gridStep: 4,
       bendPenalty: 20,
+      padding: 160,
+      softObstacles,
+      tieBreak,
     });
-    
+
+    if (!aStarPath) {
+      // Widen the search area once before giving up on A* entirely.
+      aStarPath = routeOrthogonal({
+        sourceX,
+        sourceY,
+        sourcePosition,
+        targetX,
+        targetY,
+        targetPosition,
+        obstacles,
+        gridStep: 4,
+        bendPenalty: 20,
+        padding: 500,
+        softObstacles,
+        tieBreak,
+      });
+    }
+
     if (aStarPath) {
       return aStarPath;
     }
@@ -636,9 +587,7 @@ export function getSchematicPath({
   // Fallback to step-path router if A* fails
   const dx = Math.abs(targetX - sourceX);
   const dy = Math.abs(targetY - sourceY);
-  
-  let offset = sourceOffset;
-  
+
   let maxOffset = sourceOffset;
   if (sourcePosition === 'left' || sourcePosition === 'right') {
     if (targetPosition === 'left' || targetPosition === 'right') {
@@ -656,33 +605,60 @@ export function getSchematicPath({
 
   const sortedEdgeIds = allEdges.map((e: any) => e.id).sort();
   const edgeIndex = Math.max(0, sortedEdgeIds.indexOf(edgeId));
-  
+
   const shiftStep = 8;
   const shiftPattern = [0, 1, -1, 2, -2];
-  const shiftMultiplier = shiftPattern[edgeIndex % shiftPattern.length];
-  
-  offset = offset + shiftMultiplier * shiftStep;
-  
-  if (maxOffset > 4) {
-    offset = Math.min(maxOffset, Math.max(4, offset));
-    if (offset === maxOffset && shiftMultiplier > 0) {
-      offset = Math.max(4, maxOffset - shiftMultiplier * shiftStep);
+
+  const obstacles: Obstacle[] = (nodes || [])
+    .filter((n: any) => n.type !== 'junction')
+    .map((n: any) => {
+      const w = n.measured?.width || getNodeDimensions(n.type, n.data).width;
+      const h = n.measured?.height || getNodeDimensions(n.type, n.data).height;
+      return { x: n.position.x, y: n.position.y, width: w, height: h };
+    });
+
+  const computeOffset = (shiftMultiplier: number) => {
+    let offset = sourceOffset + shiftMultiplier * shiftStep;
+    if (maxOffset > 4) {
+      offset = Math.min(maxOffset, Math.max(4, offset));
+      if (offset === maxOffset && shiftMultiplier > 0) {
+        offset = Math.max(4, maxOffset - shiftMultiplier * shiftStep);
+      }
+    } else {
+      offset = Math.max(4, offset);
     }
-  } else {
-    offset = Math.max(4, offset);
+    return offset;
+  };
+
+  // Try the deterministic offset for this edge first; if it clips an
+  // obstacle (fallback has no built-in obstacle awareness), probe the rest
+  // of the shift pattern for one that doesn't.
+  const candidateOrder = [
+    shiftPattern[edgeIndex % shiftPattern.length],
+    ...shiftPattern.filter((_, i) => i !== edgeIndex % shiftPattern.length),
+  ];
+
+  let chosenPath: string | null = null;
+  for (const shiftMultiplier of candidateOrder) {
+    const offset = computeOffset(shiftMultiplier);
+    const [path] = getSmoothStepPath({
+      sourceX,
+      sourceY,
+      sourcePosition: sourcePosition as any,
+      targetPosition: targetPosition as any,
+      targetX,
+      targetY,
+      borderRadius: 0,
+      offset,
+    });
+    if (obstacles.length === 0 || !pathIntersectsObstacles(path, obstacles)) {
+      chosenPath = path;
+      break;
+    }
+    if (chosenPath === null) chosenPath = path; // keep first as last-resort fallback
   }
 
-  const [path] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    sourcePosition: sourcePosition as any,
-    targetPosition: targetPosition as any,
-    targetX,
-    targetY,
-    borderRadius: 0,
-    offset,
-  });
-  return path;
+  return chosenPath;
 }
 
 function getOrthogonalPathThroughWaypoint(
@@ -845,23 +821,26 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     }
   }
 
-  const waypoints: { x: number; y: number }[] = (data as any)?.waypoints || [];
+  const waypoints: { x: number; y: number }[] = useMemo(() => (data as any)?.waypoints || [], [data]);
   const [isDragging, setIsDragging] = useState(false);
 
-  let edgePath = '';
-  if (waypoints.length > 0) {
-    edgePath = getOrthogonalPathThroughWaypoint(
-      sourceX,
-      sourceY,
-      sourcePosition,
-      targetX,
-      targetY,
-      targetPosition,
-      waypoints[0]
-    );
-  } else {
+  const context = useContext(EdgePathContext);
+  const { registerPath, unregisterPath } = context || {};
 
-    edgePath = getSchematicPath({
+  const edgePath = useMemo(() => {
+    if (waypoints.length > 0) {
+      return getOrthogonalPathThroughWaypoint(
+        sourceX,
+        sourceY,
+        sourcePosition,
+        targetX,
+        targetY,
+        targetPosition,
+        waypoints[0]
+      );
+    }
+
+    return getSchematicPath({
       sourceX,
       sourceY,
       sourcePosition,
@@ -876,8 +855,13 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
       targetId: target,
       edgeId: id,
       allEdges,
+      otherEdgesPaths: context?.paths || {},
     });
-  }
+  }, [
+    waypoints, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
+    sourceOffset, sourceIndex, targetIndex, allNodes, source, target, id, allEdges,
+    context?.paths,
+  ]);
 
   const [current, setCurrent] = useState(0);
   
@@ -908,9 +892,6 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     return pts;
   }, [edgePath]);
 
-  const context = useContext(EdgePathContext);
-  const { registerPath, unregisterPath } = context || {};
-
   const pointsKey = useMemo(() => JSON.stringify(points), [points]);
 
   useEffect(() => {
@@ -921,36 +902,6 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
       };
     }
   }, [id, pointsKey, registerPath, unregisterPath]);
-
-  const myJunctions = useMemo(() => {
-    if (!context) return [];
-    
-    // Convert current edge points to segments
-    const segments: { p1: {x: number; y: number}; p2: {x: number; y: number} }[] = [];
-    for (let i = 0; i < points.length - 1; i++) {
-      segments.push({ p1: points[i], p2: points[i + 1] });
-    }
-
-    // Filter junctions that lie on any of our segments
-    return context.junctions.filter(j => {
-      return segments.some(s => {
-        const isHoriz = Math.abs(s.p1.y - s.p2.y) < 3;
-        const isVert = Math.abs(s.p1.x - s.p2.x) < 3;
-        if (isHoriz) {
-          const minY = Math.min(s.p1.y, s.p2.y);
-          const minX = Math.min(s.p1.x, s.p2.x);
-          const maxX = Math.max(s.p1.x, s.p2.x);
-          return Math.abs(j.y - minY) < 3 && j.x >= minX - 3 && j.x <= maxX + 3;
-        } else if (isVert) {
-          const minX = Math.min(s.p1.x, s.p2.x);
-          const minY = Math.min(s.p1.y, s.p2.y);
-          const maxY = Math.max(s.p1.y, s.p2.y);
-          return Math.abs(j.x - minX) < 3 && j.y >= minY - 3 && j.y <= maxY + 3;
-        }
-        return false;
-      });
-    });
-  }, [points, context]);
 
   const isAuraEnabled = type === 'aura';
   const auraClass = isAuraEnabled
@@ -1045,16 +996,6 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
         onMouseDown={handleWireMouseDown}
         onDoubleClick={handleWireDoubleClick}
       />
-      {myJunctions.map((pt, idx) => (
-        <circle 
-          key={idx}
-          cx={pt.x} 
-          cy={pt.y} 
-          r={2} 
-          fill={(style?.stroke as string) || '#555'}
-          style={{ pointerEvents: 'none' }}
-        />
-      ))}
     </>
   );
 });
