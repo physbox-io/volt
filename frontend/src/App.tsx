@@ -2018,9 +2018,9 @@ function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSi
   );
 }
 
-function FlowArea({ 
+function FlowArea({
   nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange, onConnect, onNodeClick,
-  probeMode, onEdgeProbe
+  probeMode, onEdgeProbe, isSimulating
 }: any) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, getViewport } = useReactFlow();
@@ -2436,6 +2436,7 @@ function FlowArea({
   const onDrop = useCallback(
     (event: DragEvent) => {
       event.preventDefault();
+      if (isSimulating) return;
       const type = event.dataTransfer.getData('application/reactflow');
       const label = event.dataTransfer.getData('application/reactflow-label');
 
@@ -2488,7 +2489,7 @@ function FlowArea({
 
       setNodes((nds: any[]) => nds.concat(newNode));
     },
-    [screenToFlowPosition, setNodes]
+    [screenToFlowPosition, setNodes, isSimulating]
   );
 
   const onNodeDragStop = useCallback((_event: any, draggedNode: Node) => {
@@ -2532,6 +2533,7 @@ function FlowArea({
         onEdgeClick={handleEdgeClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        nodesConnectable={!isSimulating}
         connectionMode={ConnectionMode.Loose}
         defaultEdgeOptions={{ type: 'aura' }}
         snapToGrid={true}
@@ -2758,6 +2760,8 @@ export default function App() {
   const [nodes, setNodes] = useState<Node[]>(presets.basicBlink.nodes);
   const [edges, setEdges] = useState<Edge[]>(presets.basicBlink.edges);
   const [isSimulating, setIsSimulating] = useState(false);
+  const isSimulatingRef = useRef(false);
+  useEffect(() => { isSimulatingRef.current = isSimulating; }, [isSimulating]);
   const [mcpActiveCount, setMcpActiveCount] = useState(0);
   const [isSpiceRunning, setIsSpiceRunning] = useState(false);
   const [simLength, setSimLength] = useState(() => {
@@ -2951,16 +2955,33 @@ export default function App() {
   }, [heltecId, heltecIp, nodes]);
 
   const onNodesChange = useCallback(
-    (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
+    (changes: NodeChange[]) => setNodes((nds) => {
+      // Block structural changes (add/remove) while a simulation is running: HIL in
+      // particular caches things like the connected-pin Set on the assumption that
+      // circuit topology doesn't change mid-run (see hilConnectedPinsCacheRef), and
+      // removing a node out from under an in-flight netlist/portToNet mapping would
+      // produce stale net references. Position/selection/dimension changes are still
+      // allowed — those don't affect the netlist.
+      const filtered = hilRunningRef.current || isSimulatingRef.current
+        ? changes.filter(c => c.type !== 'remove')
+        : changes;
+      return applyNodeChanges(filtered, nds);
+    }),
     []
   );
   const onEdgesChange = useCallback(
-    (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+    (changes: EdgeChange[]) => setEdges((eds) => {
+      const filtered = hilRunningRef.current || isSimulatingRef.current
+        ? changes.filter(c => c.type !== 'remove')
+        : changes;
+      return applyEdgeChanges(filtered, eds);
+    }),
     []
   );
 
   const onConnect = useCallback(
     (params: Connection) => {
+      if (hilRunningRef.current || isSimulatingRef.current) return;
       const sourcePort = `${params.source}-${params.sourceHandle || 'out'}`;
       const targetPort = `${params.target}-${params.targetHandle || 'in'}`;
       if (isPortConnected(sourcePort, targetPort, nodes, edges)) {
@@ -3001,6 +3022,36 @@ export default function App() {
     }
     
     return null;
+  };
+
+  // Indexed variant for the HIL hot loop: a single slice looks up several nets out of
+  // the same result (GPIO_3, scope ch1/ch2/gnd, LED anode/int_led) — up to 6 calls —
+  // and findGraphFromSim() redoes a full timestamps_ms remap plus a linear,
+  // toLowerCase()-allocating scan over variableNames on every single one of them, even
+  // though all of that is identical across calls for the same result. Build the index
+  // once per slice and reuse it.
+  const buildHILResultIndex = (result: any) => {
+    const timestamps_ms = (result?.data && result.data.length > 0 && result.data[0].values)
+      ? result.data[0].values.map((t: number) => t * 1000)
+      : [];
+    const indexByName = new Map<string, number>();
+    if (result?.variableNames) {
+      result.variableNames.forEach((name: string, i: number) => {
+        indexByName.set(name.toLowerCase(), i);
+      });
+    }
+    return { timestamps_ms, indexByName };
+  };
+
+  const findGraphIndexed = (result: any, resultIndex: { timestamps_ms: number[]; indexByName: Map<string, number> }, netName: string) => {
+    if (!netName || !result) return null;
+    const search = netName.toLowerCase();
+    if (search === '0') {
+      return { name: '0', timestamps_ms: resultIndex.timestamps_ms, voltage_levels: new Array(resultIndex.timestamps_ms.length).fill(0) };
+    }
+    const idx = resultIndex.indexByName.get(search) ?? resultIndex.indexByName.get(`v(${search})`);
+    if (idx === undefined || !result.data[idx]) return null;
+    return { name: result.variableNames[idx], timestamps_ms: resultIndex.timestamps_ms, voltage_levels: result.data[idx].values };
   };
 
   const ensureHILConnection = (ip: string, node: Node) => {
@@ -3437,6 +3488,7 @@ export default function App() {
       lastSimulatedResultRef.current = result;
       lastPortToNetRef.current = portToNet;
       lastSliceDurationRef.current = netlistDurationMs;
+      const resultIndex = buildHILResultIndex(result);
 
       const lastIndex = result.numPoints - 1;
       const nextICs: Record<string, number> = {};
@@ -3472,7 +3524,7 @@ export default function App() {
             // threshold-crossing detection, NOT a fixed rate.
             const seq: [number, number][] = [];
             const net = portToNet[`${activeHILNode.id}-${pinId}`];
-            const graph = findGraphFromSim(result, net);
+            const graph = findGraphIndexed(result, resultIndex, net);
             const threshold = 1.65; // half of 3.3V logic level
             if (graph && graph.timestamps_ms.length > 0) {
               let lastState = graph.voltage_levels[0] > threshold ? 1 : 0;
@@ -3525,9 +3577,9 @@ export default function App() {
           const ch2Net = portToNet[`${n.id}-ch2`];
           const gndNet = portToNet[`${n.id}-gnd`];
 
-          const ch1Graph = findGraphFromSim(result, ch1Net);
-          const ch2Graph = findGraphFromSim(result, ch2Net);
-          const gndGraph = findGraphFromSim(result, gndNet);
+          const ch1Graph = findGraphIndexed(result, resultIndex, ch1Net);
+          const ch2Graph = findGraphIndexed(result, resultIndex, ch2Net);
+          const gndGraph = findGraphIndexed(result, resultIndex, gndNet);
 
           if (ch1Graph) {
             const newPoints = ch1Graph.timestamps_ms.map((t: number, idx: number) => ({
@@ -3550,8 +3602,8 @@ export default function App() {
 
         if (n.type === 'led') {
           const net = portToNet[`${n.id}-anode`];
-          const anodeGraph = findGraphFromSim(result, net);
-          const intGraph = findGraphFromSim(result, `int_led_${n.id}`);
+          const anodeGraph = findGraphIndexed(result, resultIndex, net);
+          const intGraph = findGraphIndexed(result, resultIndex, `int_led_${n.id}`);
           if (anodeGraph && intGraph) {
             const newPoints = anodeGraph.timestamps_ms.map((t: number, idx: number) => ({
               t: hilNetlistAccumTimeRef.current - netlistDurationMs + t,
@@ -4058,6 +4110,7 @@ export default function App() {
   }, [setNodes, runSimulation, isSimulating, initialConditions]);
 
   const deleteSelected = () => {
+    if (isSimulating) return;
     setNodes(nds => nds.filter(n => !n.selected));
     setEdges(eds => eds.filter(e => !e.selected));
   };
@@ -4264,14 +4317,15 @@ export default function App() {
           </div>
           
           {/* Action Buttons */}
-          <button 
+          <button
             onClick={deleteSelected}
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md font-semibold text-xs border border-slate-200 dark:border-slate-750 text-red-650 dark:text-red-400 bg-white dark:bg-slate-900 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs"
-            title="Delete Selected"
+            disabled={isSimulating}
+            className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md font-semibold text-xs border border-slate-200 dark:border-slate-750 text-red-650 dark:text-red-400 bg-white dark:bg-slate-900 transition-colors focus:outline-none flex-shrink-0 shadow-xs ${isSimulating ? 'opacity-50 cursor-not-allowed' : 'hover:bg-red-50 dark:hover:bg-red-950/20 cursor-pointer'}`}
+            title={isSimulating ? "Stop the simulation to edit the circuit." : "Delete Selected"}
           >
             <Trash2 className="w-3.5 h-3.5" /> <span className="hidden xl:inline">Delete</span>
           </button>
-          
+
           <button
             onClick={() => { setProbeMode(!probeMode); setProbeData(null); }}
             className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md font-semibold text-xs border transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs ${
@@ -4451,11 +4505,12 @@ export default function App() {
 
         <EdgePathProvider edges={edges}>
           <ReactFlowProvider>
-            <FlowArea 
-            nodes={nodes} edges={edges} 
+            <FlowArea
+            nodes={nodes} edges={edges}
             setNodes={setNodes} setEdges={setEdges}
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
             onNodeClick={onNodeClick}
+            isSimulating={isSimulating}
             probeMode={probeMode}
             onEdgeProbe={(edgeId: string, event: React.MouseEvent) => {
               if (!probeMode || !simResultRef.current) return;
