@@ -58,7 +58,7 @@ export function EdgePathProvider({ children }: { children: React.ReactNode; edge
 export function getNodeDimensions(type: string, data: any) {
   const orientation = data?.orientation || 'horizontal';
   const isHorizontal = orientation === 'horizontal' || orientation === 'left';
-  
+
   switch (type) {
     case 'resistor':
     case 'inductor':

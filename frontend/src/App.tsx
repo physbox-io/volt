@@ -2800,7 +2800,6 @@ export default function App() {
   const hilStartTimeRef = useRef<number | null>(null);
   const hilBackgroundPollActiveRef = useRef(true);
   const hilRunningRef = useRef(false);
-  const lastHILTimeRef = useRef<number | null>(null);
   const lastSendTimeRef = useRef<number | null>(null);
   const lastSimulatedVoltagesRef = useRef<Record<string, number>>({});
   const lastSimulatedResultRef = useRef<any>(null);
@@ -2808,7 +2807,15 @@ export default function App() {
   const lastSliceDurationRef = useRef<number>(50);
   const hilInitialConditionsRef = useRef<Record<string, number>>({});
   const hilBufferRef = useRef('');
-  const nextHILCommandRef = useRef<string | null>(null);
+  // Lookahead buffer of already-computed-but-not-yet-dispatched hil_slice commands.
+  // A single-slot lookahead (compute exactly the next slice while the current one
+  // plays) has zero margin: any one slow SPICE call makes the device run out of
+  // GPIO writes and idle mid-blink (visible as a freeze/pause on the LED) before
+  // the next command arrives. Queuing several slices deep absorbs that jitter so
+  // playback stays continuous even when an individual compute call runs long.
+  const hilQueueRef = useRef<{ writes: { pin: number; seq: [number, number][] }[]; reads: { pin: number; type: 'analog' | 'digital' }[]; durationMs: number }[]>([]);
+  const hilQueuedMsRef = useRef(0);
+  const hilToppingUpRef = useRef(false);
   const hilWaitingForCommandRef = useRef(false);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -3087,20 +3094,21 @@ export default function App() {
               }));
             }
 
-            // Pipeline dispatch: immediately send buffered command if ready
-            if (nextHILCommandRef.current && ws.readyState === WebSocket.OPEN) {
-              const t0 = performance.now();
-              lastSendTimeRef.current = t0;
-              ws.send(nextHILCommandRef.current);
-              nextHILCommandRef.current = null;
+            // Pipeline dispatch: immediately send the next queued slice if ready
+            const next = dequeueHILSlice();
+            if (next && ws.readyState === WebSocket.OPEN) {
+              lastSendTimeRef.current = performance.now();
+              ws.send(next.payload);
               hilWaitingForCommandRef.current = false;
             } else {
               hilWaitingForCommandRef.current = true;
             }
 
-            // Run simulation asynchronously in the background to calculate the NEXT slice
-            runHILSimulationSlice().catch(err => {
-              console.error("[HIL] Async simulation slice failed:", err);
+            // Keep the lookahead buffer topped up in the background so a slow
+            // SPICE call (e.g. a slice that lands on a switching edge) doesn't
+            // starve the device of its next command.
+            topUpHILQueue().catch(err => {
+              console.error("[HIL] Queue top-up failed:", err);
             });
             return;
           }
@@ -3207,7 +3215,7 @@ export default function App() {
   // 700-800ms+ per call on-device even for a ~15-line script (compile overhead on this
   // PSRAM-backed heap), which dominated HIL round-trip time. This is a fixed, already-loaded
   // handler taking structured JSON, so there's no per-slice compilation at all.
-  const buildHILSlicePayload = (pins: Record<string, string>, voltages: Record<string, any>, connectedPins: Set<string>) => {
+  const buildHILSliceCommand = (pins: Record<string, string>, voltages: Record<string, any>, connectedPins: Set<string>) => {
     const writes: { pin: number; seq: [number, number][] }[] = [];
     const reads: { pin: number; type: 'analog' | 'digital' }[] = [];
     for (const pinId of ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41']) {
@@ -3221,7 +3229,25 @@ export default function App() {
         reads.push({ pin: pinNum, type: 'digital' });
       }
     }
-    return JSON.stringify({ cmd: 'hil_slice', writes, reads });
+    return { writes, reads };
+  };
+
+  // NOTE: merging several queued slices into one hil_slice command (to cut down
+  // WebSocket round trips) was tried and reverted — the device's playback loop
+  // does sleep-then-write per (val, delay_us) entry, which holds each value for
+  // the *next* entry's duration rather than its own. That's a fixed, bounded
+  // one-step misalignment per burst that's imperceptible at the ~40ms slice
+  // size (0-1 edges per burst), but batching multiple slices into one longer
+  // burst put many more edges through the same uninterrupted device-side loop,
+  // and MicroPython's per-iteration overhead compounded across them — the LED
+  // drifted increasingly out of sync through a burst, then snapped back at the
+  // next (now much larger, less frequent) burst boundary, visible as uneven
+  // flashing. Dispatch one slice per round trip instead.
+  const dequeueHILSlice = (): { payload: string; durationMs: number } | null => {
+    const item = hilQueueRef.current.shift();
+    if (!item) return null;
+    hilQueuedMsRef.current -= item.durationMs;
+    return { payload: JSON.stringify({ cmd: 'hil_slice', writes: item.writes, reads: item.reads }), durationMs: item.durationMs };
   };
 
   function runBackgroundHILPoll() {
@@ -3258,26 +3284,45 @@ export default function App() {
     }
   }
 
+  // Target amount of buffered-but-not-yet-dispatched playback time. Depth (not
+  // per-slice size) is what absorbs a slow SPICE call, so this stays fixed
+  // regardless of how long any individual compute takes.
+  const HIL_BUFFER_TARGET_MS = 160;
+  const HIL_SLICE_STEP_MS = 40;
+
+  const topUpHILQueue = async () => {
+    if (hilToppingUpRef.current) return;
+    hilToppingUpRef.current = true;
+    try {
+      while (hilRunningRef.current && hilQueuedMsRef.current < HIL_BUFFER_TARGET_MS) {
+        await runHILSimulationSlice();
+      }
+    } finally {
+      hilToppingUpRef.current = false;
+    }
+  };
+
   const startHILPipeline = async () => {
     if (!hilConnectedRef.current || !hilSocketRef.current) return;
-    
-    // Reset pipeline state
-    nextHILCommandRef.current = null;
-    hilWaitingForCommandRef.current = false;
-    
-    try {
-      // Pre-calculate Slice 1
-      await runHILSimulationSlice();
-      
-      if (nextHILCommandRef.current && hilSocketRef.current && hilSocketRef.current.readyState === WebSocket.OPEN) {
-        const payload = nextHILCommandRef.current;
-        nextHILCommandRef.current = null;
-        lastSendTimeRef.current = performance.now();
-        hilSocketRef.current.send(payload);
 
-        // Pre-calculate Slice 2 in background so it's buffered when Slice 1 finishes
-        runHILSimulationSlice().catch(err => {
-          console.error("[HIL] Pre-calculation of Slice 2 failed:", err);
+    // Reset pipeline state
+    hilQueueRef.current = [];
+    hilQueuedMsRef.current = 0;
+    hilWaitingForCommandRef.current = false;
+
+    try {
+      // Fill the lookahead buffer before sending anything
+      await topUpHILQueue();
+
+      const first = dequeueHILSlice();
+      if (first && hilSocketRef.current && hilSocketRef.current.readyState === WebSocket.OPEN) {
+        lastSendTimeRef.current = performance.now();
+        hilSocketRef.current.send(first.payload);
+
+        // Keep refilling in the background so the buffer stays topped up
+        // once the device starts reporting back slice results
+        topUpHILQueue().catch(err => {
+          console.error("[HIL] Queue top-up failed:", err);
         });
       }
     } catch (err) {
@@ -3307,19 +3352,12 @@ export default function App() {
       });
 
       const now = performance.now();
-      const elapsed = lastHILTimeRef.current ? now - lastHILTimeRef.current : 50;
-      lastHILTimeRef.current = now;
       if (hilStartTimeRef.current === null) hilStartTimeRef.current = now;
-      // The GPIO toggle sequence (e.g. the GPIO_3 blink) must track real round-trip time,
-      // not an assumed constant — otherwise it's computed against a virtual clock that drifts
-      // from wall-clock time whenever a round trip takes longer than expected, making the
-      // real-world blink rate slower than intended. Sized as "how far has the toggle clock
-      // fallen behind wall-clock time since HIL started" (an absolute reference), NOT as
-      // "how long did the last round trip take" — the latter is self-referential (this
-      // slice's chosen duration directly controls the next slice's play_seq execution time,
-      // which then feeds back into the next elapsed measurement), which runs away unboundedly
-      // once per-round-trip overhead is nonzero. Clamped to bound worst-case pause length.
-      const sliceDurationMs = Math.min(Math.max((now - hilStartTimeRef.current) - hilAccumTimeRef.current, 20), 500);
+      // Fixed-size steps: the lookahead queue (see hilQueueRef/topUpHILQueue) is what
+      // absorbs variance in how long any one SPICE call takes (e.g. a slice that lands
+      // on a switching edge vs. one that doesn't), so slice sizing no longer needs to
+      // reactively chase wall-clock drift the way a single-slot lookahead did.
+      const sliceDurationMs = HIL_SLICE_STEP_MS;
       // The netlist must simulate the full slice duration, not a fixed smaller window — GPIO_3's
       // hardware toggle sequence is now derived from the astable multivibrator's own simulated
       // oscillation (see below), so it needs a waveform covering the whole real-time gap this
@@ -3328,7 +3366,13 @@ export default function App() {
       // switching timescale (CJC=0/CJE=0/TR=0/TF=0, see spice.ts), now fixed there — so longer
       // simulated durations no longer blow up compute time or point counts unboundedly.
       const netlistDurationMs = sliceDurationMs;
-      const { netlist, portToNet } = generateSpiceNetlist(nextNodes, edgesRef.current, netlistDurationMs / 1000, simResolution, {}, hilInitialConditionsRef.current);
+      // Force 'normal' here regardless of the UI's simResolution setting: 'high' forces a
+      // fixed 0.1ms internal step across the whole slice, which is meant for smoother manual-run
+      // waveform display, not for HIL. ngspice's adaptive stepping already refines automatically
+      // near the astable's switching edges (see the CJC/CJE fix), so forcing a small step here
+      // would just multiply point count/serialization cost per slice with no benefit to the
+      // GPIO_3 threshold-crossing extraction.
+      const { netlist, portToNet } = generateSpiceNetlist(nextNodes, edgesRef.current, netlistDurationMs / 1000, 'normal', {}, hilInitialConditionsRef.current);
 
       const result = await runSimInWorker(netlist);
       lastSimulatedResultRef.current = result;
@@ -3395,16 +3439,19 @@ export default function App() {
       }
       lastSimulatedVoltagesRef.current = outputs;
 
-      // Buffer command for the next slice
+      // Enqueue this computed slice — dispatch immediately (alone) if the device
+      // is already idle waiting for one, otherwise add it to the lookahead buffer
+      // where it may get batched with neighboring slices before it's sent.
       const connectedPins = getConnectedHeltecPins(activeHILNode.id, edgesRef.current);
-      const nextPayload = buildHILSlicePayload(pins, outputs, connectedPins);
-      nextHILCommandRef.current = nextPayload;
+      const { writes, reads } = buildHILSliceCommand(pins, outputs, connectedPins);
 
       if (hilWaitingForCommandRef.current && hilSocketRef.current && hilSocketRef.current.readyState === WebSocket.OPEN) {
         lastSendTimeRef.current = performance.now();
-        hilSocketRef.current.send(nextPayload);
-        nextHILCommandRef.current = null;
+        hilSocketRef.current.send(JSON.stringify({ cmd: 'hil_slice', writes, reads }));
         hilWaitingForCommandRef.current = false;
+      } else {
+        hilQueueRef.current.push({ writes, reads, durationMs: sliceDurationMs });
+        hilQueuedMsRef.current += sliceDurationMs;
       }
 
       const finalNodes = nextNodes.map(n => {
@@ -3506,7 +3553,8 @@ export default function App() {
         hilSmoothedValuesRef.current = {};
         hilInitialConditionsRef.current = {};
         hilBufferRef.current = '';
-        lastHILTimeRef.current = null;
+        hilQueueRef.current = [];
+        hilQueuedMsRef.current = 0;
         setInitialConditions({});
         
         const ip = (heltecNode.data.ip as string) || '192.168.1.244';
@@ -3796,6 +3844,7 @@ export default function App() {
 
   const stopSimulation = () => {
     setIsSimulating(false);
+    setIsSpiceRunning(false);
     playbackTicker.stop();
     setProbeData(null);
 
@@ -3824,7 +3873,8 @@ export default function App() {
     hilAccumTimeRef.current = 0;
     hilNetlistAccumTimeRef.current = 0;
     hilStartTimeRef.current = null;
-    lastHILTimeRef.current = null;
+    hilQueueRef.current = [];
+    hilQueuedMsRef.current = 0;
 
     setNodes(nds => nds.map(n => {
       if (n.type === 'led') {
