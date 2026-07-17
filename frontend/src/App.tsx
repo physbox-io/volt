@@ -2769,6 +2769,17 @@ export default function App() {
     return val === 0.05 ? 1.0 : (val ?? 1.0);
   });
   const [simResolution, setSimResolution] = useState<'normal' | 'high'>(savedSettings.simResolution ?? 'normal');
+  // 'legacy' sends hil_slice (CYD MicroPython loops gpio_write/adc_read itself, one
+  // blocking UART round trip per op — simple, works against any Heltec firmware).
+  // 'native' sends hil_batch (CYD forwards the whole writes/reads payload in one UART
+  // transaction; the Heltec's own C++ firmware runs the write/sleep/read loop, so
+  // there's no per-edge ~11ms UART round trip distorting the GPIO_3 timing). Requires
+  // Heltec firmware built with the hil_batch handler (heltec/src/uart_cmd.cpp).
+  // Defaults to 'legacy' since it's the one that's always been on real hardware.
+  const [hilExecutionMode, setHilExecutionMode] = useState<'legacy' | 'native'>(savedSettings.hilExecutionMode ?? 'legacy');
+  const hilExecutionModeRef = useRef(hilExecutionMode);
+  useEffect(() => { hilExecutionModeRef.current = hilExecutionMode; }, [hilExecutionMode]);
+  useEffect(() => { saveSettings({ hilExecutionMode }); }, [hilExecutionMode]);
   const [selectedPreset, setSelectedPreset] = useState('basicBlink');
   const [isDocsOpen, setIsDocsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -3276,11 +3287,18 @@ export default function App() {
     return pins;
   };
 
-  // Builds the fast-path "hil_slice" WS payload (see handle_hil_slice in cyd-native's
-  // lib/webserver.py) instead of a Python source string to exec() — exec() measured
-  // 700-800ms+ per call on-device even for a ~15-line script (compile overhead on this
-  // PSRAM-backed heap), which dominated HIL round-trip time. This is a fixed, already-loaded
-  // handler taking structured JSON, so there's no per-slice compilation at all.
+  // Picks which CYD-side handler processes the writes/reads payload — see
+  // hilExecutionMode above. Both produce the identical `{type:"hil_slice_result",
+  // ok, values}` response shape, so nothing downstream of dispatch needs to care
+  // which mode is active.
+  const hilCommandName = (): string => hilExecutionModeRef.current === 'native' ? 'hil_batch' : 'hil_slice';
+
+  // Builds the fast-path "hil_slice"/"hil_batch" WS payload (see handle_hil_slice /
+  // handle_hil_batch in cyd-native's lib/webserver.py) instead of a Python source
+  // string to exec() — exec() measured 700-800ms+ per call on-device even for a
+  // ~15-line script (compile overhead on this PSRAM-backed heap), which dominated
+  // HIL round-trip time. This is a fixed, already-loaded handler taking structured
+  // JSON, so there's no per-slice compilation at all.
   const buildHILSliceCommand = (pins: Record<string, string>, voltages: Record<string, any>, connectedPins: Set<string>) => {
     const writes: { pin: number; seq: [number, number][] }[] = [];
     const reads: { pin: number; type: 'analog' | 'digital' }[] = [];
@@ -3334,7 +3352,7 @@ export default function App() {
       }
     }
     const writes = writeOrder.map(pin => ({ pin, seq: writesByPin.get(pin)! }));
-    return { payload: JSON.stringify({ cmd: 'hil_slice', writes, reads }), durationMs: totalMs };
+    return { payload: JSON.stringify({ cmd: hilCommandName(), writes, reads }), durationMs: totalMs };
   };
 
   function runBackgroundHILPoll() {
@@ -3558,7 +3576,7 @@ export default function App() {
 
       if (hilWaitingForCommandRef.current && hilSocketRef.current && hilSocketRef.current.readyState === WebSocket.OPEN) {
         lastSendTimeRef.current = performance.now();
-        hilSocketRef.current.send(JSON.stringify({ cmd: 'hil_slice', writes, reads }));
+        hilSocketRef.current.send(JSON.stringify({ cmd: hilCommandName(), writes, reads }));
         hilWaitingForCommandRef.current = false;
       } else {
         hilQueueRef.current.push({ writes, reads, durationMs: sliceDurationMs });
@@ -4315,7 +4333,24 @@ export default function App() {
               <option value="high" className="bg-white dark:bg-slate-900 text-slate-750 dark:text-slate-355">High</option>
             </select>
           </div>
-          
+
+          {/* HIL Execution Mode Block */}
+          {nodes.some(n => n.type === 'heltec_v4') && (
+            <div className={`flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner mx-1 hidden 2xl:flex ${isSimulating ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              <span className="text-xs font-semibold text-slate-755 dark:text-slate-350 px-1.5">HIL:</span>
+              <select
+                value={hilExecutionMode}
+                disabled={isSimulating}
+                onChange={e => setHilExecutionMode(e.target.value as 'legacy' | 'native')}
+                className={`bg-transparent border-none text-slate-850 dark:text-slate-100 text-xs focus:ring-0 font-medium cursor-pointer h-6 py-0 ${isSimulating ? 'cursor-not-allowed' : ''}`}
+                title={isSimulating ? "Stop the simulation to change HIL execution mode." : "Legacy: CYD loops gpio_write/adc_read per op (one blocking UART round trip each, ~11ms). Native: the whole slice runs in a single UART transaction on the Heltec's own C++ firmware — needs firmware built with the hil_batch handler."}
+              >
+                <option value="legacy" className="bg-white dark:bg-slate-900 text-slate-750 dark:text-slate-355">Legacy</option>
+                <option value="native" className="bg-white dark:bg-slate-900 text-slate-750 dark:text-slate-355">Native</option>
+              </select>
+            </div>
+          )}
+
           {/* Action Buttons */}
           <button
             onClick={deleteSelected}

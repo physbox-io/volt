@@ -12,6 +12,7 @@ export interface AppSettings {
   showAura: boolean;
   simLength: number;
   simResolution: 'normal' | 'high';
+  hilExecutionMode: 'legacy' | 'native';
 }
 
 const SETTINGS_KEY = 'circuitexpt_settings';
