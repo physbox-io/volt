@@ -3094,11 +3094,11 @@ export default function App() {
               }));
             }
 
-            // Pipeline dispatch: immediately send the next queued slice if ready
-            const next = dequeueHILSlice();
-            if (next && ws.readyState === WebSocket.OPEN) {
+            // Pipeline dispatch: immediately send a batch of queued slices if ready
+            const batch = mergeAndDequeueHILBatch();
+            if (batch && ws.readyState === WebSocket.OPEN) {
               lastSendTimeRef.current = performance.now();
-              ws.send(next.payload);
+              ws.send(batch.payload);
               hilWaitingForCommandRef.current = false;
             } else {
               hilWaitingForCommandRef.current = true;
@@ -3232,22 +3232,43 @@ export default function App() {
     return { writes, reads };
   };
 
-  // NOTE: merging several queued slices into one hil_slice command (to cut down
-  // WebSocket round trips) was tried and reverted — the device's playback loop
-  // does sleep-then-write per (val, delay_us) entry, which holds each value for
-  // the *next* entry's duration rather than its own. That's a fixed, bounded
-  // one-step misalignment per burst that's imperceptible at the ~40ms slice
-  // size (0-1 edges per burst), but batching multiple slices into one longer
-  // burst put many more edges through the same uninterrupted device-side loop,
-  // and MicroPython's per-iteration overhead compounded across them — the LED
-  // drifted increasingly out of sync through a burst, then snapped back at the
-  // next (now much larger, less frequent) burst boundary, visible as uneven
-  // flashing. Dispatch one slice per round trip instead.
-  const dequeueHILSlice = (): { payload: string; durationMs: number } | null => {
-    const item = hilQueueRef.current.shift();
-    if (!item) return null;
-    hilQueuedMsRef.current -= item.durationMs;
-    return { payload: JSON.stringify({ cmd: 'hil_slice', writes: item.writes, reads: item.reads }), durationMs: item.durationMs };
+  // Merge several already-computed queue entries into one hil_slice command: the
+  // device plays a write's whole `seq` list in one shot before reporting back, so
+  // concatenating consecutive slices' seq arrays turns N WebSocket round trips into
+  // 1. This was previously unsafe because handle_hil_slice() played each (val,
+  // delay_us) entry as sleep-then-write, holding each value for the *next* entry's
+  // duration instead of its own — fine for the 0-1 edges in a lone 40ms slice, but
+  // batching pushed many more edges through one uninterrupted burst and the
+  // resulting drift snapped back visibly at each (now larger, less frequent) burst
+  // boundary. Now fixed device-side (write-then-sleep, matching the run-length
+  // encoding), so batching no longer distorts edge timing — only the analog-in
+  // reads (used to drive the next SPICE call) happen less often, which is fine
+  // since GPIO_1 already tracks a slow-changing light level.
+  const HIL_BATCH_TARGET_MS = 120;
+
+  const mergeAndDequeueHILBatch = (): { payload: string; durationMs: number } | null => {
+    if (hilQueueRef.current.length === 0) return null;
+    let totalMs = 0;
+    const writeOrder: number[] = [];
+    const writesByPin = new Map<number, [number, number][]>();
+    let reads: { pin: number; type: 'analog' | 'digital' }[] = [];
+    while (hilQueueRef.current.length > 0 && totalMs < HIL_BATCH_TARGET_MS) {
+      const item = hilQueueRef.current.shift()!;
+      hilQueuedMsRef.current -= item.durationMs;
+      totalMs += item.durationMs;
+      reads = item.reads;
+      for (const w of item.writes) {
+        let seq = writesByPin.get(w.pin);
+        if (!seq) {
+          seq = [];
+          writesByPin.set(w.pin, seq);
+          writeOrder.push(w.pin);
+        }
+        seq.push(...w.seq);
+      }
+    }
+    const writes = writeOrder.map(pin => ({ pin, seq: writesByPin.get(pin)! }));
+    return { payload: JSON.stringify({ cmd: 'hil_slice', writes, reads }), durationMs: totalMs };
   };
 
   function runBackgroundHILPoll() {
@@ -3287,7 +3308,7 @@ export default function App() {
   // Target amount of buffered-but-not-yet-dispatched playback time. Depth (not
   // per-slice size) is what absorbs a slow SPICE call, so this stays fixed
   // regardless of how long any individual compute takes.
-  const HIL_BUFFER_TARGET_MS = 160;
+  const HIL_BUFFER_TARGET_MS = 240;
   const HIL_SLICE_STEP_MS = 40;
 
   const topUpHILQueue = async () => {
@@ -3314,10 +3335,10 @@ export default function App() {
       // Fill the lookahead buffer before sending anything
       await topUpHILQueue();
 
-      const first = dequeueHILSlice();
-      if (first && hilSocketRef.current && hilSocketRef.current.readyState === WebSocket.OPEN) {
+      const firstBatch = mergeAndDequeueHILBatch();
+      if (firstBatch && hilSocketRef.current && hilSocketRef.current.readyState === WebSocket.OPEN) {
         lastSendTimeRef.current = performance.now();
-        hilSocketRef.current.send(first.payload);
+        hilSocketRef.current.send(firstBatch.payload);
 
         // Keep refilling in the background so the buffer stays topped up
         // once the device starts reporting back slice results
