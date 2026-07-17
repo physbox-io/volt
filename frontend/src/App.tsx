@@ -3110,6 +3110,7 @@ export default function App() {
             topUpHILQueue().catch(err => {
               console.error("[HIL] Queue top-up failed:", err);
             });
+            flushHILDisplay();
             return;
           }
 
@@ -3208,6 +3209,20 @@ export default function App() {
       }
     }
     return connected;
+  };
+
+  // Cached wrapper for the hot HIL slice loop: wiring essentially never changes mid-run,
+  // so recomputing this Set from scratch on every ~40ms slice is wasted work. Cache is
+  // keyed on the edgesRef array identity (which changes whenever edges state actually
+  // changes), so a live rewire is still picked up correctly, just without redoing the
+  // scan on every unrelated slice.
+  const hilConnectedPinsCacheRef = useRef<{ edges: Edge[]; nodeId: string; pins: Set<string> } | null>(null);
+  const getConnectedHeltecPinsCached = (nodeId: string): Set<string> => {
+    const cached = hilConnectedPinsCacheRef.current;
+    if (cached && cached.edges === edgesRef.current && cached.nodeId === nodeId) return cached.pins;
+    const pins = getConnectedHeltecPins(nodeId, edgesRef.current);
+    hilConnectedPinsCacheRef.current = { edges: edgesRef.current, nodeId, pins };
+    return pins;
   };
 
   // Builds the fast-path "hil_slice" WS payload (see handle_hil_slice in cyd-native's
@@ -3351,6 +3366,29 @@ export default function App() {
     }
   };
 
+  // Flushes accumulated scope/LED history to React state. Called once per real
+  // hil_slice_result (device round trip), not once per computed SPICE slice — see
+  // the comment in runHILSimulationSlice for why those two cadences are decoupled.
+  const flushHILDisplay = () => {
+    const cutoff = hilNetlistAccumTimeRef.current - 1000;
+    setNodes(nds => nds.map(n => {
+      if (n.type === 'scope') {
+        const hist1 = hilHistoryRef.current[`${n.id}-ch1`];
+        const hist2 = hilHistoryRef.current[`${n.id}-ch2`];
+        if (!hist1 && !hist2) return n;
+        const relativePoints1 = (hist1 || []).map(p => ({ t: p.t - cutoff, v: p.v }));
+        const relativePoints2 = (hist2 || []).map(p => ({ t: p.t - cutoff, v: p.v }));
+        return { ...n, data: { ...n.data, voltageData: relativePoints1, voltageData1: relativePoints1, voltageData2: relativePoints2 } };
+      }
+      if (n.type === 'led') {
+        const hist = hilHistoryRef.current[n.id];
+        if (!hist) return n;
+        return { ...n, data: { ...n.data, time_points: hist.map(p => p.t - cutoff), current_array: hist.map(p => p.v) } };
+      }
+      return n;
+    }));
+  };
+
   const runHILSimulationSlice = async () => {
     if (!hilRunningRef.current) return;
 
@@ -3463,7 +3501,7 @@ export default function App() {
       // Enqueue this computed slice — dispatch immediately (alone) if the device
       // is already idle waiting for one, otherwise add it to the lookahead buffer
       // where it may get batched with neighboring slices before it's sent.
-      const connectedPins = getConnectedHeltecPins(activeHILNode.id, edgesRef.current);
+      const connectedPins = getConnectedHeltecPinsCached(activeHILNode.id);
       const { writes, reads } = buildHILSliceCommand(pins, outputs, connectedPins);
 
       if (hilWaitingForCommandRef.current && hilSocketRef.current && hilSocketRef.current.readyState === WebSocket.OPEN) {
@@ -3475,49 +3513,39 @@ export default function App() {
         hilQueuedMsRef.current += sliceDurationMs;
       }
 
-      const finalNodes = nextNodes.map(n => {
-        let newNode = { ...n } as any;
-
+      // Update scope/LED history every slice (needed for correct, gap-free traces),
+      // but don't build a full node array + setNodes here — topUpHILQueue calls this
+      // several times back-to-back while refilling the lookahead buffer, and that
+      // would fire a React re-render for every one of them before any of that data
+      // has even reached the device. The actual UI flush (flushHILDisplay) happens
+      // once per real hil_slice_result instead, matching the device's own cadence.
+      for (const n of nextNodes) {
         if (n.type === 'scope') {
           const ch1Net = portToNet[`${n.id}-ch1`];
           const ch2Net = portToNet[`${n.id}-ch2`];
           const gndNet = portToNet[`${n.id}-gnd`];
-          
+
           const ch1Graph = findGraphFromSim(result, ch1Net);
           const ch2Graph = findGraphFromSim(result, ch2Net);
           const gndGraph = findGraphFromSim(result, gndNet);
-          
-          let relativePoints1: any[] = [];
-          let relativePoints2: any[] = [];
-          
+
           if (ch1Graph) {
             const newPoints = ch1Graph.timestamps_ms.map((t: number, idx: number) => ({
               t: hilNetlistAccumTimeRef.current - netlistDurationMs + t,
               v: ch1Graph.voltage_levels[idx] - (gndGraph ? gndGraph.voltage_levels[idx] : 0.0)
             }));
-            let hist = hilHistoryRef.current[`${n.id}-ch1`] || [];
-            hist = [...hist, ...newPoints].filter(p => p.t >= newNetlistAccum - 1000);
+            const hist = [...(hilHistoryRef.current[`${n.id}-ch1`] || []), ...newPoints].filter(p => p.t >= newNetlistAccum - 1000);
             hilHistoryRef.current[`${n.id}-ch1`] = hist;
-            relativePoints1 = hist.map(p => ({ t: p.t - (newNetlistAccum - 1000), v: p.v }));
           }
-          
+
           if (ch2Graph) {
             const newPoints = ch2Graph.timestamps_ms.map((t: number, idx: number) => ({
               t: hilNetlistAccumTimeRef.current - netlistDurationMs + t,
               v: ch2Graph.voltage_levels[idx] - (gndGraph ? gndGraph.voltage_levels[idx] : 0.0)
             }));
-            let hist = hilHistoryRef.current[`${n.id}-ch2`] || [];
-            hist = [...hist, ...newPoints].filter(p => p.t >= newNetlistAccum - 1000);
+            const hist = [...(hilHistoryRef.current[`${n.id}-ch2`] || []), ...newPoints].filter(p => p.t >= newNetlistAccum - 1000);
             hilHistoryRef.current[`${n.id}-ch2`] = hist;
-            relativePoints2 = hist.map(p => ({ t: p.t - (newNetlistAccum - 1000), v: p.v }));
           }
-          
-          newNode.data = {
-            ...newNode.data,
-            voltageData: relativePoints1,
-            voltageData1: relativePoints1,
-            voltageData2: relativePoints2
-          };
         }
 
         if (n.type === 'led') {
@@ -3525,29 +3553,15 @@ export default function App() {
           const anodeGraph = findGraphFromSim(result, net);
           const intGraph = findGraphFromSim(result, `int_led_${n.id}`);
           if (anodeGraph && intGraph) {
-            const newPoints = anodeGraph.timestamps_ms.map((t: number, idx: number) => {
-              const vA = anodeGraph.voltage_levels[idx];
-              const vI = intGraph.voltage_levels[idx];
-              return {
-                t: hilNetlistAccumTimeRef.current - netlistDurationMs + t,
-                v: vA - vI
-              };
-            });
-            let hist = hilHistoryRef.current[n.id] || [];
-            hist = [...hist, ...newPoints].filter(p => p.t >= newNetlistAccum - 1000);
+            const newPoints = anodeGraph.timestamps_ms.map((t: number, idx: number) => ({
+              t: hilNetlistAccumTimeRef.current - netlistDurationMs + t,
+              v: anodeGraph.voltage_levels[idx] - intGraph.voltage_levels[idx]
+            }));
+            const hist = [...(hilHistoryRef.current[n.id] || []), ...newPoints].filter(p => p.t >= newNetlistAccum - 1000);
             hilHistoryRef.current[n.id] = hist;
-            newNode.data = {
-              ...newNode.data,
-              time_points: hist.map(p => p.t - (newNetlistAccum - 1000)),
-              current_array: hist.map(p => p.v)
-            };
           }
         }
-
-        return newNode;
-      });
-
-      setNodes(finalNodes);
+      }
     } catch (e) {
       console.error("[HIL] Simulation slice run failed:", e);
     }
