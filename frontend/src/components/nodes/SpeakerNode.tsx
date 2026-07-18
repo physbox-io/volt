@@ -2,21 +2,33 @@ import { Handle, Position } from '@xyflow/react';
 import { useEffect, useRef } from 'react';
 import type { NodePropertiesProps } from './registry';
 
+
 export function SpeakerProperties({ node, updateData }: NodePropertiesProps) {
   return (
     <>
       <div className="mb-3">
-        <label className="block text-xs font-medium text-gray-700 mb-1">Voltage Scale (V)</label>
-        <input type="number" step="1" min="0.1" value={(node.data.voltageScale as number) ?? 5} onChange={e => updateData('voltageScale', parseFloat(e.target.value) || 5)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Output Target</label>
+        <select 
+          value={(node.data.outputTarget as string) ?? 'computer'} 
+          onChange={e => updateData('outputTarget', e.target.value)} 
+          className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+        >
+          <option value="computer">💻 Computer Speaker</option>
+          <option value="cyd">📟 CYD Speaker (HIL)</option>
+        </select>
+      </div>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 dark:text-slate-350 mb-1">Voltage Scale (V)</label>
+        <input type="number" step="1" min="0.1" value={(node.data.voltageScale as number) ?? 5} onChange={e => updateData('voltageScale', parseFloat(e.target.value) || 5)} className="w-full text-sm border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" />
         <div className="text-[10px] text-gray-400 mt-1">Full-scale voltage (±V maps to ±1.0 audio)</div>
       </div>
       <div className="mb-2 flex items-center gap-2">
         <input type="checkbox" id="spk-ac" checked={!!node.data.acCouple} onChange={e => updateData('acCouple', e.target.checked)} />
-        <label htmlFor="spk-ac" className="text-xs text-gray-700">AC Couple (remove DC offset)</label>
+        <label htmlFor="spk-ac" className="text-xs text-gray-700 dark:text-slate-300">AC Couple (remove DC offset)</label>
       </div>
       <div className="mb-2 flex items-center gap-2">
         <input type="checkbox" id="spk-norm" checked={!!node.data.normalize} onChange={e => updateData('normalize', e.target.checked)} />
-        <label htmlFor="spk-norm" className="text-xs text-gray-700">Auto-normalize volume</label>
+        <label htmlFor="spk-norm" className="text-xs text-gray-700 dark:text-slate-300">Auto-normalize volume</label>
       </div>
     </>
   );
@@ -26,7 +38,7 @@ export function SpeakerNode({ data }: any) {
   const audioCtx = useRef<AudioContext | null>(null);
 
   useEffect(() => {
-    if (data.voltageData && data.voltageData.length > 0) {
+    if (data.voltageData && data.voltageData.length > 0 && data.outputTarget !== 'cyd') {
       if (!audioCtx.current) {
         audioCtx.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
@@ -106,17 +118,22 @@ export function SpeakerNode({ data }: any) {
         try { source.stop(); } catch (e) {}
       };
     }
-  }, [data.voltageData, data.acCouple, data.normalize, data.voltageScale]);
+  }, [data.voltageData, data.acCouple, data.normalize, data.voltageScale, data.outputTarget]);
+
+  const isCyd = data.outputTarget === 'cyd';
 
   return (
-    <div className="bg-gray-100 border-2 border-gray-400 rounded-md p-2 w-16 h-16 flex items-center justify-center relative shadow-sm">
+    <div className={`bg-gray-100 border-2 ${isCyd ? 'border-blue-500 bg-blue-50/20' : 'border-gray-400'} rounded-md p-2 w-16 h-16 flex flex-col items-center justify-center relative shadow-sm`}>
       <Handle type="target" position={Position.Left} id="in" className="w-3 h-3 bg-blue-500" />
       <Handle type="source" position={Position.Left} id="in" className="w-3 h-3 bg-blue-500" />
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={isCyd ? '#3b82f6' : 'currentColor'} strokeWidth="2">
         <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
         <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
         <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
       </svg>
+      {isCyd && (
+        <span className="text-[8px] font-bold text-blue-600 mt-0.5 uppercase tracking-wider select-none">CYD</span>
+      )}
       <Handle type="source" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" />
       <Handle type="target" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" />
     </div>

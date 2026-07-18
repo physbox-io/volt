@@ -260,6 +260,9 @@ export default function App() {
     deleteUserPreset,
   } = usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation });
 
+  const selectedPresetRef = useRef(selectedPreset);
+  selectedPresetRef.current = selectedPreset;
+
   const { noteCards, editingCardId, toggleEdit, toggleMinimize, updateMarkdown, closeCard, moveCard } = useNoteCards({ selectedPreset, userPresets });
 
   // Scope resize handler — inject into every scope node's data
@@ -474,7 +477,7 @@ export default function App() {
                 let volt = raw;
                 if (pins[pinId] === 'analog_in') {
                   volt = raw / 4095 * 3.3;
-                  if (pinId === 'GPIO_1') {
+                  if (pinId === 'GPIO_1' && selectedPresetRef.current === 'heltecLightToFreqHIL') {
                     const minPhys = 0.45;
                     const maxPhys = 2.2;
                     const minVirt = 0.73;
@@ -552,7 +555,7 @@ export default function App() {
                     const pinId = inputPins[idx];
                     if (pinId) {
                       let volt = parseFloat(valStr) || 0.0;
-                      if (pinId === 'GPIO_1') {
+                      if (pinId === 'GPIO_1' && selectedPresetRef.current === 'heltecLightToFreqHIL') {
                         const minPhys = 0.45;
                         const maxPhys = 2.2;
                         const minVirt = 0.73;
@@ -861,13 +864,96 @@ export default function App() {
       const trackedHalfPeriods = Object.values(hilHalfPeriodMsRef.current);
       const fastestHalfPeriodMs = trackedHalfPeriods.length > 0 ? Math.min(...trackedHalfPeriods) : 50;
       const hilMaxStepMs = Math.min(1, Math.max(minStepMs, fastestHalfPeriodMs / 10));
-      const { netlist, portToNet } = generateSpiceNetlist(nextNodes, edgesRef.current, netlistDurationMs / 1000, 'normal', {}, hilInitialConditionsRef.current, hilMaxStepMs);
+
+      // Map physical voltages of heltec_v4 to connected mcu input pins
+      const mcuWaveforms: any = {};
+      const heltecNode = nextNodes.find(n => n.type === 'heltec_v4');
+      const mcuNode = nextNodes.find(n => n.type === 'mcu');
+      if (heltecNode && mcuNode) {
+        mcuWaveforms[mcuNode.id] = {};
+        for (const edge of edgesRef.current) {
+          if (edge.source === heltecNode.id && edge.target === mcuNode.id) {
+            const heltecPin = edge.sourceHandle;
+            const mcuPin = edge.targetHandle;
+            if (heltecPin && mcuPin && heltecPin.startsWith('GPIO_')) {
+              const volt = hilValuesRef.current[heltecPin] ?? 0.0;
+              mcuWaveforms[mcuNode.id][mcuPin] = [
+                { t: 0, v: volt },
+                { t: sliceDurationMs, v: volt }
+              ];
+            }
+          }
+        }
+      }
+
+      const { netlist, portToNet } = generateSpiceNetlist(nextNodes, edgesRef.current, netlistDurationMs / 1000, 'normal', mcuWaveforms, hilInitialConditionsRef.current, hilMaxStepMs);
 
       const result = await runSimInWorker(netlist);
       lastSimulatedResultRef.current = result;
       lastPortToNetRef.current = portToNet;
       lastSliceDurationRef.current = netlistDurationMs;
       const resultIndex = buildNetlistResultIndex(result);
+
+      // Stream simulated speaker audio to the CYD board over WebSocket
+      if (hilConnectedRef.current && hilSocketRef.current && hilSocketRef.current.readyState === WebSocket.OPEN) {
+        const speakerNode = nextNodes.find(n => n.type === 'speaker' && n.data.outputTarget === 'cyd');
+        if (speakerNode) {
+          const spkNet = portToNet[`${speakerNode.id}-in`];
+          const gndNet = portToNet[`${speakerNode.id}-gnd`];
+          const spkGraph = findNetGraph(result, spkNet, resultIndex);
+          const gndGraph = findNetGraph(result, gndNet, resultIndex);
+          if (spkGraph && spkGraph.timestamps_ms.length > 0) {
+            const times = spkGraph.timestamps_ms;
+            const volts = spkGraph.voltage_levels;
+            const gndVolts = gndGraph ? gndGraph.voltage_levels : null;
+            
+            const sampleRate = 16000;
+            const durationSec = sliceDurationMs / 1000;
+            const frameCount = Math.floor(sampleRate * durationSec);
+            const audioBuffer = new Int16Array(frameCount);
+            
+            let dataIdx = 0;
+            let sumV = 0;
+            const rawV = new Float32Array(frameCount);
+            for (let i = 0; i < frameCount; i++) {
+              const t_ms = (i / sampleRate) * 1000;
+              while (dataIdx < times.length - 2 && times[dataIdx + 1] < t_ms) {
+                dataIdx++;
+              }
+              const t1 = times[dataIdx];
+              const t2 = times[dataIdx + 1];
+              const v1 = volts[dataIdx] - (gndVolts ? gndVolts[dataIdx] : 0);
+              const v2 = volts[dataIdx + 1] - (gndVolts ? gndVolts[dataIdx + 1] : 0);
+              let v = v1;
+              if (t2 > t1) {
+                const fraction = (t_ms - t1) / (t2 - t1);
+                v = v1 + fraction * (v2 - v1);
+              }
+              rawV[i] = v;
+              sumV += v;
+            }
+            
+            // Subtract DC offset
+            const meanV = sumV / frameCount;
+            let maxAbs = 0.001;
+            for (let i = 0; i < frameCount; i++) {
+              rawV[i] -= meanV;
+              if (Math.abs(rawV[i]) > maxAbs) {
+                maxAbs = Math.abs(rawV[i]);
+              }
+            }
+            
+            // Normalize and convert to Int16
+            const targetPeak = 20000;
+            for (let i = 0; i < frameCount; i++) {
+              audioBuffer[i] = Math.round((rawV[i] / maxAbs) * targetPeak);
+            }
+            
+            // Send binary packet
+            hilSocketRef.current.send(audioBuffer.buffer);
+          }
+        }
+      }
 
       const lastIndex = result.numPoints - 1;
       const nextICs: Record<string, number> = {};

@@ -895,6 +895,41 @@ export const heltecLightToFreqHIL: CircuitPreset = {
   ]
 };
 
+export const heltecGPIOToCYDSpeakerHIL: CircuitPreset = {
+  name: 'Heltec GPIO to CYD Speaker HIL',
+  recommendedSimLength: 0.05,
+  nodes: [
+    { id: 'heltec1', type: 'heltec_v4', position: { x: 100, y: 150 }, data: {
+      label: 'Heltec V4',
+      ip: '192.168.1.244',
+      pins: {
+        GPIO_1: 'analog_in'
+      },
+      pinVoltages: {
+        GPIO_1: 0.0
+      },
+      isConnected: false
+    } },
+    { id: 'mcu1', type: 'mcu', position: { x: 350, y: 150 }, data: {
+      label: 'Microcontroller',
+      code: "pinMode('A0', 'INPUT');\npinMode('D1', 'OUTPUT');\n\nwhile(true) {\n  const val = analogRead('A0');\n  const freq = 200 + val * 0.84;\n  const halfPeriod = 1000 / (2 * freq);\n  digitalWrite('D1', 1);\n  sleep(halfPeriod);\n  digitalWrite('D1', 0);\n  sleep(halfPeriod);\n}"
+    } },
+    { id: 'spk1', type: 'speaker', position: { x: 600, y: 150 }, data: {
+      label: 'CYD Speaker',
+      outputTarget: 'cyd'
+    } },
+    { id: 'g1', type: 'ground', position: { x: 350, y: 350 }, data: {
+      label: 'GND'
+    } }
+  ],
+  edges: [
+    { id: 'e-gpio1-mcu', source: 'heltec1', target: 'mcu1', sourceHandle: 'GPIO_1', targetHandle: 'A0', type: 'smoothstep' },
+    { id: 'e-mcu-spk1', source: 'mcu1', target: 'spk1', sourceHandle: 'D1', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-mcu-gnd', source: 'mcu1', target: 'g1', sourceHandle: 'GND', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-spk1-gnd', source: 'spk1', target: 'g1', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' }
+  ]
+};
+
 export const ldrWebcamDemo: CircuitPreset = {
   name: 'Webcam LDR / LED Photodiode Demo',
   recommendedSimLength: 1.0,
@@ -1040,5 +1075,9 @@ export const presets: Record<string, CircuitPreset> = {
   heltecLightToFreqHIL: {
     ...heltecLightToFreqHIL,
     noteCard: `# Heltec LDR Light-to-Freq HIL 🌐\n\nThis is a Hardware-in-the-Loop (HIL) preset linking the physical Heltec CYD Board with the SPICE simulator!\n\n### Connections:\n- Connect a physical **LDR sensor** to **GPIO 1** of your Heltec V4 board.\n- Connect a physical **LED** (with a series resistor) to **GPIO 3** of your Heltec board.\n\n### Simulation Details:\n- **Physical Input**: The simulator reads the analog voltage from the LDR via **GPIO 1**.\n- **Virtual Oscillator**: The read voltage acts as the power supply for a virtual BJT astable multivibrator.\n- **Oscillation Output**: The frequency of the virtual oscillator controls the blinking of a virtual LED, and is sent back via WebSocket to blink the physical LED connected to **GPIO 3**.\n- **Real-Time Scope**: Use the virtual Oscilloscope to visualize the real-time blinking frequency!`
+  },
+  heltecGPIOToCYDSpeakerHIL: {
+    ...heltecGPIOToCYDSpeakerHIL,
+    noteCard: `# Heltec GPIO to CYD Speaker HIL 🌐\n\nThis Hardware-in-the-Loop (HIL) preset reads real analog voltage from Heltec GPIO 1 and plays a mapped frequency tone on the physical CYD speaker!\n\n### How it works:\n- **Heltec V4**: The physical analog voltage (e.g. from a potentiometer or LDR) on **GPIO 1** is sampled.\n- **MCU Component**: Runs custom JavaScript code in the simulator to read **A0** (wired to GPIO 1), map the level to a frequency, and generate a square wave on **D1**.\n- **CYD Speaker**: The virtual speaker plays the sound locally, and its waveform is also resampled to 16kHz and streamed as binary frames to the physical CYD speaker!`
   }
 };
