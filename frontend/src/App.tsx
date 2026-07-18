@@ -1953,14 +1953,28 @@ function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSi
         <>
           <div className="mb-3">
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">CYD Board Wi-Fi IP</label>
-            <input 
-              type="text" 
-              value={(selectedNode.data.ip as string) || '192.168.1.244'} 
-              onChange={e => updateData('ip', e.target.value)} 
-              className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none mb-2" 
+            <input
+              type="text"
+              value={(selectedNode.data.ip as string) || '192.168.1.244'}
+              onChange={e => updateData('ip', e.target.value)}
+              className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none mb-2"
             />
           </div>
-          
+
+          <div className="mb-3">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">HIL Execution Mode</label>
+            <select
+              value={(selectedNode.data.hilExecutionMode as string) || 'native'}
+              disabled={isSimulating}
+              onChange={e => updateData('hilExecutionMode', e.target.value)}
+              className={`w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none ${isSimulating ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title={isSimulating ? "Stop the simulation to change HIL execution mode." : "Native: whole slice runs in one UART transaction on the Heltec's own C++ firmware (needs firmware with the hil_batch handler). Legacy: CYD loops gpio_write/adc_read per op — one blocking ~11ms UART round trip each, works against any firmware."}
+            >
+              <option value="native">Native (single UART transaction)</option>
+              <option value="legacy">Legacy (per-op UART)</option>
+            </select>
+          </div>
+
           <div className="border-t border-slate-200 dark:border-slate-800 pt-2 mt-2">
             <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Pin Configurations</h4>
             {['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41'].map(pinId => {
@@ -2460,6 +2474,7 @@ function FlowArea({
         initialData = {
           label: 'Heltec V4',
           ip: '192.168.1.244',
+          hilExecutionMode: 'native',
           pins: {
             GPIO_1: 'analog_in',
             GPIO_3: 'digital_out',
@@ -2769,17 +2784,17 @@ export default function App() {
     return val === 0.05 ? 1.0 : (val ?? 1.0);
   });
   const [simResolution, setSimResolution] = useState<'normal' | 'high'>(savedSettings.simResolution ?? 'normal');
-  // 'legacy' sends hil_slice (CYD MicroPython loops gpio_write/adc_read itself, one
-  // blocking UART round trip per op — simple, works against any Heltec firmware).
-  // 'native' sends hil_batch (CYD forwards the whole writes/reads payload in one UART
-  // transaction; the Heltec's own C++ firmware runs the write/sleep/read loop, so
-  // there's no per-edge ~11ms UART round trip distorting the GPIO_3 timing). Requires
-  // Heltec firmware built with the hil_batch handler (heltec/src/uart_cmd.cpp).
-  // Defaults to 'legacy' since it's the one that's always been on real hardware.
-  const [hilExecutionMode, setHilExecutionMode] = useState<'legacy' | 'native'>(savedSettings.hilExecutionMode ?? 'legacy');
-  const hilExecutionModeRef = useRef(hilExecutionMode);
-  useEffect(() => { hilExecutionModeRef.current = hilExecutionMode; }, [hilExecutionMode]);
-  useEffect(() => { saveSettings({ hilExecutionMode }); }, [hilExecutionMode]);
+  // Which CYD-side handler executes a HIL slice/batch — this is per-Heltec-node data
+  // (selectedNode.data.hilExecutionMode, edited in PropertiesPanel), not a global app
+  // setting, since it depends on what firmware that specific board is running. 'legacy'
+  // sends hil_slice (CYD MicroPython loops gpio_write/adc_read itself, one blocking
+  // UART round trip per op — simple, works against any Heltec firmware). 'native' sends
+  // hil_batch (CYD forwards the whole writes/reads payload in one UART transaction; the
+  // Heltec's own C++ firmware runs the write/sleep/read loop, so there's no per-edge
+  // ~11ms UART round trip distorting the GPIO_3 timing) — requires firmware built with
+  // the hil_batch handler (heltec/src/uart_cmd.cpp). Cached into a ref at HIL start
+  // (see runSimulation) since editing is locked while a simulation is running anyway.
+  const hilExecutionModeRef = useRef<'legacy' | 'native'>('native');
   const [selectedPreset, setSelectedPreset] = useState('basicBlink');
   const [isDocsOpen, setIsDocsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -2831,6 +2846,12 @@ export default function App() {
   const hilQueueRef = useRef<{ writes: { pin: number; seq: [number, number][] }[]; reads: { pin: number; type: 'analog' | 'digital' }[]; durationMs: number }[]>([]);
   const hilQueuedMsRef = useRef(0);
   const hilToppingUpRef = useRef(false);
+  // Per-digital_out-pin EMA of the shortest recent half-period (ms), used to scale the
+  // netlist's transient step size — see hilMaxStepMs in runHILSimulationSlice. Generic
+  // across any digital_out pin (not just one preset's oscillator output): each pin's
+  // entry is seeded at 50ms (~10Hz-ish, a reasonable default) and updated from real
+  // observed edge spacing once that pin is actually toggling.
+  const hilHalfPeriodMsRef = useRef<Record<string, number>>({});
   const hilWaitingForCommandRef = useRef(false);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -3006,34 +3027,7 @@ export default function App() {
 
 
 
-  const findGraphFromSim = (res: any, netName: string) => {
-    if (!netName || !res) return null;
-    const search = netName.toLowerCase();
-    
-    if (search === '0') {
-      if (res.variableNames && res.data && res.data.length > 0 && res.data[0].values) {
-        const timeVals = res.data[0].values.map((t: number) => t * 1000);
-        return {
-          name: '0',
-          timestamps_ms: timeVals,
-          voltage_levels: new Array(timeVals.length).fill(0)
-        };
-      }
-    }
-    
-    if (res.variableNames && res.data && res.data.length > 0 && res.data[0].values) {
-      const idx = res.variableNames.findIndex((v: string) => v.toLowerCase() === search || v.toLowerCase() === `v(${search})`);
-      if (idx !== -1 && res.data[idx]) {
-        return {
-          name: res.variableNames[idx],
-          timestamps_ms: res.data[0].values.map((t: number) => t * 1000), // Time is variable 0
-          voltage_levels: res.data[idx].values
-        };
-      }
-    }
-    
-    return null;
-  };
+
 
   // Indexed variant for the HIL hot loop: a single slice looks up several nets out of
   // the same result (GPIO_3, scope ch1/ch2/gnd, LED anode/int_led) — up to 6 calls —
@@ -3497,10 +3491,24 @@ export default function App() {
       // Force 'normal' here regardless of the UI's simResolution setting: 'high' forces a
       // fixed 0.1ms internal step across the whole slice, which is meant for smoother manual-run
       // waveform display, not for HIL. ngspice's adaptive stepping already refines automatically
-      // near the astable's switching edges (see the CJC/CJE fix), so forcing a small step here
-      // would just multiply point count/serialization cost per slice with no benefit to the
-      // GPIO_3 threshold-crossing extraction.
-      const { netlist, portToNet } = generateSpiceNetlist(nextNodes, edgesRef.current, netlistDurationMs / 1000, 'normal', {}, hilInitialConditionsRef.current);
+      // near a switching edge (see the CJC/CJE fix), so forcing a small step here would just
+      // multiply point count/serialization cost per slice with no benefit at low frequencies.
+      // But at high frequencies the opposite problem appears: a fixed 1ms step can't resolve
+      // edges accurately once a half-period gets down to a few ms, so scale the step to
+      // whichever tracked digital_out pin is oscillating fastest (see hilHalfPeriodMsRef below)
+      // — resolve each half-period with ~10 samples, ceiling at 1ms (matches the existing
+      // low-frequency behavior, so nothing changes there for a slow-changing or non-oscillating
+      // pin). The floor is a POINT-COUNT BUDGET, not a guessed frequency cutoff: this hasn't
+      // been measured against actual per-slice SPICE compute time (see the earlier discussion
+      // on what really gates max frequency), so MAX_POINTS_PER_SLICE is a placeholder pending
+      // real profiling, not a validated ceiling — tune it down if slices start missing their
+      // real-time budget, up if there's compute headroom to spare.
+      const MAX_POINTS_PER_SLICE = 2000;
+      const minStepMs = netlistDurationMs / MAX_POINTS_PER_SLICE;
+      const trackedHalfPeriods = Object.values(hilHalfPeriodMsRef.current);
+      const fastestHalfPeriodMs = trackedHalfPeriods.length > 0 ? Math.min(...trackedHalfPeriods) : 50;
+      const hilMaxStepMs = Math.min(1, Math.max(minStepMs, fastestHalfPeriodMs / 10));
+      const { netlist, portToNet } = generateSpiceNetlist(nextNodes, edgesRef.current, netlistDurationMs / 1000, 'normal', {}, hilInitialConditionsRef.current, hilMaxStepMs);
 
       const result = await runSimInWorker(netlist);
       lastSimulatedResultRef.current = result;
@@ -3535,35 +3543,49 @@ export default function App() {
       const pins = (activeHILNode.data.pins as Record<string, string>) || {};
       for (const pinId of ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41']) {
         if (pins[pinId] === 'digital_out') {
-          if (pinId === 'GPIO_3') {
-            // GPIO_3's hardware toggle sequence is the astable multivibrator's own simulated
-            // oscillation at this pin's net — a VCO whose frequency is set by the LDR voltage
-            // on GPIO_1 via the base-bias resistors — turned into a digital sequence by
-            // threshold-crossing detection, NOT a fixed rate.
-            const seq: [number, number][] = [];
-            const net = portToNet[`${activeHILNode.id}-${pinId}`];
-            const graph = findGraphIndexed(result, resultIndex, net);
-            const threshold = 1.65; // half of 3.3V logic level
-            if (graph && graph.timestamps_ms.length > 0) {
-              let lastState = graph.voltage_levels[0] > threshold ? 1 : 0;
-              let lastT = 0;
-              for (let i = 1; i < graph.timestamps_ms.length; i++) {
-                const state = graph.voltage_levels[i] > threshold ? 1 : 0;
-                if (state !== lastState) {
-                  const t = graph.timestamps_ms[i];
-                  seq.push([lastState, Math.round((t - lastT) * 1000)]);
-                  lastState = state;
-                  lastT = t;
-                }
+          // Any digital_out pin's hardware toggle sequence is derived the same way: whatever
+          // the simulated circuit is actually doing at this pin's net, turned into a digital
+          // sequence by threshold-crossing detection — not specific to any one circuit or pin.
+          const seq: [number, number][] = [];
+          const net = portToNet[`${activeHILNode.id}-${pinId}`];
+          const graph = findGraphIndexed(result, resultIndex, net);
+          const threshold = 1.65; // half of 3.3V logic level
+          // Below this, a "transition" can't be trusted as a real toggle rather than solver
+          // reporting noise right at a switching edge — absorb it into the surrounding state
+          // instead of emitting a spurious near-zero-width pulse. Scaled to the resolution
+          // actually used this slice (hilMaxStepMs above), not a flat constant: a fixed
+          // microsecond cutoff would silently start eating genuine fast transitions once
+          // real half-periods approached that same number, capping max frequency for reasons
+          // that have nothing to do with the simulation's actual resolution.
+          const MIN_PULSE_US = hilMaxStepMs * 1000 * 1.5;
+          let shortestPulseUs: number | null = null;
+          if (graph && graph.timestamps_ms.length > 0) {
+            let lastState = graph.voltage_levels[0] > threshold ? 1 : 0;
+            let lastT = 0;
+            for (let i = 1; i < graph.timestamps_ms.length; i++) {
+              const state = graph.voltage_levels[i] > threshold ? 1 : 0;
+              if (state !== lastState) {
+                const t = graph.timestamps_ms[i];
+                const durationUs = (t - lastT) * 1000;
+                if (durationUs < MIN_PULSE_US) continue;
+                seq.push([lastState, Math.round(durationUs)]);
+                if (shortestPulseUs === null || durationUs < shortestPulseUs) shortestPulseUs = durationUs;
+                lastState = state;
+                lastT = t;
               }
-              seq.push([lastState, Math.round((sliceDurationMs - lastT) * 1000)]);
-            } else {
-              seq.push([0, Math.round(sliceDurationMs * 1000)]);
             }
-            outputs[pinId] = seq;
+            seq.push([lastState, Math.round((sliceDurationMs - lastT) * 1000)]);
           } else {
-            outputs[pinId] = [[0, 0]];
+            seq.push([0, Math.round(sliceDurationMs * 1000)]);
           }
+          // Track this pin's shortest real half-period we've actually seen (EMA-smoothed) so
+          // the NEXT slice's netlist resolution (hilMaxStepMs above) can scale to match.
+          if (shortestPulseUs !== null) {
+            const alpha = 0.3;
+            const prev = hilHalfPeriodMsRef.current[pinId] ?? 50;
+            hilHalfPeriodMsRef.current[pinId] = alpha * (shortestPulseUs / 1000) + (1 - alpha) * prev;
+          }
+          outputs[pinId] = seq;
         }
       }
       lastSimulatedVoltagesRef.current = outputs;
@@ -3650,6 +3672,7 @@ export default function App() {
         setIsSpiceRunning(true);
         setIsSimulating(true);
         hilRunningRef.current = true;
+        hilExecutionModeRef.current = (heltecNode.data.hilExecutionMode as 'legacy' | 'native') || 'native';
         hilBackgroundPollActiveRef.current = true;
         hilAccumTimeRef.current = 0;
         hilNetlistAccumTimeRef.current = 0;
@@ -3660,6 +3683,7 @@ export default function App() {
         hilBufferRef.current = '';
         hilQueueRef.current = [];
         hilQueuedMsRef.current = 0;
+        hilHalfPeriodMsRef.current = {};
         setInitialConditions({});
         
         const ip = (heltecNode.data.ip as string) || '192.168.1.244';
@@ -3980,6 +4004,7 @@ export default function App() {
     hilStartTimeRef.current = null;
     hilQueueRef.current = [];
     hilQueuedMsRef.current = 0;
+    hilHalfPeriodMsRef.current = {};
 
     setNodes(nds => nds.map(n => {
       if (n.type === 'led') {
@@ -4333,23 +4358,6 @@ export default function App() {
               <option value="high" className="bg-white dark:bg-slate-900 text-slate-750 dark:text-slate-355">High</option>
             </select>
           </div>
-
-          {/* HIL Execution Mode Block */}
-          {nodes.some(n => n.type === 'heltec_v4') && (
-            <div className={`flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner mx-1 hidden 2xl:flex ${isSimulating ? 'opacity-50 cursor-not-allowed' : ''}`}>
-              <span className="text-xs font-semibold text-slate-755 dark:text-slate-350 px-1.5">HIL:</span>
-              <select
-                value={hilExecutionMode}
-                disabled={isSimulating}
-                onChange={e => setHilExecutionMode(e.target.value as 'legacy' | 'native')}
-                className={`bg-transparent border-none text-slate-850 dark:text-slate-100 text-xs focus:ring-0 font-medium cursor-pointer h-6 py-0 ${isSimulating ? 'cursor-not-allowed' : ''}`}
-                title={isSimulating ? "Stop the simulation to change HIL execution mode." : "Legacy: CYD loops gpio_write/adc_read per op (one blocking UART round trip each, ~11ms). Native: the whole slice runs in a single UART transaction on the Heltec's own C++ firmware — needs firmware built with the hil_batch handler."}
-              >
-                <option value="legacy" className="bg-white dark:bg-slate-900 text-slate-750 dark:text-slate-355">Legacy</option>
-                <option value="native" className="bg-white dark:bg-slate-900 text-slate-750 dark:text-slate-355">Native</option>
-              </select>
-            </div>
-          )}
 
           {/* Action Buttons */}
           <button

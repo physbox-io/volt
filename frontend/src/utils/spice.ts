@@ -13,7 +13,7 @@ export function sanitizeSpiceValue(val: string): string {
   return cleaned.replace(/[^\x20-\x7E]/g, '');
 }
 
-export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: number = 1.0, simResolution: 'normal' | 'high' = 'normal', mcuWaveforms: Record<string, Record<string, PWLPoint[]>> = {}, initialConditions?: Record<string, number>): { netlist: string; portToNet: Record<string, string>; mcuLogs: Record<string, string[]> } {
+export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: number = 1.0, simResolution: 'normal' | 'high' = 'normal', mcuWaveforms: Record<string, Record<string, PWLPoint[]>> = {}, initialConditions?: Record<string, number>, hilMaxStepMs?: number): { netlist: string; portToNet: Record<string, string>; mcuLogs: Record<string, string[]> } {
   let netlist = "Circuit Simulation\n";
   const mcuLogs: Record<string, string[]> = {};
   
@@ -556,6 +556,13 @@ B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
   if (hasAudio) {
     // 0.05ms step → 20kHz Nyquist → captures full audio bandwidth
     netlist += `.tran 0.05m ${simLength}s 0 0.05m${useUic}\n`;
+  } else if (hilMaxStepMs !== undefined) {
+    // HIL-only override: the reporting/max-internal-step size scales with how fast the
+    // simulated oscillator is currently running (see hilHalfPeriodMsRef in App.tsx),
+    // instead of a fixed 1ms. At a few Hz, 1ms is plenty of resolution relative to the
+    // period; at a few hundred Hz, a half-period can be only 1-2ms, and 1ms quantization
+    // would make derived edge timestamps wrong by a large fraction of that half-period.
+    netlist += `.tran ${hilMaxStepMs}m ${simLength}s 0 ${hilMaxStepMs}m${useUic}\n`;
   } else if (simResolution === 'high') {
     netlist += `.tran 1m ${simLength}s 0 0.1m${useUic}\n`;
   } else {

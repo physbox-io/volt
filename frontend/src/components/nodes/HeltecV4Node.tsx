@@ -1,5 +1,5 @@
 import { Handle, Position } from '@xyflow/react';
-import { Wifi, WifiOff } from 'lucide-react';
+import { Wifi, WifiOff, ExternalLink } from 'lucide-react';
 import { memo } from 'react';
 
 export const HeltecV4Node = memo(function HeltecV4Node({ data, selected }: any) {
@@ -49,7 +49,18 @@ export const HeltecV4Node = memo(function HeltecV4Node({ data, selected }: any) 
       
       {/* Header */}
       <div className="bg-slate-950 text-[10px] font-bold text-center py-2 px-3 uppercase tracking-wider rounded-t-lg flex items-center justify-between border-b border-slate-800">
-        <span className="text-violet-400">Heltec V3/V4</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-violet-400">Heltec V3/V4</span>
+          <a
+            href={`http://${data.ip || '192.168.1.244'}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="nodrag text-violet-400/60 hover:text-violet-300 transition-colors p-0.5 rounded hover:bg-slate-900"
+            title="Open web interface in new tab"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
         <div className="flex items-center gap-1.5">
           {isConnected ? (
             <>
@@ -149,8 +160,17 @@ export const HeltecV4Node = memo(function HeltecV4Node({ data, selected }: any) 
       </div>
 
       {/* Footer */}
-      <div className="bg-slate-950/60 py-1.5 px-3 text-[7.5px] text-slate-400 text-center rounded-b-lg font-mono tracking-wide border-t border-slate-800/40">
-        IP: {data.ip || '192.168.1.244'}
+      <div className="bg-slate-950/60 py-1.5 px-3 text-[7.5px] text-slate-400 rounded-b-lg font-mono tracking-wide border-t border-slate-800/40 flex items-center justify-center gap-1">
+        <span>IP: {data.ip || '192.168.1.244'}</span>
+        <a
+          href={`http://${data.ip || '192.168.1.244'}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="nodrag text-slate-400 hover:text-slate-200 transition-colors p-0.5 rounded hover:bg-slate-900"
+          title="Open web interface in new tab"
+        >
+          <ExternalLink className="w-2.5 h-2.5" />
+        </a>
       </div>
 
     </div>
