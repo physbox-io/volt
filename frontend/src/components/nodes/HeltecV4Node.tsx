@@ -1,6 +1,89 @@
 import { Handle, Position } from '@xyflow/react';
 import { Wifi, WifiOff, ExternalLink } from 'lucide-react';
 import { memo } from 'react';
+import type { NodePropertiesProps } from './registry';
+
+export const HELTEC_V4_GPIO_PINS = ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41'];
+
+export function heltecV4DefaultData() {
+  return {
+    label: 'Heltec V4',
+    ip: '192.168.1.244',
+    hilExecutionMode: 'native',
+    pins: {
+      GPIO_1: 'analog_in',
+      GPIO_3: 'digital_out',
+      GPIO_33: 'digital_in',
+      GPIO_36: 'digital_in',
+      GPIO_37: 'digital_in',
+      GPIO_41: 'digital_in'
+    },
+    pinVoltages: {
+      GPIO_1: 0.0,
+      GPIO_3: 0.0,
+      GPIO_33: 0.0,
+      GPIO_36: 0.0,
+      GPIO_37: 0.0,
+      GPIO_41: 0.0
+    },
+    isConnected: false
+  };
+}
+
+export function HeltecV4Properties({ node, updateData, isSimulating }: NodePropertiesProps) {
+  return (
+    <>
+      <div className="mb-3">
+        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">CYD Board Wi-Fi IP</label>
+        <input
+          type="text"
+          value={(node.data.ip as string) || '192.168.1.244'}
+          onChange={e => updateData('ip', e.target.value)}
+          className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none mb-2"
+        />
+      </div>
+
+      <div className="mb-3">
+        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">HIL Execution Mode</label>
+        <select
+          value={(node.data.hilExecutionMode as string) || 'native'}
+          disabled={isSimulating}
+          onChange={e => updateData('hilExecutionMode', e.target.value)}
+          className={`w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none ${isSimulating ? 'opacity-50 cursor-not-allowed' : ''}`}
+          title={isSimulating ? "Stop the simulation to change HIL execution mode." : "Native: whole slice runs in one UART transaction on the Heltec's own C++ firmware (needs firmware with the hil_batch handler). Legacy: CYD loops gpio_write/adc_read per op — one blocking ~11ms UART round trip each, works against any firmware."}
+        >
+          <option value="native">Native (single UART transaction)</option>
+          <option value="legacy">Legacy (per-op UART)</option>
+        </select>
+      </div>
+
+      <div className="border-t border-slate-200 dark:border-slate-800 pt-2 mt-2">
+        <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Pin Configurations</h4>
+        {HELTEC_V4_GPIO_PINS.map(pinId => {
+          const currentPins = node.data.pins || {};
+          const pinVal = currentPins[pinId] || 'digital_in';
+          return (
+            <div key={pinId} className="flex items-center justify-between mb-2">
+              <span className="text-xs font-mono text-slate-600 dark:text-slate-400">{pinId.replace('_', ' ')}</span>
+              <select
+                value={pinVal}
+                onChange={e => {
+                  const nextPins = { ...currentPins, [pinId]: e.target.value };
+                  updateData('pins', nextPins);
+                }}
+                className="text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-0.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+              >
+                <option value="digital_in">Digital In</option>
+                <option value="analog_in">Analog In (ADC)</option>
+                <option value="digital_out">Digital Out</option>
+              </select>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
 
 export const HeltecV4Node = memo(function HeltecV4Node({ data, selected }: any) {
   const isConnected = !!data.isConnected;

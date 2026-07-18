@@ -1,8 +1,5 @@
-import { useState, useCallback, useRef, useEffect, useContext, type DragEvent } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  ReactFlow,
-  Controls,
-  Background,
   applyNodeChanges,
   applyEdgeChanges,
   addEdge,
@@ -12,644 +9,33 @@ import {
   type EdgeChange,
   type Connection,
   ReactFlowProvider,
-  useReactFlow,
-  ConnectionMode,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { ResistorNode } from './components/nodes/ResistorNode';
-import { VoltageNode } from './components/nodes/VoltageNode';
-import { GroundNode } from './components/nodes/GroundNode';
-import { LEDNode } from './components/nodes/LEDNode';
-import { CapacitorNode } from './components/nodes/CapacitorNode';
-import { Timer555Node } from './components/nodes/Timer555Node';
-import { OpAmpNode } from './components/nodes/OpAmpNode';
-import { MultimeterNode } from './components/nodes/MultimeterNode';
-import { SignalGeneratorNode } from './components/nodes/SignalGeneratorNode';
-import { ScopeNode } from './components/nodes/ScopeNode';
-import { SpeakerNode } from './components/nodes/SpeakerNode';
-import { MicrophoneNode } from './components/nodes/MicrophoneNode';
-import { NpnNode } from './components/nodes/NpnNode';
-import { PnpNode } from './components/nodes/PnpNode';
-import { NmosNode } from './components/nodes/NmosNode';
-import { PmosNode } from './components/nodes/PmosNode';
-import { DiodeNode } from './components/nodes/DiodeNode';
-import { ZenerDiodeNode } from './components/nodes/ZenerDiodeNode';
-import { ACVoltageNode } from './components/nodes/ACVoltageNode';
-import { MicrocontrollerNode } from './components/nodes/MicrocontrollerNode';
-import { HeltecV4Node } from './components/nodes/HeltecV4Node';
-import { AndNode } from './components/nodes/AndNode';
-import { OrNode } from './components/nodes/OrNode';
-import { NotNode } from './components/nodes/NotNode';
-import { NandNode } from './components/nodes/NandNode';
-import { NorNode } from './components/nodes/NorNode';
-import { XorNode } from './components/nodes/XorNode';
-import { InductorNode } from './components/nodes/InductorNode';
-import { SwitchNode } from './components/nodes/SwitchNode';
+import { HELTEC_V4_GPIO_PINS } from './components/nodes/HeltecV4Node';
 import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
-import { Play, Square, Trash2, Info, Menu, X, AlertCircle, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, FileText, Edit3, ChevronDown, ChevronUp } from 'lucide-react';
+import { buildNetlistResultIndex, findNetGraph } from './utils/netlistResult';
+import { isPortConnected } from './utils/graphTopology';
+import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
-import { playbackTicker, findIndexForTime } from './utils/playbackTicker';
-import { presets } from './utils/presets';
-import { AuraEdge, EdgePathProvider, getNodeDimensions, getSchematicPath, EdgePathContext } from './components/AuraEdge';
+import { playbackTicker } from './utils/playbackTicker';
+import { presets, DEFAULT_PRESET_KEY } from './utils/presets';
+import { EdgePathProvider } from './components/AuraEdge';
 import { SettingsModal } from './components/SettingsModal';
-import { loadSettings, saveSettings, loadUserPresets, addUserPreset, removeUserPreset, nameToKey, type CircuitPreset } from './utils/storage';
-import { PotentiometerNode } from './components/nodes/PotentiometerNode';
-import { SevenSegmentNode } from './components/nodes/SevenSegmentNode';
-import { CurrentSourceNode } from './components/nodes/CurrentSourceNode';
-import { TransformerNode } from './components/nodes/TransformerNode';
-import { DFlipFlopNode } from './components/nodes/DFlipFlopNode';
-import { LDRNode } from './components/nodes/LDRNode';
-import { JunctionNode } from './components/nodes/JunctionNode';
-import { datasheets } from './utils/datasheets';
+import { loadSettings, saveSettings } from './utils/storage';
 import { useMCPBridge } from './hooks/useMCPBridge';
-
-const edgeTypes = {
-  aura: AuraEdge,
-  smoothstep: AuraEdge,
-  straight: AuraEdge,
-  step: AuraEdge,
-};
+import { usePresets } from './hooks/usePresets';
+import { useCircuitHistory } from './hooks/useCircuitHistory';
+import { useNoteCards } from './hooks/useNoteCards';
+import { useCircuitFile } from './hooks/useCircuitFile';
 import { Logo } from './components/Logo';
 import { DocsModal } from './components/DocsModal';
+import { NoteCardOverlay } from './components/NoteCardOverlay';
+import { Sidebar } from './components/Sidebar';
+import { PropertiesPanel } from './components/PropertiesPanel';
+import { FlowArea } from './components/FlowArea';
+import { ProbeTooltip } from './components/ProbeTooltip';
 
-const nodeTypes = {
-  resistor: ResistorNode,
-  voltage: VoltageNode,
-  ground: GroundNode,
-  led: LEDNode,
-  capacitor: CapacitorNode,
-  timer555: Timer555Node,
-  opamp: OpAmpNode,
-  multimeter: MultimeterNode,
-  signalgen: SignalGeneratorNode,
-  scope: ScopeNode,
-  speaker: SpeakerNode,
-  microphone: MicrophoneNode,
-  npn: NpnNode,
-  pnp: PnpNode,
-  nmos: NmosNode,
-  pmos: PmosNode,
-  diode: DiodeNode,
-  zener: ZenerDiodeNode,
-  acvoltage: ACVoltageNode,
-  mcu: MicrocontrollerNode,
-  heltec_v4: HeltecV4Node,
-  and: AndNode,
-  or: OrNode,
-  not: NotNode,
-  nand: NandNode,
-  nor: NorNode,
-  xor: XorNode,
-  inductor: InductorNode,
-  switch: SwitchNode,
-  potentiometer: PotentiometerNode,
-  sevenseg: SevenSegmentNode,
-  currentsource: CurrentSourceNode,
-  transformer: TransformerNode,
-  dff: DFlipFlopNode,
-  ldr: LDRNode,
-  junction: JunctionNode,
-};
-
-function buildPortAdjacency(nodes: Node[], edges: Edge[], skipEdgeId?: string): Record<string, string[]> {
-  const adj: Record<string, string[]> = {};
-  
-  const addAdjacency = (p1: string, p2: string) => {
-    if (!adj[p1]) adj[p1] = [];
-    if (!adj[p2]) adj[p2] = [];
-    adj[p1].push(p2);
-    adj[p2].push(p1);
-  };
-
-  // 1. Add edges
-  edges.forEach(edge => {
-    if (edge.id === skipEdgeId) return;
-    const p1 = `${edge.source}-${edge.sourceHandle || 'out'}`;
-    const p2 = `${edge.target}-${edge.targetHandle || 'in'}`;
-    addAdjacency(p1, p2);
-  });
-
-  // 2. Add internal short connections for junction nodes
-  nodes.forEach(node => {
-    if (node.type === 'junction') {
-      const p1 = `${node.id}-in`;
-      const p2 = `${node.id}-out`;
-      addAdjacency(p1, p2);
-    }
-  });
-
-  // 3. Connect all ground node ports to a virtual global ground port 'GND-global'
-  const groundNodes = nodes.filter(n => n.type === 'ground');
-  groundNodes.forEach(gNode => {
-    const p1 = `${gNode.id}-in`;
-    const p2 = `GND-global`;
-    addAdjacency(p1, p2);
-  });
-  
-  return adj;
-}
-
-function isPortConnected(
-  portA: string,
-  portB: string,
-  nodes: Node[],
-  edges: Edge[],
-  skipEdgeId?: string
-): boolean {
-  if (portA === portB) return true;
-  const adj = buildPortAdjacency(nodes, edges, skipEdgeId);
-  if (!adj[portA] || !adj[portB]) return false;
-
-  const visited = new Set<string>();
-  const queue = [portA];
-  visited.add(portA);
-
-  while (queue.length > 0) {
-    const curr = queue.shift()!;
-    if (curr === portB) return true;
-    const neighbors = adj[curr] || [];
-    for (const n of neighbors) {
-      if (!visited.has(n)) {
-        visited.add(n);
-        queue.push(n);
-      }
-    }
-  }
-  return false;
-}
-
-function simplifyEdges(nodes: Node[], edges: Edge[]): Edge[] {
-  const activeEdges = [...edges];
-  const keepEdges: Edge[] = [];
-  
-  for (const edge of edges) {
-    const portA = `${edge.source}-${edge.sourceHandle || 'out'}`;
-    const portB = `${edge.target}-${edge.targetHandle || 'in'}`;
-    
-    // Check if portA and portB are connected in the graph consisting of:
-    // keepEdges + remaining edges in edges (excluding the current edge)
-    const otherEdges = [
-      ...keepEdges,
-      ...activeEdges.filter(e => e.id !== edge.id && !keepEdges.includes(e))
-    ];
-    
-    if (isPortConnected(portA, portB, nodes, otherEdges)) {
-      // It is redundant! We don't add it to keepEdges, and we remove it from activeEdges
-      const idx = activeEdges.findIndex(e => e.id === edge.id);
-      if (idx !== -1) {
-        activeEdges.splice(idx, 1);
-      }
-    } else {
-      keepEdges.push(edge);
-    }
-  }
-  
-  return keepEdges;
-}
-
-function mergeOverlappingNodesAndJunctions(nodes: Node[], edges: Edge[]): { nodes: Node[], edges: Edge[] } {
-  let updatedNodes = [...nodes];
-  let updatedEdges = [...edges];
-
-  const getHandlesForNode = (node: Node): string[] => {
-    if (node.type === 'timer555') {
-      return ['1', '2', '3', '4', '5', '6', '7', '8'];
-    }
-    if (node.type === 'ground') {
-      return ['in'];
-    }
-    if (node.type === 'voltage' || node.type === 'acvoltage') {
-      return ['pos', 'neg'];
-    }
-    if (node.type === 'junction') {
-      return ['in', 'out'];
-    }
-    return ['in', 'out'];
-  };
-
-  const getHandleCoord = (node: any, handleId: string) => {
-    const orientation = node.data?.orientation || 'horizontal';
-    const isLeft = orientation === 'left';
-    const isUp = orientation === 'up';
-    const isVertical = orientation === 'vertical' || isUp;
-    
-    const x = node.position.x;
-    const y = node.position.y;
-    const w = node.measured?.width || getNodeDimensions(node.type, node.data).width;
-    const h = node.measured?.height || getNodeDimensions(node.type, node.data).height;
-    
-    if (node.type === 'timer555') {
-      const row = parseInt(handleId);
-      if (row >= 1 && row <= 4) {
-        return { x: x, y: y + 26 + (row - 1) * 32 };
-      }
-      if (row >= 5 && row <= 8) {
-        const rightRow = 8 - row;
-        return { x: x + w, y: y + 26 + rightRow * 32 };
-      }
-    }
-    
-    if (node.type === 'ground') {
-      return { x: x + w / 2, y: y };
-    }
-    
-    if (node.type === 'voltage' || node.type === 'acvoltage') {
-      if (handleId === 'pos') return { x: x + w / 2, y: y };
-      if (handleId === 'neg') return { x: x + w / 2, y: y + h };
-    }
-
-    if (node.type === 'junction') {
-      return { x: x, y: y };
-    }
-    
-    if (handleId === 'in') {
-      if (isVertical) {
-        return { x: x + w / 2, y: isUp ? y + h : y };
-      } else {
-        return { x: isLeft ? x + w : x, y: y + h / 2 };
-      }
-    }
-    if (handleId === 'out') {
-      if (isVertical) {
-        return { x: x + w / 2, y: isUp ? y : y + h };
-      } else {
-        return { x: isLeft ? x : x + w, y: y + h / 2 };
-      }
-    }
-    
-    return { x: x + w / 2, y: y + h / 2 };
-  };
-
-  // Find all junctions
-  const junctions = updatedNodes.filter(n => n.type === 'junction');
-  
-  for (const junc of junctions) {
-    // Check if it's close to another junction
-    const otherJunc = updatedNodes.find(n => n.type === 'junction' && n.id !== junc.id && 
-      Math.hypot(n.position.x - junc.position.x, n.position.y - junc.position.y) < 12
-    );
-    
-    if (otherJunc) {
-      // Merge junc into otherJunc
-      updatedEdges = updatedEdges.map(edge => {
-        let updated = { ...edge };
-        if (edge.source === junc.id) {
-          updated.source = otherJunc.id;
-          updated.sourceHandle = 'out';
-        }
-        if (edge.target === junc.id) {
-          updated.target = otherJunc.id;
-          updated.targetHandle = 'in';
-        }
-        return updated;
-      }).filter(edge => {
-        return edge.source !== edge.target;
-      });
-      
-      updatedNodes = updatedNodes.filter(n => n.id !== junc.id);
-      continue;
-    }
-
-    // Check if it's close to a non-junction component handle
-    let mergedToHandle = false;
-    for (const node of updatedNodes) {
-      if (node.type === 'junction') continue;
-      const handles = getHandlesForNode(node);
-      for (const handle of handles) {
-        const coord = getHandleCoord(node, handle);
-        if (Math.hypot(coord.x - junc.position.x, coord.y - junc.position.y) < 12) {
-          // Merge junction junc into this handle
-          updatedEdges = updatedEdges.map(edge => {
-            let updated = { ...edge };
-            if (edge.source === junc.id) {
-              updated.source = node.id;
-              updated.sourceHandle = handle;
-            }
-            if (edge.target === junc.id) {
-              updated.target = node.id;
-              updated.targetHandle = handle;
-            }
-            return updated;
-          }).filter(edge => {
-            return edge.source !== edge.target;
-          });
-          
-          updatedNodes = updatedNodes.filter(n => n.id !== junc.id);
-          mergedToHandle = true;
-          break;
-        }
-      }
-      if (mergedToHandle) break;
-    }
-  }
-
-  // Also check if any ground node is close to another ground node
-  const grounds = updatedNodes.filter(n => n.type === 'ground');
-  for (const g of grounds) {
-    const otherG = updatedNodes.find(n => n.type === 'ground' && n.id !== g.id && 
-      Math.hypot(n.position.x - g.position.x, n.position.y - g.position.y) < 12
-    );
-    if (otherG) {
-      updatedEdges = updatedEdges.map(edge => {
-        let updated = { ...edge };
-        if (edge.source === g.id) {
-          updated.source = otherG.id;
-        }
-        if (edge.target === g.id) {
-          updated.target = otherG.id;
-        }
-        return updated;
-      }).filter(edge => edge.source !== edge.target);
-      
-      updatedNodes = updatedNodes.filter(n => n.id !== g.id);
-    }
-  }
-
-  return { nodes: updatedNodes, edges: updatedEdges };
-}
-
-function splitEdgesOnOverlappingNodes(nodes: Node[], edges: Edge[]): { nodes: Node[], edges: Edge[] } {
-  let updatedNodes = [...nodes];
-  let updatedEdges = [...edges];
-
-  const getHandleCoord = (node: any, handleId: string) => {
-    const orientation = node.data?.orientation || 'horizontal';
-    const isLeft = orientation === 'left';
-    const isUp = orientation === 'up';
-    const isVertical = orientation === 'vertical' || isUp;
-    
-    const x = node.position.x;
-    const y = node.position.y;
-    const w = node.measured?.width || getNodeDimensions(node.type, node.data).width;
-    const h = node.measured?.height || getNodeDimensions(node.type, node.data).height;
-    
-    if (node.type === 'timer555') {
-      const row = parseInt(handleId);
-      if (row >= 1 && row <= 4) {
-        return { x: x, y: y + 26 + (row - 1) * 32 };
-      }
-      if (row >= 5 && row <= 8) {
-        const rightRow = 8 - row;
-        return { x: x + w, y: y + 26 + rightRow * 32 };
-      }
-    }
-    
-    if (node.type === 'ground') {
-      return { x: x + w / 2, y: y };
-    }
-    
-    if (node.type === 'voltage' || node.type === 'acvoltage') {
-      if (handleId === 'pos') return { x: x + w / 2, y: y };
-      if (handleId === 'neg') return { x: x + w / 2, y: y + h };
-    }
-
-    if (node.type === 'junction') {
-      return { x: x, y: y };
-    }
-    
-    if (handleId === 'in') {
-      if (isVertical) {
-        return { x: x + w / 2, y: isUp ? y + h : y };
-      } else {
-        return { x: isLeft ? x + w : x, y: y + h / 2 };
-      }
-    }
-    if (handleId === 'out') {
-      if (isVertical) {
-        return { x: x + w / 2, y: isUp ? y : y + h };
-      } else {
-        return { x: isLeft ? x : x + w, y: y + h / 2 };
-      }
-    }
-    
-    return { x: x + w / 2, y: y + h / 2 };
-  };
-
-  const connectableNodes = updatedNodes.filter(n => n.type === 'junction' || n.type === 'ground');
-
-  for (const node of connectableNodes) {
-    const nodeX = node.position.x;
-    const nodeY = node.position.y;
-
-    let matchedEdge: Edge | null = null;
-    const maxDist = 8; // 8px tolerance
-
-    for (const edge of updatedEdges) {
-      if (edge.source === node.id || edge.target === node.id) {
-        continue;
-      }
-
-      const srcNode = updatedNodes.find(n => n.id === edge.source);
-      const tgtNode = updatedNodes.find(n => n.id === edge.target);
-      if (!srcNode || !tgtNode) continue;
-
-      const pSrc = getHandleCoord(srcNode, edge.sourceHandle || 'out');
-      const pTgt = getHandleCoord(tgtNode, edge.targetHandle || 'in');
-
-      const pathD = getSchematicPath({
-        sourceX: pSrc.x,
-        sourceY: pSrc.y,
-        sourcePosition: getHandlePosition(srcNode, edge.sourceHandle || 'out'),
-        targetX: pTgt.x,
-        targetY: pTgt.y,
-        targetPosition: getHandlePosition(tgtNode, edge.targetHandle || 'in'),
-        nodes: updatedNodes,
-        sourceId: edge.source,
-        targetId: edge.target,
-      });
-
-      const points: { x: number; y: number }[] = [];
-      const matches = pathD.matchAll(/[ML]\s*(-?\d+\.?\d*)\s*(-?\d+\.?\d*)/g);
-      for (const match of matches) {
-        points.push({ x: parseFloat(match[1]), y: parseFloat(match[2]) });
-      }
-
-      for (let i = 0; i < points.length - 1; i++) {
-        const p1 = points[i];
-        const p2 = points[i + 1];
-        
-        if (Math.abs(p1.y - p2.y) < 1) { // Horizontal segment
-          const minX = Math.min(p1.x, p2.x);
-          const maxX = Math.max(p1.x, p2.x);
-          if (nodeX >= minX - 4 && nodeX <= maxX + 4) {
-            const dist = Math.abs(nodeY - p1.y);
-            if (dist < maxDist) {
-              matchedEdge = edge;
-              break;
-            }
-          }
-        }
-        else if (Math.abs(p1.x - p2.x) < 1) { // Vertical segment
-          const minY = Math.min(p1.y, p2.y);
-          const maxY = Math.max(p1.y, p2.y);
-          if (nodeY >= minY - 4 && nodeY <= maxY + 4) {
-            const dist = Math.abs(nodeX - p1.x);
-            if (dist < maxDist) {
-              matchedEdge = edge;
-              break;
-            }
-          }
-        }
-      }
-
-      if (matchedEdge) break;
-    }
-
-    if (matchedEdge) {
-      const edgeType = matchedEdge.type || 'aura';
-
-      if (node.type === 'junction') {
-        const edgeToJunction: Edge = {
-          id: `e-${matchedEdge.source}-${node.id}-${Date.now()}`,
-          source: matchedEdge.source,
-          sourceHandle: matchedEdge.sourceHandle,
-          target: node.id,
-          targetHandle: 'in',
-          type: edgeType,
-        };
-
-        const edgeFromJunction: Edge = {
-          id: `e-${node.id}-${matchedEdge.target}-${Date.now()}`,
-          source: node.id,
-          sourceHandle: 'out',
-          target: matchedEdge.target,
-          targetHandle: matchedEdge.targetHandle,
-          type: edgeType,
-        };
-
-        updatedEdges = [
-          ...updatedEdges.filter(e => e.id !== matchedEdge.id),
-          edgeToJunction,
-          edgeFromJunction
-        ];
-      } 
-      else if (node.type === 'ground') {
-        const edgeToGround: Edge = {
-          id: `e-${matchedEdge.source}-${node.id}-${Date.now()}`,
-          source: matchedEdge.source,
-          sourceHandle: matchedEdge.sourceHandle,
-          target: node.id,
-          targetHandle: 'in',
-          type: edgeType,
-        };
-
-        const edgeFromGround: Edge = {
-          id: `e-${node.id}-${matchedEdge.target}-${Date.now()}`,
-          source: node.id,
-          sourceHandle: 'in',
-          target: matchedEdge.target,
-          targetHandle: matchedEdge.targetHandle,
-          type: edgeType,
-        };
-
-        updatedEdges = [
-          ...updatedEdges.filter(e => e.id !== matchedEdge.id),
-          edgeToGround,
-          edgeFromGround
-        ];
-      }
-    }
-  }
-
-  return { nodes: updatedNodes, edges: updatedEdges };
-}
-
-// Simple robust markdown parser to convert basic markdown text to safe HTML
-// Markdown parser for note cards
-function parseNoteMarkdown(md: string): string {
-  if (!md) return '';
-  let html = md.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  html = html.replace(/^### (.*$)/gim, '<h3 class="text-xs font-bold text-slate-800 dark:text-slate-200 mt-2 mb-1 uppercase tracking-wide">$1</h3>');
-  html = html.replace(/^## (.*$)/gim, '<h2 class="text-sm font-bold text-slate-800 dark:text-slate-200 mt-3 mb-1 border-b border-slate-100 dark:border-slate-800 pb-0.5">$1</h2>');
-  html = html.replace(/^# (.*$)/gim, '<h1 class="text-base font-extrabold text-slate-900 dark:text-slate-100 mt-3 mb-2 border-b border-slate-200 dark:border-slate-800 pb-1">$1</h1>');
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-slate-900 dark:text-slate-100">$1</strong>');
-  html = html.replace(/\*(.*?)\*/g, '<em class="italic text-slate-700 dark:text-slate-300">$1</em>');
-  html = html.replace(/`(.*?)`/g, '<code class="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[10px] font-mono text-pink-600 dark:text-pink-400">$1</code>');
-  html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline">$1</a>');
-  html = html.replace(/^\s*-\s+(.*$)/gim, '<li class="ml-4 list-disc text-slate-650 dark:text-slate-300 text-xs mb-0.5">$1</li>');
-  html = html.split('\n').map(line => {
-    const t = line.trim();
-    if (t.startsWith('<h') || t.startsWith('<li') || t === '') return line;
-    return `<p class="text-xs text-slate-600 dark:text-slate-300 mb-1.5 leading-relaxed">${line}</p>`;
-  }).join('\n');
-  return html;
-}
-
-// Floating note card overlay component
-function NoteCardOverlay({ card, isEditing, onToggleEdit, onToggleMinimize, onMarkdownChange, onClose, onMove }: {
-  card: { id: string; markdown: string; minimized: boolean; x: number; y: number };
-  isEditing: boolean;
-  onToggleEdit: () => void;
-  onToggleMinimize: () => void;
-  onMarkdownChange: (md: string) => void;
-  onClose: () => void;
-  onMove: (x: number, y: number) => void;
-}) {
-  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
-
-  const handleTitleMouseDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return;
-    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: card.x, origY: card.y };
-    const handleMouseMove = (me: MouseEvent) => {
-      if (!dragRef.current) return;
-      onMove(dragRef.current.origX + me.clientX - dragRef.current.startX, dragRef.current.origY + me.clientY - dragRef.current.startY);
-    };
-    const handleMouseUp = () => { dragRef.current = null; window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  };
-
-  return (
-    <div
-      style={{ position: 'absolute', left: card.x, top: card.y, zIndex: 100, width: 300 }}
-      className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl overflow-hidden"
-    >
-      {/* Title bar */}
-      <div
-        className="flex items-center justify-between px-3 py-2 bg-slate-50/80 dark:bg-slate-950/40 border-b border-slate-100 dark:border-slate-800 cursor-move select-none"
-        onMouseDown={handleTitleMouseDown}
-      >
-        <div className="flex items-center gap-1.5">
-          <FileText className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
-          <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Note Card</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={onToggleEdit} className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors" title={isEditing ? 'Preview' : 'Edit'}>
-            <Edit3 className="w-3 h-3 text-slate-500 dark:text-slate-400" />
-          </button>
-          <button onClick={onToggleMinimize} className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors" title={card.minimized ? 'Expand' : 'Minimize'}>
-            {card.minimized ? <ChevronDown className="w-3 h-3 text-slate-500 dark:text-slate-400" /> : <ChevronUp className="w-3 h-3 text-slate-500 dark:text-slate-400" />}
-          </button>
-          <button onClick={onClose} className="p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-950/40 transition-colors" title="Close">
-            <X className="w-3 h-3 text-slate-500 dark:text-slate-400 hover:text-red-500" />
-          </button>
-        </div>
-      </div>
-
-      {/* Body */}
-      {!card.minimized && (
-        <div className="p-3">
-          {isEditing ? (
-            <textarea
-              autoFocus
-              rows={8}
-              value={card.markdown}
-              onChange={(e) => onMarkdownChange(e.target.value)}
-              className="w-full px-2 py-1.5 border border-slate-200 dark:border-slate-800 rounded text-xs bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-200 outline-none focus:border-violet-400 font-mono resize-y shadow-sm"
-              placeholder="Write markdown here..."
-            />
-          ) : (
-            <div
-              className="prose-sm dark:prose-invert max-h-64 overflow-y-auto text-slate-700 dark:text-slate-300 font-normal text-slate-650 dark:text-slate-400 leading-normal"
-              dangerouslySetInnerHTML={{ __html: parseNoteMarkdown(card.markdown) }}
-            />
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 let simulationWorker: Worker | null = null;
 const pendingSimulations = new Map<string, { resolve: (res: any) => void; reject: (err: any) => void }>();
@@ -703,2054 +89,6 @@ const runSimInWorker = (netlist: string): Promise<any> => {
   });
 };
 
-let nodeId = 1;
-
-function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  if (!isOpen) return null;
-
-  const onDragStart = (event: DragEvent, nodeType: string, label?: string) => {
-    event.dataTransfer.setData('application/reactflow', nodeType);
-    if (label) event.dataTransfer.setData('application/reactflow-label', label);
-    event.dataTransfer.effectAllowed = 'move';
-  };
-
-  return (
-    <div className="fixed inset-0 z-40 lg:relative lg:z-10 flex h-full pointer-events-none">
-      {/* Backdrop for mobile */}
-      <div 
-        className="fixed inset-0 bg-slate-900/20 backdrop-blur-xs lg:hidden pointer-events-auto" 
-        onClick={onClose}
-      ></div>
-      <aside className="w-64 h-full glass-panel border-r border-slate-200 dark:border-slate-800 p-4 flex flex-col gap-4 bg-white/95 dark:bg-slate-900/95 shadow-xl lg:shadow-none z-50 relative overflow-y-auto pointer-events-auto transition-colors">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Components</h2>
-          <button onClick={onClose} className="lg:hidden p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400">
-            <X size={20} />
-          </button>
-        </div>
-      
-        <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2 mt-2">Transistors</div>
-        <div className="grid grid-cols-2 gap-2">
-          <div 
-            onDragStart={(event) => onDragStart(event, 'npn')} 
-            draggable 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center text-center cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="24" height="24" viewBox="0 0 60 60" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <line x1="20" y1="10" x2="20" y2="50" strokeWidth="3" />
-                <line x1="5" y1="30" x2="20" y2="30" />
-                <line x1="20" y1="20" x2="45" y2="7" />
-                <line x1="20" y1="40" x2="45" y2="53" />
-                <polygon points="45,53 35,46 41,38" fill="currentColor" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">NPN BJT</span>
-          </div>
-          <div 
-            onDragStart={(event) => onDragStart(event, 'pnp')} 
-            draggable 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center text-center cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="24" height="24" viewBox="0 0 60 60" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <line x1="20" y1="10" x2="20" y2="50" strokeWidth="3" />
-                <line x1="5" y1="30" x2="20" y2="30" />
-                <line x1="20" y1="20" x2="45" y2="7" />
-                <line x1="20" y1="40" x2="45" y2="53" />
-                <polygon points="20,20 30,17 26,27" fill="currentColor" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">PNP BJT</span>
-          </div>
-          <div 
-            onDragStart={(event) => onDragStart(event, 'nmos')} 
-            draggable 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center text-center cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="24" height="24" viewBox="0 0 60 60" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <line x1="15" y1="15" x2="15" y2="45" strokeWidth="3" />
-                <line x1="22" y1="15" x2="22" y2="45" strokeWidth="3" />
-                <line x1="5" y1="30" x2="15" y2="30" />
-                <line x1="22" y1="20" x2="45" y2="20" />
-                <line x1="22" y1="40" x2="45" y2="40" />
-                <line x1="22" y1="30" x2="45" y2="30" />
-                <polygon points="22,30 32,25 32,35" fill="currentColor" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">NMOS</span>
-          </div>
-          <div 
-            onDragStart={(event) => onDragStart(event, 'pmos')} 
-            draggable 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center text-center cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="24" height="24" viewBox="0 0 60 60" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <line x1="15" y1="15" x2="15" y2="45" strokeWidth="3" />
-                <line x1="22" y1="15" x2="22" y2="45" strokeWidth="3" />
-                <line x1="5" y1="30" x2="15" y2="30" />
-                <line x1="22" y1="20" x2="45" y2="20" />
-                <line x1="22" y1="40" x2="45" y2="40" />
-                <line x1="22" y1="30" x2="45" y2="30" />
-                <polygon points="45,30 35,25 35,35" fill="currentColor" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">PMOS</span>
-          </div>
-        </div>
-
-        <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2 mt-2">Logic Gates</div>
-        <div className="grid grid-cols-2 gap-2">
-          {['and', 'or', 'not', 'nand', 'nor', 'xor'].map(gate => (
-            <div 
-              key={gate}
-              onDragStart={(event) => onDragStart(event, gate)} 
-              draggable 
-              className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center text-center cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group"
-            >
-              <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-                {gate === 'and' && (
-                  <svg width="24" height="24" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M 20 20 H 50 A 30 30 0 0 1 80 50 A 30 30 0 0 1 50 80 H 20 Z" />
-                  </svg>
-                )}
-                {gate === 'or' && (
-                  <svg width="24" height="24" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M 20 20 C 35 20, 50 30, 80 50 C 50 70, 35 80, 20 80 C 35 50, 35 50, 20 20 Z" />
-                  </svg>
-                )}
-                {gate === 'not' && (
-                  <svg width="24" height="24" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <polygon points="20,20 20,80 70,50" />
-                    <circle cx="78" cy="50" r="8" fill="none" />
-                  </svg>
-                )}
-                {gate === 'nand' && (
-                  <svg width="24" height="24" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M 15 20 H 45 A 30 30 0 0 1 75 50 A 30 30 0 0 1 45 80 H 15 Z" />
-                    <circle cx="83" cy="50" r="8" fill="none" />
-                  </svg>
-                )}
-                {gate === 'nor' && (
-                  <svg width="24" height="24" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M 15 20 C 30 20, 45 30, 75 50 C 45 70, 30 80, 15 80 C 30 50, 30 50, 15 20 Z" />
-                    <circle cx="83" cy="50" r="8" fill="none" />
-                  </svg>
-                )}
-                {gate === 'xor' && (
-                  <svg width="24" height="24" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M 15 20 C 25 35, 25 65, 15 80" />
-                    <path d="M 22 20 C 37 20, 52 30, 82 50 C 52 70, 37 80, 22 80 C 37 50, 37 50, 22 20 Z" />
-                  </svg>
-                )}
-              </div>
-              <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 capitalize">{gate} Gate</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2 mt-2">Tools</div>
-        <div className="grid grid-cols-2 gap-2">
-          {/* DC Voltage */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'voltage', '5V')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="24" height="24" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="24" cy="24" r="16" />
-                <path d="M 24 13 V 19" />
-                <path d="M 21 16 H 27" />
-                <path d="M 21 32 H 27" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">DC Voltage</span>
-          </div>
-
-          {/* Ground */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'ground')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-green-600 dark:text-green-400">
-              <svg width="24" height="20" viewBox="0 0 24 20" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M4 6h16 M7 11h10 M10 16h4" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Ground</span>
-          </div>
-
-          {/* Resistor */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'resistor', '1k')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="36" height="18" viewBox="0 0 80 40" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M 0 20 H 25 L 27.5 10 L 32.5 30 L 37.5 10 L 42.5 30 L 47.5 10 L 52.5 30 L 55 20 H 80" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Resistor</span>
-          </div>
-
-          {/* Capacitor */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'capacitor', '10u')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="30" height="22" viewBox="0 0 64 48" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M 0 24 H 29" />
-                <path d="M 29 12 V 36" strokeWidth="2.5" />
-                <path d="M 35 12 V 36" strokeWidth="2.5" />
-                <path d="M 35 24 H 64" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Capacitor</span>
-          </div>
-
-          {/* Inductor */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'inductor', '100u')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="36" height="18" viewBox="0 0 80 40" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M 0 20 H 16 A 6,6 0 0,1 28,20 A 6,6 0 0,1 40,20 A 6,6 0 0,1 52,20 A 6,6 0 0,1 64,20 H 80" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Inductor</span>
-          </div>
-
-          {/* Diode */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'diode')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="30" height="22" viewBox="0 0 64 48" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M 0 24 H 24" />
-                <path d="M 24 14 L 36 24 L 24 34 Z" fill="currentColor" />
-                <path d="M 36 14 V 34" strokeWidth="2.5" />
-                <path d="M 36 24 H 64" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Diode</span>
-          </div>
-
-          {/* LED */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'led')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="30" height="22" viewBox="0 0 64 48" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M 0 24 H 24" />
-                <path d="M 24 14 L 36 24 L 24 34 Z" fill="currentColor" />
-                <path d="M 36 14 V 34" strokeWidth="2.5" />
-                <path d="M 36 24 H 64" />
-                <path d="M 28 14 L 34 8 M 32 8 H 34 V 10" strokeWidth="1" />
-                <path d="M 32 18 L 38 12 M 36 12 H 38 V 14" strokeWidth="1" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">LED</span>
-          </div>
-
-          {/* 555 Timer */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'timer555')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform">
-              <div className="border border-slate-300 dark:border-slate-700 rounded px-1.5 py-0.5 text-[9px] font-bold text-slate-700 dark:text-slate-300">NE555</div>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">555 Timer</span>
-          </div>
-
-          {/* Microcontroller */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'mcu')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform">
-              <div className="border border-slate-300 dark:border-slate-700 rounded px-1.5 py-0.5 text-[9px] font-bold text-slate-700 dark:text-slate-300">MCU</div>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">MCU</span>
-          </div>
-
-          {/* Heltec V4 HIL */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'heltec_v4')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform">
-              <div className="border border-slate-300 dark:border-slate-700 rounded px-1.5 py-0.5 text-[9px] font-bold text-slate-700 dark:text-slate-300">HELTEC</div>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Heltec V4</span>
-          </div>
-
-          {/* Op-Amp */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'opamp')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="28" height="22" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <polygon points="10,10 10,90 90,50" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Op-Amp</span>
-          </div>
-
-          {/* Multimeter */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'multimeter')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform">
-              <div className="border border-slate-300 dark:border-slate-700 rounded px-1 py-0.5 font-mono text-[8px] text-slate-700 dark:text-slate-300">0.00 V</div>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Multimeter</span>
-          </div>
-
-          {/* DC Source */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'voltage', '5V')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="24" height="24" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="24" cy="24" r="16" />
-                <path d="M 24 13 V 19" />
-                <path d="M 21 16 H 27" />
-                <path d="M 21 32 H 27" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">DC Source</span>
-          </div>
-
-          {/* AC Source */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'acvoltage', '10V 60Hz')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="24" height="24" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="24" cy="24" r="16" />
-                <path d="M 16 24 C 18 16, 22 16, 24 24 C 26 32, 30 32, 32 24" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">AC Source</span>
-          </div>
-
-          {/* Signal Gen */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'signalgen')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform">
-              <div className="border border-slate-300 dark:border-slate-700 rounded px-1 py-0.5 text-[8px] font-bold text-slate-700 dark:text-slate-300">~ SINE</div>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Signal Gen</span>
-          </div>
-
-          {/* Oscilloscope */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'scope')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform">
-              <div className="border border-slate-300 dark:border-slate-700 rounded w-10 h-6 flex items-center justify-center overflow-hidden">
-                <svg width="100%" height="100%" viewBox="0 0 100 60" className="text-slate-700 dark:text-slate-300">
-                  <polyline points="0,30 25,10 50,50 75,10 100,30" fill="none" stroke="currentColor" strokeWidth="4" />
-                </svg>
-              </div>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Scope</span>
-          </div>
-
-          {/* Speaker */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'speaker')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Speaker</span>
-          </div>
-
-          {/* Mic */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'microphone')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Mic</span>
-          </div>
-
-          {/* Switch */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'switch')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="30" height="20" viewBox="0 0 40 30" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <circle cx="10" cy="20" r="3" fill="currentColor" />
-                <circle cx="30" cy="20" r="3" fill="currentColor" />
-                <line x1="10" y1="20" x2="30" y2="5" stroke="currentColor" strokeLinecap="round" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Switch</span>
-          </div>
-
-          {/* Pot */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'potentiometer', '10k')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="30" height="20" viewBox="0 0 32 14" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <rect x="2" y="4" width="28" height="6" rx="1"/>
-                <line x1="16" y1="0" x2="16" y2="5"/>
-                <path d="M13,3 L16,0 L19,3"/>
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Pot</span>
-          </div>
-
-          {/* 7-Seg */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'sevenseg')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform">
-              <div className="border border-slate-300 dark:border-slate-700 rounded w-6 h-6 flex items-center justify-center font-mono text-xs font-bold text-slate-700 dark:text-slate-300">8</div>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">7-Seg</span>
-          </div>
-
-          {/* I Source */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'currentsource', '10m')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="24" height="24" viewBox="0 0 28 28" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="14" cy="14" r="12" />
-                <line x1="14" y1="20" x2="14" y2="8" />
-                <path d="M10,12 L14,8 L18,12" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">I Source</span>
-          </div>
-
-          {/* Transformer */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'transformer')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="24" height="24" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M 8 16 H 18 A 4 4 0 0 1 18 24 A 4 4 0 0 1 18 32 H 8" />
-                <path d="M 40 16 H 30 A 4 4 0 0 0 30 24 A 4 4 0 0 0 30 32 H 40" />
-                <line x1="22" y1="12" x2="22" y2="36" />
-                <line x1="26" y1="12" x2="26" y2="36" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Transformer</span>
-          </div>
-
-          {/* D Flip-Flop */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'dff')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform">
-              <div className="border border-slate-300 dark:border-slate-700 rounded px-1 py-0.5 text-[8px] font-bold text-slate-700 dark:text-slate-300">DFF</div>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">D Flip-Flop</span>
-          </div>
-
-          {/* LDR */}
-          <div 
-            className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center gap-1.5 cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/55 dark:hover:bg-slate-850/30 transition-all group text-center"
-            onDragStart={(e) => onDragStart(e, 'ldr')} draggable
-          >
-            <div className="mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
-              <svg width="24" height="24" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="24" cy="24" r="12" />
-                <path d="M 14 24 L 17 20 L 21 28 L 25 20 L 29 28 L 31 20 L 34 24" />
-              </svg>
-            </div>
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">LDR</span>
-          </div>
-        </div>
-      </aside>
-    </div>
-  );
-}
-
-function getNodeDefaultName(id: string, type: string) {
-  const match = id.match(/^(resistor|capacitor|inductor)-(\d+)$/i);
-  if (match) {
-    const prefix = type === 'resistor' ? 'R' : (type === 'capacitor' ? 'C' : 'L');
-    return `${prefix}${match[2]}`;
-  }
-  if (/^[rcl]\d+$/i.test(id)) {
-    return id.toUpperCase();
-  }
-  return id;
-}
-
-function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSimulation, simLength }: { selectedNode: any, setNodes: any, setEdges: any, isSimulating: boolean, runSimulation: () => void, simLength: number }) {
-  const simDebounceTimerRef = useRef<any>(null);
-  const [stream, setStream] = useState<MediaStream | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const webcamIntervalRef = useRef<any>(null);
-  const [isRecordingWebcam, setIsRecordingWebcam] = useState(false);
-  const webcamRecordingDataRef = useRef<{ t: number; v: number }[]>([]);
-  const webcamRecordingStartRef = useRef<number>(0);
-
-  // Sync streamRef with stream state for unmount cleanup
-  useEffect(() => {
-    streamRef.current = stream;
-  }, [stream]);
-
-  const ldrId = (selectedNode?.type === 'ldr' || (selectedNode?.type === 'led' && selectedNode?.data.photodiodeMode)) ? selectedNode.id : null;
-  const isWebcamActive = (selectedNode?.type === 'ldr' || (selectedNode?.type === 'led' && selectedNode?.data.photodiodeMode)) ? !!selectedNode.data.isWebcamActive : false;
-
-  const updateData = (key: string, value: any) => {
-    setNodes((nds: Node[]) => nds.map(n => {
-      if (n.id !== selectedNode?.id) return n;
-      const newData = { ...n.data, [key]: value };
-      
-      // If label is edited, clear the "hardcoded" numeric overrides so SPICE parses the new label
-      if (key === 'label') {
-        const overrides = ['voltage', 'resistance', 'capacitance', 'inductance'];
-        overrides.forEach(o => {
-          if (o in newData) delete (newData as any)[o];
-        });
-      }
-      
-      return { ...n, data: newData };
-    }));
-
-    if (key === 'orientation' && selectedNode && ['diode', 'zener', 'led', 'resistor', 'capacitor', 'inductor', 'switch'].includes(selectedNode.type || '')) {
-      const prevOrientation = selectedNode.data.orientation || 'horizontal';
-      const newOrientation = value;
-      const isPrevFlipped = prevOrientation === 'left' || prevOrientation === 'up';
-      const isNewFlipped = newOrientation === 'left' || newOrientation === 'up';
-      
-      if (isPrevFlipped !== isNewFlipped) {
-        setEdges((eds: Edge[]) => eds.map(e => {
-          let updated = { ...e };
-          let changed = false;
-          if (e.source === selectedNode.id) {
-            const sh = e.sourceHandle;
-            if (sh === 'anode') { updated.sourceHandle = 'cathode'; changed = true; }
-            else if (sh === 'cathode') { updated.sourceHandle = 'anode'; changed = true; }
-            else if (sh === 'in') { updated.sourceHandle = 'out'; changed = true; }
-            else if (sh === 'out') { updated.sourceHandle = 'in'; changed = true; }
-          }
-          if (e.target === selectedNode.id) {
-            const th = e.targetHandle;
-            if (th === 'anode') { updated.targetHandle = 'cathode'; changed = true; }
-            else if (th === 'cathode') { updated.targetHandle = 'anode'; changed = true; }
-            else if (th === 'in') { updated.targetHandle = 'out'; changed = true; }
-            else if (th === 'out') { updated.targetHandle = 'in'; changed = true; }
-          }
-          return changed ? updated : e;
-        }));
-      }
-    }
-
-    if (isSimulating) {
-      if (simDebounceTimerRef.current) {
-        clearTimeout(simDebounceTimerRef.current);
-      }
-      simDebounceTimerRef.current = setTimeout(() => {
-        runSimulation();
-      }, 150);
-    }
-  };
-
-  const startWebcam = async () => {
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
-      setStream(mediaStream);
-      if (selectedNode && !selectedNode.data.isWebcamActive) {
-        updateData('isWebcamActive', true);
-      }
-
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream;
-          videoRef.current.play().catch(e => console.error("Error playing video:", e));
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = 40;
-        canvas.height = 30;
-        const ctx = canvas.getContext('2d');
-
-        webcamIntervalRef.current = setInterval(() => {
-          if (videoRef.current && ctx) {
-            try {
-              ctx.drawImage(videoRef.current, 0, 0, 40, 30);
-              const imgData = ctx.getImageData(0, 0, 40, 30);
-              const data = imgData.data;
-              const lumas: number[] = [];
-              for (let i = 0; i < data.length; i += 4) {
-                const r = data[i];
-                const g = data[i+1];
-                const b = data[i+2];
-                const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-                lumas.push(luma);
-              }
-              lumas.sort((a, b) => b - a);
-              const topCount = Math.max(1, Math.floor(lumas.length * 0.05));
-              let topSum = 0;
-              for (let i = 0; i < topCount; i++) {
-                topSum += lumas[i];
-              }
-              const avgBrightness = (topSum / topCount) / 255;
-              updateData('lightLevel', avgBrightness);
-            } catch (err) {
-              console.error("Error analyzing frame:", err);
-            }
-          }
-        }, 100);
-      }, 300);
-    } catch (err) {
-      console.error("Error accessing webcam:", err);
-      alert("Failed to access webcam. Please check permissions.");
-    }
-  };
-
-  const stopWebcam = () => {
-    if (webcamIntervalRef.current) {
-      clearInterval(webcamIntervalRef.current);
-      webcamIntervalRef.current = null;
-    }
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
-    if (selectedNode && selectedNode.data.isWebcamActive) {
-      updateData('isWebcamActive', false);
-    }
-  };
-
-  // Reactive Effect to handle webcam stream lifecycle matching selection & node state
-  useEffect(() => {
-    if (stream && (!ldrId || !isWebcamActive)) {
-      stopWebcam();
-    } else if (ldrId && isWebcamActive && !stream) {
-      startWebcam();
-    }
-  }, [ldrId, isWebcamActive, stream]);
-
-  // Unmount cleanup effect
-  useEffect(() => {
-    return () => {
-      if (webcamIntervalRef.current) {
-        clearInterval(webcamIntervalRef.current);
-        webcamIntervalRef.current = null;
-      }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, []);
-
-  const startRecordingWebcam = () => {
-    webcamRecordingDataRef.current = [];
-    webcamRecordingStartRef.current = Date.now();
-    setIsRecordingWebcam(true);
-
-    const recordInterval = setInterval(() => {
-      const elapsed = (Date.now() - webcamRecordingStartRef.current) / 1000;
-      const currentLight = selectedNode?.data.lightLevel ?? 0.5;
-      webcamRecordingDataRef.current.push({ t: elapsed, v: currentLight });
-    }, 33);
-
-    const duration = Math.min(simLength, 5);
-    setTimeout(() => {
-      clearInterval(recordInterval);
-      setIsRecordingWebcam(false);
-      updateData('pwlData', webcamRecordingDataRef.current);
-    }, duration * 1000);
-  };
-
-  if (!selectedNode) return null;
-  return (
-    <aside className="fixed inset-y-0 right-0 w-64 glass-panel border-l border-slate-200 dark:border-slate-800 p-4 bg-white/95 dark:bg-slate-900/95 shadow-xl lg:shadow-none z-40 lg:relative lg:z-10 overflow-y-auto transition-colors">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="font-bold text-slate-700 dark:text-slate-200 text-xs uppercase tracking-wider">Properties</h2>
-        <button 
-          onClick={() => setNodes((nds: Node[]) => nds.map(n => ({ ...n, selected: false })))} 
-          className="lg:hidden p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400"
-          title="Close Properties"
-        >
-          <X size={20} />
-        </button>
-      </div>
-      <div className="text-[10px] text-slate-400 dark:text-slate-500 mb-4 font-mono">ID: {selectedNode.id}</div>
-      
-      {['resistor', 'capacitor', 'inductor', 'diode', 'zener', 'led', 'switch', 'voltage', 'acvoltage', 'currentsource'].includes(selectedNode.type || '') && (
-        <div className="mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Orientation</label>
-          <select 
-            value={(selectedNode.data.orientation as string) || 'horizontal'} 
-            onChange={e => updateData('orientation', e.target.value)} 
-            className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none mb-2"
-          >
-            <option value="horizontal">Horizontal</option>
-            {['diode', 'zener', 'led', 'resistor', 'capacitor', 'inductor', 'switch'].includes(selectedNode.type || '') && (
-              <option value="left">Horizontal (Left)</option>
-            )}
-            <option value="vertical">Vertical</option>
-            {['diode', 'zener', 'led', 'resistor', 'capacitor', 'inductor', 'switch'].includes(selectedNode.type || '') && (
-              <option value="up">Vertical (Up)</option>
-            )}
-          </select>
-          {['diode', 'zener', 'led', 'resistor', 'capacitor', 'inductor', 'switch'].includes(selectedNode.type || '') && (
-            <div className="flex items-center gap-2 mt-2">
-              <input 
-                type="checkbox" 
-                id="node-flip" 
-                checked={['left', 'up'].includes((selectedNode.data.orientation as string) || 'horizontal')} 
-                onChange={e => {
-                  const current = (selectedNode.data.orientation as string) || 'horizontal';
-                  if (e.target.checked) {
-                    if (current === 'horizontal') updateData('orientation', 'left');
-                    if (current === 'vertical') updateData('orientation', 'up');
-                  } else {
-                    if (current === 'left') updateData('orientation', 'horizontal');
-                    if (current === 'up') updateData('orientation', 'vertical');
-                  }
-                }} 
-                className="cursor-pointer"
-              />
-              <label htmlFor="node-flip" className="text-xs text-gray-750 dark:text-slate-300 select-none cursor-pointer">
-                Flip Direction
-              </label>
-            </div>
-          )}
-        </div>
-      )}
-      
-      {selectedNode.type === 'voltage' && (
-        <div className="mb-3">
-          <label className="block text-xs font-medium text-gray-700 mb-1">Voltage (V)</label>
-          <input type="text" value={(selectedNode.data.label as string) || '5V'} onChange={e => updateData('label', e.target.value)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-        </div>
-      )}
-      {selectedNode.type === 'acvoltage' && (
-        <>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Amplitude (V)</label>
-            <input type="number" step="1" value={(selectedNode.data.amplitude as number) || 10} onChange={e => { updateData('amplitude', parseFloat(e.target.value)); updateData('label', `${e.target.value}V ${selectedNode.data.frequency || 60}Hz`); }} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-          </div>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Frequency (Hz)</label>
-            <input type="number" step="1" value={(selectedNode.data.frequency as number) || 60} onChange={e => { updateData('frequency', parseFloat(e.target.value)); updateData('label', `${selectedNode.data.amplitude || 10}V ${e.target.value}Hz`); }} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-          </div>
-        </>
-      )}
-      {['resistor', 'capacitor', 'inductor'].includes(selectedNode.type || '') && (
-        <div className="mb-3">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Name</label>
-          <input 
-            type="text" 
-            value={selectedNode.data.name !== undefined ? selectedNode.data.name : getNodeDefaultName(selectedNode.id, selectedNode.type)} 
-            onChange={e => updateData('name', e.target.value)} 
-            className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" 
-          />
-        </div>
-      )}
-      {selectedNode.type === 'resistor' && (
-        <div className="mb-3">
-          <label className="block text-xs font-medium text-gray-700 mb-1">Resistance (Ω)</label>
-          <input type="text" value={(selectedNode.data.label as string) || '1k'} onChange={e => updateData('label', e.target.value)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-        </div>
-      )}
-      {selectedNode.type === 'capacitor' && (
-        <div className="mb-3">
-          <label className="block text-xs font-medium text-gray-700 mb-1">Capacitance</label>
-          <input type="text" value={(selectedNode.data.label as string) || '10u'} onChange={e => updateData('label', e.target.value)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-        </div>
-      )}
-      {selectedNode.type === 'inductor' && (
-        <div className="mb-3">
-          <label className="block text-xs font-medium text-gray-700 mb-1">Inductance</label>
-          <input type="text" value={(selectedNode.data.label as string) || '100u'} onChange={e => updateData('label', e.target.value)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-        </div>
-      )}
-      {selectedNode.type === 'switch' && (
-        <div className="mb-3">
-          <div className="flex items-center justify-between mb-2">
-            <label className="block text-xs font-medium text-gray-700">State</label>
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${(selectedNode.data.isOpen !== false) ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-              {(selectedNode.data.isOpen !== false) ? 'OPEN' : 'CLOSED'}
-            </span>
-          </div>
-          <button 
-            onClick={() => updateData('isOpen', selectedNode.data.isOpen === false)}
-            className={`w-full py-2 rounded font-bold text-sm shadow-sm transition-all ${
-              (selectedNode.data.isOpen !== false) 
-                ? 'bg-green-500 hover:bg-green-600 text-white' 
-                : 'bg-red-500 hover:bg-red-600 text-white'
-            }`}
-          >
-            {(selectedNode.data.isOpen !== false) ? 'Close Switch' : 'Open Switch'}
-          </button>
-        </div>
-      )}
-      {selectedNode.type === 'led' && (
-        <>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Color (CSS)</label>
-            <input type="text" value={(selectedNode.data.color as string) || 'red'} onChange={e => updateData('color', e.target.value)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-          </div>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Forward Voltage Drop (V)</label>
-            <input type="number" step="0.1" value={(selectedNode.data.v_drop as number) || 2.0} onChange={e => updateData('v_drop', parseFloat(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-          </div>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Max Current (mA)</label>
-            <input type="number" value={(selectedNode.data.max_current as number) || 20} onChange={e => updateData('max_current', parseInt(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-          </div>
-          
-          <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800">
-            <div className="flex items-center gap-2 mb-2">
-              <input 
-                type="checkbox" 
-                id="led-photo" 
-                checked={!!selectedNode.data.photodiodeMode} 
-                onChange={e => updateData('photodiodeMode', e.target.checked)} 
-                className="cursor-pointer"
-              />
-              <label htmlFor="led-photo" className="text-xs font-semibold text-gray-700 select-none cursor-pointer">
-                Enable Photodiode Mode
-              </label>
-            </div>
-            {selectedNode.data.photodiodeMode && (
-              <>
-                <div className="mb-3">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Reverse Sensitivity (μA)</label>
-                  <input type="number" min="0" step="1" value={selectedNode.data.lightSensitivity !== undefined ? selectedNode.data.lightSensitivity : 10} onChange={e => updateData('lightSensitivity', parseInt(e.target.value) || 0)} className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" />
-                </div>
-                
-                <div className="mb-3 flex items-center gap-2">
-                  <input 
-                    type="checkbox" 
-                    id="led-webcam" 
-                    checked={!!selectedNode.data.isWebcamActive} 
-                    onChange={e => updateData('isWebcamActive', e.target.checked)} 
-                    className="cursor-pointer"
-                  />
-                  <label htmlFor="led-webcam" className="text-xs font-semibold text-gray-700 dark:text-gray-300 select-none cursor-pointer">
-                    Use Webcam Sensor
-                  </label>
-                </div>
-
-                {stream && (
-                  <div className="mb-3 rounded-lg overflow-hidden border border-gray-300 dark:border-slate-800 h-28 bg-black relative flex items-center justify-center shadow-inner">
-                    <video 
-                      ref={videoRef} 
-                      className="w-full h-full object-cover" 
-                      muted 
-                      playsInline
-                    />
-                    <div className="absolute bottom-1.5 right-1.5 bg-black/70 text-white text-[8px] font-mono px-1.5 py-0.5 rounded shadow-sm">
-                      Live LED Light: {Math.round((selectedNode.data.lightLevel ?? 0) * 100)}%
-                    </div>
-                  </div>
-                )}
-
-                {!!selectedNode.data.isWebcamActive && (
-                  <div className="mb-3">
-                    <button
-                      onClick={isRecordingWebcam ? undefined : startRecordingWebcam}
-                      className={`w-full py-2 rounded-lg font-bold text-xs shadow-md transition-all text-white ${
-                        isRecordingWebcam ? 'bg-red-500 animate-pulse' : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg'
-                      }`}
-                    >
-                      {isRecordingWebcam ? '🔴 Recording Webcam...' : '📹 Record Light Stream'}
-                    </button>
-                    {selectedNode.data.pwlData && (
-                      <div className="text-[9px] text-green-600 dark:text-green-400 font-bold mt-1.5 flex items-center gap-1">
-                        <span>✓</span> PWL Light Stream Loaded ({selectedNode.data.pwlData.length} pts)
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="mb-3">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Light Exposure (0-100%)
-                  </label>
-                  <input 
-                    type="range" 
-                    min="0" 
-                    max="100" 
-                    disabled={!!selectedNode.data.isWebcamActive}
-                    value={Math.round((selectedNode.data.lightLevel ?? 0) * 100)} 
-                    onChange={e => updateData('lightLevel', parseInt(e.target.value) / 100)} 
-                    className="w-full" 
-                  />
-                  <div className="text-[9px] text-gray-400 mt-1">Simulates photocurrent generated when light shines on reverse-biased LED.</div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {selectedNode.data.isExploded && (
-            <button 
-              onClick={() => { updateData('isExploded', false); updateData('brightness', 0); }}
-              className="w-full mt-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-1 px-2 rounded shadow-sm text-sm"
-            >
-              Repair Component
-            </button>
-          )}
-        </>
-      )}
-      {selectedNode.type === 'signalgen' && (
-        <>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Waveform</label>
-            <select value={(selectedNode.data.waveform as string) || 'sine'} onChange={e => updateData('waveform', e.target.value)} className="w-full text-sm border border-gray-300 rounded px-2 py-1">
-              <option value="sine">Sine</option>
-              <option value="square">Square</option>
-            </select>
-          </div>
-          {selectedNode.data.waveform === 'square' && (
-            <div className="mb-3">
-              <label className="block text-xs font-medium text-gray-700 mb-1">Duty Cycle (%)</label>
-              <input type="number" min="1" max="99" value={(selectedNode.data.dutyCycle as number) || 50} onChange={e => updateData('dutyCycle', parseInt(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-            </div>
-          )}
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Frequency (Hz)</label>
-            <input type="number" value={(selectedNode.data.frequency as number) || 1} onChange={e => updateData('frequency', parseInt(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-          </div>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Amplitude (V)</label>
-            <input type="number" value={(selectedNode.data.amplitude as number) || 5} onChange={e => updateData('amplitude', parseInt(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-          </div>
-          {((selectedNode.data.frequency as number) > 10000 && simLength > 0.5) && (
-            <div className="mb-3 p-2 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-800 flex items-start gap-2 shadow-sm animate-pulse">
-              <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
-              <span>Warning: High frequency with long duration may slow down simulation or lock UI. Consider reducing duration below 0.5s.</span>
-            </div>
-          )}
-        </>
-      )}
-      {selectedNode.type === 'mcu' && (
-        <>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Code (JS)</label>
-            <textarea 
-              value={(selectedNode.data.code as string) ?? "pinMode('D0', 'OUTPUT');\nwhile(true) {\n  digitalWrite('D0', 1);\n  sleep(500);\n  digitalWrite('D0', 0);\n  sleep(500);\n}"} 
-              onChange={e => updateData('code', e.target.value)} 
-              className="w-full text-xs font-mono border border-gray-300 rounded px-2 py-1 h-48 whitespace-pre bg-gray-50" 
-              spellCheck="false"
-            />
-          </div>
-          {selectedNode.data.logs && (selectedNode.data.logs as string[]).length > 0 && (
-            <div className="mb-3 flex flex-col">
-              <label className="block text-xs font-medium text-gray-700 mb-1 uppercase tracking-wider">Serial Monitor</label>
-              <div className="bg-gray-900 text-green-400 font-mono text-[10px] p-2 h-32 overflow-y-auto rounded shadow-inner whitespace-pre-wrap">
-                {(selectedNode.data.logs as string[]).map((log, i) => <div key={i}>{log}</div>)}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-      {(selectedNode.type === 'npn' || selectedNode.type === 'pnp') && (
-        <div className="mb-3">
-          <label className="block text-xs font-medium text-gray-700 mb-1">Current Gain (BF)</label>
-          <input type="number" value={(selectedNode.data.bf as number) || 300} onChange={e => updateData('bf', parseInt(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-        </div>
-      )}
-      {(selectedNode.type === 'nmos' || selectedNode.type === 'pmos') && (
-        <>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Threshold Voltage (VTO)</label>
-            <input type="number" step="0.1" value={(selectedNode.data.vto as number) || (selectedNode.type === 'nmos' ? 2.0 : -2.0)} onChange={e => updateData('vto', parseFloat(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-          </div>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Transconductance (KP)</label>
-            <input type="number" step="0.01" value={(selectedNode.data.kp as number) || (selectedNode.type === 'nmos' ? 0.05 : 0.02)} onChange={e => updateData('kp', parseFloat(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-          </div>
-        </>
-      )}
-      {selectedNode.type === 'diode' && (
-        <div className="mb-3">
-          <label className="block text-xs font-medium text-gray-700 mb-1">Forward Voltage Drop (V)</label>
-          <input type="number" step="0.1" value={(selectedNode.data.v_drop as number) || 0.7} onChange={e => updateData('v_drop', parseFloat(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-          <div className="text-[10px] text-gray-400 mt-1">Silicon: 0.7V, Germanium: 0.3V</div>
-        </div>
-      )}
-      {selectedNode.type === 'zener' && (
-        <div className="mb-3">
-          <label className="block text-xs font-medium text-gray-700 mb-1">Breakdown Voltage (V)</label>
-          <input type="text" value={(selectedNode.data.label as string) || '5.1V'} onChange={e => updateData('label', e.target.value)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-          <div className="text-[10px] text-gray-400 mt-1">Common: 3.3V, 5.1V, 12V</div>
-        </div>
-      )}
-      {selectedNode.type === 'microphone' && (
-        <div className="mb-3">
-          <label className="block text-xs font-medium text-gray-700 mb-1">Amplification (×)</label>
-          <input type="number" step="10" min="1" max="1000" value={(selectedNode.data.amplification as number) ?? 100} onChange={e => updateData('amplification', parseInt(e.target.value) || 100)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-          <div className="text-[10px] text-gray-400 mt-1">Output voltage = mic × 0.05V × gain</div>
-        </div>
-      )}
-      {selectedNode.type === 'speaker' && (
-        <>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Voltage Scale (V)</label>
-            <input type="number" step="1" min="0.1" value={(selectedNode.data.voltageScale as number) ?? 5} onChange={e => updateData('voltageScale', parseFloat(e.target.value) || 5)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-            <div className="text-[10px] text-gray-400 mt-1">Full-scale voltage (±V maps to ±1.0 audio)</div>
-          </div>
-          <div className="mb-2 flex items-center gap-2">
-            <input type="checkbox" id="spk-ac" checked={!!selectedNode.data.acCouple} onChange={e => updateData('acCouple', e.target.checked)} />
-            <label htmlFor="spk-ac" className="text-xs text-gray-700">AC Couple (remove DC offset)</label>
-          </div>
-          <div className="mb-2 flex items-center gap-2">
-            <input type="checkbox" id="spk-norm" checked={!!selectedNode.data.normalize} onChange={e => updateData('normalize', e.target.checked)} />
-            <label htmlFor="spk-norm" className="text-xs text-gray-700">Auto-normalize volume</label>
-          </div>
-        </>
-      )}
-      {selectedNode.type === 'scope' && (
-        <>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">V/div</label>
-            <input type="number" step="0.1" min="0.01" value={(selectedNode.data.vDiv as number) ?? ''} onChange={e => updateData('vDiv', e.target.value ? parseFloat(e.target.value) : undefined)} placeholder="Auto" className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-            <div className="text-[10px] text-gray-400 mt-0.5">Leave empty for auto-detect</div>
-          </div>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Time/div (ms)</label>
-            <input type="number" step="0.1" min="0.001" value={(selectedNode.data.tDiv as number) ?? ''} onChange={e => updateData('tDiv', e.target.value ? parseFloat(e.target.value) : undefined)} placeholder="Auto" className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-            <div className="text-[10px] text-gray-400 mt-0.5">Leave empty for auto-detect</div>
-          </div>
-          <div className="mb-3 flex items-center gap-2">
-            <input type="checkbox" id="scope-fft" checked={!!selectedNode.data.showFFT} onChange={e => updateData('showFFT', e.target.checked)} />
-            <label htmlFor="scope-fft" className="text-xs font-medium text-gray-700">FFT Mode (Frequency Spectrum)</label>
-          </div>
-        </>
-      )}
-      {selectedNode.type === 'multimeter' && (
-        <>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Label</label>
-            <input 
-              type="text" 
-              value={(selectedNode.data.label as string) || 'Multimeter'} 
-              onChange={e => updateData('label', e.target.value)} 
-              className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" 
-            />
-          </div>
-          <div className="mb-3">
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-xs font-medium text-gray-700">Display Mode</label>
-              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${selectedNode.data.isRms ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
-                {selectedNode.data.isRms ? 'RMS' : (selectedNode.data.mode === 'current' ? 'AMPS' : 'VOLTS')}
-              </span>
-            </div>
-            <div className="mb-2 flex items-center gap-2">
-              <input 
-                type="checkbox" 
-                id="mm-rms" 
-                checked={!!selectedNode.data.isRms} 
-                onChange={e => updateData('isRms', e.target.checked)} 
-                className="cursor-pointer"
-              />
-              <label htmlFor="mm-rms" className="text-xs text-gray-700 select-none cursor-pointer">
-                Show RMS Value (reduces fluctuations)
-              </label>
-            </div>
-            <div className="mb-2 flex items-center gap-2">
-              <input 
-                type="checkbox" 
-                id="mm-mode" 
-                checked={selectedNode.data.mode === 'current'} 
-                onChange={e => updateData('mode', e.target.checked ? 'current' : 'voltage')} 
-                className="cursor-pointer"
-              />
-              <label htmlFor="mm-mode" className="text-xs text-gray-700 select-none cursor-pointer">
-                Ammeter Mode (measures current in series)
-              </label>
-            </div>
-          </div>
-        </>
-      )}
-      {selectedNode.type === 'potentiometer' && (
-        <>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Total Resistance</label>
-            <input type="text" value={(selectedNode.data.label as string) || '10k'} onChange={e => updateData('label', e.target.value)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-          </div>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Wiper Position ({(selectedNode.data.position as number) ?? 50}%)</label>
-            <input type="range" min="0" max="100" value={(selectedNode.data.position as number) ?? 50} onChange={e => updateData('position', parseInt(e.target.value))} className="w-full" />
-          </div>
-        </>
-      )}
-      {selectedNode.type === 'transformer' && (
-        <>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Primary Inductance</label>
-            <input 
-              type="text" 
-              value={(selectedNode.data.l_pri_label as string) || '10mH'} 
-              onChange={e => {
-                updateData('l_pri_label', e.target.value);
-                updateData('l_pri', sanitizeSpiceValue(e.target.value));
-              }} 
-              className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" 
-            />
-          </div>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Secondary Inductance</label>
-            <input 
-              type="text" 
-              value={(selectedNode.data.l_sec_label as string) || '10mH'} 
-              onChange={e => {
-                updateData('l_sec_label', e.target.value);
-                updateData('l_sec', sanitizeSpiceValue(e.target.value));
-              }} 
-              className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" 
-            />
-          </div>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Coupling Coefficient (K)</label>
-            <input 
-              type="number" 
-              step="0.01" 
-              min="0.01" 
-              max="1.0" 
-              value={(selectedNode.data.k as number) ?? 0.99} 
-              onChange={e => updateData('k', parseFloat(e.target.value) || 0.99)} 
-              className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" 
-            />
-          </div>
-        </>
-      )}
-      {selectedNode.type === 'dff' && (
-        <div className="mb-3 p-2.5 bg-indigo-50 dark:bg-slate-800/40 border border-indigo-100 dark:border-slate-800 rounded-lg text-xs text-indigo-900 dark:text-indigo-200 shadow-sm leading-relaxed">
-          <strong className="block mb-1 text-[11px] font-bold text-indigo-950 dark:text-indigo-150 uppercase tracking-wider">D Flip-Flop</strong>
-          Rising-edge triggered. Samples the D input and sets Q accordingly on each positive edge of CLK.
-        </div>
-      )}
-      {selectedNode.type === 'ldr' && (
-        <>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Dark Resistance</label>
-            <input 
-              type="text" 
-              value={(selectedNode.data.r_dark_label as string) || '100k'} 
-              onChange={e => {
-                updateData('r_dark_label', e.target.value);
-                updateData('r_dark', sanitizeSpiceValue(e.target.value));
-              }} 
-              className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" 
-            />
-          </div>
-          
-          <div className="mb-3 flex items-center gap-2">
-            <input 
-              type="checkbox" 
-              id="ldr-webcam" 
-              checked={!!selectedNode.data.isWebcamActive} 
-              onChange={e => updateData('isWebcamActive', e.target.checked)} 
-              className="cursor-pointer"
-            />
-            <label htmlFor="ldr-webcam" className="text-xs font-semibold text-gray-700 dark:text-gray-300 select-none cursor-pointer">
-              Use Webcam Sensor
-            </label>
-          </div>
-
-          {stream && (
-            <div className="mb-3 rounded-lg overflow-hidden border border-gray-300 dark:border-slate-800 h-28 bg-black relative flex items-center justify-center shadow-inner">
-              <video 
-                ref={videoRef} 
-                className="w-full h-full object-cover" 
-                muted 
-                playsInline
-              />
-              <div className="absolute bottom-1.5 right-1.5 bg-black/70 text-white text-[8px] font-mono px-1.5 py-0.5 rounded shadow-sm">
-                Live LDR Light: {Math.round((selectedNode.data.lightLevel ?? 0) * 100)}%
-              </div>
-            </div>
-          )}
-
-          {!!selectedNode.data.isWebcamActive && (
-            <div className="mb-3">
-              <button
-                onClick={isRecordingWebcam ? undefined : startRecordingWebcam}
-                className={`w-full py-2 rounded-lg font-bold text-xs shadow-md transition-all text-white ${
-                  isRecordingWebcam ? 'bg-red-500 animate-pulse' : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg'
-                }`}
-              >
-                {isRecordingWebcam ? '🔴 Recording Webcam...' : '📹 Record Light Stream'}
-              </button>
-              {selectedNode.data.pwlData && (
-                <div className="text-[9px] text-green-600 dark:text-green-400 font-bold mt-1.5 flex items-center gap-1">
-                  <span>✓</span> PWL Light Stream Loaded ({selectedNode.data.pwlData.length} pts)
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Light Exposure (0-100%)
-            </label>
-            <input 
-              type="range" 
-              min="0" 
-              max="100" 
-              disabled={!!selectedNode.data.isWebcamActive}
-              value={Math.round((selectedNode.data.lightLevel ?? 0.5) * 100)} 
-              onChange={e => updateData('lightLevel', parseInt(e.target.value) / 100)} 
-              className="w-full" 
-            />
-            <div className="text-[10px] text-gray-500 dark:text-gray-400 font-mono mt-1 flex justify-between">
-              <span>Light: {Math.round((selectedNode.data.lightLevel ?? 0.5) * 100)}%</span>
-              <span>R: {Math.round(100 + ((selectedNode.data.r_dark ?? 100000) - 100) * (1 - (selectedNode.data.lightLevel ?? 0.5))).toLocaleString()} Ω</span>
-            </div>
-          </div>
-        </>
-      )}
-      {selectedNode.type === 'sevenseg' && (
-        <div className="mb-3">
-          <div className="text-xs text-gray-500 mb-1">Segments: a(top) b(TR) c(BR) d(bot) e(BL) f(TL) g(mid)</div>
-          <div className="text-xs text-gray-500">Connect 5V through resistors to segment inputs. Common cathode → GND.</div>
-        </div>
-      )}
-      {selectedNode.type === 'currentsource' && (
-        <div className="mb-3">
-          <label className="block text-xs font-medium text-gray-700 mb-1">Current</label>
-          <input type="text" value={(selectedNode.data.label as string) || '10m'} onChange={e => updateData('label', e.target.value)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
-          <div className="text-[10px] text-gray-400 mt-1">e.g. 10m = 10mA, 1 = 1A</div>
-        </div>
-      )}
-      {selectedNode.type === 'heltec_v4' && (
-        <>
-          <div className="mb-3">
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">CYD Board Wi-Fi IP</label>
-            <input
-              type="text"
-              value={(selectedNode.data.ip as string) || '192.168.1.244'}
-              onChange={e => updateData('ip', e.target.value)}
-              className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none mb-2"
-            />
-          </div>
-
-          <div className="mb-3">
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">HIL Execution Mode</label>
-            <select
-              value={(selectedNode.data.hilExecutionMode as string) || 'native'}
-              disabled={isSimulating}
-              onChange={e => updateData('hilExecutionMode', e.target.value)}
-              className={`w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none ${isSimulating ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title={isSimulating ? "Stop the simulation to change HIL execution mode." : "Native: whole slice runs in one UART transaction on the Heltec's own C++ firmware (needs firmware with the hil_batch handler). Legacy: CYD loops gpio_write/adc_read per op — one blocking ~11ms UART round trip each, works against any firmware."}
-            >
-              <option value="native">Native (single UART transaction)</option>
-              <option value="legacy">Legacy (per-op UART)</option>
-            </select>
-          </div>
-
-          <div className="border-t border-slate-200 dark:border-slate-800 pt-2 mt-2">
-            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Pin Configurations</h4>
-            {['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41'].map(pinId => {
-              const currentPins = selectedNode.data.pins || {};
-              const pinVal = currentPins[pinId] || 'digital_in';
-              return (
-                <div key={pinId} className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-mono text-slate-600 dark:text-slate-400">{pinId.replace('_', ' ')}</span>
-                  <select 
-                    value={pinVal} 
-                    onChange={e => {
-                      const nextPins = { ...currentPins, [pinId]: e.target.value };
-                      updateData('pins', nextPins);
-                    }}
-                    className="text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-0.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value="digital_in">Digital In</option>
-                    <option value="analog_in">Analog In (ADC)</option>
-                    <option value="digital_out">Digital Out</option>
-                  </select>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      {/* Datasheet Section */}
-      {selectedNode.type && datasheets[selectedNode.type] && (() => {
-        const ds = datasheets[selectedNode.type];
-        return (
-          <details className="mt-4 border-t border-gray-100 pt-3">
-            <summary className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider cursor-pointer hover:text-indigo-800 select-none">📋 Datasheet: {ds.title}</summary>
-            <div className="mt-2 text-[11px] text-gray-600 space-y-2">
-              <p>{ds.description}</p>
-              {ds.formula && (
-                <div className="bg-gray-50 rounded p-2 font-mono text-[10px] text-gray-800 whitespace-pre-wrap border border-gray-100">{ds.formula}</div>
-              )}
-              {ds.specs && (
-                <ul className="list-disc list-inside space-y-0.5 text-[10px] text-gray-500">
-                  {ds.specs.map((s, i) => <li key={i}>{s}</li>)}
-                </ul>
-              )}
-              {ds.truthTable && (
-                <table className="w-full text-center text-[10px] border-collapse">
-                  <thead><tr>{ds.truthTable[0].map((h, i) => <th key={i} className="border border-gray-200 px-2 py-0.5 bg-gray-50 font-bold">{h}</th>)}</tr></thead>
-                  <tbody>{ds.truthTable.slice(1).map((row, ri) => <tr key={ri}>{row.map((c, ci) => <td key={ci} className="border border-gray-200 px-2 py-0.5">{c}</td>)}</tr>)}</tbody>
-                </table>
-              )}
-            </div>
-          </details>
-        );
-      })()}
-    </aside>
-  );
-}
-
-function FlowArea({
-  nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange, onConnect, onNodeClick,
-  probeMode, onEdgeProbe, isSimulating
-}: any) {
-  const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition, getViewport } = useReactFlow();
-
-  const context = useContext(EdgePathContext);
-  const setHoveredEdgeId = context?.setHoveredEdgeId;
-
-  const [previewJunction, setPreviewJunction] = useState<{ x: number; y: number } | null>(null);
-  const connectingStartRef = useRef<{ nodeId: string; handleId: string; handleType: string } | null>(null);
-
-  const onConnectStart = useCallback((_event: any, { nodeId, handleId, handleType }: any) => {
-    connectingStartRef.current = { nodeId, handleId, handleType };
-  }, []);
-
-  const handleMouseMove = useCallback((event: React.MouseEvent) => {
-    if (!connectingStartRef.current || !setHoveredEdgeId) {
-      if (previewJunction) setPreviewJunction(null);
-      if (context?.hoveredEdgeId) setHoveredEdgeId(null);
-      return;
-    }
-
-    const dropPoint = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-    const snapX = Math.round(dropPoint.x / 8) * 8;
-    const snapY = Math.round(dropPoint.y / 8) * 8;
-
-    let matchedEdge: any = null;
-    let projectionPoint = { x: snapX, y: snapY };
-    const maxDist = 16; // 16px search radius
-
-    for (const edge of edges) {
-      // Skip if edge is connected to the starting node
-      if (edge.source === connectingStartRef.current.nodeId || edge.target === connectingStartRef.current.nodeId) {
-        continue;
-      }
-
-      // Compute edge path points
-      const srcNode = nodes.find((n: any) => n.id === edge.source);
-      const tgtNode = nodes.find((n: any) => n.id === edge.target);
-      if (!srcNode || !tgtNode) continue;
-
-      // Estimate handle positions based on position and dimensions
-      const getHandleCoord = (node: any, handleId: string) => {
-        const orientation = node.data?.orientation || 'horizontal';
-        const isLeft = orientation === 'left';
-        const isUp = orientation === 'up';
-        const isVertical = orientation === 'vertical' || isUp;
-        
-        const x = node.position.x;
-        const y = node.position.y;
-        const w = node.measured?.width || getNodeDimensions(node.type, node.data).width;
-        const h = node.measured?.height || getNodeDimensions(node.type, node.data).height;
-        
-        if (node.type === 'timer555') {
-          const row = parseInt(handleId);
-          if (row >= 1 && row <= 4) {
-            return { x: x, y: y + 26 + (row - 1) * 32 };
-          }
-          if (row >= 5 && row <= 8) {
-            const rightRow = 8 - row;
-            return { x: x + w, y: y + 26 + rightRow * 32 };
-          }
-        }
-        
-        if (node.type === 'ground') {
-          return { x: x + w / 2, y: y };
-        }
-        
-        if (node.type === 'voltage' || node.type === 'acvoltage') {
-          if (handleId === 'pos') return { x: x + w / 2, y: y };
-          if (handleId === 'neg') return { x: x + w / 2, y: y + h };
-        }
-
-        if (node.type === 'junction') {
-          return { x: x, y: y };
-        }
-        
-        if (handleId === 'in') {
-          if (isVertical) {
-            return { x: x + w / 2, y: isUp ? y + h : y };
-          } else {
-            return { x: isLeft ? x + w : x, y: y + h / 2 };
-          }
-        }
-        if (handleId === 'out') {
-          if (isVertical) {
-            return { x: x + w / 2, y: isUp ? y : y + h };
-          } else {
-            return { x: isLeft ? x : x + w, y: y + h / 2 };
-          }
-        }
-        
-        return { x: x + w / 2, y: y + h / 2 };
-      };
-
-      const sourceHandle = edge.sourceHandle || 'out';
-      const targetHandle = edge.targetHandle || 'in';
-      const pSrc = getHandleCoord(srcNode, sourceHandle);
-      const pTgt = getHandleCoord(tgtNode, targetHandle);
-
-      const pathD = getSchematicPath({
-        sourceX: pSrc.x,
-        sourceY: pSrc.y,
-        sourcePosition: getHandlePosition(srcNode, sourceHandle),
-        targetX: pTgt.x,
-        targetY: pTgt.y,
-        targetPosition: getHandlePosition(tgtNode, targetHandle),
-        nodes,
-        sourceId: edge.source,
-        targetId: edge.target,
-      });
-
-      // Parse points
-      const points: { x: number; y: number }[] = [];
-      const matches = pathD.matchAll(/[ML]\s*(-?\d+\.?\d*)\s*(-?\d+\.?\d*)/g);
-      for (const match of matches) {
-        points.push({ x: parseFloat(match[1]), y: parseFloat(match[2]) });
-      }
-
-      // Check segments
-      for (let i = 0; i < points.length - 1; i++) {
-        const p1 = points[i];
-        const p2 = points[i + 1];
-        
-        if (Math.abs(p1.y - p2.y) < 1) {
-          const minX = Math.min(p1.x, p2.x);
-          const maxX = Math.max(p1.x, p2.x);
-          if (dropPoint.x >= minX - 4 && dropPoint.x <= maxX + 4) {
-            const dist = Math.abs(dropPoint.y - p1.y);
-            if (dist < maxDist) {
-              matchedEdge = edge;
-              projectionPoint = { x: snapX, y: Math.round(p1.y / 8) * 8 };
-              break;
-            }
-          }
-        }
-        else if (Math.abs(p1.x - p2.x) < 1) {
-          const minY = Math.min(p1.y, p2.y);
-          const maxY = Math.max(p1.y, p2.y);
-          if (dropPoint.y >= minY - 4 && dropPoint.y <= maxY + 4) {
-            const dist = Math.abs(dropPoint.x - p1.x);
-            if (dist < maxDist) {
-              matchedEdge = edge;
-              projectionPoint = { x: Math.round(p1.x / 8) * 8, y: snapY };
-              break;
-            }
-          }
-        }
-      }
-
-      if (matchedEdge) break;
-    }
-
-    if (matchedEdge) {
-      setPreviewJunction(projectionPoint);
-      setHoveredEdgeId(matchedEdge.id);
-    } else {
-      setPreviewJunction(null);
-      setHoveredEdgeId(null);
-    }
-  }, [nodes, edges, screenToFlowPosition, setHoveredEdgeId, context?.hoveredEdgeId, previewJunction]);
-
-  const onConnectEnd = useCallback((event: any) => {
-    if (setHoveredEdgeId) setHoveredEdgeId(null);
-    setPreviewJunction(null);
-
-    if (!connectingStartRef.current) return;
-
-    // Get drop point screen coordinates
-    let clientX = 0;
-    let clientY = 0;
-    if (event.clientX !== undefined) {
-      clientX = event.clientX;
-      clientY = event.clientY;
-    } else if (event.changedTouches && event.changedTouches.length > 0) {
-      clientX = event.changedTouches[0].clientX;
-      clientY = event.changedTouches[0].clientY;
-    } else {
-      connectingStartRef.current = null;
-      return;
-    }
-
-    // Check if clientX, clientY are within ReactFlow bounds
-    if (!reactFlowWrapper.current) {
-      connectingStartRef.current = null;
-      return;
-    }
-
-    // Check if the drop target was a react-flow pane or canvas, or if it dropped on a handle/node
-    const target = event.target as HTMLElement;
-    const isPaneOrEdge = target.classList.contains('react-flow__pane') || 
-                         target.classList.contains('react-flow__edge') || 
-                         target.classList.contains('react-flow__edge-path') ||
-                         target.closest('.react-flow__edge');
-                         
-    if (!isPaneOrEdge) {
-      connectingStartRef.current = null;
-      return;
-    }
-
-    // Convert drop coordinates to flow coordinates
-    const dropPoint = screenToFlowPosition({ x: clientX, y: clientY });
-
-    // Snap to grid of 8px to align with grid channels
-    const snapX = Math.round(dropPoint.x / 8) * 8;
-    const snapY = Math.round(dropPoint.y / 8) * 8;
-
-    // Find if the drop point is close to any existing edge
-    let matchedEdge: any = null;
-    let projectionPoint = { x: snapX, y: snapY };
-    const maxDist = 16; // 16px search radius
-
-    for (const edge of edges) {
-      // Skip if edge is connected to the starting node
-      if (edge.source === connectingStartRef.current.nodeId || edge.target === connectingStartRef.current.nodeId) {
-        continue;
-      }
-
-      // Compute edge path points
-      const srcNode = nodes.find((n: any) => n.id === edge.source);
-      const tgtNode = nodes.find((n: any) => n.id === edge.target);
-      if (!srcNode || !tgtNode) continue;
-
-      // Estimate handle positions based on position and dimensions
-      const getHandleCoord = (node: any, handleId: string) => {
-        const orientation = node.data?.orientation || 'horizontal';
-        const isLeft = orientation === 'left';
-        const isUp = orientation === 'up';
-        const isVertical = orientation === 'vertical' || isUp;
-        
-        const x = node.position.x;
-        const y = node.position.y;
-        const w = node.measured?.width || getNodeDimensions(node.type, node.data).width;
-        const h = node.measured?.height || getNodeDimensions(node.type, node.data).height;
-        
-        if (node.type === 'timer555') {
-          const row = parseInt(handleId);
-          if (row >= 1 && row <= 4) {
-            return { x: x, y: y + 26 + (row - 1) * 32 };
-          }
-          if (row >= 5 && row <= 8) {
-            const rightRow = 8 - row;
-            return { x: x + w, y: y + 26 + rightRow * 32 };
-          }
-        }
-        
-        if (node.type === 'ground') {
-          return { x: x + w / 2, y: y };
-        }
-        
-        if (node.type === 'voltage' || node.type === 'acvoltage') {
-          if (handleId === 'pos') return { x: x + w / 2, y: y };
-          if (handleId === 'neg') return { x: x + w / 2, y: y + h };
-        }
-
-        if (node.type === 'junction') {
-          return { x: x, y: y };
-        }
-        
-        if (handleId === 'in') {
-          if (isVertical) {
-            return { x: x + w / 2, y: isUp ? y + h : y };
-          } else {
-            return { x: isLeft ? x + w : x, y: y + h / 2 };
-          }
-        }
-        if (handleId === 'out') {
-          if (isVertical) {
-            return { x: x + w / 2, y: isUp ? y : y + h };
-          } else {
-            return { x: isLeft ? x : x + w, y: y + h / 2 };
-          }
-        }
-        
-        return { x: x + w / 2, y: y + h / 2 };
-      };
-
-      const sourceHandle = edge.sourceHandle || 'out';
-      const targetHandle = edge.targetHandle || 'in';
-      const pSrc = getHandleCoord(srcNode, sourceHandle);
-      const pTgt = getHandleCoord(tgtNode, targetHandle);
-
-      const pathD = getSchematicPath({
-        sourceX: pSrc.x,
-        sourceY: pSrc.y,
-        sourcePosition: getHandlePosition(srcNode, sourceHandle),
-        targetX: pTgt.x,
-        targetY: pTgt.y,
-        targetPosition: getHandlePosition(tgtNode, targetHandle),
-        nodes,
-        sourceId: edge.source,
-        targetId: edge.target,
-      });
-
-      // Parse points
-      const points: { x: number; y: number }[] = [];
-      const matches = pathD.matchAll(/[ML]\s*(-?\d+\.?\d*)\s*(-?\d+\.?\d*)/g);
-      for (const match of matches) {
-        points.push({ x: parseFloat(match[1]), y: parseFloat(match[2]) });
-      }
-
-      // Check segments
-      for (let i = 0; i < points.length - 1; i++) {
-        const p1 = points[i];
-        const p2 = points[i + 1];
-        
-        if (Math.abs(p1.y - p2.y) < 1) {
-          const minX = Math.min(p1.x, p2.x);
-          const maxX = Math.max(p1.x, p2.x);
-          if (dropPoint.x >= minX - 4 && dropPoint.x <= maxX + 4) {
-            const dist = Math.abs(dropPoint.y - p1.y);
-            if (dist < maxDist) {
-              matchedEdge = edge;
-              projectionPoint = { x: snapX, y: Math.round(p1.y / 8) * 8 };
-              break;
-            }
-          }
-        }
-        else if (Math.abs(p1.x - p2.x) < 1) {
-          const minY = Math.min(p1.y, p2.y);
-          const maxY = Math.max(p1.y, p2.y);
-          if (dropPoint.y >= minY - 4 && dropPoint.y <= maxY + 4) {
-            const dist = Math.abs(dropPoint.x - p1.x);
-            if (dist < maxDist) {
-              matchedEdge = edge;
-              projectionPoint = { x: Math.round(p1.x / 8) * 8, y: snapY };
-              break;
-            }
-          }
-        }
-      }
-
-      if (matchedEdge) break;
-    }
-
-    if (matchedEdge) {
-      // Check for redundancy first
-      const draggedNodeId = connectingStartRef.current.nodeId;
-      const draggedHandleId = connectingStartRef.current.handleId;
-      const draggedHandleType = connectingStartRef.current.handleType;
-      const draggedPort = `${draggedNodeId}-${draggedHandleId || (draggedHandleType === 'source' ? 'out' : 'in')}`;
-      const sourcePortOfEdge = `${matchedEdge.source}-${matchedEdge.sourceHandle || 'out'}`;
-      if (isPortConnected(draggedPort, sourcePortOfEdge, nodes, edges)) {
-        alert("Connection is redundant (these points are already electrically connected).");
-        connectingStartRef.current = null;
-        return;
-      }
-
-      // Split the matchedEdge by creating a new junction node
-      const junctionId = `junction-${Date.now()}`;
-      const newJunctionNode: any = {
-        id: junctionId,
-        type: 'junction',
-        position: projectionPoint,
-        data: {},
-      };
-
-      const edgeType = matchedEdge.type || 'aura';
-
-      // Create new edges — preserve original edge type and style
-      const edgeToJunction: any = {
-        id: `e-${matchedEdge.source}-${junctionId}`,
-        source: matchedEdge.source,
-        sourceHandle: matchedEdge.sourceHandle,
-        target: junctionId,
-        targetHandle: 'in',
-        type: edgeType,
-      };
-
-      const edgeFromJunction: any = {
-        id: `e-${junctionId}-${matchedEdge.target}`,
-        source: junctionId,
-        sourceHandle: 'out',
-        target: matchedEdge.target,
-        targetHandle: matchedEdge.targetHandle,
-        type: edgeType,
-      };
-
-      // Edge from the dragged handle to junction
-      const newConnectionEdge: any = draggedHandleType === 'source' ? {
-        id: `e-${draggedNodeId}-${junctionId}`,
-        source: draggedNodeId,
-        sourceHandle: draggedHandleId,
-        target: junctionId,
-        targetHandle: 'in',
-        type: edgeType,
-      } : {
-        id: `e-${junctionId}-${draggedNodeId}`,
-        source: junctionId,
-        sourceHandle: 'out',
-        target: draggedNodeId,
-        targetHandle: draggedHandleId,
-        type: edgeType,
-      };
-
-      // Update state
-      setNodes((nds: any[]) => [...nds, newJunctionNode]);
-      setEdges((eds: any[]) => [
-        ...eds.filter(e => e.id !== matchedEdge.id),
-        edgeToJunction,
-        edgeFromJunction,
-        newConnectionEdge
-      ]);
-    }
-
-    connectingStartRef.current = null;
-  }, [nodes, edges, setNodes, setEdges, screenToFlowPosition, setHoveredEdgeId]);
-
-  const onDragOver = useCallback((event: DragEvent) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-  }, []);
-
-  const onDrop = useCallback(
-    (event: DragEvent) => {
-      event.preventDefault();
-      if (isSimulating) return;
-      const type = event.dataTransfer.getData('application/reactflow');
-      const label = event.dataTransfer.getData('application/reactflow-label');
-
-      if (typeof type === 'undefined' || !type) {
-        return;
-      }
-
-      const position = screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-
-      let initialData: any = { label, isOn: false };
-      if (type === 'transformer') {
-        initialData = { label: 'Transformer', l_pri: '10m', l_sec: '10m', k: 0.99, l_pri_label: '10mH', l_sec_label: '10mH' };
-      } else if (type === 'ldr') {
-        initialData = { label: 'LDR', r_dark: 100000, r_dark_label: '100k', lightLevel: 0.5 };
-      } else if (type === 'dff') {
-        initialData = { label: 'DFF' };
-      } else if (type === 'heltec_v4') {
-        initialData = {
-          label: 'Heltec V4',
-          ip: '192.168.1.244',
-          hilExecutionMode: 'native',
-          pins: {
-            GPIO_1: 'analog_in',
-            GPIO_3: 'digital_out',
-            GPIO_33: 'digital_in',
-            GPIO_36: 'digital_in',
-            GPIO_37: 'digital_in',
-            GPIO_41: 'digital_in'
-          },
-          pinVoltages: {
-            GPIO_1: 0.0,
-            GPIO_3: 0.0,
-            GPIO_33: 0.0,
-            GPIO_36: 0.0,
-            GPIO_37: 0.0,
-            GPIO_41: 0.0
-          },
-          isConnected: false
-        };
-      }
-
-      const newNode: any = {
-        id: `${type}-${nodeId++}`,
-        type,
-        position,
-        data: initialData,
-      };
-
-      setNodes((nds: any[]) => nds.concat(newNode));
-    },
-    [screenToFlowPosition, setNodes, isSimulating]
-  );
-
-  const onNodeDragStop = useCallback((_event: any, draggedNode: Node) => {
-    const updatedNodes = nodes.map(n => n.id === draggedNode.id ? draggedNode : n);
-    const merged = mergeOverlappingNodesAndJunctions(updatedNodes, edges);
-    const split = splitEdgesOnOverlappingNodes(merged.nodes, merged.edges);
-    const simplifiedEdges = simplifyEdges(split.nodes, split.edges);
-    
-    setNodes(split.nodes);
-    setEdges(simplifiedEdges);
-  }, [nodes, edges, setNodes, setEdges]);
-
-  const handleEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
-    if (probeMode && onEdgeProbe) {
-      onEdgeProbe(edge.id, _);
-    }
-  }, [probeMode, onEdgeProbe]);
-
-  // Read viewport scale and offsets to position the preview dot overlay correctly
-  const { zoom, x: vpX, y: vpY } = getViewport();
-
-  return (
-    <div 
-      className="flex-1 h-full relative" 
-      ref={reactFlowWrapper} 
-      style={probeMode ? { cursor: 'crosshair' } : undefined}
-      onMouseMove={handleMouseMove}
-    >
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onConnectStart={onConnectStart}
-        onConnectEnd={onConnectEnd}
-        onNodeDragStop={onNodeDragStop}
-        onDrop={onDrop}
-        onDragOver={onDragOver}
-        onNodeClick={onNodeClick}
-        onEdgeClick={handleEdgeClick}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        nodesConnectable={!isSimulating}
-        connectionMode={ConnectionMode.Loose}
-        defaultEdgeOptions={{ type: 'aura' }}
-        snapToGrid={true}
-        snapGrid={[4, 4]}
-        fitView
-      >
-        <Background color="#ccc" gap={8} />
-        <Controls />
-      </ReactFlow>
-
-      {/* Connection point drop preview dot */}
-      {previewJunction && (
-        <>
-          <div 
-            className="absolute w-4 h-4 rounded-full bg-emerald-500/40 animate-ping pointer-events-none z-50 -translate-x-1/2 -translate-y-1/2"
-            style={{
-              left: previewJunction.x * zoom + vpX,
-              top: previewJunction.y * zoom + vpY,
-            }}
-          />
-          <div 
-            className="absolute w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white shadow-md pointer-events-none z-50 -translate-x-1/2 -translate-y-1/2"
-            style={{
-              left: previewJunction.x * zoom + vpX,
-              top: previewJunction.y * zoom + vpY,
-            }}
-          />
-        </>
-      )}
-    </div>
-  );
-}
-
-function ProbeTooltip({ probeData, isSimulating, onClose }: { probeData: any; isSimulating: boolean; onClose: () => void }) {
-  const [currentVoltage, setCurrentVoltage] = useState(probeData.voltage);
-  const [currentTimeMs, setCurrentTimeMs] = useState(0);
-
-  useEffect(() => {
-    if (!probeData.history || !probeData.timePoints || probeData.history.length === 0) {
-      setCurrentVoltage(probeData.voltage);
-      setCurrentTimeMs(0);
-      return;
-    }
-
-    if (!isSimulating) {
-      setCurrentTimeMs(0);
-      setCurrentVoltage(probeData.history[probeData.history.length - 1] ?? 0);
-      return;
-    }
-
-    const times = probeData.timePoints;
-
-    const unsubscribe = playbackTicker.subscribe((elapsedMs) => {
-      setCurrentTimeMs(elapsedMs);
-      const idx = findIndexForTime(times, elapsedMs);
-      setCurrentVoltage(probeData.history[idx] ?? 0);
-    });
-
-    return unsubscribe;
-  }, [probeData, isSimulating]);
-
-  return (
-    <div
-      className="fixed z-[200] bg-slate-950/95 backdrop-blur-md text-white rounded-xl px-4 py-3 shadow-2xl border border-violet-500/40 text-xs font-mono pointer-events-auto animate-in fade-in duration-100 flex flex-col gap-2 min-w-[220px]"
-      style={{ left: probeData.x + 12, top: probeData.y - 10 }}
-      onClick={onClose}
-    >
-      <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 gap-4">
-        <span className="text-violet-300 font-bold">🔍 Probe</span>
-        <span className="text-[10px] text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded">Net: {probeData.netName}</span>
-      </div>
-      
-      <div className="flex justify-between items-baseline gap-4 mt-0.5">
-        <div className="text-slate-400 text-[10px]">Value:</div>
-        <div className="text-base font-bold text-green-400">{currentVoltage.toFixed(4)} V</div>
-      </div>
-
-      {probeData.history && probeData.history.length > 0 && (
-        <>
-          <div className="grid grid-cols-3 gap-1 text-[9px] text-slate-400 border-t border-slate-800/50 pt-1.5 mt-0.5">
-            <div>Max: <span className="text-red-400">{probeData.maxV?.toFixed(2)}V</span></div>
-            <div>Min: <span className="text-blue-400">{probeData.minV?.toFixed(2)}V</span></div>
-            <div>Avg: <span className="text-amber-400">{probeData.avgV?.toFixed(2)}V</span></div>
-          </div>
-
-          <div className="h-10 w-full bg-slate-900/60 rounded-lg p-1 border border-slate-800/30 overflow-hidden flex items-center justify-center mt-1 relative">
-            {/* Sparkline */}
-            {(() => {
-              const pts = probeData.history || [];
-              const min = probeData.minV ?? 0;
-              const max = probeData.maxV ?? 0;
-              const range = max - min;
-              
-              // Downsample
-              const maxPoints = 80;
-              let displayPts = pts;
-              if (pts.length > maxPoints) {
-                const factor = Math.ceil(pts.length / maxPoints);
-                displayPts = pts.filter((_, i) => i % factor === 0);
-              }
-              
-              if (displayPts.length === 0) return null;
-              
-              const width = 180;
-              const height = 32;
-              const padding = 2;
-              
-              const pointsString = displayPts.map((v, i) => {
-                const x = padding + (i / (displayPts.length - 1)) * (width - 2 * padding);
-                const y = range === 0 
-                  ? height / 2 
-                  : height - padding - ((v - min) / range) * (height - 2 * padding);
-                return `${x.toFixed(1)},${y.toFixed(1)}`;
-              }).join(' ');
-
-              // Calculate playhead x-coordinate
-              const times = probeData.timePoints || [0, 1000];
-              const duration = times[times.length - 1] || 1000;
-              const playheadRatio = duration > 0 ? currentTimeMs / duration : 0;
-              const playheadX = padding + playheadRatio * (width - 2 * padding);
-
-              return (
-                <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="overflow-visible">
-                  <defs>
-                    <linearGradient id="sparkline-grad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.3" />
-                      <stop offset="100%" stopColor="#a78bfa" stopOpacity="0.0" />
-                    </linearGradient>
-                  </defs>
-                  {/* Area under curve */}
-                  {range > 0 && (
-                    <polygon
-                      points={`${padding},${height - padding} ${pointsString} ${width - padding},${height - padding}`}
-                      fill="url(#sparkline-grad)"
-                    />
-                  )}
-                  {/* Sparkline path */}
-                  <polyline
-                    fill="none"
-                    stroke="#a78bfa"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    points={pointsString}
-                  />
-                  {/* Playhead line */}
-                  <line 
-                    x1={playheadX} 
-                    y1={padding} 
-                    x2={playheadX} 
-                    y2={height - padding} 
-                    stroke="#ef4444" 
-                    strokeWidth="1.5" 
-                    strokeDasharray="1 1"
-                  />
-                </svg>
-              );
-            })()}
-          </div>
-        </>
-      )}
-      <div className="text-[9px] text-slate-500 mt-1 text-center italic border-t border-slate-800/30 pt-1">click to dismiss</div>
-    </div>
-  );
-}
-
-const getHandlePosition = (node: any, handleId: string): string => {
-  if (node.type === 'timer555') {
-    const pin = parseInt(handleId);
-    if (pin >= 1 && pin <= 4) return 'left';
-    if (pin >= 5 && pin <= 8) return 'right';
-  }
-  if (node.type === 'opamp') {
-    if (handleId === 'vcc') return 'top';
-    if (handleId === 'vee') return 'bottom';
-    if (handleId === 'out') return 'right';
-    return 'left';
-  }
-  if (node.type === 'voltage' || node.type === 'acvoltage') {
-    const isHorizontal = node.data?.orientation === 'horizontal';
-    if (handleId === 'pos') return isHorizontal ? 'left' : 'top';
-    if (handleId === 'neg') return isHorizontal ? 'right' : 'bottom';
-  }
-  if (node.type === 'ground') {
-    return 'top';
-  }
-  if (node.type === 'junction') {
-    return 'left';
-  }
-  // Default components
-  const orientation = node.data?.orientation || 'horizontal';
-  const isLeft = orientation === 'left';
-  const isUp = orientation === 'up';
-  const isVertical = orientation === 'vertical' || isUp;
-  if (handleId === 'in' || handleId === 'anode') {
-    return isVertical ? (isUp ? 'bottom' : 'top') : (isLeft ? 'right' : 'left');
-  }
-  if (handleId === 'out' || handleId === 'cathode') {
-    return isVertical ? (isUp ? 'top' : 'bottom') : (isLeft ? 'left' : 'right');
-  }
-  return 'right';
-};
 
 export default function App() {
   // ── Initialise from localStorage ────────────────────────────────────────────
@@ -2772,8 +110,8 @@ export default function App() {
 
   const toggleDarkMode = () => setDarkMode(prev => !prev);
 
-  const [nodes, setNodes] = useState<Node[]>(presets.basicBlink.nodes);
-  const [edges, setEdges] = useState<Edge[]>(presets.basicBlink.edges);
+  const [nodes, setNodes] = useState<Node[]>(presets[DEFAULT_PRESET_KEY].nodes);
+  const [edges, setEdges] = useState<Edge[]>(presets[DEFAULT_PRESET_KEY].edges);
   const [isSimulating, setIsSimulating] = useState(false);
   const isSimulatingRef = useRef(false);
   useEffect(() => { isSimulatingRef.current = isSimulating; }, [isSimulating]);
@@ -2795,15 +133,11 @@ export default function App() {
   // the hil_batch handler (heltec/src/uart_cmd.cpp). Cached into a ref at HIL start
   // (see runSimulation) since editing is locked while a simulation is running anyway.
   const hilExecutionModeRef = useRef<'legacy' | 'native'>('native');
-  const [selectedPreset, setSelectedPreset] = useState('basicBlink');
   const [isDocsOpen, setIsDocsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showAICopilot, setShowAICopilot] = useState(false);
-  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
-  const [saveDialogName, setSaveDialogName] = useState('');
   const [showAura, setShowAura] = useState(savedSettings.showAura ?? false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
-  const [userPresets, setUserPresets] = useState<Record<string, CircuitPreset>>(() => loadUserPresets());
   const [probeMode, setProbeMode] = useState(false);
   const [probeData, setProbeData] = useState<{
     netName: string;
@@ -2858,26 +192,75 @@ export default function App() {
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
 
-  const [noteCards, setNoteCards] = useState<{ id: string; markdown: string; minimized: boolean; x: number; y: number }[]>([]);
-  const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const stopSimulation = () => {
+    setIsSimulating(false);
+    setIsSpiceRunning(false);
+    playbackTicker.stop();
+    setProbeData(null);
 
-
-  useEffect(() => {
-    const allPresets = { ...presets, ...userPresets };
-    const preset = allPresets[selectedPreset];
-    if (preset && preset.noteCard) {
-      const defaultX = Math.max(20, window.innerWidth - 300 - 256 - 20);
-      setNoteCards([{
-        id: `preset_note_${selectedPreset}`,
-        markdown: preset.noteCard,
-        minimized: false,
-        x: defaultX,
-        y: 20
-      }]);
-    } else {
-      setNoteCards([]);
+    // Stop and teardown HIL
+    // Stop HIL and stay quiet — do not resume background polling automatically
+    // (it self-perpetuates via recursive setTimeout with no other way to cancel it).
+    hilRunningRef.current = false;
+    hilBackgroundPollActiveRef.current = false;
+    if (hilSocketRef.current && hilConnectedRef.current) {
+      try {
+        const heltecNode = nodes.find(n => n.type === 'heltec_v4');
+        if (heltecNode) {
+          let code = "import lib.webserver as ws\n";
+          code += "h = ws._mesh_get_heltec()\n";
+          code += "h.gpio_write(3, 0)\n";
+          code += "h.lora_mode('mesh')\n";
+          code += "h.gps_power(1)\n";
+          hilSocketRef.current.send(JSON.stringify({ cmd: "repl_input", code }));
+        }
+      } catch (e) {
+        console.error("[HIL] Failed to send stop state:", e);
+      }
     }
-  }, [selectedPreset, userPresets]);
+    hilHistoryRef.current = {};
+    hilSmoothedValuesRef.current = {};
+    hilAccumTimeRef.current = 0;
+    hilNetlistAccumTimeRef.current = 0;
+    hilStartTimeRef.current = null;
+    hilQueueRef.current = [];
+    hilQueuedMsRef.current = 0;
+    hilHalfPeriodMsRef.current = {};
+
+    setNodes(nds => nds.map(n => {
+      if (n.type === 'led') {
+        return { ...n, data: { ...n.data, brightness: 0, current_array: undefined, time_points: undefined } };
+      }
+      if (n.type === 'speaker' || n.type === 'scope') {
+        return { ...n, data: { ...n.data, voltageData: undefined } };
+      }
+      if (n.type === 'heltec_v4') {
+        return { ...n, data: { ...n.data, isConnected: false } };
+      }
+      return n;
+    }));
+    setEdges(eds => eds.map(e => ({
+      ...e,
+      className: '',
+      animated: false,
+      data: { ...e.data, current_array: undefined, time_points: undefined }
+    })));
+  };
+
+  const {
+    selectedPreset,
+    userPresets,
+    loadPreset,
+    handlePresetChange,
+    isSaveDialogOpen,
+    setIsSaveDialogOpen,
+    saveDialogName,
+    setSaveDialogName,
+    savePreset,
+    deleteUserPreset,
+  } = usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation });
+
+  const { noteCards, editingCardId, toggleEdit, toggleMinimize, updateMarkdown, closeCard, moveCard } = useNoteCards({ selectedPreset, userPresets });
 
   // Scope resize handler — inject into every scope node's data
   const scopeResizeHandler = useCallback((nodeId: string, w: number, h: number) => {
@@ -3029,36 +412,6 @@ export default function App() {
 
 
 
-  // Indexed variant for the HIL hot loop: a single slice looks up several nets out of
-  // the same result (GPIO_3, scope ch1/ch2/gnd, LED anode/int_led) — up to 6 calls —
-  // and findGraphFromSim() redoes a full timestamps_ms remap plus a linear,
-  // toLowerCase()-allocating scan over variableNames on every single one of them, even
-  // though all of that is identical across calls for the same result. Build the index
-  // once per slice and reuse it.
-  const buildHILResultIndex = (result: any) => {
-    const timestamps_ms = (result?.data && result.data.length > 0 && result.data[0].values)
-      ? result.data[0].values.map((t: number) => t * 1000)
-      : [];
-    const indexByName = new Map<string, number>();
-    if (result?.variableNames) {
-      result.variableNames.forEach((name: string, i: number) => {
-        indexByName.set(name.toLowerCase(), i);
-      });
-    }
-    return { timestamps_ms, indexByName };
-  };
-
-  const findGraphIndexed = (result: any, resultIndex: { timestamps_ms: number[]; indexByName: Map<string, number> }, netName: string) => {
-    if (!netName || !result) return null;
-    const search = netName.toLowerCase();
-    if (search === '0') {
-      return { name: '0', timestamps_ms: resultIndex.timestamps_ms, voltage_levels: new Array(resultIndex.timestamps_ms.length).fill(0) };
-    }
-    const idx = resultIndex.indexByName.get(search) ?? resultIndex.indexByName.get(`v(${search})`);
-    if (idx === undefined || !result.data[idx]) return null;
-    return { name: result.variableNames[idx], timestamps_ms: resultIndex.timestamps_ms, voltage_levels: result.data[idx].values };
-  };
-
   const ensureHILConnection = (ip: string, node: Node) => {
     if (hilSocketRef.current && (hilSocketRef.current.readyState === WebSocket.OPEN || hilSocketRef.current.readyState === WebSocket.CONNECTING)) {
       return;
@@ -3114,7 +467,7 @@ export default function App() {
             if (msg.ok && msg.values) {
               const activeHILNode = nodesRef.current.find(n => n.type === 'heltec_v4') || node;
               const pins = (activeHILNode.data.pins as Record<string, string>) || {};
-              for (const pinId of ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41']) {
+              for (const pinId of HELTEC_V4_GPIO_PINS) {
                 const pinNum = parseInt(pinId.replace('GPIO_', ''));
                 const raw = msg.values[String(pinNum)];
                 if (raw === undefined) continue;
@@ -3192,7 +545,7 @@ export default function App() {
                   const activeHILNode = nodesRef.current.find(n => n.type === 'heltec_v4') || node;
                   const pins = (activeHILNode.data.pins as Record<string, string>) || {};
                   const connectedPins = getConnectedHeltecPins(activeHILNode.id, edgesRef.current);
-                  const inputPins = ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41']
+                  const inputPins = HELTEC_V4_GPIO_PINS
                     .filter(pinId => connectedPins.has(pinId) && (pins[pinId] === 'analog_in' || pins[pinId] === 'digital_in'));
 
                   parts.forEach((valStr, idx) => {
@@ -3296,7 +649,7 @@ export default function App() {
   const buildHILSliceCommand = (pins: Record<string, string>, voltages: Record<string, any>, connectedPins: Set<string>) => {
     const writes: { pin: number; seq: [number, number][] }[] = [];
     const reads: { pin: number; type: 'analog' | 'digital' }[] = [];
-    for (const pinId of ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41']) {
+    for (const pinId of HELTEC_V4_GPIO_PINS) {
       if (!connectedPins.has(pinId)) continue;
       const pinNum = parseInt(pinId.replace('GPIO_', ''));
       if (pins[pinId] === 'digital_out') {
@@ -3359,7 +712,7 @@ export default function App() {
     const connectedPins = getConnectedHeltecPins(activeHILNode.id, edgesRef.current);
     let code = "print('HIL_BG_DATA:', ";
     const reads: string[] = [];
-    for (const pinId of ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41']) {
+    for (const pinId of HELTEC_V4_GPIO_PINS) {
       if (!connectedPins.has(pinId)) continue;
       if (pins[pinId] === 'analog_in') {
         const pinNum = parseInt(pinId.replace('GPIO_', ''));
@@ -3514,7 +867,7 @@ export default function App() {
       lastSimulatedResultRef.current = result;
       lastPortToNetRef.current = portToNet;
       lastSliceDurationRef.current = netlistDurationMs;
-      const resultIndex = buildHILResultIndex(result);
+      const resultIndex = buildNetlistResultIndex(result);
 
       const lastIndex = result.numPoints - 1;
       const nextICs: Record<string, number> = {};
@@ -3541,14 +894,14 @@ export default function App() {
 
       const outputs: Record<string, any> = {};
       const pins = (activeHILNode.data.pins as Record<string, string>) || {};
-      for (const pinId of ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41']) {
+      for (const pinId of HELTEC_V4_GPIO_PINS) {
         if (pins[pinId] === 'digital_out') {
           // Any digital_out pin's hardware toggle sequence is derived the same way: whatever
           // the simulated circuit is actually doing at this pin's net, turned into a digital
           // sequence by threshold-crossing detection — not specific to any one circuit or pin.
           const seq: [number, number][] = [];
           const net = portToNet[`${activeHILNode.id}-${pinId}`];
-          const graph = findGraphIndexed(result, resultIndex, net);
+          const graph = findNetGraph(result, net, resultIndex);
           const threshold = 1.65; // half of 3.3V logic level
           // Below this, a "transition" can't be trusted as a real toggle rather than solver
           // reporting noise right at a switching edge — absorb it into the surrounding state
@@ -3617,9 +970,9 @@ export default function App() {
           const ch2Net = portToNet[`${n.id}-ch2`];
           const gndNet = portToNet[`${n.id}-gnd`];
 
-          const ch1Graph = findGraphIndexed(result, resultIndex, ch1Net);
-          const ch2Graph = findGraphIndexed(result, resultIndex, ch2Net);
-          const gndGraph = findGraphIndexed(result, resultIndex, gndNet);
+          const ch1Graph = findNetGraph(result, ch1Net, resultIndex);
+          const ch2Graph = findNetGraph(result, ch2Net, resultIndex);
+          const gndGraph = findNetGraph(result, gndNet, resultIndex);
 
           if (ch1Graph) {
             const newPoints = ch1Graph.timestamps_ms.map((t: number, idx: number) => ({
@@ -3642,8 +995,8 @@ export default function App() {
 
         if (n.type === 'led') {
           const net = portToNet[`${n.id}-anode`];
-          const anodeGraph = findGraphIndexed(result, resultIndex, net);
-          const intGraph = findGraphIndexed(result, resultIndex, `int_led_${n.id}`);
+          const anodeGraph = findNetGraph(result, net, resultIndex);
+          const intGraph = findNetGraph(result, `int_led_${n.id}`, resultIndex);
           if (anodeGraph && intGraph) {
             const newPoints = anodeGraph.timestamps_ms.map((t: number, idx: number) => ({
               t: hilNetlistAccumTimeRef.current - netlistDurationMs + t,
@@ -3733,43 +1086,13 @@ export default function App() {
 
       let result = await runSimInWorker(netlist);
 
-      const findGraphFromSim = (res: any, netName: string) => {
-        if (!netName || !res) return null;
-        const search = netName.toLowerCase();
-        
-        if (search === '0') {
-          if (res.variableNames && res.data && res.data.length > 0 && res.data[0].values) {
-            const timeVals = res.data[0].values.map((t: number) => t * 1000);
-            return {
-              name: '0',
-              timestamps_ms: timeVals,
-              voltage_levels: new Array(timeVals.length).fill(0)
-            };
-          }
-        }
-        
-        // Handle eecircuit-engine format
-        if (res.variableNames && res.data && res.data.length > 0 && res.data[0].values) {
-          const idx = res.variableNames.findIndex((v: string) => v.toLowerCase() === search || v.toLowerCase() === `v(${search})`);
-          if (idx !== -1 && res.data[idx]) {
-            return {
-              name: res.variableNames[idx],
-              timestamps_ms: res.data[0].values.map((t: number) => t * 1000), // Time is variable 0
-              voltage_levels: res.data[idx].values
-            };
-          }
-        }
-        
-        return null;
-      };
-
       if (needsTwoPass) {
          const mcuWaveforms: any = {};
          for (const mcu of mcuNodes) {
            mcuWaveforms[mcu.id] = {};
            for (const pin of ['D0', 'D1', 'D2', 'D3', 'A0', 'A1']) {
              const net = portToNet[`${mcu.id}-${pin}`];
-             const graph = findGraphFromSim(result, net);
+             const graph = findNetGraph(result, net);
              if (graph) {
                mcuWaveforms[mcu.id][pin] = graph.timestamps_ms.map((t: number, i: number) => ({
                  t, v: graph.voltage_levels[i]
@@ -3785,7 +1108,7 @@ export default function App() {
          result = await runSimInWorker(netlist);
       }
       
-      const findGraph = (netName: string) => findGraphFromSim(result, netName);
+      const findGraph = (netName: string) => findNetGraph(result, netName);
 
       const updatedNodes = currentNodes.map(n => {
         let newNode = { ...n } as any;
@@ -3921,7 +1244,7 @@ export default function App() {
         
         if (!curArr) {
           const netName = portToNet[`${e.target}-${e.targetHandle}`] || portToNet[`${e.source}-${e.sourceHandle}`];
-          const vG = findGraphFromSim(result, netName);
+          const vG = findNetGraph(result, netName);
           if (vG) {
             // Virtual current based on 10k virtual input impedance to animate logic signals
             curArr = vG.voltage_levels.map((v: number) => Math.abs(v) / 10000);
@@ -3971,162 +1294,7 @@ export default function App() {
     }
   };
 
-  const stopSimulation = () => {
-    setIsSimulating(false);
-    setIsSpiceRunning(false);
-    playbackTicker.stop();
-    setProbeData(null);
-
-    // Stop and teardown HIL
-    // Stop HIL and stay quiet — do not resume background polling automatically
-    // (it self-perpetuates via recursive setTimeout with no other way to cancel it).
-    hilRunningRef.current = false;
-    hilBackgroundPollActiveRef.current = false;
-    if (hilSocketRef.current && hilConnectedRef.current) {
-      try {
-        const heltecNode = nodes.find(n => n.type === 'heltec_v4');
-        if (heltecNode) {
-          let code = "import lib.webserver as ws\n";
-          code += "h = ws._mesh_get_heltec()\n";
-          code += "h.gpio_write(3, 0)\n";
-          code += "h.lora_mode('mesh')\n";
-          code += "h.gps_power(1)\n";
-          hilSocketRef.current.send(JSON.stringify({ cmd: "repl_input", code }));
-        }
-      } catch (e) {
-        console.error("[HIL] Failed to send stop state:", e);
-      }
-    }
-    hilHistoryRef.current = {};
-    hilSmoothedValuesRef.current = {};
-    hilAccumTimeRef.current = 0;
-    hilNetlistAccumTimeRef.current = 0;
-    hilStartTimeRef.current = null;
-    hilQueueRef.current = [];
-    hilQueuedMsRef.current = 0;
-    hilHalfPeriodMsRef.current = {};
-
-    setNodes(nds => nds.map(n => {
-      if (n.type === 'led') {
-        return { ...n, data: { ...n.data, brightness: 0, current_array: undefined, time_points: undefined } };
-      }
-      if (n.type === 'speaker' || n.type === 'scope') {
-        return { ...n, data: { ...n.data, voltageData: undefined } };
-      }
-      if (n.type === 'heltec_v4') {
-        return { ...n, data: { ...n.data, isConnected: false } };
-      }
-      return n;
-    }));
-    setEdges(eds => eds.map(e => ({ 
-      ...e, 
-      className: '', 
-      animated: false,
-      data: { ...e.data, current_array: undefined, time_points: undefined }
-    })));
-  };
-  // --- Undo/Redo History ---
-  const historyRef = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
-  const historyIndexRef = useRef<number>(-1);
-  const [, setHistoryTrigger] = useState(0);
-
-  const pushHistory = useCallback((newNodes: Node[], newEdges: Edge[]) => {
-    const cleanNewNodes = newNodes.map(n => ({
-      id: n.id,
-      type: n.type,
-      position: { x: Math.round(n.position?.x ?? 0), y: Math.round(n.position?.y ?? 0) },
-      data: {
-        ...n.data,
-        isSimulating: undefined,
-        selected: undefined
-      }
-    }));
-    const cleanNewEdges = newEdges.map(e => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      sourceHandle: e.sourceHandle,
-      targetHandle: e.targetHandle,
-      data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined
-    }));
-
-    const lastState = historyRef.current[historyIndexRef.current];
-    if (lastState) {
-      const cleanLastNodes = lastState.nodes.map(n => ({
-        id: n.id,
-        type: n.type,
-        position: { x: Math.round(n.position?.x ?? 0), y: Math.round(n.position?.y ?? 0) },
-        data: {
-          ...n.data,
-          isSimulating: undefined,
-          selected: undefined
-        }
-      }));
-      const cleanLastEdges = lastState.edges.map(e => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        sourceHandle: e.sourceHandle,
-        targetHandle: e.targetHandle,
-        data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined
-      }));
-
-      const nodesEqual = JSON.stringify(cleanLastNodes) === JSON.stringify(cleanNewNodes);
-      const edgesEqual = JSON.stringify(cleanLastEdges) === JSON.stringify(cleanNewEdges);
-      if (nodesEqual && edgesEqual) {
-        return;
-      }
-    }
-
-    const nextHistory = historyRef.current.slice(0, historyIndexRef.current + 1);
-    nextHistory.push({
-      nodes: newNodes.map(n => ({ ...n })),
-      edges: newEdges.map(e => ({
-        ...e,
-        data: e.data ? {
-          ...e.data,
-          waypoints: (e.data as any).waypoints ? (e.data as any).waypoints.map((w: any) => ({ ...w })) : undefined
-        } : undefined
-      }))
-    });
-    if (nextHistory.length > 50) {
-      nextHistory.shift();
-    }
-    historyRef.current = nextHistory;
-    historyIndexRef.current = nextHistory.length - 1;
-    setHistoryTrigger(prev => prev + 1);
-  }, []);
-
-  const undo = useCallback(() => {
-    if (historyIndexRef.current > 0) {
-      historyIndexRef.current -= 1;
-      const state = historyRef.current[historyIndexRef.current];
-      stopSimulation();
-      setNodes(state.nodes.map(n => ({ ...n })));
-      setEdges(state.edges.map(e => ({ ...e })));
-      setHistoryTrigger(prev => prev + 1);
-    }
-  }, [stopSimulation]);
-
-  const redo = useCallback(() => {
-    if (historyIndexRef.current < historyRef.current.length - 1) {
-      historyIndexRef.current += 1;
-      const state = historyRef.current[historyIndexRef.current];
-      stopSimulation();
-      setNodes(state.nodes.map(n => ({ ...n })));
-      setEdges(state.edges.map(e => ({ ...e })));
-      setHistoryTrigger(prev => prev + 1);
-    }
-  }, [stopSimulation]);
-
-  // Track structural updates to push to history
-  useEffect(() => {
-    if (isSimulating) return;
-    const timer = setTimeout(() => {
-      pushHistory(nodes, edges);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [nodes, edges, isSimulating, pushHistory]);
+  const { undo, redo, canUndo, canRedo } = useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, setNodes, setEdges });
 
   // Clear initial conditions on structural changes
   useEffect(() => {
@@ -4158,96 +1326,7 @@ export default function App() {
     setEdges(eds => eds.filter(e => !e.selected));
   };
 
-  // ── Merged preset map (built-in + user) ────────────────────────────────────
-  const allPresets: Record<string, CircuitPreset> = { ...presets, ...userPresets };
-
-  const handlePresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const key = e.target.value;
-    setSelectedPreset(key);
-    const preset = allPresets[key];
-    if (preset) {
-      stopSimulation();
-      setInitialConditions({});
-      setNodes(preset.nodes);
-      setEdges(preset.edges);
-      if (preset.recommendedSimLength) {
-        setSimLength(preset.recommendedSimLength);
-      }
-    }
-  };
-
-  // ── Save current circuit as user preset ────────────────────────────────────
-  const handleSavePreset = () => {
-    const trimmed = saveDialogName.trim();
-    if (!trimmed) return;
-    const key = nameToKey(trimmed);
-    const preset: CircuitPreset = {
-      name: `User: ${trimmed}`,
-      nodes: nodes.map(n => ({ ...n, selected: false })),
-      edges: edges.map(e => ({
-        ...e,
-        data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined
-      })),
-    };
-    const updated = addUserPreset(key, preset);
-    setUserPresets(updated);
-    setSelectedPreset(key);
-    setIsSaveDialogOpen(false);
-    setSaveDialogName('');
-  };
-
-  const handleDeleteUserPreset = (key: string) => {
-    const updated = removeUserPreset(key);
-    setUserPresets(updated);
-    if (selectedPreset === key) {
-      setSelectedPreset('basicBlink');
-      setNodes(presets.basicBlink.nodes);
-      setEdges(presets.basicBlink.edges);
-    }
-  };
-
-  const exportJson = useCallback(() => {
-    try {
-      const dataStr = JSON.stringify({ nodes, edges }, null, 2);
-      const blob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'circuit_volt_scene.json';
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error('Failed to export JSON', e);
-      alert('Failed to export JSON');
-    }
-  }, [nodes, edges]);
-
-  const importJson = useCallback(() => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = (e: any) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const parsed = JSON.parse(e.target?.result as string);
-          if (parsed && Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) {
-            stopSimulation();
-            setNodes(parsed.nodes);
-            setEdges(parsed.edges);
-          } else {
-            alert('Invalid circuit JSON format. Must contain "nodes" and "edges" arrays.');
-          }
-        } catch (err) {
-          alert('Failed to parse JSON file');
-        }
-      };
-      reader.readAsText(file);
-    };
-    input.click();
-  }, [stopSimulation, setNodes, setEdges]);
+  const { exportJson, importJson } = useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulation });
 
   useMCPBridge({
     nodes, edges, isSimulating, selectedPreset, probeMode,
@@ -4255,16 +1334,7 @@ export default function App() {
     setProbeMode,
     setNodes: (n: any) => setNodes(n),
     setEdges: (e: any) => setEdges(e),
-    loadPreset: (name: string) => {
-      const preset = allPresets[name];
-      if (preset) {
-        stopSimulation();
-        setInitialConditions({});
-        setNodes(preset.nodes);
-        setEdges(preset.edges);
-        setSelectedPreset(name);
-      }
-    },
+    loadPreset,
     onTransactionStart: () => setMcpActiveCount(prev => prev + 1),
     onTransactionEnd: () => setMcpActiveCount(prev => Math.max(0, prev - 1)),
   });
@@ -4315,7 +1385,7 @@ export default function App() {
               <button
                 onClick={() => {
                   if (window.confirm(`Are you sure you want to delete the preset "${userPresets[selectedPreset].name}"?`)) {
-                    handleDeleteUserPreset(selectedPreset);
+                    deleteUserPreset(selectedPreset);
                   }
                 }}
                 className="flex items-center justify-center p-1 rounded-md text-red-500 hover:bg-red-55 dark:hover:bg-red-950/50 transition-colors focus:outline-none cursor-pointer"
@@ -4442,7 +1512,7 @@ export default function App() {
 
             <button
               onClick={undo}
-              disabled={historyIndexRef.current <= 0}
+              disabled={!canUndo}
               className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-655 dark:text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent transition-colors focus:outline-none cursor-pointer"
               title="Undo"
             >
@@ -4451,7 +1521,7 @@ export default function App() {
 
             <button
               onClick={redo}
-              disabled={historyIndexRef.current >= historyRef.current.length - 1}
+              disabled={!canRedo}
               className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-655 dark:text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent transition-colors focus:outline-none cursor-pointer"
               title="Redo"
             >
@@ -4606,11 +1676,11 @@ export default function App() {
             key={card.id}
             card={card}
             isEditing={editingCardId === card.id}
-            onToggleEdit={() => setEditingCardId(editingCardId === card.id ? null : card.id)}
-            onToggleMinimize={() => setNoteCards(prev => prev.map(c => c.id === card.id ? { ...c, minimized: !c.minimized } : c))}
-            onMarkdownChange={(md) => setNoteCards(prev => prev.map(c => c.id === card.id ? { ...c, markdown: md } : c))}
-            onClose={() => setNoteCards(prev => prev.filter(c => c.id !== card.id))}
-            onMove={(x, y) => setNoteCards(prev => prev.map(c => c.id === card.id ? { ...c, x, y } : c))}
+            onToggleEdit={() => toggleEdit(card.id)}
+            onToggleMinimize={() => toggleMinimize(card.id)}
+            onMarkdownChange={(md) => updateMarkdown(card.id, md)}
+            onClose={() => closeCard(card.id)}
+            onMove={(x, y) => moveCard(card.id, x, y)}
           />
         ))}
         {showAICopilot && (
@@ -4629,7 +1699,7 @@ export default function App() {
             showAura={showAura}
             setShowAura={setShowAura}
             userPresets={userPresets}
-            onDeleteUserPreset={handleDeleteUserPreset}
+            onDeleteUserPreset={deleteUserPreset}
           />
         )}
 
@@ -4653,7 +1723,7 @@ export default function App() {
                 value={saveDialogName}
                 onChange={(e) => setSaveDialogName(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSavePreset();
+                  if (e.key === 'Enter') savePreset();
                   if (e.key === 'Escape') setIsSaveDialogOpen(false);
                 }}
                 className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100"
@@ -4666,7 +1736,7 @@ export default function App() {
                   Cancel
                 </button>
                 <button
-                  onClick={handleSavePreset}
+                  onClick={savePreset}
                   disabled={!saveDialogName.trim()}
                   className="px-4 py-2 font-semibold text-white bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors"
                 >

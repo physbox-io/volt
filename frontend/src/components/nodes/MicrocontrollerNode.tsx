@@ -1,4 +1,29 @@
 import { Handle, Position } from '@xyflow/react';
+import type { NodePropertiesProps } from './registry';
+
+export function MicrocontrollerProperties({ node, updateData }: NodePropertiesProps) {
+  return (
+    <>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 mb-1">Code (JS)</label>
+        <textarea
+          value={(node.data.code as string) ?? "pinMode('D0', 'OUTPUT');\nwhile(true) {\n  digitalWrite('D0', 1);\n  sleep(500);\n  digitalWrite('D0', 0);\n  sleep(500);\n}"}
+          onChange={e => updateData('code', e.target.value)}
+          className="w-full text-xs font-mono border border-gray-300 rounded px-2 py-1 h-48 whitespace-pre bg-gray-50"
+          spellCheck="false"
+        />
+      </div>
+      {node.data.logs && (node.data.logs as string[]).length > 0 && (
+        <div className="mb-3 flex flex-col">
+          <label className="block text-xs font-medium text-gray-700 mb-1 uppercase tracking-wider">Serial Monitor</label>
+          <div className="bg-gray-900 text-green-400 font-mono text-[10px] p-2 h-32 overflow-y-auto rounded shadow-inner whitespace-pre-wrap">
+            {(node.data.logs as string[]).map((log, i) => <div key={i}>{log}</div>)}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 export function MicrocontrollerNode({ selected }: any) {
   return (

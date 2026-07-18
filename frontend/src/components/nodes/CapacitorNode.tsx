@@ -1,15 +1,14 @@
 import { Handle, Position } from '@xyflow/react';
+import { getNodeDefaultName } from '../../utils/nodeNaming';
+import type { NodePropertiesProps } from './registry';
 
-function getNodeDefaultName(id: string, type: string) {
-  const match = id.match(/^(resistor|capacitor|inductor)-(\d+)$/i);
-  if (match) {
-    const prefix = type === 'resistor' ? 'R' : (type === 'capacitor' ? 'C' : 'L');
-    return `${prefix}${match[2]}`;
-  }
-  if (/^[rcl]\d+$/i.test(id)) {
-    return id.toUpperCase();
-  }
-  return id;
+export function CapacitorProperties({ node, updateData }: NodePropertiesProps) {
+  return (
+    <div className="mb-3">
+      <label className="block text-xs font-medium text-gray-700 mb-1">Capacitance</label>
+      <input type="text" value={(node.data.label as string) || '10u'} onChange={e => updateData('label', e.target.value)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+    </div>
+  );
 }
 
 export function CapacitorNode({ id, data, selected }: any) {

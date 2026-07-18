@@ -1,6 +1,120 @@
 import { Handle, Position } from '@xyflow/react';
 import { useEffect, useRef, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
+import type { NodePropertiesProps } from './registry';
+
+export function LEDProperties({ node, updateData, webcam }: NodePropertiesProps) {
+  const { stream, videoRef, isRecordingWebcam, startRecordingWebcam } = webcam;
+  return (
+    <>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 mb-1">Color (CSS)</label>
+        <input type="text" value={(node.data.color as string) || 'red'} onChange={e => updateData('color', e.target.value)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+      </div>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 mb-1">Forward Voltage Drop (V)</label>
+        <input type="number" step="0.1" value={(node.data.v_drop as number) || 2.0} onChange={e => updateData('v_drop', parseFloat(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+      </div>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 mb-1">Max Current (mA)</label>
+        <input type="number" value={(node.data.max_current as number) || 20} onChange={e => updateData('max_current', parseInt(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800">
+        <div className="flex items-center gap-2 mb-2">
+          <input
+            type="checkbox"
+            id="led-photo"
+            checked={!!node.data.photodiodeMode}
+            onChange={e => updateData('photodiodeMode', e.target.checked)}
+            className="cursor-pointer"
+          />
+          <label htmlFor="led-photo" className="text-xs font-semibold text-gray-700 select-none cursor-pointer">
+            Enable Photodiode Mode
+          </label>
+        </div>
+        {node.data.photodiodeMode && (
+          <>
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Reverse Sensitivity (μA)</label>
+              <input type="number" min="0" step="1" value={node.data.lightSensitivity !== undefined ? node.data.lightSensitivity : 10} onChange={e => updateData('lightSensitivity', parseInt(e.target.value) || 0)} className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" />
+            </div>
+
+            <div className="mb-3 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="led-webcam"
+                checked={!!node.data.isWebcamActive}
+                onChange={e => updateData('isWebcamActive', e.target.checked)}
+                className="cursor-pointer"
+              />
+              <label htmlFor="led-webcam" className="text-xs font-semibold text-gray-700 dark:text-gray-300 select-none cursor-pointer">
+                Use Webcam Sensor
+              </label>
+            </div>
+
+            {stream && (
+              <div className="mb-3 rounded-lg overflow-hidden border border-gray-300 dark:border-slate-800 h-28 bg-black relative flex items-center justify-center shadow-inner">
+                <video
+                  ref={videoRef}
+                  className="w-full h-full object-cover"
+                  muted
+                  playsInline
+                />
+                <div className="absolute bottom-1.5 right-1.5 bg-black/70 text-white text-[8px] font-mono px-1.5 py-0.5 rounded shadow-sm">
+                  Live LED Light: {Math.round((node.data.lightLevel ?? 0) * 100)}%
+                </div>
+              </div>
+            )}
+
+            {!!node.data.isWebcamActive && (
+              <div className="mb-3">
+                <button
+                  onClick={isRecordingWebcam ? undefined : startRecordingWebcam}
+                  className={`w-full py-2 rounded-lg font-bold text-xs shadow-md transition-all text-white ${
+                    isRecordingWebcam ? 'bg-red-500 animate-pulse' : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg'
+                  }`}
+                >
+                  {isRecordingWebcam ? '🔴 Recording Webcam...' : '📹 Record Light Stream'}
+                </button>
+                {node.data.pwlData && (
+                  <div className="text-[9px] text-green-600 dark:text-green-400 font-bold mt-1.5 flex items-center gap-1">
+                    <span>✓</span> PWL Light Stream Loaded ({node.data.pwlData.length} pts)
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Light Exposure (0-100%)
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                disabled={!!node.data.isWebcamActive}
+                value={Math.round((node.data.lightLevel ?? 0) * 100)}
+                onChange={e => updateData('lightLevel', parseInt(e.target.value) / 100)}
+                className="w-full"
+              />
+              <div className="text-[9px] text-gray-400 mt-1">Simulates photocurrent generated when light shines on reverse-biased LED.</div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {node.data.isExploded && (
+        <button
+          onClick={() => { updateData('isExploded', false); updateData('brightness', 0); }}
+          className="w-full mt-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-1 px-2 rounded shadow-sm text-sm"
+        >
+          Repair Component
+        </button>
+      )}
+    </>
+  );
+}
 
 export const LEDNode = memo(function LEDNode({ data, selected }: any) {
   const orientation = data.orientation || 'horizontal';

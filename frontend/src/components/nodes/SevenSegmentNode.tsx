@@ -1,6 +1,16 @@
 import { Handle, Position } from '@xyflow/react';
 import { useEffect, useState, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
+import type { NodePropertiesProps } from './registry';
+
+export function SevenSegmentProperties(_props: NodePropertiesProps) {
+  return (
+    <div className="mb-3">
+      <div className="text-xs text-gray-500 mb-1">Segments: a(top) b(TR) c(BR) d(bot) e(BL) f(TL) g(mid)</div>
+      <div className="text-xs text-gray-500">Connect 5V through resistors to segment inputs. Common cathode → GND.</div>
+    </div>
+  );
+}
 
 const SEGMENT_PATHS: Record<string, string> = {
   a: 'M6,2 L18,2 L16,4 L8,4 Z',

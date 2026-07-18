@@ -1,4 +1,15 @@
 import { Handle, Position } from '@xyflow/react';
+import type { NodePropertiesProps } from './registry';
+
+export function CurrentSourceProperties({ node, updateData }: NodePropertiesProps) {
+  return (
+    <div className="mb-3">
+      <label className="block text-xs font-medium text-gray-700 mb-1">Current</label>
+      <input type="text" value={(node.data.label as string) || '10m'} onChange={e => updateData('label', e.target.value)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+      <div className="text-[10px] text-gray-400 mt-1">e.g. 10m = 10mA, 1 = 1A</div>
+    </div>
+  );
+}
 
 export function CurrentSourceNode({ data, selected }: any) {
   const label = data.label || '10mA';

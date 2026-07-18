@@ -1,6 +1,7 @@
 import { BaseEdge, type EdgeProps, getSmoothStepPath, useReactFlow } from '@xyflow/react';
 import { useEffect, useState, createContext, useContext, useMemo, useCallback, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../utils/playbackTicker';
+import { getHandleCoord } from '../utils/nodeGeometry';
 
 // Junction dots are owned entirely by JunctionNode.tsx: every real electrical
 // T-tap in this app is created via the wire-drop-splice flow in App.tsx,
@@ -772,43 +773,6 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
       
       if (incSrcVert === incTgtVert) {
         // Facing connection — get their actual handle coordinates
-        const getHandleCoord = (node: any, handleId: string) => {
-          const orientation = node.data?.orientation || 'horizontal';
-          const isLeft = orientation === 'left';
-          const isUp = orientation === 'up';
-          const isVertical = orientation === 'vertical' || isUp;
-          
-          const x = node.position.x;
-          const y = node.position.y;
-          const w = node.measured?.width || getNodeDimensions(node.type, node.data).width;
-          const h = node.measured?.height || getNodeDimensions(node.type, node.data).height;
-          
-          if (node.type === 'timer555') {
-            const row = parseInt(handleId);
-            if (row >= 1 && row <= 4) {
-              return { x: x, y: y + 26 + (row - 1) * 32 };
-            }
-            if (row >= 5 && row <= 8) {
-              const rightRow = 8 - row;
-              return { x: x + w, y: y + 26 + rightRow * 32 };
-            }
-          }
-          if (node.type === 'ground') return { x: x + w / 2, y: y };
-          if (node.type === 'voltage' || node.type === 'acvoltage') {
-            if (handleId === 'pos') return { x: x + w / 2, y: y };
-            if (handleId === 'neg') return { x: x + w / 2, y: y + h };
-          }
-          if (node.type === 'junction') return { x: x, y: y };
-          if (handleId === 'in') {
-            if (isVertical) return { x: x + w / 2, y: isUp ? y + h : y };
-            return { x: isLeft ? x + w : x, y: y + h / 2 };
-          }
-          if (handleId === 'out') {
-            if (isVertical) return { x: x + w / 2, y: isUp ? y : y + h };
-            return { x: isLeft ? x : x + w, y: y + h / 2 };
-          }
-          return { x: x + w / 2, y: y + h / 2 };
-        };
         const pSrc = getHandleCoord(incSrcNode, incomingEdge.sourceHandle || 'out');
         const pTgt = getHandleCoord(incTgtNode, incomingEdge.targetHandle || 'in');
         

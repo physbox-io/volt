@@ -1,4 +1,14 @@
 import { Handle, Position } from '@xyflow/react';
+import type { NodePropertiesProps } from './registry';
+
+export function VoltageProperties({ node, updateData }: NodePropertiesProps) {
+  return (
+    <div className="mb-3">
+      <label className="block text-xs font-medium text-gray-700 mb-1">Voltage (V)</label>
+      <input type="text" value={(node.data.label as string) || '5V'} onChange={e => updateData('label', e.target.value)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+    </div>
+  );
+}
 
 export function VoltageNode({ data, selected }: any) {
   const isHorizontal = data.orientation === 'horizontal';

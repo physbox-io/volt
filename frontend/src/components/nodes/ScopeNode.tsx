@@ -1,6 +1,28 @@
 import { Handle, Position, NodeResizer } from '@xyflow/react';
 import { useMemo } from 'react';
 import { computeFFT } from '../../utils/fft';
+import type { NodePropertiesProps } from './registry';
+
+export function ScopeProperties({ node, updateData }: NodePropertiesProps) {
+  return (
+    <>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 mb-1">V/div</label>
+        <input type="number" step="0.1" min="0.01" value={(node.data.vDiv as number) ?? ''} onChange={e => updateData('vDiv', e.target.value ? parseFloat(e.target.value) : undefined)} placeholder="Auto" className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+        <div className="text-[10px] text-gray-400 mt-0.5">Leave empty for auto-detect</div>
+      </div>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 mb-1">Time/div (ms)</label>
+        <input type="number" step="0.1" min="0.001" value={(node.data.tDiv as number) ?? ''} onChange={e => updateData('tDiv', e.target.value ? parseFloat(e.target.value) : undefined)} placeholder="Auto" className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+        <div className="text-[10px] text-gray-400 mt-0.5">Leave empty for auto-detect</div>
+      </div>
+      <div className="mb-3 flex items-center gap-2">
+        <input type="checkbox" id="scope-fft" checked={!!node.data.showFFT} onChange={e => updateData('showFFT', e.target.checked)} />
+        <label htmlFor="scope-fft" className="text-xs font-medium text-gray-700">FFT Mode (Frequency Spectrum)</label>
+      </div>
+    </>
+  );
+}
 
 // Standard V/div values
 const VDIV_STEPS = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50];

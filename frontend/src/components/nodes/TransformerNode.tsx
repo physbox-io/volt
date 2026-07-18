@@ -1,4 +1,53 @@
 import { Handle, Position } from '@xyflow/react';
+import { sanitizeSpiceValue } from '../../utils/spice';
+import type { NodePropertiesProps } from './registry';
+
+export function transformerDefaultData() {
+  return { label: 'Transformer', l_pri: '10m', l_sec: '10m', k: 0.99, l_pri_label: '10mH', l_sec_label: '10mH' };
+}
+
+export function TransformerProperties({ node, updateData }: NodePropertiesProps) {
+  return (
+    <>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 mb-1">Primary Inductance</label>
+        <input
+          type="text"
+          value={(node.data.l_pri_label as string) || '10mH'}
+          onChange={e => {
+            updateData('l_pri_label', e.target.value);
+            updateData('l_pri', sanitizeSpiceValue(e.target.value));
+          }}
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+        />
+      </div>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 mb-1">Secondary Inductance</label>
+        <input
+          type="text"
+          value={(node.data.l_sec_label as string) || '10mH'}
+          onChange={e => {
+            updateData('l_sec_label', e.target.value);
+            updateData('l_sec', sanitizeSpiceValue(e.target.value));
+          }}
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+        />
+      </div>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 mb-1">Coupling Coefficient (K)</label>
+        <input
+          type="number"
+          step="0.01"
+          min="0.01"
+          max="1.0"
+          value={(node.data.k as number) ?? 0.99}
+          onChange={e => updateData('k', parseFloat(e.target.value) || 0.99)}
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+        />
+      </div>
+    </>
+  );
+}
 
 export function TransformerNode({ data, selected }: any) {
   const lPri = data.l_pri_label || '10mH';

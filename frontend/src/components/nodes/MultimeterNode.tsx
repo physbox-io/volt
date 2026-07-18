@@ -1,6 +1,55 @@
 import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { useEffect, useRef, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
+import type { NodePropertiesProps } from './registry';
+
+export function MultimeterProperties({ node, updateData }: NodePropertiesProps) {
+  return (
+    <>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 mb-1">Label</label>
+        <input
+          type="text"
+          value={(node.data.label as string) || 'Multimeter'}
+          onChange={e => updateData('label', e.target.value)}
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+        />
+      </div>
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-xs font-medium text-gray-700">Display Mode</label>
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${node.data.isRms ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
+            {node.data.isRms ? 'RMS' : (node.data.mode === 'current' ? 'AMPS' : 'VOLTS')}
+          </span>
+        </div>
+        <div className="mb-2 flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="mm-rms"
+            checked={!!node.data.isRms}
+            onChange={e => updateData('isRms', e.target.checked)}
+            className="cursor-pointer"
+          />
+          <label htmlFor="mm-rms" className="text-xs text-gray-700 select-none cursor-pointer">
+            Show RMS Value (reduces fluctuations)
+          </label>
+        </div>
+        <div className="mb-2 flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="mm-mode"
+            checked={node.data.mode === 'current'}
+            onChange={e => updateData('mode', e.target.checked ? 'current' : 'voltage')}
+            className="cursor-pointer"
+          />
+          <label htmlFor="mm-mode" className="text-xs text-gray-700 select-none cursor-pointer">
+            Ammeter Mode (measures current in series)
+          </label>
+        </div>
+      </div>
+    </>
+  );
+}
 
 function calculateRms(arr: number[]): number {
   if (!arr || arr.length === 0) return 0;

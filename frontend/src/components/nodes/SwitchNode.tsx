@@ -1,4 +1,28 @@
 import { Handle, Position } from '@xyflow/react';
+import type { NodePropertiesProps } from './registry';
+
+export function SwitchProperties({ node, updateData }: NodePropertiesProps) {
+  return (
+    <div className="mb-3">
+      <div className="flex items-center justify-between mb-2">
+        <label className="block text-xs font-medium text-gray-700">State</label>
+        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${(node.data.isOpen !== false) ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+          {(node.data.isOpen !== false) ? 'OPEN' : 'CLOSED'}
+        </span>
+      </div>
+      <button
+        onClick={() => updateData('isOpen', node.data.isOpen === false)}
+        className={`w-full py-2 rounded font-bold text-sm shadow-sm transition-all ${
+          (node.data.isOpen !== false)
+            ? 'bg-green-500 hover:bg-green-600 text-white'
+            : 'bg-red-500 hover:bg-red-600 text-white'
+        }`}
+      >
+        {(node.data.isOpen !== false) ? 'Close Switch' : 'Open Switch'}
+      </button>
+    </div>
+  );
+}
 
 export function SwitchNode({ data, selected }: any) {
   const isOpen = data.isOpen !== false; // Default to open

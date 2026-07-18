@@ -1,4 +1,18 @@
 import { Handle, Position } from '@xyflow/react';
+import type { NodePropertiesProps } from './registry';
+
+export function dffDefaultData() {
+  return { label: 'DFF' };
+}
+
+export function DFlipFlopProperties(_props: NodePropertiesProps) {
+  return (
+    <div className="mb-3 p-2.5 bg-indigo-50 dark:bg-slate-800/40 border border-indigo-100 dark:border-slate-800 rounded-lg text-xs text-indigo-900 dark:text-indigo-200 shadow-sm leading-relaxed">
+      <strong className="block mb-1 text-[11px] font-bold text-indigo-950 dark:text-indigo-150 uppercase tracking-wider">D Flip-Flop</strong>
+      Rising-edge triggered. Samples the D input and sets Q accordingly on each positive edge of CLK.
+    </div>
+  );
+}
 
 export function DFlipFlopNode({ selected }: any) {
   return (

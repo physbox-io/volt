@@ -8,6 +8,8 @@ export interface CircuitPreset {
   noteCard?: string;
 }
 
+export const DEFAULT_PRESET_KEY = 'basicBlink';
+
 export const empty: CircuitPreset = {
   name: 'Empty',
   nodes: [],

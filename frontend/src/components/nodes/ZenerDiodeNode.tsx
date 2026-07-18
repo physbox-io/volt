@@ -1,4 +1,15 @@
 import { Handle, Position } from '@xyflow/react';
+import type { NodePropertiesProps } from './registry';
+
+export function ZenerDiodeProperties({ node, updateData }: NodePropertiesProps) {
+  return (
+    <div className="mb-3">
+      <label className="block text-xs font-medium text-gray-700 mb-1">Breakdown Voltage (V)</label>
+      <input type="text" value={(node.data.label as string) || '5.1V'} onChange={e => updateData('label', e.target.value)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+      <div className="text-[10px] text-gray-400 mt-1">Common: 3.3V, 5.1V, 12V</div>
+    </div>
+  );
+}
 
 export function ZenerDiodeNode({ data, selected }: any) {
   const orientation = data.orientation || 'horizontal';

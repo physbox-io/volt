@@ -1,4 +1,20 @@
 import { Handle, Position } from '@xyflow/react';
+import type { NodePropertiesProps } from './registry';
+
+export function PotentiometerProperties({ node, updateData }: NodePropertiesProps) {
+  return (
+    <>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 mb-1">Total Resistance</label>
+        <input type="text" value={(node.data.label as string) || '10k'} onChange={e => updateData('label', e.target.value)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+      </div>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 mb-1">Wiper Position ({(node.data.position as number) ?? 50}%)</label>
+        <input type="range" min="0" max="100" value={(node.data.position as number) ?? 50} onChange={e => updateData('position', parseInt(e.target.value))} className="w-full" />
+      </div>
+    </>
+  );
+}
 
 export function PotentiometerNode({ data, selected }: any) {
   const position = data.position ?? 50; // wiper position 0-100%

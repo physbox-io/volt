@@ -1,4 +1,21 @@
 import { Handle, Position } from '@xyflow/react';
+import type { NodePropertiesProps } from './registry';
+
+/** Shared by NmosNode and PmosNode. */
+export function MosfetProperties({ node, updateData }: NodePropertiesProps) {
+  return (
+    <>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 mb-1">Threshold Voltage (VTO)</label>
+        <input type="number" step="0.1" value={(node.data.vto as number) || (node.type === 'nmos' ? 2.0 : -2.0)} onChange={e => updateData('vto', parseFloat(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+      </div>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 mb-1">Transconductance (KP)</label>
+        <input type="number" step="0.01" value={(node.data.kp as number) || (node.type === 'nmos' ? 0.05 : 0.02)} onChange={e => updateData('kp', parseFloat(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+      </div>
+    </>
+  );
+}
 
 export function NmosNode({ data, selected }: any) {
   return (
