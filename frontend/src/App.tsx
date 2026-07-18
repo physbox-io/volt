@@ -157,6 +157,7 @@ export default function App() {
   const hilSocketRef = useRef<WebSocket | null>(null);
   const hilConnectedRef = useRef(false);
   const hilValuesRef = useRef<Record<string, number>>({});
+  const hilPrevValuesRef = useRef<Record<string, number>>({});
   const hilSmoothedValuesRef = useRef<Record<string, number>>({});
   const hilHistoryRef = useRef<Record<string, { t: number; v: number }[]>>({});
   const hilAccumTimeRef = useRef(0);
@@ -879,13 +880,16 @@ export default function App() {
             const mcuPin = edge.targetHandle;
             if (heltecPin && mcuPin && heltecPin.startsWith('GPIO_')) {
               const volt = hilValuesRef.current[heltecPin] ?? 0.0;
+              const prevVolt = hilPrevValuesRef.current[heltecPin] ?? volt;
               mcuWaveforms[mcuNode.id][mcuPin] = [
-                { t: 0, v: volt },
+                { t: 0, v: prevVolt },
                 { t: sliceDurationMs, v: volt }
               ];
             }
           }
         }
+        // Save current values as previous values for the next slice
+        hilPrevValuesRef.current = { ...hilValuesRef.current };
       }
 
       const { netlist, portToNet } = generateSpiceNetlist(nextNodes, edgesRef.current, netlistDurationMs / 1000, 'normal', mcuWaveforms, hilInitialConditionsRef.current, hilMaxStepMs);
