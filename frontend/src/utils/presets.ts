@@ -912,7 +912,7 @@ export const heltecGPIOToCYDSpeakerHIL: CircuitPreset = {
     } },
     { id: 'mcu1', type: 'mcu', position: { x: 350, y: 150 }, data: {
       label: 'Microcontroller',
-      code: "pinMode('A0', 'INPUT');\npinMode('D1', 'OUTPUT');\n\nwhile(true) {\n  const val = analogRead('A0');\n  const freq = 200 + val * 0.84;\n  const halfPeriod = 1000 / (2 * freq);\n  digitalWrite('D1', 1);\n  sleep(halfPeriod);\n  digitalWrite('D1', 0);\n  sleep(halfPeriod);\n}"
+      code: "pinMode('A0', 'INPUT');\npinMode('D1', 'OUTPUT');\n\nif (typeof state.phase === 'undefined') {\n  state.phase = 0.0;\n}\n\nconst val = analogRead('A0');\nconst freq = 200 + val * 0.84;\n\nconst initialVal = (state.phase % 1.0) < 0.5 ? 1 : 0;\ndigitalWrite('D1', initialVal);\n\nlet nextCrossing = Math.ceil(state.phase * 2) / 2;\nif (nextCrossing === state.phase) {\n  nextCrossing += 0.5;\n}\n\ntry {\n  while (true) {\n    const t = (nextCrossing - state.phase) * 1000 / freq;\n    const isRising = (Math.round(nextCrossing * 2) % 2 === 0);\n    const currentMcuTime = millis();\n    if (t > currentMcuTime) {\n      sleep(t - currentMcuTime);\n    }\n    digitalWrite('D1', isRising ? 1 : 0);\n    nextCrossing += 0.5;\n  }\n} catch(e) {}\n\nstate.phase += freq * (simLength / 1000);"
     } },
     { id: 'spk1', type: 'speaker', position: { x: 600, y: 150 }, data: {
       label: 'CYD Speaker',

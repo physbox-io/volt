@@ -863,7 +863,9 @@ export default function App() {
       const minStepMs = netlistDurationMs / MAX_POINTS_PER_SLICE;
       const trackedHalfPeriods = Object.values(hilHalfPeriodMsRef.current);
       const fastestHalfPeriodMs = trackedHalfPeriods.length > 0 ? Math.min(...trackedHalfPeriods) : 50;
-      const hilMaxStepMs = Math.min(1, Math.max(minStepMs, fastestHalfPeriodMs / 10));
+      const hasSpeaker = nextNodes.some(n => n.type === 'speaker');
+      const maxStepLimit = hasSpeaker ? 0.1 : 1.0;
+      const hilMaxStepMs = Math.min(maxStepLimit, Math.max(minStepMs, fastestHalfPeriodMs / 10));
 
       // Map physical voltages of heltec_v4 to connected mcu input pins
       const mcuWaveforms: any = {};
@@ -1100,7 +1102,9 @@ export default function App() {
 
   const runSimulation = async (nodesOverride?: Node[], customICs?: Record<string, number>) => {
     try {
-      const currentNodes = nodesOverride || nodes;
+      const baseNodes = nodesOverride || nodes;
+      const currentNodes = baseNodes.map(n => n.type === 'mcu' ? { ...n, data: { ...n.data, state: undefined } } : n);
+      setNodes(currentNodes);
       const heltecNode = currentNodes.find(n => n.type === 'heltec_v4');
       if (heltecNode) {
         if (hilRunningRef.current) {

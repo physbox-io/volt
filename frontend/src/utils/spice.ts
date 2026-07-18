@@ -351,7 +351,9 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
     else if (node.type === 'mcu') {
       const code = (node.data.code as string) || '';
       const inputWaveforms = mcuWaveforms[node.id] || {};
-      const { pwlOutputs, pinModes, logs } = executeMcuCode(code, simLength, inputWaveforms);
+      const mcuState = node.data.state || {};
+      const { pwlOutputs, pinModes, logs, newState } = executeMcuCode(code, simLength, inputWaveforms, mcuState);
+      node.data.state = newState;
       mcuLogs[node.id] = logs;
 
       const pins = ['D0', 'D1', 'D2', 'D3', 'A0', 'A1'];

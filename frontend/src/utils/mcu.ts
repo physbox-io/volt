@@ -12,13 +12,16 @@ export interface McuExecutionResult {
 export function executeMcuCode(
   code: string,
   simLengthSeconds: number,
-  inputWaveforms: Record<string, PWLPoint[]>
-): McuExecutionResult {
+  inputWaveforms: Record<string, PWLPoint[]>,
+  initialState?: any
+): McuExecutionResult & { newState: any } {
   let mcuTimeMs = 0;
   const pwlOutputs: Record<string, PWLPoint[]> = {};
   const pinModes: Record<string, 'INPUT' | 'OUTPUT'> = {};
   const logs: string[] = [];
   const simLengthMs = simLengthSeconds * 1000;
+  const state = initialState || {};
+
 
   function getVoltageAtTime(pin: string, timeMs: number): number {
     const wave = inputWaveforms[pin];
@@ -43,6 +46,8 @@ export function executeMcuCode(
     LOW: 0,
     INPUT: 'INPUT',
     OUTPUT: 'OUTPUT',
+    state,
+    simLength: simLengthMs,
     pinMode: (pin: string, mode: 'INPUT' | 'OUTPUT') => {
        pinModes[pin] = mode;
        if (mode === 'OUTPUT' && !pwlOutputs[pin]) {
@@ -53,6 +58,8 @@ export function executeMcuCode(
        if (pinModes[pin] !== 'OUTPUT') return;
        const out = pwlOutputs[pin];
        const v = val ? 5 : 0;
+       
+       if (out.length > 0 && out[out.length - 1].v === v) return;
        
        if (out.length > 0 && out[out.length - 1].t === mcuTimeMs) {
          out[out.length - 1].v = v;
@@ -68,6 +75,8 @@ export function executeMcuCode(
        if (pinModes[pin] !== 'OUTPUT') return;
        const out = pwlOutputs[pin];
        const v = (Math.max(0, Math.min(255, val)) / 255) * 5; 
+       
+       if (out.length > 0 && out[out.length - 1].v === v) return;
        
        if (out.length > 0 && out[out.length - 1].t === mcuTimeMs) {
          out[out.length - 1].v = v;
@@ -125,5 +134,5 @@ export function executeMcuCode(
      }
   }
 
-  return { pwlOutputs, pinModes, logs };
+  return { pwlOutputs, pinModes, logs, newState: state };
 }
