@@ -23,6 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 *.txt
+!src/components/systemInstructions.txt
 output*
 *.pid
 revert.js
