@@ -1,6 +1,7 @@
 import { Handle, Position, NodeResizer } from '@xyflow/react';
 import { useMemo } from 'react';
 import { computeFFT } from '../../utils/fft';
+import { detectPeriod } from '../../utils/periodDetect';
 import type { NodePropertiesProps } from './registry';
 
 export function ScopeProperties({ node, updateData }: NodePropertiesProps) {
@@ -20,6 +21,10 @@ export function ScopeProperties({ node, updateData }: NodePropertiesProps) {
         <input type="checkbox" id="scope-fft" checked={!!node.data.showFFT} onChange={e => updateData('showFFT', e.target.checked)} />
         <label htmlFor="scope-fft" className="text-xs font-medium text-gray-700">FFT Mode (Frequency Spectrum)</label>
       </div>
+      <div className="mb-3 flex items-center gap-2">
+        <input type="checkbox" id="scope-period" checked={node.data.showPeriod !== false} onChange={e => updateData('showPeriod', e.target.checked)} />
+        <label htmlFor="scope-period" className="text-xs font-medium text-gray-700">Auto-detect period/frequency</label>
+      </div>
     </>
   );
 }
@@ -27,6 +32,15 @@ export function ScopeProperties({ node, updateData }: NodePropertiesProps) {
 // Standard V/div values
 const VDIV_STEPS = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50];
 const TDIV_STEPS = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500]; // ms
+
+function formatPeriod(ms: number): string {
+  return ms >= 1 ? `${ms.toFixed(ms >= 100 ? 0 : 2)}ms` : `${(ms * 1000).toFixed(1)}µs`;
+}
+
+function formatFreq(hz: number): string {
+  if (hz >= 1000) return `${(hz / 1000).toFixed(2)}kHz`;
+  return `${hz.toFixed(hz >= 10 ? 1 : 3)}Hz`;
+}
 
 function pickStep(range: number, divs: number, steps: number[]): number {
   const idealDiv = range / divs;
@@ -58,6 +72,12 @@ export function ScopeNode({ data, selected }: any) {
 
   const vDiv = data.vDiv ?? autoVDiv;
   const tDiv = data.tDiv ?? autoTDiv;
+
+  const showPeriod = data.showPeriod !== false;
+  const periodEstimate = useMemo(() => {
+    if (!showPeriod || showFFT) return null;
+    return detectPeriod(points1.length >= 8 ? points1 : points2);
+  }, [showPeriod, showFFT, points1, points2]);
 
   // FFT computation
   const fftBins = useMemo(() => {
@@ -163,6 +183,12 @@ export function ScopeNode({ data, selected }: any) {
           </svg>
         ) : (
           <span className="text-gray-500 text-[8px] uppercase tracking-wider">No Data</span>
+        )}
+
+        {periodEstimate && (
+          <div className="absolute bottom-0.5 left-1 z-20 text-[8px] font-mono text-lime-400 bg-black/40 px-1 rounded leading-tight pointer-events-none">
+            T: {formatPeriod(periodEstimate.periodMs)} &nbsp;f: {formatFreq(periodEstimate.freqHz)}
+          </div>
         )}
       </div>
 

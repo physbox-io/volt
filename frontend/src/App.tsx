@@ -35,6 +35,7 @@ import { Sidebar } from './components/Sidebar';
 import { PropertiesPanel } from './components/PropertiesPanel';
 import { FlowArea } from './components/FlowArea';
 import { ProbeTooltip } from './components/ProbeTooltip';
+import { HILMemoizer } from './utils/hilMemoizer';
 
 
 let simulationWorker: Worker | null = null;
@@ -188,6 +189,7 @@ export default function App() {
   // observed edge spacing once that pin is actually toggling.
   const hilHalfPeriodMsRef = useRef<Record<string, number>>({});
   const hilWaitingForCommandRef = useRef(false);
+  const hilMemoizerRef = useRef(new HILMemoizer());
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
@@ -204,6 +206,7 @@ export default function App() {
     // (it self-perpetuates via recursive setTimeout with no other way to cancel it).
     hilRunningRef.current = false;
     hilBackgroundPollActiveRef.current = false;
+    hilMemoizerRef.current.clear();
     if (hilSocketRef.current && hilConnectedRef.current) {
       try {
         const heltecNode = nodes.find(n => n.type === 'heltec_v4');
@@ -892,12 +895,115 @@ export default function App() {
         hilPrevValuesRef.current = { ...hilValuesRef.current };
       }
 
-      const { netlist, portToNet } = generateSpiceNetlist(nextNodes, edgesRef.current, netlistDurationMs / 1000, 'normal', mcuWaveforms, hilInitialConditionsRef.current, hilMaxStepMs);
+      // Configure HILMemoizer options from component properties
+      const memoizer = hilMemoizerRef.current;
+      memoizer.enabled = typeof activeHILNode.data.hilMemoizationEnabled === 'boolean' ? activeHILNode.data.hilMemoizationEnabled : true;
+      memoizer.inputDP = typeof activeHILNode.data.hilInputDP === 'number' ? activeHILNode.data.hilInputDP : 3;
+      memoizer.icDP = typeof activeHILNode.data.hilIcDP === 'number' ? activeHILNode.data.hilIcDP : 3;
+      memoizer.maxConsecutiveHits = typeof activeHILNode.data.hilMaxConsecutiveHits === 'number' ? activeHILNode.data.hilMaxConsecutiveHits : 50;
 
-      const result = await runSimInWorker(netlist);
+      if (activeHILNode.data.hilClearCacheRequested) {
+        memoizer.clear();
+        setNodes(nds => nds.map(n => n.id === activeHILNode.id ? { ...n, data: { ...n.data, hilClearCacheRequested: undefined } } : n));
+      }
+
+      const curInputs = { ...hilValuesRef.current };
+      const curICs = { ...hilInitialConditionsRef.current };
+      const cachedSlice = memoizer.get(curInputs, curICs, netlistDurationMs, hilMaxStepMs);
+
+      let result: any;
+      let portToNet: Record<string, string>;
+      let nextICs: Record<string, number>;
+      let outputs: Record<string, any>;
+      let writes: { pin: number; seq: [number, number][] }[];
+      let reads: { pin: number; type: 'analog' | 'digital' }[];
+
+      if (cachedSlice) {
+        // CACHE HIT: Bypass SPICE WASM solver run
+        result = cachedSlice.result;
+        portToNet = cachedSlice.portToNet;
+        nextICs = cachedSlice.nextICs;
+        outputs = cachedSlice.outputs;
+        writes = cachedSlice.writes;
+        reads = cachedSlice.reads;
+        hilHalfPeriodMsRef.current = { ...cachedSlice.halfPeriods };
+      } else {
+        // CACHE MISS: Run SPICE WASM simulation
+        const netlistRes = generateSpiceNetlist(nextNodes, edgesRef.current, netlistDurationMs / 1000, 'normal', mcuWaveforms, hilInitialConditionsRef.current, hilMaxStepMs);
+        portToNet = netlistRes.portToNet;
+
+        result = await runSimInWorker(netlistRes.netlist);
+        const resultIndex = buildNetlistResultIndex(result);
+
+        const lastIndex = result.numPoints - 1;
+        nextICs = {};
+        if (result.variableNames && result.data && result.data.length > 0) {
+          result.variableNames.forEach((name: string, i: number) => {
+            if (name.startsWith('v(') && name.endsWith(')')) {
+              const nodeName = name.slice(2, -1);
+              nextICs[nodeName] = result.data[i].values[lastIndex];
+            }
+          });
+        }
+
+        outputs = {};
+        const pins = (activeHILNode.data.pins as Record<string, string>) || {};
+        for (const pinId of HELTEC_V4_GPIO_PINS) {
+          if (pins[pinId] === 'digital_out') {
+            const seq: [number, number][] = [];
+            const net = portToNet[`${activeHILNode.id}-${pinId}`];
+            const graph = findNetGraph(result, net, resultIndex);
+            const threshold = 1.65; // half of 3.3V logic level
+            const MIN_PULSE_US = hilMaxStepMs * 1000 * 1.5;
+            let shortestPulseUs: number | null = null;
+            if (graph && graph.timestamps_ms.length > 0) {
+              let lastState = graph.voltage_levels[0] > threshold ? 1 : 0;
+              let lastT = 0;
+              for (let i = 1; i < graph.timestamps_ms.length; i++) {
+                const state = graph.voltage_levels[i] > threshold ? 1 : 0;
+                if (state !== lastState) {
+                  const t = graph.timestamps_ms[i];
+                  const durationUs = (t - lastT) * 1000;
+                  if (durationUs < MIN_PULSE_US) continue;
+                  seq.push([lastState, Math.round(durationUs)]);
+                  if (shortestPulseUs === null || durationUs < shortestPulseUs) shortestPulseUs = durationUs;
+                  lastState = state;
+                  lastT = t;
+                }
+              }
+              seq.push([lastState, Math.round((sliceDurationMs - lastT) * 1000)]);
+            } else {
+              seq.push([0, Math.round(sliceDurationMs * 1000)]);
+            }
+            if (shortestPulseUs !== null) {
+              const alpha = 0.3;
+              const prev = hilHalfPeriodMsRef.current[pinId] ?? 50;
+              hilHalfPeriodMsRef.current[pinId] = alpha * (shortestPulseUs / 1000) + (1 - alpha) * prev;
+            }
+            outputs[pinId] = seq;
+          }
+        }
+
+        const connectedPins = getConnectedHeltecPinsCached(activeHILNode.id);
+        const builtCmd = buildHILSliceCommand(pins, outputs, connectedPins);
+        writes = builtCmd.writes;
+        reads = builtCmd.reads;
+
+        memoizer.set(curInputs, curICs, netlistDurationMs, hilMaxStepMs, {
+          result,
+          portToNet,
+          nextICs,
+          outputs,
+          writes,
+          reads,
+          halfPeriods: { ...hilHalfPeriodMsRef.current }
+        });
+      }
+
       lastSimulatedResultRef.current = result;
       lastPortToNetRef.current = portToNet;
       lastSliceDurationRef.current = netlistDurationMs;
+      lastSimulatedVoltagesRef.current = outputs;
       const resultIndex = buildNetlistResultIndex(result);
 
       // Stream simulated speaker audio to the CYD board over WebSocket
@@ -961,21 +1067,7 @@ export default function App() {
         }
       }
 
-      const lastIndex = result.numPoints - 1;
-      const nextICs: Record<string, number> = {};
-      if (result.variableNames && result.data && result.data.length > 0) {
-        result.variableNames.forEach((name: string, i: number) => {
-          if (name.startsWith('v(') && name.endsWith(')')) {
-            const nodeName = name.slice(2, -1);
-            nextICs[nodeName] = result.data[i].values[lastIndex];
-          }
-        });
-      }
-      // Carry ICs forward so the VCO's oscillation phase continues seamlessly across slice
-      // boundaries instead of restarting each time. This previously caused escalating
-      // ngspice convergence failure ("Timestep too small... trouble with node X") — root cause
-      // was the transistor model having CJC=0/CJE=0/TR=0/TF=0 (zero switching timescale, see
-      // spice.ts), not IC-carrying itself; fixed there.
+      // Carry ICs forward
       hilInitialConditionsRef.current = nextICs;
       setInitialConditions(nextICs);
 
@@ -983,63 +1075,6 @@ export default function App() {
       hilAccumTimeRef.current = newAccum;
       const newNetlistAccum = hilNetlistAccumTimeRef.current + netlistDurationMs;
       hilNetlistAccumTimeRef.current = newNetlistAccum;
-
-      const outputs: Record<string, any> = {};
-      const pins = (activeHILNode.data.pins as Record<string, string>) || {};
-      for (const pinId of HELTEC_V4_GPIO_PINS) {
-        if (pins[pinId] === 'digital_out') {
-          // Any digital_out pin's hardware toggle sequence is derived the same way: whatever
-          // the simulated circuit is actually doing at this pin's net, turned into a digital
-          // sequence by threshold-crossing detection — not specific to any one circuit or pin.
-          const seq: [number, number][] = [];
-          const net = portToNet[`${activeHILNode.id}-${pinId}`];
-          const graph = findNetGraph(result, net, resultIndex);
-          const threshold = 1.65; // half of 3.3V logic level
-          // Below this, a "transition" can't be trusted as a real toggle rather than solver
-          // reporting noise right at a switching edge — absorb it into the surrounding state
-          // instead of emitting a spurious near-zero-width pulse. Scaled to the resolution
-          // actually used this slice (hilMaxStepMs above), not a flat constant: a fixed
-          // microsecond cutoff would silently start eating genuine fast transitions once
-          // real half-periods approached that same number, capping max frequency for reasons
-          // that have nothing to do with the simulation's actual resolution.
-          const MIN_PULSE_US = hilMaxStepMs * 1000 * 1.5;
-          let shortestPulseUs: number | null = null;
-          if (graph && graph.timestamps_ms.length > 0) {
-            let lastState = graph.voltage_levels[0] > threshold ? 1 : 0;
-            let lastT = 0;
-            for (let i = 1; i < graph.timestamps_ms.length; i++) {
-              const state = graph.voltage_levels[i] > threshold ? 1 : 0;
-              if (state !== lastState) {
-                const t = graph.timestamps_ms[i];
-                const durationUs = (t - lastT) * 1000;
-                if (durationUs < MIN_PULSE_US) continue;
-                seq.push([lastState, Math.round(durationUs)]);
-                if (shortestPulseUs === null || durationUs < shortestPulseUs) shortestPulseUs = durationUs;
-                lastState = state;
-                lastT = t;
-              }
-            }
-            seq.push([lastState, Math.round((sliceDurationMs - lastT) * 1000)]);
-          } else {
-            seq.push([0, Math.round(sliceDurationMs * 1000)]);
-          }
-          // Track this pin's shortest real half-period we've actually seen (EMA-smoothed) so
-          // the NEXT slice's netlist resolution (hilMaxStepMs above) can scale to match.
-          if (shortestPulseUs !== null) {
-            const alpha = 0.3;
-            const prev = hilHalfPeriodMsRef.current[pinId] ?? 50;
-            hilHalfPeriodMsRef.current[pinId] = alpha * (shortestPulseUs / 1000) + (1 - alpha) * prev;
-          }
-          outputs[pinId] = seq;
-        }
-      }
-      lastSimulatedVoltagesRef.current = outputs;
-
-      // Enqueue this computed slice — dispatch immediately (alone) if the device
-      // is already idle waiting for one, otherwise add it to the lookahead buffer
-      // where it may get batched with neighboring slices before it's sent.
-      const connectedPins = getConnectedHeltecPinsCached(activeHILNode.id);
-      const { writes, reads } = buildHILSliceCommand(pins, outputs, connectedPins);
 
       if (hilWaitingForCommandRef.current && hilSocketRef.current && hilSocketRef.current.readyState === WebSocket.OPEN) {
         lastSendTimeRef.current = performance.now();
@@ -1049,6 +1084,10 @@ export default function App() {
         hilQueueRef.current.push({ writes, reads, durationMs: sliceDurationMs });
         hilQueuedMsRef.current += sliceDurationMs;
       }
+
+      // Update live memoization stats on node data for PropertiesPanel
+      const currentStats = memoizer.getStats();
+      setNodes(nds => nds.map(n => n.id === activeHILNode.id ? { ...n, data: { ...n.data, hilStats: currentStats } } : n));
 
       // Update scope/LED history every slice (needed for correct, gap-free traces),
       // but don't build a full node array + setNodes here — topUpHILQueue calls this

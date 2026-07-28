@@ -10,6 +10,10 @@ export function heltecV4DefaultData() {
     label: 'Heltec V4',
     ip: '192.168.1.244',
     hilExecutionMode: 'native',
+    hilMemoizationEnabled: true,
+    hilInputDP: 3,
+    hilIcDP: 3,
+    hilMaxConsecutiveHits: 50,
     pins: {
       GPIO_1: 'analog_in',
       GPIO_3: 'digital_out',
@@ -31,6 +35,12 @@ export function heltecV4DefaultData() {
 }
 
 export function HeltecV4Properties({ node, updateData, isSimulating }: NodePropertiesProps) {
+  const memoEnabled = node.data.hilMemoizationEnabled ?? true;
+  const inputDP = node.data.hilInputDP ?? 3;
+  const icDP = node.data.hilIcDP ?? 3;
+  const maxHits = node.data.hilMaxConsecutiveHits ?? 50;
+  const stats = node.data.hilStats || null;
+
   return (
     <>
       <div className="mb-3">
@@ -55,6 +65,90 @@ export function HeltecV4Properties({ node, updateData, isSimulating }: NodePrope
           <option value="native">Native (single UART transaction)</option>
           <option value="legacy">Legacy (per-op UART)</option>
         </select>
+      </div>
+
+      {/* State Memoization (Caching) Settings */}
+      <div className="border-t border-slate-200 dark:border-slate-800 pt-3 mt-3">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">State Memoization (Cache)</h4>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={memoEnabled}
+              onChange={e => updateData('hilMemoizationEnabled', e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-7 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
+          </label>
+        </div>
+
+        {memoEnabled && (
+          <div className="space-y-2 bg-slate-50 dark:bg-slate-950/50 p-2 rounded border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-600 dark:text-slate-400">Input Precision (DP)</span>
+              <select
+                value={inputDP}
+                onChange={e => updateData('hilInputDP', parseInt(e.target.value, 10))}
+                className="text-xs border border-gray-300 dark:border-slate-800 rounded px-1.5 py-0.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+              >
+                <option value={1}>1 DP (0.1V)</option>
+                <option value={2}>2 DP (10mV)</option>
+                <option value={3}>3 DP (1mV)</option>
+                <option value={4}>4 DP (0.1mV)</option>
+              </select>
+            </div>
+
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-600 dark:text-slate-400">Initial Cond. (DP)</span>
+              <select
+                value={icDP}
+                onChange={e => updateData('hilIcDP', parseInt(e.target.value, 10))}
+                className="text-xs border border-gray-300 dark:border-slate-800 rounded px-1.5 py-0.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+              >
+                <option value={1}>1 DP (0.1V)</option>
+                <option value={2}>2 DP (10mV)</option>
+                <option value={3}>3 DP (1mV)</option>
+                <option value={4}>4 DP (0.1mV)</option>
+              </select>
+            </div>
+
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-600 dark:text-slate-400">Max Hit Limit</span>
+              <input
+                type="number"
+                min={5}
+                max={500}
+                value={maxHits}
+                onChange={e => updateData('hilMaxConsecutiveHits', parseInt(e.target.value, 10) || 50)}
+                className="w-16 text-xs border border-gray-300 dark:border-slate-800 rounded px-1.5 py-0.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-right"
+              />
+            </div>
+
+            {stats && (
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-800 text-[10px] font-mono space-y-1">
+                <div className="flex justify-between text-slate-700 dark:text-slate-300 font-bold">
+                  <span>Hit Rate:</span>
+                  <span className="text-emerald-500">{stats.hitRatePct}%</span>
+                </div>
+                <div className="flex justify-between text-slate-500">
+                  <span>Hits / Misses:</span>
+                  <span>{stats.hits} / {stats.misses}</span>
+                </div>
+                <div className="flex justify-between text-slate-500">
+                  <span>Cache Size:</span>
+                  <span>{stats.entryCount} entries</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updateData('hilClearCacheRequested', Date.now())}
+                  className="w-full mt-1.5 text-[10px] py-0.5 px-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded font-sans transition-colors"
+                >
+                  Clear Cache
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="border-t border-slate-200 dark:border-slate-800 pt-2 mt-2">
