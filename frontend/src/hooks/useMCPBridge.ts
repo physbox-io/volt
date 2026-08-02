@@ -4,6 +4,8 @@
 
 import { useEffect, useRef } from 'react';
 import type { Node, Edge } from '@xyflow/react';
+import { presets as builtinPresets } from '../utils/presets';
+import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey } from '../utils/storage';
 
 interface BridgeProps {
   nodes: Node[];
@@ -238,6 +240,117 @@ export function useMCPBridge(props: BridgeProps) {
             values,
             voltageData
           };
+        }
+
+        case 'VALIDATE_CIRCUIT': {
+          const targetNodes = Array.isArray(msg.nodes) ? msg.nodes : nodes;
+          const targetEdges = Array.isArray(msg.edges) ? msg.edges : edges;
+          const errors: string[] = [];
+          const warnings: string[] = [];
+
+          const hasGround = targetNodes.some((n: any) => n.type === 'ground');
+          if (!hasGround) {
+            warnings.push('No Ground (GND) reference node found. SPICE simulations require at least one ground connection to prevent floating net errors.');
+          }
+
+          const nodeMap = new Map<string, any>(targetNodes.map((n: any) => [n.id, n]));
+
+          targetEdges.forEach((e: any) => {
+            if (!nodeMap.has(e.source)) {
+              errors.push(`Edge ${e.id} references missing source node: ${e.source}`);
+            }
+            if (!nodeMap.has(e.target)) {
+              errors.push(`Edge ${e.id} references missing target node: ${e.target}`);
+            }
+          });
+
+          return {
+            ok: errors.length === 0,
+            hasGround,
+            errors,
+            warnings,
+            connectedEdgeCount: targetEdges.length,
+            nodeCount: targetNodes.length,
+          };
+        }
+
+        case 'LIST_PRESETS': {
+          const userPresets = loadUserPresets();
+          const allKeys = Array.from(new Set([...Object.keys(builtinPresets), ...Object.keys(userPresets)]));
+          return allKeys;
+        }
+
+        case 'SAVE_PRESET': {
+          const name = String(msg.name || '').trim();
+          if (!name) return { ok: false, error: 'Missing name parameter' };
+          const key = msg.key || nameToKey(name);
+          const presetObj = {
+            name,
+            nodes,
+            edges,
+            recommendedSimLength: msg.recommendedSimLength,
+            noteCard: msg.noteCard,
+          };
+          addUserPreset(key, presetObj);
+          return { ok: true, name, key };
+        }
+
+        case 'DELETE_PRESET': {
+          const key = String(msg.key || '').trim();
+          if (!key) return { ok: false, error: 'Missing key parameter' };
+          removeUserPreset(key);
+          return { ok: true, key };
+        }
+
+        case 'GET_SUMMARY': {
+          const nodeSummaries = nodes.map(n => ({
+            id: n.id,
+            type: n.type,
+            position: n.position,
+            label: n.data?.label,
+            value: n.data?.value,
+          }));
+          return {
+            nodes: nodeSummaries,
+            edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label }))
+          };
+        }
+
+        case 'SET_CIRCUIT': {
+          if (!Array.isArray(msg.nodes) || !Array.isArray(msg.edges)) {
+            return { ok: false, error: 'nodes and edges must both be arrays' };
+          }
+          setNodes(msg.nodes);
+          setEdges(msg.edges);
+          if (msg.runSim !== false) {
+            const simRes = await runSimulation(msg.nodes);
+            return { ok: true, simResult: simRes || { ok: true } };
+          }
+          return { ok: true };
+        }
+
+        case 'SCREENSHOT': {
+          const flowEl = document.querySelector('.react-flow') as HTMLElement;
+          if (!flowEl) return { ok: false, error: 'React Flow element container not found' };
+          try {
+            const width = flowEl.clientWidth || 800;
+            const height = flowEl.clientHeight || 600;
+            const svgEl = flowEl.querySelector('svg.react-flow__edges') || flowEl.querySelector('svg');
+            const svgString = svgEl ? new XMLSerializer().serializeToString(svgEl) : '';
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.fillStyle = document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc';
+              ctx.fillRect(0, 0, width, height);
+            }
+            // Create data URL representation
+            const dataUrl = canvas.toDataURL('image/png');
+            return { ok: true, dataUrl, width, height };
+          } catch (e) {
+            return { ok: false, error: String(e) };
+          }
         }
 
         case 'LOAD_PRESET': {
