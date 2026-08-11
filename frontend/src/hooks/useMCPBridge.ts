@@ -335,8 +335,6 @@ export function useMCPBridge(props: BridgeProps) {
           try {
             const width = flowEl.clientWidth || 800;
             const height = flowEl.clientHeight || 600;
-            const svgEl = flowEl.querySelector('svg.react-flow__edges') || flowEl.querySelector('svg');
-            const svgString = svgEl ? new XMLSerializer().serializeToString(svgEl) : '';
             const canvas = document.createElement('canvas');
             canvas.width = width;
             canvas.height = height;

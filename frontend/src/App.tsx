@@ -16,8 +16,9 @@ import { HELTEC_V4_GPIO_PINS } from './components/nodes/HeltecV4Node';
 import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
 import { buildNetlistResultIndex, findNetGraph } from './utils/netlistResult';
 import { isPortConnected } from './utils/graphTopology';
-import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity } from 'lucide-react';
+import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Scissors } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
+import { ExportPcbModal } from './components/ExportPcbModal';
 import { playbackTicker } from './utils/playbackTicker';
 import { presets, DEFAULT_PRESET_KEY } from './utils/presets';
 import { EdgePathProvider } from './components/AuraEdge';
@@ -137,6 +138,7 @@ export default function App() {
   const [isDocsOpen, setIsDocsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showAICopilot, setShowAICopilot] = useState(false);
+  const [isPcbModalOpen, setIsPcbModalOpen] = useState(false);
   const [showAura, setShowAura] = useState(savedSettings.showAura ?? false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
   const [probeMode, setProbeMode] = useState(false);
@@ -1641,6 +1643,14 @@ export default function App() {
               <Upload className="w-3.5 h-3.5" />
             </button>
 
+            <button
+              onClick={() => setIsPcbModalOpen(true)}
+              className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-amber-600 dark:text-amber-400 transition-colors focus:outline-none cursor-pointer"
+              title="Export / Mill PCB (CNC & WebSerial)"
+            >
+              <Scissors className="w-3.5 h-3.5" />
+            </button>
+
             <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
 
             <button
@@ -1823,6 +1833,14 @@ export default function App() {
             setNodes={setNodes}
             setEdges={setEdges}
             onClose={() => setShowAICopilot(false)}
+          />
+        )}
+        {isPcbModalOpen && (
+          <ExportPcbModal
+            onClose={() => setIsPcbModalOpen(false)}
+            nodes={nodes}
+            edges={edges}
+            onOpenAICopilot={() => setShowAICopilot(true)}
           />
         )}
         {isDocsOpen && <DocsModal onClose={() => setIsDocsOpen(false)} />}

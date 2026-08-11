@@ -36,7 +36,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.`;
 
 export function DocsModal({ onClose }: DocsModalProps) {
-  const [activeTab, setActiveTab] = useState<'about' | 'usage' | 'simulation' | 'audio' | 'license'>('about');
+  const [activeTab, setActiveTab] = useState<'about' | 'usage' | 'simulation' | 'audio' | 'milling' | 'license'>('about');
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -88,6 +88,16 @@ export function DocsModal({ onClose }: DocsModalProps) {
               }`}
             >
               Usage Guide
+            </button>
+            <button
+              onClick={() => setActiveTab('milling')}
+              className={`text-left px-4 py-2 rounded-md font-medium transition-colors cursor-pointer ${
+                activeTab === 'milling'
+                  ? 'bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 font-semibold'
+                  : 'text-slate-650 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              PCB Milling
             </button>
             <button
               onClick={() => setActiveTab('license')}
@@ -212,6 +222,80 @@ export function DocsModal({ onClose }: DocsModalProps) {
                   <li><strong>AC Couple:</strong> When enabled, the simulator calculates the average DC offset of the recorded signal and subtracts it before playback. This is essential for listening to signals riding on a DC bias (e.g., a transistor collector output).</li>
                   <li><strong>Normalize:</strong> Automatically calculates the peak voltage across the entire simulation run and scales the audio so that the loudest point is exactly 80% volume. This overrides the manual <em>Scale</em> setting to ensure a consistent listening experience.</li>
                 </ul>
+              </div>
+            )}
+            {activeTab === 'milling' && (
+              <div className="prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 leading-relaxed">
+                <h3 className="text-2xl font-bold mb-4">PCB Milling &amp; Auto-Levelling</h3>
+                <p className="mb-4">
+                  <strong>Export &rarr; PCB Milling</strong> turns your schematic into a single-sided copper board:
+                  it places footprints, routes traces, and generates isolation, drilling, and profile toolpaths.
+                  You can download the G-code and drill files for another sender, or drive a GRBL machine
+                  directly from the browser over WebSerial.
+                </p>
+
+                <h4 className="text-xl font-semibold mb-2 mt-6">Why auto-levelling matters</h4>
+                <p className="mb-4">
+                  Isolation milling cuts only about 0.05&ndash;0.1&nbsp;mm deep &mdash; barely more than the copper
+                  foil is thick. A copper-clad blank is never perfectly flat, and it does not need to be very
+                  unflat to ruin a board: a 0.2&nbsp;mm bow across the work is enough that one corner cuts air
+                  and leaves the traces shorted while the opposite corner ploughs through into the fibreglass.
+                </p>
+                <p className="mb-4">
+                  Auto-levelling measures the actual shape of the board before cutting. The bit is used as an
+                  electrical probe: it descends slowly at each of 16 points until it touches copper, and the
+                  machine reports exactly where contact happened. Those readings become a heightmap, and every
+                  cutting move is then subdivided into ~1&nbsp;mm segments whose Z is interpolated across that
+                  map. The cut follows the warp of the board instead of an idealised flat plane, so isolation
+                  depth stays even everywhere.
+                </p>
+
+                <h4 className="text-xl font-semibold mb-2 mt-6">Wiring the probe</h4>
+                <p className="mb-4">
+                  You do not need a touch plate. On copper-clad the board itself is the plate &mdash; both
+                  leads clip to conductive things that are already on the machine:
+                </p>
+                <ul className="list-disc pl-6 mb-4 space-y-1">
+                  <li><strong>One clip &rarr; the bit</strong>, on the shank above the flutes, or on the collet nut.</li>
+                  <li><strong>Other clip &rarr; the copper</strong>, at an edge or corner outside the area being milled. Under a hold-down screw works well.</li>
+                </ul>
+                <p className="mb-4">
+                  Polarity does not matter; it is just a continuity circuit that closes when the bit touches
+                  copper. Do <em>not</em> clip to the spindle body or the machine frame &mdash; the path through
+                  the spindle bearings is intermittent and produces false triggers.
+                </p>
+
+                <h4 className="text-xl font-semibold mb-2 mt-6">Workflow</h4>
+                <ul className="list-disc pl-6 mb-4 space-y-1">
+                  <li><strong>1. Fix the board down</strong> and scuff the copper with a scotch pad. Oxide and finger grease are surprisingly good insulators, and a probe that skims without triggering is the failure mode that ends badly.</li>
+                  <li><strong>2. Clip both probe leads on</strong> as described above.</li>
+                  <li><strong>3. Jog to the board's bottom-left corner</strong> and press <strong>Zero XY here</strong>. That corner is the origin of every coordinate in the generated G-code.</li>
+                  <li><strong>4. Press <strong>Zero Z on copper</strong></strong>. The bit descends slowly, stops on contact, and sets Z0 there. This corner is also the reference the heightmap is measured against.</li>
+                  <li><strong>5. Start the spindle and press <strong>Level &amp; Mill PCB</strong>.</strong> It probes the 4&times;4 mesh (a minute or two), warps the toolpaths, then streams the job.</li>
+                </ul>
+                <p className="mb-4">
+                  The job pauses at each tool change. Swap the bit, <strong>re-zero Z on the copper</strong>
+                  &mdash; a new tool is a different length, so the old Z0 no longer means anything &mdash; and
+                  press <strong>Resume</strong>. The heightmap itself stays valid across tool changes, because
+                  the board has not moved.
+                </p>
+
+                <h4 className="text-xl font-semibold mb-2 mt-6">Things that catch people out</h4>
+                <ul className="list-disc pl-6 mb-4 space-y-1">
+                  <li><strong>Probe before milling, not after.</strong> Right now the copper is one continuous sheet, so every point has continuity back to your clip. Once isolation routing has cut it into islands, most of the board is connected to nothing and probe points landing on an island will simply miss.</li>
+                  <li><strong>The probe only searches 3&nbsp;mm below Z0.</strong> That covers normal FR4 bow. A badly warped offcut reports "probe did not contact the surface" and aborts rather than plunging.</li>
+                  <li><strong>A reading of exactly 0.000&nbsp;mm warp is a red flag,</strong> not a flat board. It almost always means the probe circuit never closed. The panel says so when it happens.</li>
+                  <li><strong>Resizing the board discards the heightmap.</strong> A map only describes the board it was probed on, and stretching it over a larger area would silently apply edge values to the new region.</li>
+                  <li><strong>Dry-run the first time.</strong> Do the Zero Z step with the bit a few mm clear of the board and touch it to the copper by hand &mdash; it should stop instantly.</li>
+                </ul>
+
+                <h4 className="text-xl font-semibold mb-2 mt-6">What is not compensated</h4>
+                <p className="mb-4">
+                  Levelling applies to straight-line cutting moves. Arcs, canned drilling cycles, and moves
+                  issued in relative (G91) mode pass through at their commanded depth. The generated toolpaths
+                  contain none of these, but if you hand-edit the G-code the WebSerial panel will tell you what
+                  it could not compensate.
+                </p>
               </div>
             )}
             {activeTab === 'license' && (

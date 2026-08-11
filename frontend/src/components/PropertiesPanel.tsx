@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { ORIENTABLE_NODE_TYPES, ORIENTATION_HANDLE_REMAP } from '../utils/nodeGeometry';
 import { getNodeDefaultName } from '../utils/nodeNaming';
 import { datasheets } from '../utils/datasheets';
+import { defaultPackageForType } from '../utils/pcbFootprints';
 import { nodeRegistry } from './nodes/registry';
 
 const ORIENTATION_SELECTABLE_TYPES = ['resistor', 'capacitor', 'inductor', 'diode', 'zener', 'led', 'switch', 'voltage', 'acvoltage', 'currentsource'];
@@ -201,7 +202,52 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
           <X size={20} />
         </button>
       </div>
-      <div className="text-[10px] text-slate-400 dark:text-slate-500 mb-4 font-mono">ID: {selectedNode.id}</div>
+      <div className="text-[10px] text-slate-400 dark:text-slate-500 mb-3 font-mono">ID: {selectedNode.id}</div>
+
+      {/* PCB Package Footprint Selector */}
+      <div className="mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+          <span>PCB Footprint Package</span>
+          <span className="text-[10px] text-indigo-500 font-mono font-bold">CNC Milling</span>
+        </label>
+        <select
+          value={
+            (selectedNode.data?.packageId as string) ||
+            defaultPackageForType(selectedNode.type) ||
+            '0805'
+          }
+          onChange={e => updateData('packageId', e.target.value)}
+          className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-indigo-500 focus:outline-none cursor-pointer"
+        >
+          <optgroup label="Through-Hole (THT)">
+            <option value="AXIAL-0.3">Axial Resistor/Diode (0.3" / 7.62mm pitch)</option>
+            <option value="LED-5MM">Radial 5mm THT (LED / Capacitor)</option>
+            <option value="DIP-8">DIP-8 IC Package</option>
+            <option value="DIP-14">DIP-14 IC Package</option>
+            <option value="DIP-16">DIP-16 IC Package</option>
+            <option value="TO-220">TO-220 Power Package (Regulator / MOSFET)</option>
+            <option value="TO-92">TO-92 Small Signal Transistor (BJT)</option>
+            <option value="DIP-10">DIP-10 (7-Segment Display)</option>
+            <option value="RADIAL-5MM">Radial 5mm (Electrolytic / LDR)</option>
+            <option value="POT-3PIN">Potentiometer (3-Pin, 2.54mm)</option>
+            <option value="TRANSFORMER-4P">Transformer (2 Primary / 2 Secondary)</option>
+            <option value="TACT-4PIN">6x6mm Tactile Switch</option>
+            <option value="HEADER-1x02">2-Pin Header (2.54mm pitch)</option>
+            <option value="HEADER-1x03">3-Pin Header (2.54mm pitch)</option>
+            <option value="HEADER-1x04">4-Pin Header (2.54mm pitch)</option>
+            <option value="HEADER-1x06">6-Pin Header (2.54mm pitch)</option>
+            <option value="HEADER-1x08">8-Pin Header (2.54mm pitch)</option>
+            <option value="TERMINAL-2P">5.08mm Screw Terminal (2-Pin)</option>
+            <option value="TERMINAL-3P">5.08mm Screw Terminal (3-Pin)</option>
+          </optgroup>
+          <optgroup label="Surface Mount (SMD)">
+            <option value="0805">SMD 0805 Passive (2.0 x 1.25mm)</option>
+            <option value="1206">SMD 1206 Passive (3.2 x 1.6mm)</option>
+            <option value="SOIC-8">SOIC-8 Surface Mount IC</option>
+            <option value="SOT-23">SOT-23 Surface Mount Transistor</option>
+          </optgroup>
+        </select>
+      </div>
 
       {ORIENTATION_SELECTABLE_TYPES.includes(selectedNode.type || '') && (
         <div className="mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
