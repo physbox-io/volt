@@ -23,6 +23,7 @@ import { playbackTicker } from './utils/playbackTicker';
 import { presets, DEFAULT_PRESET_KEY } from './utils/presets';
 import { EdgePathProvider } from './components/AuraEdge';
 import { SettingsModal } from './components/SettingsModal';
+import { UserProfileButton } from './components/UserProfileButton';
 import { loadSettings, saveSettings } from './utils/storage';
 import { useMCPBridge } from './hooks/useMCPBridge';
 import { usePresets } from './hooks/usePresets';
@@ -1718,6 +1719,9 @@ export default function App() {
           >
             <Sparkles className="w-4 h-4" />
           </button>
+
+          {/* User Profile & Cloud Sync */}
+          <UserProfileButton />
 
           {/* GitHub link */}
           <a
