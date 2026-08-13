@@ -16,7 +16,7 @@ import { HELTEC_V4_GPIO_PINS } from './components/nodes/HeltecV4Node';
 import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
 import { buildNetlistResultIndex, findNetGraph } from './utils/netlistResult';
 import { isPortConnected } from './utils/graphTopology';
-import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Scissors } from 'lucide-react';
+import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Scissors, Printer } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
 import { ExportPcbModal } from './components/ExportPcbModal';
 import { playbackTicker } from './utils/playbackTicker';
@@ -38,6 +38,17 @@ import { PropertiesPanel } from './components/PropertiesPanel';
 import { FlowArea } from './components/FlowArea';
 import { ProbeTooltip } from './components/ProbeTooltip';
 import { HILMemoizer } from './utils/hilMemoizer';
+
+// Precision Laser Emitter Icon for Laser / PCB Export
+const LaserIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 3h6l1 4H8l1-4z" />
+    <line x1="8" y1="7" x2="16" y2="7" />
+    <line x1="12" y1="7" x2="12" y2="17" strokeWidth="2.5" />
+    <circle cx="12" cy="17" r="1.5" fill="currentColor" />
+    <line x1="4" y1="21" x2="20" y2="21" />
+  </svg>
+);
 
 
 let simulationWorker: Worker | null = null;
@@ -264,6 +275,7 @@ export default function App() {
     saveDialogName,
     setSaveDialogName,
     savePreset,
+    savePresetByName,
     deleteUserPreset,
   } = usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation });
 
@@ -1456,11 +1468,26 @@ export default function App() {
     }
   }, [setNodes, runSimulation, isSimulating, initialConditions]);
 
-  const deleteSelected = () => {
-    if (isSimulating) return;
+  const deleteSelected = useCallback(() => {
+    if (isSimulatingRef.current) return;
     setNodes(nds => nds.filter(n => !n.selected));
     setEdges(eds => eds.filter(e => !e.selected));
-  };
+  }, [setNodes, setEdges]);
+
+  // Keyboard Shortcuts Handler (Delete / Backspace key to delete selected circuit elements)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) {
+        return;
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        deleteSelected();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [deleteSelected]);
 
   const { exportJson, importJson } = useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulation });
 
@@ -1486,15 +1513,20 @@ export default function App() {
           >
             <Menu size={20} />
           </button>
-          <a 
-            href="https://circuit.expt.in" 
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-          >
+          <div className="flex items-center gap-2">
             <Logo />
-            <h1 className="font-bold text-base tracking-wide hidden sm:block mr-1 text-slate-800 dark:text-slate-100">
-              PhysBox<span className="text-blue-500">: Volt</span>
-            </h1>
-          </a>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base font-extrabold tracking-tight text-slate-900 dark:text-white font-sans">
+                  Physbox <span className="text-blue-500 dark:text-blue-400 font-normal">Volt</span>
+                </h1>
+                <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-cyan-100 dark:bg-cyan-950/80 border border-cyan-200 dark:border-cyan-800/50 text-cyan-700 dark:text-cyan-300">
+                  Circuit Studio
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">SPICE Simulation &amp; HIL Studio</p>
+            </div>
+          </div>
           <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 hidden lg:block"></div>
           
           {/* Preset Selector */}
@@ -1518,75 +1550,34 @@ export default function App() {
               )}
             </select>
             {selectedPreset && userPresets[selectedPreset] && (
-              <button
-                onClick={() => {
-                  if (window.confirm(`Are you sure you want to delete the preset "${userPresets[selectedPreset].name}"?`)) {
-                    deleteUserPreset(selectedPreset);
-                  }
-                }}
-                className="flex items-center justify-center p-1 rounded-md text-red-500 hover:bg-red-55 dark:hover:bg-red-950/50 transition-colors focus:outline-none cursor-pointer"
-                title={`Delete preset "${userPresets[selectedPreset].name}"`}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              <>
+                <button
+                  onClick={() => {
+                    const name = userPresets[selectedPreset].name.replace(/^User:\s*/, '');
+                    savePresetByName(name);
+                  }}
+                  className="flex items-center justify-center p-1 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors focus:outline-none cursor-pointer"
+                  title={`Update preset "${userPresets[selectedPreset].name.replace(/^User:\s*/, '')}"`}
+                >
+                  <Save className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Are you sure you want to delete the preset "${userPresets[selectedPreset].name}"?`)) {
+                      deleteUserPreset(selectedPreset);
+                    }
+                  }}
+                  className="flex items-center justify-center p-1 rounded-md text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors focus:outline-none cursor-pointer"
+                  title={`Delete preset "${userPresets[selectedPreset].name}"`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </>
             )}
           </div>
         </div>
         
-        <div className="flex items-center gap-1 md:gap-2">
-          {/* Duration Block */}
-          <div className={`flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner hidden xl:flex ${nodes.some(n => n.type === 'heltec_v4') ? 'opacity-50 cursor-not-allowed' : ''}`}>
-            <span className="text-xs font-semibold text-slate-755 dark:text-slate-350 px-1.5">Duration:</span>
-            <input 
-              type="number" 
-              min="0.1" 
-              step="0.1" 
-              value={nodes.some(n => n.type === 'heltec_v4') ? 0.05 : simLength} 
-              disabled={nodes.some(n => n.type === 'heltec_v4')}
-              onChange={e => setSimLength(parseFloat(e.target.value) || 1.0)} 
-              className={`w-12 text-xs border-none bg-transparent focus:ring-0 text-center text-slate-800 dark:text-slate-100 font-medium h-6 py-0 ${nodes.some(n => n.type === 'heltec_v4') ? 'cursor-not-allowed' : ''}`}
-              title={nodes.some(n => n.type === 'heltec_v4') ? "Locked to 50ms transient slices in Hardware-in-the-Loop mode." : "Simulation duration (seconds)"}
-            />
-            <span className="text-xs text-slate-500 dark:text-slate-400 mr-1.5">{nodes.some(n => n.type === 'heltec_v4') ? 's (HIL)' : 's'}</span>
-          </div>
-
-          {/* Resolution Block */}
-          <div className={`flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner mx-1 hidden 2xl:flex ${nodes.some(n => n.type === 'heltec_v4') ? 'opacity-50 cursor-not-allowed' : ''}`}>
-            <span className="text-xs font-semibold text-slate-755 dark:text-slate-350 px-1.5">Res:</span>
-            <select
-              value={simResolution}
-              disabled={nodes.some(n => n.type === 'heltec_v4')}
-              onChange={e => setSimResolution(e.target.value as 'normal' | 'high')}
-              className={`bg-transparent border-none text-slate-850 dark:text-slate-100 text-xs focus:ring-0 font-medium cursor-pointer h-6 py-0 ${nodes.some(n => n.type === 'heltec_v4') ? 'cursor-not-allowed' : ''}`}
-              title={nodes.some(n => n.type === 'heltec_v4') ? "Locked in Hardware-in-the-Loop mode." : "Solver timestep resolution"}
-            >
-              <option value="normal" className="bg-white dark:bg-slate-900 text-slate-750 dark:text-slate-355">Normal</option>
-              <option value="high" className="bg-white dark:bg-slate-900 text-slate-750 dark:text-slate-355">High</option>
-            </select>
-          </div>
-
-          {/* Action Buttons */}
-          <button
-            onClick={deleteSelected}
-            disabled={isSimulating}
-            className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md font-semibold text-xs border border-slate-200 dark:border-slate-750 text-red-650 dark:text-red-400 bg-white dark:bg-slate-900 transition-colors focus:outline-none flex-shrink-0 shadow-xs ${isSimulating ? 'opacity-50 cursor-not-allowed' : 'hover:bg-red-50 dark:hover:bg-red-950/20 cursor-pointer'}`}
-            title={isSimulating ? "Stop the simulation to edit the circuit." : "Delete Selected"}
-          >
-            <Trash2 className="w-3.5 h-3.5" /> <span className="hidden xl:inline">Delete</span>
-          </button>
-
-          <button
-            onClick={() => { setProbeMode(!probeMode); setProbeData(null); }}
-            className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md font-semibold text-xs border transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs ${
-              probeMode 
-                ? 'bg-violet-600 border-violet-650 text-white shadow-xs' 
-                : 'border-slate-200 dark:border-slate-750 text-slate-650 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
-            title="Probe Mode — click a wire to inspect voltage"
-          >
-            <Crosshair className="w-3.5 h-3.5" /> <span className="hidden xl:inline">Probe</span>
-          </button>
-
+        <div className="flex items-center gap-2 md:gap-3">
           {/* Simulation Controller Block */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
             <button 
@@ -1595,11 +1586,11 @@ export default function App() {
               className={`flex items-center justify-center gap-1.5 px-3 py-1 rounded-md font-semibold text-xs transition-all disabled:opacity-50 flex-shrink-0 cursor-pointer ${
                 isSimulating
                   ? 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500'
-                  : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-xs'
+                  : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-100'
               }`}
               title="Simulate"
             >
-              <Play className="w-3 h-3" />
+              <Play className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
               <span className="hidden md:inline">Run</span>
             </button>
 
@@ -1618,20 +1609,37 @@ export default function App() {
             </button>
           </div>
 
-          {/* Files Segmented Group */}
+          {/* Files & Actions Segmented Group */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
             <button 
-              onClick={() => { setSaveDialogName(''); setIsSaveDialogOpen(true); }}
+              onClick={() => {
+                if (selectedPreset && userPresets[selectedPreset]) {
+                  const name = userPresets[selectedPreset].name.replace(/^User:\s*/, '');
+                  savePresetByName(name);
+                } else {
+                  setSaveDialogName('');
+                  setIsSaveDialogOpen(true);
+                }
+              }}
               className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-650 dark:text-slate-300 transition-colors focus:outline-none cursor-pointer"
-              title="Save circuit as preset"
+              title={selectedPreset && userPresets[selectedPreset] ? `Save "${userPresets[selectedPreset].name.replace(/^User:\s*/, '')}"` : 'Save circuit preset'}
             >
               <Save className="w-3.5 h-3.5" />
             </button>
 
             <button
+              onClick={deleteSelected}
+              disabled={isSimulating}
+              className="flex items-center justify-center p-1 rounded-md hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500 disabled:opacity-30 disabled:hover:bg-transparent transition-colors focus:outline-none cursor-pointer"
+              title={isSimulating ? "Stop the simulation to edit the circuit." : "Delete Selected (Delete / Backspace)"}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+
+            <button
               onClick={exportJson}
               className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-650 dark:text-slate-300 transition-colors focus:outline-none cursor-pointer"
-              title="Export JSON"
+              title="JSON"
             >
               <Download className="w-3.5 h-3.5" />
             </button>
@@ -1647,18 +1655,16 @@ export default function App() {
             <button
               onClick={() => setIsPcbModalOpen(true)}
               className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-amber-600 dark:text-amber-400 transition-colors focus:outline-none cursor-pointer"
-              title="Export / Mill PCB (CNC & WebSerial)"
+              title="PCB Mill (CNC & WebSerial)"
             >
-              <Scissors className="w-3.5 h-3.5" />
+              <Printer className="w-3.5 h-3.5" />
             </button>
-
-            <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
 
             <button
               onClick={undo}
               disabled={!canUndo}
               className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-655 dark:text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent transition-colors focus:outline-none cursor-pointer"
-              title="Undo"
+              title="Undo (Ctrl+Z)"
             >
               <Undo className="w-3.5 h-3.5" />
             </button>
@@ -1667,7 +1673,7 @@ export default function App() {
               onClick={redo}
               disabled={!canRedo}
               className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-655 dark:text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent transition-colors focus:outline-none cursor-pointer"
-              title="Redo"
+              title="Redo (Ctrl+Y)"
             >
               <Redo className="w-3.5 h-3.5" />
             </button>
@@ -1676,63 +1682,65 @@ export default function App() {
           <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 mx-0.5 hidden sm:block" />
 
           {/* Right Utilities (Dark Mode, Docs, Settings, Copilot, GitHub) */}
-          {/* Dark Mode Toggle */}
-          <button
-            onClick={toggleDarkMode}
-            className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs"
-            title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-          >
-            {darkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />}
-          </button>
+          <div className="flex items-center gap-1.5 md:gap-2">
+            {/* Dark Mode Toggle */}
+            <button
+              onClick={toggleDarkMode}
+              className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs"
+              title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            >
+              {darkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />}
+            </button>
 
-          {/* Docs (Info) */}
-          <button
-            onClick={() => setIsDocsOpen(true)}
-            className="flex items-center justify-center w-8 h-8 rounded-full border border-indigo-200 dark:border-indigo-850 text-indigo-655 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs"
-            title="Documentation"
-          >
-            <Info className="w-4 h-4" />
-          </button>
+            {/* Docs (Info) */}
+            <button
+              onClick={() => setIsDocsOpen(true)}
+              className="flex items-center justify-center w-8 h-8 rounded-full border border-indigo-200 dark:border-indigo-850 text-indigo-655 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs"
+              title="Documentation"
+            >
+              <Info className="w-4 h-4" />
+            </button>
 
-          {/* Settings */}
-          <button
-            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-            className={`flex items-center justify-center w-8 h-8 rounded-full border transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs ${
-              isSettingsOpen 
-                ? 'bg-blue-100 border-blue-400 text-blue-700 dark:bg-blue-955 dark:border-blue-700 dark:text-blue-400' 
-                : 'border-slate-200 dark:border-slate-700 text-slate-650 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
-            title="Settings"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
+            {/* Settings */}
+            <button
+              onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+              className={`flex items-center justify-center w-8 h-8 rounded-full border transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs ${
+                isSettingsOpen 
+                  ? 'bg-blue-100 border-blue-400 text-blue-700 dark:bg-blue-955 dark:border-blue-700 dark:text-blue-400' 
+                  : 'border-slate-200 dark:border-slate-700 text-slate-650 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+              title="Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
 
-          {/* AI Copilot Expert */}
-          <button
-            onClick={() => setShowAICopilot(!showAICopilot)}
-            className={`flex items-center justify-center w-8 h-8 rounded-full border transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs ${
-              showAICopilot 
-                ? 'bg-purple-100 border-purple-400 text-purple-750 dark:bg-purple-955 dark:border-purple-700 dark:text-purple-400' 
-                : 'border-purple-200 dark:border-purple-800 text-purple-655 dark:text-purple-450 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-900/40'
-            }`}
-            title="AI Copilot Expert"
-          >
-            <Sparkles className="w-4 h-4" />
-          </button>
+            {/* AI Copilot Expert */}
+            <button
+              onClick={() => setShowAICopilot(!showAICopilot)}
+              className={`flex items-center justify-center w-8 h-8 rounded-full border transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs ${
+                showAICopilot 
+                  ? 'bg-purple-100 border-purple-400 text-purple-750 dark:bg-purple-955 dark:border-purple-700 dark:text-purple-400' 
+                  : 'border-purple-200 dark:border-purple-800 text-purple-655 dark:text-purple-450 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-900/40'
+              }`}
+              title="AI Copilot Expert"
+            >
+              <Sparkles className="w-4 h-4" />
+            </button>
 
-          {/* User Profile & Cloud Sync */}
-          <UserProfileButton />
+            {/* User Profile & Cloud Sync */}
+            <UserProfileButton />
 
-          {/* GitHub link */}
-          <a
-            href="https://github.com/physbox-io/circuitsim"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs"
-            title="View on GitHub"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
-          </a>
+            {/* GitHub link */}
+            <a
+              href="https://github.com/physbox-io/circuitsim"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs"
+              title="View on GitHub"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+            </a>
+          </div>
         </div>
       </header>
 
@@ -1907,6 +1915,71 @@ export default function App() {
           <ProbeTooltip probeData={probeData} isSimulating={isSimulating} onClose={() => setProbeData(null)} />
         )}
       </div>
+
+      {/* Bottom Status Bar matching Etch */}
+      <footer className="h-8 w-full bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800/80 px-4 flex items-center justify-between z-20 text-[11px] text-slate-500 dark:text-slate-400 font-mono select-none transition-colors">
+        {/* Left: Probe Toggle & Circuit Metrics */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => { setProbeMode(!probeMode); setProbeData(null); }}
+            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] transition-colors cursor-pointer ${
+              probeMode
+                ? 'bg-violet-600 border-violet-650 text-white font-semibold shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+            }`}
+            title="Probe Mode — click a wire to inspect voltage"
+          >
+            <Crosshair className="w-3.5 h-3.5" />
+            <span>Probe</span>
+          </button>
+
+          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+            <span>Nodes: {nodes.length}</span>
+            <span>·</span>
+            <span>Wires: {edges.length}</span>
+          </div>
+        </div>
+
+        {/* Right: Simulation Parameters (Duration & Resolution) */}
+        <div className="flex items-center gap-3">
+          {/* Duration Block */}
+          <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 ${nodes.some(n => n.type === 'heltec_v4') ? 'opacity-50 cursor-not-allowed' : ''}`}>
+            <label htmlFor="bottom-duration" className="text-slate-500 dark:text-slate-400 font-semibold">
+              Duration:
+            </label>
+            <input
+              id="bottom-duration"
+              type="number"
+              min="0.1"
+              step="0.1"
+              value={nodes.some(n => n.type === 'heltec_v4') ? 0.05 : simLength}
+              disabled={nodes.some(n => n.type === 'heltec_v4')}
+              onChange={e => setSimLength(parseFloat(e.target.value) || 1.0)}
+              className={`w-12 text-xs border-none bg-transparent focus:ring-0 text-right font-medium text-slate-900 dark:text-slate-100 p-0 ${nodes.some(n => n.type === 'heltec_v4') ? 'cursor-not-allowed' : ''}`}
+              title={nodes.some(n => n.type === 'heltec_v4') ? "Locked to 50ms transient slices in Hardware-in-the-Loop mode." : "Simulation duration in seconds"}
+            />
+            <span className="text-slate-500 dark:text-slate-400">{nodes.some(n => n.type === 'heltec_v4') ? 's (HIL)' : 's'}</span>
+          </div>
+
+          {/* Resolution Block */}
+          <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 ${nodes.some(n => n.type === 'heltec_v4') ? 'opacity-50 cursor-not-allowed' : ''}`}>
+            <label htmlFor="bottom-res" className="text-slate-500 dark:text-slate-400 font-semibold">
+              Res:
+            </label>
+            <select
+              id="bottom-res"
+              value={simResolution}
+              disabled={nodes.some(n => n.type === 'heltec_v4')}
+              onChange={e => setSimResolution(e.target.value as 'normal' | 'high')}
+              className={`bg-transparent border-none text-slate-900 dark:text-slate-100 text-xs focus:ring-0 font-medium cursor-pointer p-0 ${nodes.some(n => n.type === 'heltec_v4') ? 'cursor-not-allowed' : ''}`}
+              title={nodes.some(n => n.type === 'heltec_v4') ? "Locked in Hardware-in-the-Loop mode." : "Solver timestep resolution"}
+            >
+              <option value="normal" className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300">Normal</option>
+              <option value="high" className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300">High</option>
+            </select>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

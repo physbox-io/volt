@@ -58,6 +58,23 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     setSaveDialogName('');
   }, [saveDialogName, nodes, edges]);
 
+  const savePresetByName = useCallback((name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const key = nameToKey(trimmed);
+    const preset: CircuitPreset = {
+      name: `User: ${trimmed}`,
+      nodes: nodes.map(n => ({ ...n, selected: false })),
+      edges: edges.map(e => ({
+        ...e,
+        data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined
+      })),
+    };
+    const updated = addUserPreset(key, preset);
+    setUserPresets(updated);
+    setSelectedPreset(key);
+  }, [nodes, edges]);
+
   const deleteUserPreset = useCallback((key: string) => {
     const updated = removeUserPreset(key);
     setUserPresets(updated);
@@ -77,6 +94,7 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     saveDialogName,
     setSaveDialogName,
     savePreset,
+    savePresetByName,
     deleteUserPreset,
   };
 }
