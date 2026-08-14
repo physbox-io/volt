@@ -49,9 +49,9 @@ export function InductorNode({ id, data, selected }: any) {
         className={`text-slate-700 dark:text-slate-200 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.65)]' : ''}`}
       >
         {isVertical ? (
-          <path d="M 12 -2 V 8 A 4,4 0 0,1 12,16 A 4,4 0 0,1 12,24 A 4,4 0 0,1 12,32 V 42" />
+          <path d="M 12 0 V 8 A 4,4 0 0,1 12,16 A 4,4 0 0,1 12,24 A 4,4 0 0,1 12,32 V 40" />
         ) : (
-          <path d="M -2 12 H 8 A 4,4 0 0,1 16,12 A 4,4 0 0,1 24,12 A 4,4 0 0,1 32,12 H 42" />
+          <path d="M 0 12 H 8 A 4,4 0 0,1 16,12 A 4,4 0 0,1 24,12 A 4,4 0 0,1 32,12 H 40" />
         )}
       </svg>
 

@@ -52,20 +52,20 @@ export function CapacitorNode({ id, data, selected }: any) {
         {isVertical ? (
           <>
             {/* Top lead and plate */}
-            <path d="M 12 -2 V 18" />
+            <path d="M 12 0 V 18" />
             <path d="M 4 18 H 20" strokeWidth="2.4" />
             {/* Bottom plate and lead */}
             <path d="M 4 22 H 20" strokeWidth="2.4" />
-            <path d="M 12 22 V 42" />
+            <path d="M 12 22 V 40" />
           </>
         ) : (
           <>
             {/* Left lead and plate */}
-            <path d="M -2 12 H 18" />
+            <path d="M 0 12 H 18" />
             <path d="M 18 4 V 20" strokeWidth="2.4" />
             {/* Right plate and lead */}
             <path d="M 22 4 V 20" strokeWidth="2.4" />
-            <path d="M 22 12 H 42" />
+            <path d="M 22 12 H 40" />
           </>
         )}
       </svg>

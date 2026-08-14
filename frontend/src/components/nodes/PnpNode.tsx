@@ -24,13 +24,13 @@ export function PnpNode({ data, selected }: any) {
         className={`text-slate-700 dark:text-slate-200 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.65)]' : ''}`}
       >
         {/* Base Lead */}
-        <path d="M -4 16 H 12" />
+        <path d="M 0 16 H 12" />
         {/* Base Plate */}
         <path d="M 12 8 V 24" strokeWidth="2.4" />
         {/* Emitter Lead: diagonal then vertical (top) */}
-        <path d="M 12 12 L 24 4 V -4" />
+        <path d="M 12 12 L 24 4 V 0" />
         {/* Collector Lead: diagonal then vertical (bottom) */}
-        <path d="M 12 20 L 24 28 V 36" />
+        <path d="M 12 20 L 24 28 V 32" />
         {/* Emitter Arrow pointing inward toward base plate */}
         <path d="M 15 10 L 20 10 M 15 10 L 17 6" strokeWidth="1.4" />
       </svg>

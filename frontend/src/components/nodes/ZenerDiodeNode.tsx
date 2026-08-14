@@ -50,7 +50,7 @@ export function ZenerDiodeNode({ data, selected }: any) {
         {isVertical ? (
           <>
             {/* Top lead */}
-            <path d="M 12 -2 V 14" />
+            <path d="M 12 0 V 14" />
             {/* Triangle (Anode) */}
             <path d="M 6 14 H 18 L 12 22 Z" fill="currentColor" />
             {/* Zener Cathode bar */}
@@ -58,12 +58,12 @@ export function ZenerDiodeNode({ data, selected }: any) {
             <path d="M 6 22 V 18" strokeWidth="2.4" />
             <path d="M 18 22 V 26" strokeWidth="2.4" />
             {/* Bottom lead */}
-            <path d="M 12 22 V 42" />
+            <path d="M 12 22 V 40" />
           </>
         ) : (
           <>
             {/* Left lead */}
-            <path d="M -2 12 H 14" />
+            <path d="M 0 12 H 14" />
             {/* Triangle (Anode) */}
             <path d="M 14 6 L 22 12 L 14 18 Z" fill="currentColor" />
             {/* Zener Cathode bar */}
@@ -72,7 +72,7 @@ export function ZenerDiodeNode({ data, selected }: any) {
             <path d="M 22 6 H 26" strokeWidth="2.4" />
             <path d="M 18 18 H 22" strokeWidth="2.4" />
             {/* Right lead */}
-            <path d="M 22 12 H 42" />
+            <path d="M 22 12 H 40" />
           </>
         )}
       </svg>

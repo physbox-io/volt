@@ -46,8 +46,8 @@ export function VoltageNode({ data, selected }: any) {
         {isHorizontal ? (
           <>
             {/* Left & Right Leads */}
-            <path d="M -2 12 H 4" />
-            <path d="M 20 12 H 26" />
+            <path d="M 0 12 H 4" />
+            <path d="M 20 12 H 24" />
             {/* Circle */}
             <circle cx="12" cy="12" r="8" />
             {/* Plus Sign (Left) */}
@@ -59,8 +59,8 @@ export function VoltageNode({ data, selected }: any) {
         ) : (
           <>
             {/* Top & Bottom Leads */}
-            <path d="M 12 -2 V 4" />
-            <path d="M 12 20 V 26" />
+            <path d="M 12 0 V 4" />
+            <path d="M 12 20 V 24" />
             {/* Circle */}
             <circle cx="12" cy="12" r="8" />
             {/* Plus Sign (Top) */}

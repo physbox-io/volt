@@ -226,13 +226,13 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
           {isHorizontal ? (
             <>
               {/* Left lead */}
-              <path d="M -4 16 H 10" />
+              <path d="M 0 16 H 10" />
               {/* Triangle pointing right */}
               <path d="M 10 8 V 24 L 22 16 Z" fill="currentColor" />
               {/* Cathode bar */}
               <path d="M 22 8 V 24" strokeWidth="2.4" />
               {/* Right lead */}
-              <path d="M 22 16 H 36" />
+              <path d="M 22 16 H 32" />
               {/* Arrows pointing up-right */}
               <path d="M 16 10 L 22 4" strokeWidth="1" />
               <path d="M 19 4 H 22 V 7" strokeWidth="1" />
@@ -242,13 +242,13 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
           ) : (
             <>
               {/* Top lead */}
-              <path d="M 16 -4 V 10" />
+              <path d="M 16 0 V 10" />
               {/* Triangle pointing down */}
               <path d="M 8 10 H 24 L 16 22 Z" fill="currentColor" />
               {/* Cathode bar */}
               <path d="M 8 22 H 24" strokeWidth="2.4" />
               {/* Bottom lead */}
-              <path d="M 16 22 V 36" />
+              <path d="M 16 22 V 32" />
               {/* Arrows pointing up-right */}
               <path d="M 24 14 L 30 8" strokeWidth="1" />
               <path d="M 27 8 H 30 V 11" strokeWidth="1" />

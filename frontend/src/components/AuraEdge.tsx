@@ -630,16 +630,18 @@ export function getSchematicPath({
     // React Flow insets an edge endpoint a couple of px into its handle, so
     // "same axis" is a small tolerance rather than equality; the run is then
     // snapped onto the source pin's axis so it stays perfectly straight.
+    const sp = clampToPin(nodes, sourceX, sourceY, sourcePosition, sourceId);
+    const tp = clampToPin(nodes, targetX, targetY, targetPosition, targetId);
+
     const AXIS_EPS = 4;
     const straight =
-      Math.abs(sourceY - targetY) <= AXIS_EPS && Math.abs(sourceX - targetX) > 8
-        ? { x: targetX, y: sourceY }
-        : Math.abs(sourceX - targetX) <= AXIS_EPS && Math.abs(sourceY - targetY) > 8
-          ? { x: sourceX, y: targetY }
+      Math.abs(sp.y - tp.y) <= AXIS_EPS && Math.abs(sp.x - tp.x) > 8
+        ? { x: tp.x, y: sp.y }
+        : Math.abs(sp.x - tp.x) <= AXIS_EPS && Math.abs(sp.y - tp.y) > 8
+          ? { x: sp.x, y: tp.y }
           : null;
-    if (straight && !segmentIntersectsObstacle(
-          { x: sourceX, y: sourceY }, straight, spanObstacles)) {
-      return `M ${sourceX} ${sourceY} L ${straight.x} ${straight.y}`;
+    if (straight && !segmentIntersectsObstacle(sp, straight, spanObstacles)) {
+      return `M ${sp.x} ${sp.y} L ${straight.x} ${straight.y}`;
     }
 
     const obstacles: Obstacle[] = nodes
@@ -698,11 +700,11 @@ export function getSchematicPath({
     const tieBreak = (sourceIndex + targetIndex) * 0.001;
 
     let aStarPath = routeOrthogonal({
-      sourceX,
-      sourceY,
+      sourceX: sp.x,
+      sourceY: sp.y,
       sourcePosition,
-      targetX,
-      targetY,
+      targetX: tp.x,
+      targetY: tp.y,
       targetPosition,
       obstacles,
       gridStep: 4,
@@ -716,11 +718,11 @@ export function getSchematicPath({
     if (!aStarPath) {
       // Widen the search area once before giving up on A* entirely.
       aStarPath = routeOrthogonal({
-        sourceX,
-        sourceY,
+        sourceX: sp.x,
+        sourceY: sp.y,
         sourcePosition,
-        targetX,
-        targetY,
+        targetX: tp.x,
+        targetY: tp.y,
         targetPosition,
         obstacles,
         gridStep: 4,
@@ -814,6 +816,29 @@ export function getSchematicPath({
   return chosenPath;
 }
 
+/**
+ * Pull an edge endpoint back onto the pin it belongs to.
+ *
+ * React Flow attaches an edge a couple of px *outside* the node along the pin
+ * normal. For symbols whose handles sit on the box edge (every discrete part)
+ * that leaves the wire short of the pin, so symbol leads would have to overhang
+ * to meet it — and that overhang then shows as a stub whenever a wire arrives
+ * perpendicular instead. Handles that genuinely sit inside their node
+ * (instrument cards like the signal generator) attach inside the box and are
+ * left alone.
+ */
+function clampToPin(nodes: any[], x: number, y: number, pos: string, id?: string): Point {
+  const n = id ? nodes.find((q: any) => q.id === id) : null;
+  if (!n) return { x, y };
+  const w = n.measured?.width || getNodeDimensions(n.type, n.data).width;
+  const h = n.measured?.height || getNodeDimensions(n.type, n.data).height;
+  if (pos === 'right' && x > n.position.x + w) return { x: n.position.x + w, y };
+  if (pos === 'left' && x < n.position.x) return { x: n.position.x, y };
+  if (pos === 'bottom' && y > n.position.y + h) return { x, y: n.position.y + h };
+  if (pos === 'top' && y < n.position.y) return { x, y: n.position.y };
+  return { x, y };
+}
+
 function getOrthogonalPathThroughWaypoint(
   sourceX: number,
   sourceY: number,
@@ -821,49 +846,41 @@ function getOrthogonalPathThroughWaypoint(
   targetX: number,
   targetY: number,
   targetPosition: string,
-  W: { x: number; y: number }
+  W: { x: number; y: number },
+  nodes: any[] = [],
+  sourceId?: string,
+  targetId?: string,
 ) {
+  const s = clampToPin(nodes, sourceX, sourceY, sourcePosition, sourceId);
+  const t = clampToPin(nodes, targetX, targetY, targetPosition, targetId);
   const isSourceVert = sourcePosition === 'top' || sourcePosition === 'bottom';
   const isTargetVert = targetPosition === 'top' || targetPosition === 'bottom';
 
-  let path = `M ${sourceX} ${sourceY}`;
+  const pts: Point[] = [s];
 
-  // S -> W
+  // S -> W: leave the pin along its own normal, then turn once.
   if (isSourceVert) {
-    path += ` L ${sourceX} ${W.y}`;
-    path += ` L ${W.x} ${W.y}`;
+    pts.push({ x: s.x, y: W.y });
   } else {
-    path += ` L ${W.x} ${sourceY}`;
-    path += ` L ${W.x} ${W.y}`;
+    pts.push({ x: W.x, y: s.y });
   }
+  pts.push({ x: W.x, y: W.y });
 
-  // W -> T
+  // W -> T: mirror it, entering the target pin along its normal.
   if (isTargetVert) {
-    const minX = Math.min(sourceX, targetX);
-    const maxX = Math.max(sourceX, targetX);
-    const isOutside = W.x < minX || W.x > maxX;
-
-    if (isOutside) {
-      path += ` L ${W.x} ${targetY}`;
-      path += ` L ${targetX} ${targetY}`;
-    } else {
-      path += ` L ${targetX} ${W.y}`;
-      path += ` L ${targetX} ${targetY}`;
-    }
+    const inSpan = W.x >= Math.min(s.x, t.x) && W.x <= Math.max(s.x, t.x);
+    pts.push(inSpan ? { x: t.x, y: W.y } : { x: W.x, y: t.y });
   } else {
-    const minY = Math.min(sourceY, targetY);
-    const maxY = Math.max(sourceY, targetY);
-    const isOutside = W.y < minY || W.y > maxY;
-
-    if (isOutside) {
-      path += ` L ${targetX} ${W.y}`;
-      path += ` L ${targetX} ${targetY}`;
-    } else {
-      path += ` L ${W.x} ${targetY}`;
-      path += ` L ${targetX} ${targetY}`;
-    }
+    const inSpan = W.y >= Math.min(s.y, t.y) && W.y <= Math.max(s.y, t.y);
+    pts.push(inSpan ? { x: W.x, y: t.y } : { x: t.x, y: W.y });
   }
+  pts.push(t);
 
+  // Same clean-up the A* router gets: a dragged wire was previously emitted raw,
+  // so it kept redundant collinear points and stopped short of its pins.
+  const clean = simplifyCollinear(squareOffDiagonals(pts, sourcePosition));
+  let path = `M ${clean[0].x} ${clean[0].y}`;
+  for (let i = 1; i < clean.length; i++) path += ` L ${clean[i].x} ${clean[i].y}`;
   return path;
 }
 
@@ -944,19 +961,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
   const { registerPath, unregisterPath } = context || {};
 
   const edgePath = useMemo(() => {
-    if (waypoints.length > 0) {
-      return getOrthogonalPathThroughWaypoint(
-        sourceX,
-        sourceY,
-        sourcePosition,
-        targetX,
-        targetY,
-        targetPosition,
-        waypoints[0]
-      );
-    }
-
-    return getSchematicPath({
+    const direct = getSchematicPath({
       sourceX,
       sourceY,
       sourcePosition,
@@ -973,11 +978,36 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
       allEdges,
       otherEdgesPaths: context?.paths || {},
     });
+
+    if (waypoints.length > 0) {
+      // A wire whose pins already have a clear straight run between them has
+      // nothing to route around, and both ends are pinned — so any waypoint can
+      // only bend it into a pointless U. Dragging such a wire does nothing
+      // rather than making the schematic worse.
+      const isStraightRun = (direct.match(/[ML]/g) || []).length === 2;
+      if (!isStraightRun) {
+        return getOrthogonalPathThroughWaypoint(
+          sourceX,
+          sourceY,
+          sourcePosition,
+          targetX,
+          targetY,
+          targetPosition,
+          waypoints[0],
+          allNodes,
+          source,
+          target,
+        );
+      }
+    }
+
+    return direct;
   }, [
     waypoints, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
     sourceOffset, sourceIndex, targetIndex, allNodes, source, target, id, allEdges,
     context?.paths,
   ]);
+
 
   const [current, setCurrent] = useState(0);
   
