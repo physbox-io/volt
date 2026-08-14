@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
+import { SchematicLabel } from './schematic';
 
 export function DiodeProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -18,7 +19,7 @@ export function DiodeNode({ data, selected }: any) {
   const isUp = orientation === 'up';
 
   return (
-    <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[24px] h-[36px]' : 'w-[36px] h-[24px]'}`}>
+    <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[24px] h-[40px]' : 'w-[40px] h-[24px]'}`}>
       <Handle 
         type="target" 
         position={isVertical ? (isUp ? Position.Bottom : Position.Top) : (isLeft ? Position.Right : Position.Left)} 
@@ -35,48 +36,45 @@ export function DiodeNode({ data, selected }: any) {
       />
       
       <svg 
-        width={isVertical ? 24 : 36} 
-        height={isVertical ? 36 : 24} 
-        viewBox={isVertical ? "0 0 24 36" : "0 0 36 24"} 
+        width={isVertical ? 24 : 40} 
+        height={isVertical ? 40 : 24} 
+        viewBox={isVertical ? "0 0 24 40" : "0 0 40 24"} 
         fill="none" 
         stroke={selected ? '#3b82f6' : 'currentColor'} 
-        strokeWidth="1.2" 
+        strokeWidth="1.4" 
         strokeLinecap="round" 
         strokeLinejoin="round"
         style={{ overflow: 'visible', transform: isLeft ? 'scaleX(-1)' : isUp ? 'scaleY(-1)' : undefined }}
-        className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
+        className={`text-slate-700 dark:text-slate-200 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.65)]' : ''}`}
       >
         {isVertical ? (
           <>
             {/* Top lead */}
-            <path d="M 12 -2 V 12" />
+            <path d="M 12 -2 V 14" />
             {/* Triangle (Anode) */}
-            <path d="M 6 12 H 18 L 12 20 Z" fill="currentColor" />
+            <path d="M 6 14 H 18 L 12 22 Z" fill="currentColor" />
             {/* Cathode bar */}
-            <path d="M 6 20 H 18" strokeWidth="2.0" />
+            <path d="M 6 22 H 18" strokeWidth="2.4" />
             {/* Bottom lead */}
-            <path d="M 12 20 V 38" />
+            <path d="M 12 22 V 42" />
           </>
         ) : (
           <>
             {/* Left lead */}
-            <path d="M -2 12 H 12" />
+            <path d="M -2 12 H 14" />
             {/* Triangle (Anode) */}
-            <path d="M 12 6 L 20 12 L 12 18 Z" fill="currentColor" />
+            <path d="M 14 6 L 22 12 L 14 18 Z" fill="currentColor" />
             {/* Cathode bar */}
-            <path d="M 20 6 V 18" strokeWidth="2.0" />
+            <path d="M 22 6 V 18" strokeWidth="2.4" />
             {/* Right lead */}
-            <path d="M 20 12 H 38" />
+            <path d="M 22 12 H 42" />
           </>
         )}
       </svg>
 
-      <div className={isVertical 
-        ? "absolute left-[20px] top-1/2 -translate-y-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 pointer-events-none whitespace-nowrap" 
-        : "absolute -bottom-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 text-center pointer-events-none whitespace-nowrap"
-      }>
+      <SchematicLabel placement={isVertical ? 'right' : 'below'}>
         {data.label || '1N4148'}
-      </div>
+      </SchematicLabel>
       
       <Handle 
         type="source" 

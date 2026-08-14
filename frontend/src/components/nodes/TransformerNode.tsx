@@ -1,6 +1,7 @@
 import { Handle, Position } from '@xyflow/react';
 import { sanitizeSpiceValue } from '../../utils/spice';
 import type { NodePropertiesProps } from './registry';
+import { SchematicLabel } from './schematic';
 
 export function transformerDefaultData() {
   return { label: 'Transformer', l_pri: '10m', l_sec: '10m', k: 0.99, l_pri_label: '10mH', l_sec_label: '10mH' };
@@ -18,7 +19,7 @@ export function TransformerProperties({ node, updateData }: NodePropertiesProps)
             updateData('l_pri_label', e.target.value);
             updateData('l_pri', sanitizeSpiceValue(e.target.value));
           }}
-          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
         />
       </div>
       <div className="mb-3">
@@ -30,7 +31,7 @@ export function TransformerProperties({ node, updateData }: NodePropertiesProps)
             updateData('l_sec_label', e.target.value);
             updateData('l_sec', sanitizeSpiceValue(e.target.value));
           }}
-          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
         />
       </div>
       <div className="mb-3">
@@ -42,7 +43,7 @@ export function TransformerProperties({ node, updateData }: NodePropertiesProps)
           max="1.0"
           value={(node.data.k as number) ?? 0.99}
           onChange={e => updateData('k', parseFloat(e.target.value) || 0.99)}
-          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
         />
       </div>
     </>
@@ -124,11 +125,11 @@ export function TransformerNode({ data, selected }: any) {
         viewBox="0 0 48 48" 
         fill="none" 
         stroke={selected ? '#3b82f6' : 'currentColor'} 
-        strokeWidth="1.2" 
+        strokeWidth="1.4" 
         strokeLinecap="round" 
         strokeLinejoin="round"
         style={{ overflow: 'visible' }}
-        className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
+        className={`text-slate-700 dark:text-slate-200 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.65)]' : ''}`}
       >
         {/* Left coil leads */}
         <path d="M 0 12 H 14" />
@@ -138,8 +139,8 @@ export function TransformerNode({ data, selected }: any) {
         <path d="M 14 12 C 18 12, 18 20, 14 20 C 18 20, 18 28, 14 28 C 18 28, 18 36, 14 36" strokeLinecap="round" />
 
         {/* Iron core lines */}
-        <line x1="22" y1="8" x2="22" y2="40" strokeWidth="1.5" />
-        <line x1="26" y1="8" x2="26" y2="40" strokeWidth="1.5" />
+        <line x1="22" y1="8" x2="22" y2="40" strokeWidth="1.4" />
+        <line x1="26" y1="8" x2="26" y2="40" strokeWidth="1.4" />
 
         {/* Right coil loops */}
         <path d="M 34 12 C 30 12, 30 20, 34 20 C 30 20, 30 28, 34 28 C 30 28, 30 36, 34 36" strokeLinecap="round" />
@@ -150,9 +151,9 @@ export function TransformerNode({ data, selected }: any) {
       </svg>
 
       {/* Label and parameters */}
-      <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[7px] font-bold font-mono text-slate-600 dark:text-slate-400 text-center pointer-events-none whitespace-nowrap">
+      <SchematicLabel placement="below">
         {data.label || `${lPri}:${lSec}`}
-      </div>
+      </SchematicLabel>
     </div>
   );
 }

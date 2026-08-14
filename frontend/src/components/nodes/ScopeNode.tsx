@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { computeFFT } from '../../utils/fft';
 import { detectPeriod } from '../../utils/periodDetect';
 import type { NodePropertiesProps } from './registry';
+import { DEVICE_CARD_DARK } from './schematic';
 
 export function ScopeProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -134,7 +135,7 @@ export function ScopeNode({ data, selected }: any) {
 
   return (
     <div
-      className="bg-gray-800 border-2 border-gray-900 rounded-md p-1 flex flex-col items-center relative shadow-lg"
+      className={`${DEVICE_CARD_DARK} p-1 flex flex-col items-center relative`}
       style={{ width, height }}
     >
       <NodeResizer

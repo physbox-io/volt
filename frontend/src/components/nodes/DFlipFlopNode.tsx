@@ -16,19 +16,19 @@ export function DFlipFlopProperties(_props: NodePropertiesProps) {
 
 export function DFlipFlopNode({ selected }: any) {
   return (
-    <div className="schematic-node bg-transparent w-[72px] h-[72px] relative flex items-center justify-center select-none">
+    <div className="schematic-node bg-transparent w-[80px] h-[80px] relative flex items-center justify-center select-none">
       <svg 
         width="100%" 
         height="100%" 
         viewBox="0 0 100 100" 
         style={{ overflow: 'visible' }}
-        className={`absolute top-0 left-0 transition-all ${selected ? 'drop-shadow-[0_0_4px_rgba(59,130,246,0.8)]' : 'drop-shadow-md'}`}
+        className={`absolute top-0 left-0 transition-all ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.65)]' : ''}`}
       >
         {/* Leads */}
         <g 
-          className="stroke-slate-800 dark:stroke-slate-200 transition-colors"
+          className="stroke-slate-700 dark:stroke-slate-200 transition-colors"
           style={{ stroke: selected ? '#3b82f6' : undefined }}
-          strokeWidth="2.5"
+          strokeWidth="1.75"
           strokeLinecap="round"
         >
           {/* D input lead */}
@@ -48,35 +48,35 @@ export function DFlipFlopNode({ selected }: any) {
           width="60" 
           height="70" 
           rx="4"
-          className="fill-white dark:fill-slate-900 stroke-slate-800 dark:stroke-slate-200 transition-colors"
+          className="fill-white dark:fill-slate-900 stroke-slate-700 dark:stroke-slate-200 transition-colors"
           style={{ stroke: selected ? '#3b82f6' : undefined }}
-          strokeWidth="3.5"
+          strokeWidth="1.75"
           strokeLinejoin="round"
         />
 
         {/* CLK input triangle */}
         <path 
           d="M 20 62 L 30 70 L 20 78" 
-          className="stroke-slate-800 dark:stroke-slate-200 fill-none transition-colors"
+          className="stroke-slate-700 dark:stroke-slate-200 fill-none transition-colors"
           style={{ stroke: selected ? '#3b82f6' : undefined }}
-          strokeWidth="2.5" 
+          strokeWidth="1.75" 
         />
 
         {/* Text Labels inside the box */}
-        <text x="26" y="36" fontSize="10" fontWeight="bold" className="fill-slate-800 dark:fill-slate-200 transition-colors font-sans">D</text>
-        <text x="32" y="74" fontSize="8" fontWeight="bold" className="fill-slate-700 dark:fill-slate-350 transition-colors font-mono">CLK</text>
-        <text x="62" y="36" fontSize="10" fontWeight="bold" className="fill-slate-800 dark:fill-slate-200 transition-colors font-sans">Q</text>
+        <text x="26" y="36" fontSize="10" fontWeight="bold" className="fill-slate-700 dark:fill-slate-200 transition-colors font-sans">D</text>
+        <text x="32" y="74" fontSize="8" fontWeight="bold" className="fill-slate-700 dark:fill-slate-400 transition-colors font-mono">CLK</text>
+        <text x="62" y="36" fontSize="10" fontWeight="bold" className="fill-slate-700 dark:fill-slate-200 transition-colors font-sans">Q</text>
         
         {/* Q_bar (Q with bar) */}
-        <text x="62" y="76" fontSize="10" fontWeight="bold" className="fill-slate-800 dark:fill-slate-200 transition-colors font-sans">Q</text>
+        <text x="62" y="76" fontSize="10" fontWeight="bold" className="fill-slate-700 dark:fill-slate-200 transition-colors font-sans">Q</text>
         <line 
           x1="62" 
           y1="64" 
           x2="70" 
           y2="64" 
-          className="stroke-slate-800 dark:stroke-slate-200 transition-colors"
+          className="stroke-slate-700 dark:stroke-slate-200 transition-colors"
           style={{ stroke: selected ? '#3b82f6' : undefined }}
-          strokeWidth="1.5" 
+          strokeWidth="1.25" 
         />
 
         {/* Subtitle */}

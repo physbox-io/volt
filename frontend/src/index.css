@@ -254,6 +254,47 @@ aside.glass-panel h3:hover {
   color: #cbd5e1 !important;
 }
 
+/* Wires draw at the same weight and ink as component leads, so a net reads as
+   one continuous line from pin to pin instead of a thin grey thread joining
+   heavy symbols. Keep in sync with STROKE.line in components/nodes/schematic.tsx. */
+/* Note: React Flow's own stylesheet is injected after this file, so these rules
+   carry an extra ancestor class to win on specificity rather than order. */
+.react-flow .react-flow__edge-path {
+  stroke: #334155;
+  stroke-width: 1.4;
+  transition: stroke 0.15s ease;
+}
+
+.dark .react-flow .react-flow__edge-path {
+  stroke: #e2e8f0;
+}
+
+.react-flow .react-flow__edge.selected .react-flow__edge-path,
+.react-flow .react-flow__edge:focus .react-flow__edge-path,
+.react-flow .react-flow__edge:focus-visible .react-flow__edge-path {
+  stroke: #3b82f6;
+  stroke-width: 1.8;
+}
+
+.react-flow .react-flow__connection-path {
+  stroke: #3b82f6;
+  stroke-width: 1.4;
+}
+
+/* Canvas controls: match the panel chrome instead of React Flow's default chips */
+.react-flow .react-flow__controls {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.react-flow .react-flow__controls-button {
+  border-bottom: 1px solid #e2e8f0;
+  width: 22px;
+  height: 22px;
+  padding: 4px;
+}
+
 /* Overrides for schematic nodes to ensure transparency */
 .react-flow__node {
   background: transparent !important;

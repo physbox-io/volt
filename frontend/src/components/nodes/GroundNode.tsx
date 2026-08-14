@@ -6,7 +6,7 @@ export function GroundNode() {
       <Handle type="target" position={Position.Top} id="in" className="w-3 h-3 bg-green-500" />
       <Handle type="source" position={Position.Top} id="in" className="w-3 h-3 bg-green-500" />
       
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.0" strokeLinecap="round" strokeLinejoin="round" className="text-green-700" style={{ overflow: 'visible' }}>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="text-slate-700 dark:text-slate-200 transition-colors" style={{ overflow: 'visible' }}>
         <path d="M12 -2v12" />
         <path d="M4 10h16" />
         <path d="M7 14h10" />

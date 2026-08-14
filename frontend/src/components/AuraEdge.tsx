@@ -165,6 +165,84 @@ function simplifyCollinear(points: Point[]): Point[] {
   return result;
 }
 
+/**
+ * Pull the first and last straight runs onto their handle's own axis.
+ *
+ * A* works on a snapped grid, so its first point can sit up to gridStep/2 off
+ * the true pin coordinate on the cross axis. Joining them directly draws a
+ * short diagonal off every pin; inserting an elbow instead draws a 1-3px jog.
+ * Neither belongs on a schematic. Shifting the whole terminal run onto the pin
+ * axis removes both: the wire leaves the pin perpendicular and stays on its
+ * axis until the first real corner, which absorbs the remainder.
+ */
+function alignTerminalRuns(
+  points: Point[],
+  sourceX: number,
+  sourceY: number,
+  sourcePosition: string,
+  targetX: number,
+  targetY: number,
+  targetPosition: string,
+): Point[] {
+  if (points.length < 3) return points;
+  const pts = points.map(p => ({ ...p }));
+  const isHorizontal = (pos: string) => pos === 'left' || pos === 'right';
+  const same = (a: number, b: number) => Math.abs(a - b) < 0.01;
+
+  // Leading run: every interior point sharing pts[1]'s cross-axis value. The
+  // run's value is captured up front — the loop overwrites it as it goes.
+  const last = pts.length - 1;
+  if (isHorizontal(sourcePosition)) {
+    const runY = pts[1].y;
+    for (let i = 1; i < last && same(pts[i].y, runY); i++) pts[i].y = sourceY;
+  } else {
+    const runX = pts[1].x;
+    for (let i = 1; i < last && same(pts[i].x, runX); i++) pts[i].x = sourceX;
+  }
+
+  // Trailing run, walked back from the target end.
+  if (isHorizontal(targetPosition)) {
+    const runY = pts[last - 1].y;
+    for (let i = last - 1; i > 0 && same(pts[i].y, runY); i--) pts[i].y = targetY;
+  } else {
+    const runX = pts[last - 1].x;
+    for (let i = last - 1; i > 0 && same(pts[i].x, runX); i--) pts[i].x = targetX;
+  }
+
+  return pts;
+}
+
+/**
+ * Insert a corner wherever a segment still runs diagonally.
+ *
+ * `alignTerminalRuns` can leave one when a path's leading and trailing runs are
+ * the same run — a straight hop between two pins whose cross-axis coordinates
+ * differ by a pixel or two. Both ends want that run on their own axis and the
+ * second write wins, so the mismatch reappears as a slant. Giving it its own
+ * corner turns it into a (tiny) step, which is what a schematic would draw.
+ */
+function squareOffDiagonals(points: Point[], sourcePosition: string): Point[] {
+  const out: Point[] = [points[0]];
+  let incomingHorizontal = sourcePosition === 'left' || sourcePosition === 'right';
+
+  for (let i = 1; i < points.length; i++) {
+    const prev = out[out.length - 1];
+    const cur = points[i];
+    const dx = Math.abs(cur.x - prev.x);
+    const dy = Math.abs(cur.y - prev.y);
+
+    if (dx > 0.01 && dy > 0.01) {
+      out.push(incomingHorizontal ? { x: cur.x, y: prev.y } : { x: prev.x, y: cur.y });
+      incomingHorizontal = !incomingHorizontal;
+    } else if (dx > 0.01 || dy > 0.01) {
+      incomingHorizontal = dx > dy;
+    }
+    out.push(cur);
+  }
+
+  return out;
+}
+
 function routeOrthogonal({
   sourceX,
   sourceY,
@@ -177,6 +255,7 @@ function routeOrthogonal({
   bendPenalty = 20,
   padding = 160,
   softObstacles,
+  trunkCells,
   tieBreak = 0,
 }: {
   sourceX: number;
@@ -190,6 +269,7 @@ function routeOrthogonal({
   bendPenalty?: number;
   padding?: number;
   softObstacles?: Map<string, number>;
+  trunkCells?: Set<string>;
   tieBreak?: number;
 }): string | null {
   const leadLength = 8;
@@ -334,6 +414,13 @@ function routeOrthogonal({
         stepCost += softObstacles.get(`${neighbor.x},${neighbor.y}`) || 0;
       }
 
+      // Wires on the same net should share one trunk and branch late, not run
+      // as parallel duplicates. Travelling along a cell an already-routed
+      // same-net wire occupies is nearly free, so A* prefers to merge onto it.
+      if (trunkCells && trunkCells.has(`${neighbor.x},${neighbor.y}`)) {
+        stepCost *= TRUNK_DISCOUNT;
+      }
+
       const tentativeG = currG + stepCost;
 
       const neighborKey = `${neighbor.x},${neighbor.y},${neighbor.dir}`;
@@ -369,33 +456,13 @@ function routeOrthogonal({
   // Simplify intermediate points
   const simplifiedPoints = simplifyCollinear(pathPoints);
 
-  // Calculate orthogonal connector leads. Only insert an elbow point when the
-  // diff from grid-snapping exceeds a full grid step — sub-grid rounding
-  // diffs (1-3px) would otherwise produce phantom micro-jogs.
-  const LEAD_EPS = gridStep;
-  const startPts: Point[] = [{ x: sourceX, y: sourceY }];
-  if (sourcePosition === 'left' || sourcePosition === 'right') {
-    if (Math.abs(sourceY - start.y) >= LEAD_EPS) {
-      startPts.push({ x: start.x, y: sourceY });
-    }
-  } else {
-    if (Math.abs(sourceX - start.x) >= LEAD_EPS) {
-      startPts.push({ x: sourceX, y: start.y });
-    }
-  }
-  startPts.push(start);
-
-  const endPts: Point[] = [end];
-  if (targetPosition === 'left' || targetPosition === 'right') {
-    if (Math.abs(targetY - end.y) >= LEAD_EPS) {
-      endPts.push({ x: end.x, y: targetY });
-    }
-  } else {
-    if (Math.abs(targetX - end.x) >= LEAD_EPS) {
-      endPts.push({ x: targetX, y: end.y });
-    }
-  }
-  endPts.push({ x: targetX, y: targetY });
+  // Join the routed grid path to the true (unsnapped) handle points. The
+  // cross-axis gap here is only ever the grid-snapping remainder — at most
+  // gridStep/2 — because `start`/`end` are the handle points offset along
+  // their own axis and then snapped. `alignTerminalRuns` below absorbs that
+  // remainder into the first real corner, so no elbow is needed here.
+  const startPts: Point[] = [{ x: sourceX, y: sourceY }, start];
+  const endPts: Point[] = [end, { x: targetX, y: targetY }];
 
   // Merge segments orthogonally
   const finalPoints: Point[] = [...startPts];
@@ -413,7 +480,12 @@ function routeOrthogonal({
   // Collinear point reduction — run again post-merge since splicing
   // startPts/route/endPts together can introduce redundant points that
   // weren't collinear within any single sub-list.
-  const resultPoints = simplifyCollinear(finalPoints);
+  const resultPoints = simplifyCollinear(
+    squareOffDiagonals(
+      alignTerminalRuns(finalPoints, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition),
+      sourcePosition,
+    )
+  );
 
   let d = `M ${resultPoints[0].x} ${resultPoints[0].y}`;
   for (let i = 1; i < resultPoints.length; i++) {
@@ -422,12 +494,14 @@ function routeOrthogonal({
   return d;
 }
 
+const TRUNK_DISCOUNT = 0.12; // running along a same-net wire is near-free
 const SOFT_PENALTY = 14; // < bendPenalty (20) so a lane-shift beats a new bend
 const SELF_EXEMPT_RADIUS = 12; // px around own start/end; never soft-penalize there
 
 function buildSoftObstacles(
   otherEdgesPaths: Record<string, Point[]>,
   edgeId: string,
+  sameNetIds: Set<string>,
   sourceX: number,
   sourceY: number,
   targetX: number,
@@ -446,6 +520,9 @@ function buildSoftObstacles(
 
   for (const otherId of otherIds) {
     if (sortedIds.indexOf(otherId) > myRank) continue;
+    // Never repel a wire from its own net — that is what split a single trunk
+    // into parallel duplicate runs.
+    if (sameNetIds.has(otherId)) continue;
     const pts = otherEdgesPaths[otherId];
     if (!pts || pts.length < 2) continue;
     for (let i = 0; i < pts.length - 1; i++) {
@@ -507,6 +584,8 @@ export function getSchematicPath({
   otherEdgesPaths = {},
   sourceIndex = 0,
   targetIndex = 0,
+  sourceId,
+  targetId,
 }: {
   sourceX: number;
   sourceY: number;
@@ -527,6 +606,42 @@ export function getSchematicPath({
 }) {
   // Try obstacle-avoiding A* router first
   if (nodes && nodes.length > 0) {
+    // Straight shot: when the two pins already share an axis and nothing sits
+    // between them, one segment is the answer. Worth special-casing because A*
+    // must approach a pin perpendicular to its face, so a horizontal wire into
+    // a top-facing pin (a resistor feeding the anode of a vertical LED, say)
+    // would otherwise detour above the pin and come back down — a visible bump
+    // on an otherwise straight run.
+    // The two nodes being joined keep their bodies as obstacles too — a wire
+    // must never run through its own component (a supply's pin-to-pin line
+    // would otherwise cut straight across the symbol). Their boxes are only
+    // shrunk enough that a wire terminating on the boundary pin still passes.
+    const PIN_INSET = 5;
+    const spanObstacles: Obstacle[] = nodes
+      .filter((n: any) => n.type !== 'junction')
+      .map((n: any) => {
+        const w = n.measured?.width || getNodeDimensions(n.type, n.data).width;
+        const h = n.measured?.height || getNodeDimensions(n.type, n.data).height;
+        const own = n.id === sourceId || n.id === targetId;
+        const i = own ? PIN_INSET : 0;
+        return { x: n.position.x + i, y: n.position.y + i, width: w - 2 * i, height: h - 2 * i };
+      })
+      .filter((o: Obstacle) => o.width > 0 && o.height > 0);
+    // React Flow insets an edge endpoint a couple of px into its handle, so
+    // "same axis" is a small tolerance rather than equality; the run is then
+    // snapped onto the source pin's axis so it stays perfectly straight.
+    const AXIS_EPS = 4;
+    const straight =
+      Math.abs(sourceY - targetY) <= AXIS_EPS && Math.abs(sourceX - targetX) > 8
+        ? { x: targetX, y: sourceY }
+        : Math.abs(sourceX - targetX) <= AXIS_EPS && Math.abs(sourceY - targetY) > 8
+          ? { x: sourceX, y: targetY }
+          : null;
+    if (straight && !segmentIntersectsObstacle(
+          { x: sourceX, y: sourceY }, straight, spanObstacles)) {
+      return `M ${sourceX} ${sourceY} L ${straight.x} ${straight.y}`;
+    }
+
     const obstacles: Obstacle[] = nodes
       .filter((n: any) => n.type !== 'junction')
       .map((n: any) => {
@@ -544,7 +659,42 @@ export function getSchematicPath({
     for (const [id, pts] of Object.entries(otherEdgesPaths)) {
       if (id !== edgeId) otherPaths[id] = pts;
     }
-    const softObstacles = buildSoftObstacles(otherPaths, edgeId, sourceX, sourceY, targetX, targetY, 4);
+    // Edges that share a port with this one carry the same net. They should
+    // merge into a single trunk rather than each drawing its own parallel run,
+    // so they are excluded from soft-repulsion and their already-routed cells
+    // become cheap to travel along.
+    const me = allEdges.find((e: any) => e.id === edgeId);
+    const sameNetIds = new Set<string>();
+    if (me) {
+      const myPorts = new Set([
+        `${me.source}-${me.sourceHandle || 'out'}`,
+        `${me.target}-${me.targetHandle || 'in'}`,
+      ]);
+      for (const e of allEdges) {
+        if (e.id === edgeId) continue;
+        const a = `${e.source}-${e.sourceHandle || 'out'}`;
+        const b = `${e.target}-${e.targetHandle || 'in'}`;
+        if (myPorts.has(a) || myPorts.has(b)) sameNetIds.add(e.id);
+      }
+    }
+
+    // Only follow trunks already laid by same-net edges that sort before this
+    // one, matching buildSoftObstacles' ordering so the layout still settles.
+    const trunkCells = new Set<string>();
+    for (const sibId of sameNetIds) {
+      if (sibId >= edgeId) continue;
+      const pts = otherPaths[sibId];
+      if (!pts || pts.length < 2) continue;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p1 = pts[i], p2 = pts[i + 1];
+        if (p1.x !== p2.x && p1.y !== p2.y) continue;
+        const x1 = snapToGrid(Math.min(p1.x, p2.x), 4), x2 = snapToGrid(Math.max(p1.x, p2.x), 4);
+        const y1 = snapToGrid(Math.min(p1.y, p2.y), 4), y2 = snapToGrid(Math.max(p1.y, p2.y), 4);
+        for (let x = x1; x <= x2; x += 4) for (let y = y1; y <= y2; y += 4) trunkCells.add(`${x},${y}`);
+      }
+    }
+
+    const softObstacles = buildSoftObstacles(otherPaths, edgeId, sameNetIds, sourceX, sourceY, targetX, targetY, 4);
     const tieBreak = (sourceIndex + targetIndex) * 0.001;
 
     let aStarPath = routeOrthogonal({
@@ -559,6 +709,7 @@ export function getSchematicPath({
       bendPenalty: 20,
       padding: 160,
       softObstacles,
+      trunkCells,
       tieBreak,
     });
 
@@ -576,6 +727,7 @@ export function getSchematicPath({
         bendPenalty: 20,
         padding: 500,
         softObstacles,
+        trunkCells,
         tieBreak,
       });
     }

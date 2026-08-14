@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useContext, type DragEvent } from 'react';
+import { useState, useCallback, useEffect, useRef, useContext, type DragEvent } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -7,6 +7,7 @@ import {
   type Edge,
   useReactFlow,
   ConnectionMode,
+  getNodesBounds,
 } from '@xyflow/react';
 
 import { ResistorNode } from './nodes/ResistorNode';
@@ -100,10 +101,64 @@ let nodeId = 1;
 
 export function FlowArea({
   nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange, onConnect, onNodeClick,
-  probeMode, onEdgeProbe, isSimulating
+  probeMode, onEdgeProbe, isSimulating, fitKey, hasNoteCard, noteCardRect
 }: any) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition, getViewport } = useReactFlow();
+  const { screenToFlowPosition, getViewport, setViewport, getNodes } = useReactFlow();
+  // Supplied by App so FlowArea doesn't need to know how note cards are rendered.
+  const cardRectRef = useRef<(() => DOMRect | null) | null>(null);
+  cardRectRef.current = noteCardRect ?? null;
+
+  // `fitView` as a prop only runs on mount, so every preset after the first was
+  // framed by whatever fit the *previous* circuit — usually a zoomed-in corner
+  // with wires running off every edge. Re-frame whenever the circuit identity
+  // changes (not on node drags, which keep the same fitKey).
+  //
+  // This centres into an explicit rect rather than calling fitView, because the
+  // note card is a 300px overlay pinned top-right: fitView's asymmetric padding
+  // shrinks the circuit but still centres it across the whole pane, so a tall
+  // circuit slides back under the card.
+  useEffect(() => {
+    if (!nodes.length) return;
+    // One frame's delay: custom nodes must measure before their extents are known.
+    const raf = requestAnimationFrame(() => {
+      const pane = reactFlowWrapper.current;
+      if (!pane) return;
+      const paneRect = pane.getBoundingClientRect();
+      const bounds = getNodesBounds(getNodes());
+      if (!bounds.width || !bounds.height) return;
+
+      const M = 24;
+      const cardRect = hasNoteCard ? cardRectRef.current?.() : null;
+
+      const frame = (reserveRight: number) => {
+        const availW = Math.max(80, paneRect.width - M * 2 - reserveRight);
+        const availH = Math.max(80, paneRect.height - M * 2);
+        const zoom = Math.min(availW / bounds.width, availH / bounds.height, 1.5);
+        return {
+          zoom,
+          x: M + (availW - bounds.width * zoom) / 2 - bounds.x * zoom,
+          y: M + (availH - bounds.height * zoom) / 2 - bounds.y * zoom,
+        };
+      };
+
+      // Prefer the whole pane; only give up the card's column when the circuit
+      // would actually collide with it. (Dropping the circuit *below* the card
+      // instead uses the width better, but pushes tall circuits off the bottom
+      // — keeping everything on screen matters more than filling it.)
+      let vp = frame(0);
+      if (cardRect) {
+        const right = paneRect.left + vp.x + (bounds.x + bounds.width) * vp.zoom;
+        const top = paneRect.top + vp.y + bounds.y * vp.zoom;
+        if (right > cardRect.left && top < cardRect.bottom) {
+          vp = frame(paneRect.right - cardRect.left + 12);
+        }
+      }
+      setViewport(vp, { duration: 200 });
+    });
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitKey, hasNoteCard]);
 
   const context = useContext(EdgePathContext);
   const setHoveredEdgeId = context?.setHoveredEdgeId;
@@ -337,7 +392,10 @@ export function FlowArea({
         snapGrid={[4, 4]}
         fitView
       >
-        <Background color="#ccc" gap={8} />
+        {/* Drafting grid: 16px reads as guidance, the 8px default read as noise.
+            Parts still snap at 4px (every node box is a multiple of 8, so pins
+            land on the grid). */}
+        <Background color="#cbd5e1" gap={16} size={1} />
         <Controls />
       </ReactFlow>
 

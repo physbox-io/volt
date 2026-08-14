@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { X, Radio, Clock, AlertTriangle, RefreshCw, Cpu } from 'lucide-react';
 import { fetchLatestTelemetry } from '../utils/apiClient';
 import type { MachiningTelemetry } from '../utils/apiClient';

@@ -2,6 +2,7 @@ import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { useState, useRef, useCallback } from 'react';
 import { Mic, Square } from 'lucide-react';
 import type { NodePropertiesProps } from './registry';
+import { DEVICE_CARD, DEVICE_TITLE } from './schematic';
 
 export function MicrophoneProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -96,16 +97,17 @@ export function MicrophoneNode({ id, data }: any) {
   };
 
   return (
-    <div className="bg-gray-100 border-2 border-gray-400 rounded-md p-2 w-24 flex flex-col items-center justify-center relative shadow-sm">
-      <button 
+    <div className={`${DEVICE_CARD} px-1.5 py-1 w-16 flex flex-col items-center justify-center gap-0.5 relative`}>
+      <button
         onClick={toggleRecord}
-        className={`w-10 h-10 rounded-full flex items-center justify-center text-white ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-800'}`}
+        className={`w-6 h-6 rounded-full flex items-center justify-center text-white ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-slate-700 dark:bg-slate-600'}`}
       >
-        {isRecording ? <Square size={16} /> : <Mic size={16} />}
+        {isRecording ? <Square size={11} /> : <Mic size={11} />}
       </button>
-      <div className="text-[10px] mt-1 font-mono">Microphone</div>
-      {hasData && <div className="text-[8px] text-green-600 font-bold">● REC</div>}
-      <div className="text-[8px] mt-0.5 font-mono text-gray-500">Gain: {gain}×</div>
+      <div className={DEVICE_TITLE}>
+        Mic{hasData && <span className="text-emerald-600 dark:text-emerald-400"> ●</span>}
+      </div>
+      <div className="text-[7px] font-mono leading-none text-slate-400 dark:text-slate-500">{gain}×</div>
       <Handle type="source" position={Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
       <Handle type="target" position={Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
       <Handle type="source" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" />

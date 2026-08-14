@@ -47,6 +47,7 @@ export function NoteCardOverlay({ card, isEditing, onToggleEdit, onToggleMinimiz
 
   return (
     <div
+      data-note-card
       style={{ position: 'absolute', left: card.x, top: card.y, zIndex: 100, width: 300 }}
       className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl overflow-hidden"
     >

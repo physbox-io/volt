@@ -39,14 +39,18 @@ export function getHandleCoord(node: any, handleId: string): { x: number; y: num
   const w = node.measured?.width || getNodeDimensions(node.type, node.data).width;
   const h = node.measured?.height || getNodeDimensions(node.type, node.data).height;
 
+  // Pins 1-4 run down the left, 8-5 down the right, on a fixed 16px pitch
+  // starting 32px below the node origin. Timer555Node.tsx lays the rows out
+  // with explicit heights so these constants stay true.
   if (node.type === 'timer555') {
     const row = parseInt(handleId);
+    const PIN_ROW_TOP = 32;
+    const PIN_PITCH = 16;
     if (row >= 1 && row <= 4) {
-      return { x: x, y: y + 26 + (row - 1) * 32 };
+      return { x, y: y + PIN_ROW_TOP + (row - 1) * PIN_PITCH };
     }
     if (row >= 5 && row <= 8) {
-      const rightRow = 8 - row;
-      return { x: x + w, y: y + 26 + rightRow * 32 };
+      return { x: x + w, y: y + PIN_ROW_TOP + (8 - row) * PIN_PITCH };
     }
   }
 

@@ -1,6 +1,7 @@
 import { Handle, Position } from '@xyflow/react';
 import { getNodeDefaultName } from '../../utils/nodeNaming';
 import type { NodePropertiesProps } from './registry';
+import { SchematicLabel } from './schematic';
 
 export function ResistorProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -42,11 +43,11 @@ export function ResistorNode({ id, data, selected }: any) {
         viewBox={isVertical ? "0 0 24 40" : "0 0 40 24"} 
         fill="none" 
         stroke={selected ? '#3b82f6' : 'currentColor'} 
-        strokeWidth="1.2" 
+        strokeWidth="1.4" 
         strokeLinecap="round" 
         strokeLinejoin="round"
         style={{ overflow: 'visible', transform: isLeft ? 'scaleX(-1)' : isUp ? 'scaleY(-1)' : undefined }}
-        className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
+        className={`text-slate-700 dark:text-slate-200 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.65)]' : ''}`}
       >
         {isVertical ? (
           <path d="M 12 -2 V 8 L 6 10 L 18 14 L 6 18 L 18 22 L 6 26 L 18 30 L 12 32 V 42" />
@@ -55,12 +56,11 @@ export function ResistorNode({ id, data, selected }: any) {
         )}
       </svg>
 
-      <div className={isVertical 
-        ? "absolute left-[20px] top-1/2 -translate-y-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 pointer-events-none whitespace-nowrap" 
-        : "absolute -bottom-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 text-center pointer-events-none whitespace-nowrap"
-      }>
-        {name}: {data.label || '1k'}
-      </div>
+      <SchematicLabel
+        placement={isVertical ? 'right' : 'below'}
+        name={name}
+        value={data.label || '1k'}
+      />
       
       <Handle 
         type="source" 

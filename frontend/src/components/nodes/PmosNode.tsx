@@ -1,4 +1,5 @@
 import { Handle, Position } from '@xyflow/react';
+import { SchematicLabel } from './schematic';
 
 export function PmosNode({ data, selected }: any) {
   return (
@@ -13,20 +14,20 @@ export function PmosNode({ data, selected }: any) {
         viewBox="0 0 40 40" 
         fill="none" 
         stroke={selected ? '#3b82f6' : 'currentColor'} 
-        strokeWidth="1.5" 
+        strokeWidth="1.17" 
         strokeLinecap="round" 
         strokeLinejoin="round"
-        className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
+        className={`text-slate-700 dark:text-slate-200 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.65)]' : ''}`}
       >
         {/* Gate Lead & Bubble */}
         <path d="M 0 20 H 12" />
-        <circle cx="14" cy="20" r="2" fill="none" strokeWidth="1.5" />
+        <circle cx="14" cy="20" r="2" fill="none" strokeWidth="1.17" />
         {/* Gate Plate */}
-        <path d="M 16 10 V 30" strokeWidth="2.2" />
+        <path d="M 16 10 V 30" strokeWidth="2" />
         {/* Channel Plate (3 segments) */}
-        <path d="M 20 10 V 15" strokeWidth="2.0" />
-        <path d="M 20 18 V 22" strokeWidth="2.0" />
-        <path d="M 20 25 V 30" strokeWidth="2.0" />
+        <path d="M 20 10 V 15" strokeWidth="2" />
+        <path d="M 20 18 V 22" strokeWidth="2" />
+        <path d="M 20 25 V 30" strokeWidth="2" />
         {/* Source Lead (Top) */}
         <path d="M 20 12 H 30 V 0" />
         {/* Drain Lead (Bottom) */}
@@ -34,12 +35,12 @@ export function PmosNode({ data, selected }: any) {
         {/* Substrate line */}
         <path d="M 20 20 H 30" />
         {/* Body arrow pointing outwards */}
-        <path d="M 30 20 L 24 17 M 30 20 L 24 23" strokeWidth="1.2" />
+        <path d="M 30 20 L 24 17 M 30 20 L 24 23" strokeWidth="1.17" />
       </svg>
 
-      <div className="absolute left-1 top-2 text-[9px] font-bold font-mono text-slate-500 dark:text-slate-400 pointer-events-none">
+      <SchematicLabel placement="right">
         {data.label || 'PMOS'}
-      </div>
+      </SchematicLabel>
     </div>
   );
 }

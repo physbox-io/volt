@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
+import { DEVICE_CARD_DARK } from './schematic';
 
 export function MicrocontrollerProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -27,7 +28,7 @@ export function MicrocontrollerProperties({ node, updateData }: NodePropertiesPr
 
 export function MicrocontrollerNode({ selected }: any) {
   return (
-    <div className={`bg-gray-800 border-2 rounded w-24 shadow-md flex flex-col ${selected ? 'border-blue-500 shadow-lg shadow-blue-500/20' : 'border-gray-900'}`}>
+    <div className={`${DEVICE_CARD_DARK} w-24 flex flex-col ${selected ? '!border-blue-500' : ''}`}>
       <div className="bg-gray-900 text-white text-[10px] font-bold text-center py-1 uppercase tracking-wider rounded-t">
         MCU
       </div>

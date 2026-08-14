@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
+import { SchematicLabel } from './schematic';
 
 /** Shared by NpnNode and PnpNode — both BJT types expose the same single "current gain" property. */
 export function BJTProperties({ node, updateData }: NodePropertiesProps) {
@@ -27,27 +28,27 @@ export function NpnNode({ data, selected }: any) {
         viewBox="0 0 32 32" 
         fill="none" 
         stroke={selected ? '#3b82f6' : 'currentColor'} 
-        strokeWidth="1.2" 
+        strokeWidth="1.4" 
         strokeLinecap="round" 
         strokeLinejoin="round"
         style={{ overflow: 'visible' }}
-        className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
+        className={`text-slate-700 dark:text-slate-200 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.65)]' : ''}`}
       >
         {/* Base Lead */}
         <path d="M -4 16 H 12" />
         {/* Base Plate */}
-        <path d="M 12 8 V 24" strokeWidth="2.0" />
+        <path d="M 12 8 V 24" strokeWidth="2.4" />
         {/* Collector Lead: diagonal then vertical */}
         <path d="M 12 12 L 24 4 V -4" />
         {/* Emitter Lead: diagonal then vertical */}
         <path d="M 12 20 L 24 28 V 36" />
         {/* Emitter Arrow in the middle of the leg, pointing outward */}
-        <path d="M 21 26 L 16 26 M 21 26 L 19 22" strokeWidth="1.2" />
+        <path d="M 21 26 L 16 26 M 21 26 L 19 22" strokeWidth="1.4" />
       </svg>
 
-      <div className="absolute -bottom-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 pointer-events-none whitespace-nowrap">
+      <SchematicLabel placement="below">
         {data.label || 'NPN'}
-      </div>
+      </SchematicLabel>
     </div>
   );
 }

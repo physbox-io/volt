@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
+import { SchematicLabel } from './schematic';
 
 export function SwitchProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -32,7 +33,7 @@ export function SwitchNode({ data, selected }: any) {
   const isUp = orientation === 'up';
 
   return (
-    <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[36px] h-[48px]' : 'w-[48px] h-[36px]'}`}>
+    <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[40px] h-[48px]' : 'w-[48px] h-[40px]'}`}>
       <Handle 
         type="target" 
         position={isVertical ? (isUp ? Position.Bottom : Position.Top) : (isLeft ? Position.Right : Position.Left)} 
@@ -54,11 +55,11 @@ export function SwitchNode({ data, selected }: any) {
         viewBox={isVertical ? "0 0 48 64" : "0 0 64 48"} 
         fill="none" 
         stroke={selected ? '#3b82f6' : 'currentColor'} 
-        strokeWidth="1.5" 
+        strokeWidth="1.87" 
         strokeLinecap="round" 
         strokeLinejoin="round"
         style={{ overflow: 'visible', transform: isLeft ? 'scaleX(-1)' : isUp ? 'scaleY(-1)' : undefined }}
-        className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
+        className={`text-slate-700 dark:text-slate-200 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.65)]' : ''}`}
       >
         {isVertical ? (
           <>
@@ -74,7 +75,7 @@ export function SwitchNode({ data, selected }: any) {
               y1="20" 
               x2={isOpen ? 12 : 24} 
               y2={isOpen ? 40 : 44} 
-              strokeWidth="2.5"
+              strokeWidth="1.87"
               style={{ transition: 'all 0.1s ease-in-out' }}
             />
           </>
@@ -92,16 +93,16 @@ export function SwitchNode({ data, selected }: any) {
               y1="24" 
               x2={isOpen ? 40 : 44} 
               y2={isOpen ? 12 : 24} 
-              strokeWidth="2.5"
+              strokeWidth="1.87"
               style={{ transition: 'all 0.1s ease-in-out' }}
             />
           </>
         )}
       </svg>
 
-      <div className="absolute -top-4 text-[10px] font-bold font-mono text-slate-700 dark:text-slate-350 text-center w-full pointer-events-none">
+      <SchematicLabel placement="above">
         {data.label || 'Switch'}
-      </div>
+      </SchematicLabel>
       
       <div className={`absolute -bottom-4 text-[8px] font-extrabold tracking-wider ${isOpen ? 'text-rose-500' : 'text-emerald-500'} pointer-events-none`}>
         {isOpen ? 'OPEN' : 'CLOSED'}

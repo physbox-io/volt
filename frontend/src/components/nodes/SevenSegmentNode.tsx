@@ -2,6 +2,7 @@ import { Handle, Position } from '@xyflow/react';
 import { useEffect, useState, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
 import type { NodePropertiesProps } from './registry';
+import { DEVICE_CARD_DARK } from './schematic';
 
 export function SevenSegmentProperties(_props: NodePropertiesProps) {
   return (
@@ -52,7 +53,7 @@ export const SevenSegmentNode = memo(function SevenSegmentNode({ data }: any) {
   }, [data.segmentVoltageArrays, data.timePoints, data.segmentVoltages, isSimulating]);
 
   return (
-    <div className="bg-gray-900 border-2 border-gray-700 rounded-md p-2 w-20 h-28 flex flex-col items-center justify-center relative shadow-lg">
+    <div className={`${DEVICE_CARD_DARK} p-1.5 w-16 h-20 flex flex-col items-center justify-center relative`}>
       {segs.map((s, i) => (
         <span key={s}>
           <Handle type="target" position={Position.Left} id={s} className={`w-2.5 h-2.5 ${SEG_COLORS[s]}`} style={{ top: `${12 + i * 12}%` }} />
@@ -62,7 +63,7 @@ export const SevenSegmentNode = memo(function SevenSegmentNode({ data }: any) {
       <Handle type="target" position={Position.Bottom} id="common" className="w-3 h-3 bg-gray-400" />
       <Handle type="source" position={Position.Bottom} id="common" className="w-3 h-3 bg-gray-400" />
 
-      <svg width="48" height="48" viewBox="0 0 24 24" className="drop-shadow-lg">
+      <svg width="40" height="40" viewBox="0 0 24 24">
         {segs.map(s => {
           const on = (currentVoltages[s] ?? 0) > 2.5;
           return (

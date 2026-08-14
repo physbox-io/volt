@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
+import { SchematicLabel } from './schematic';
 
 export function CurrentSourceProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -16,7 +17,7 @@ export function CurrentSourceNode({ data, selected }: any) {
   const isHorizontal = data.orientation === 'horizontal';
 
   return (
-    <div className="schematic-node w-[36px] h-[36px] flex items-center justify-center relative select-none">
+    <div className="schematic-node w-[40px] h-[40px] flex items-center justify-center relative select-none">
       <Handle 
         type="target" 
         position={isHorizontal ? Position.Left : Position.Top} 
@@ -38,11 +39,11 @@ export function CurrentSourceNode({ data, selected }: any) {
         viewBox="0 0 48 48" 
         fill="none" 
         stroke={selected ? '#3b82f6' : 'currentColor'} 
-        strokeWidth="1.5" 
+        strokeWidth="1.87" 
         strokeLinecap="round" 
         strokeLinejoin="round"
         style={{ overflow: 'visible' }}
-        className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
+        className={`text-slate-700 dark:text-slate-200 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.65)]' : ''}`}
       >
         {isHorizontal ? (
           <>
@@ -69,12 +70,9 @@ export function CurrentSourceNode({ data, selected }: any) {
         )}
       </svg>
 
-      <div className={isHorizontal
-        ? "absolute -top-4 text-[10px] font-bold font-mono text-slate-700 dark:text-slate-350 text-center w-full pointer-events-none"
-        : "absolute left-[54px] text-[10px] font-bold font-mono text-slate-700 dark:text-slate-350 whitespace-nowrap pointer-events-none"
-      }>
+      <SchematicLabel placement={isHorizontal ? 'below' : 'right'}>
         {label}
-      </div>
+      </SchematicLabel>
       
       <Handle 
         type="source" 

@@ -16,7 +16,7 @@ import { HELTEC_V4_GPIO_PINS } from './components/nodes/HeltecV4Node';
 import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
 import { buildNetlistResultIndex, findNetGraph } from './utils/netlistResult';
 import { isPortConnected } from './utils/graphTopology';
-import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Scissors, Printer } from 'lucide-react';
+import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
 import { ExportPcbModal } from './components/ExportPcbModal';
 import { playbackTicker } from './utils/playbackTicker';
@@ -39,16 +39,6 @@ import { FlowArea } from './components/FlowArea';
 import { ProbeTooltip } from './components/ProbeTooltip';
 import { HILMemoizer } from './utils/hilMemoizer';
 
-// Precision Laser Emitter Icon for Laser / PCB Export
-const LaserIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 3h6l1 4H8l1-4z" />
-    <line x1="8" y1="7" x2="16" y2="7" />
-    <line x1="12" y1="7" x2="12" y2="17" strokeWidth="2.5" />
-    <circle cx="12" cy="17" r="1.5" fill="currentColor" />
-    <line x1="4" y1="21" x2="20" y2="21" />
-  </svg>
-);
 
 
 let simulationWorker: Worker | null = null;
@@ -1775,6 +1765,9 @@ export default function App() {
           <ReactFlowProvider>
             <FlowArea
             nodes={nodes} edges={edges}
+            fitKey={selectedPreset}
+            hasNoteCard={noteCards.length > 0}
+            noteCardRect={() => document.querySelector('[data-note-card]')?.getBoundingClientRect() ?? null}
             setNodes={setNodes} setEdges={setEdges}
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
             onNodeClick={onNodeClick}

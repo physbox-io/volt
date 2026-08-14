@@ -2,6 +2,7 @@ import { Handle, Position } from '@xyflow/react';
 import { useEffect, useRef, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
 import type { NodePropertiesProps } from './registry';
+import { SchematicLabel } from './schematic';
 
 export function LEDProperties({ node, updateData, webcam }: NodePropertiesProps) {
   const { stream, videoRef, isRecordingWebcam, startRecordingWebcam } = webcam;
@@ -37,7 +38,7 @@ export function LEDProperties({ node, updateData, webcam }: NodePropertiesProps)
           <>
             <div className="mb-3">
               <label className="block text-xs font-medium text-gray-700 mb-1">Reverse Sensitivity (μA)</label>
-              <input type="number" min="0" step="1" value={node.data.lightSensitivity !== undefined ? node.data.lightSensitivity : 10} onChange={e => updateData('lightSensitivity', parseInt(e.target.value) || 0)} className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none" />
+              <input type="number" min="0" step="1" value={node.data.lightSensitivity !== undefined ? node.data.lightSensitivity : 10} onChange={e => updateData('lightSensitivity', parseInt(e.target.value) || 0)} className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none" />
             </div>
 
             <div className="mb-3 flex items-center gap-2">
@@ -203,10 +204,10 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
 
       {isExploded ? (
         <div className="w-6 h-6 relative flex items-center justify-center z-10">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-855 dark:text-slate-145">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="text-slate-700 dark:text-slate-200">
             <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-            <line x1="4" y1="4" x2="20" y2="20" stroke="red" strokeWidth="2.0" />
-            <line x1="20" y1="4" x2="4" y2="20" stroke="red" strokeWidth="2.0" />
+            <line x1="4" y1="4" x2="20" y2="20" stroke="red" strokeWidth="2.4" />
+            <line x1="20" y1="4" x2="4" y2="20" stroke="red" strokeWidth="2.4" />
           </svg>
         </div>
       ) : (
@@ -216,11 +217,11 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
           viewBox="0 0 32 32" 
           fill="none" 
           stroke={selected ? '#3b82f6' : 'currentColor'} 
-          strokeWidth="1.2" 
+          strokeWidth="1.4" 
           strokeLinecap="round" 
           strokeLinejoin="round"
           style={{ overflow: 'visible', transform: isLeft ? 'scaleX(-1)' : isUp ? 'scaleY(-1)' : undefined }}
-          className={`text-slate-855 dark:text-slate-145 transition-colors z-10 ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
+          className={`text-slate-700 dark:text-slate-200 transition-colors z-10 ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.65)]' : ''}`}
         >
           {isHorizontal ? (
             <>
@@ -229,7 +230,7 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
               {/* Triangle pointing right */}
               <path d="M 10 8 V 24 L 22 16 Z" fill="currentColor" />
               {/* Cathode bar */}
-              <path d="M 22 8 V 24" strokeWidth="2.0" />
+              <path d="M 22 8 V 24" strokeWidth="2.4" />
               {/* Right lead */}
               <path d="M 22 16 H 36" />
               {/* Arrows pointing up-right */}
@@ -245,7 +246,7 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
               {/* Triangle pointing down */}
               <path d="M 8 10 H 24 L 16 22 Z" fill="currentColor" />
               {/* Cathode bar */}
-              <path d="M 8 22 H 24" strokeWidth="2.0" />
+              <path d="M 8 22 H 24" strokeWidth="2.4" />
               {/* Bottom lead */}
               <path d="M 16 22 V 36" />
               {/* Arrows pointing up-right */}
@@ -258,17 +259,13 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
         </svg>
       )}
       
-      <div className={isHorizontal
-        ? "absolute -bottom-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 text-center pointer-events-none whitespace-nowrap"
-        : "absolute right-[24px] top-[6px] text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 text-right pointer-events-none whitespace-nowrap"
-      }>
-        {data.label || 'LED'}
-      </div>
-      <div ref={textRef} className={isHorizontal
-        ? "absolute -top-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 text-center pointer-events-none whitespace-nowrap"
-        : "absolute left-[24px] top-[6px] text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 text-left pointer-events-none whitespace-nowrap"
-      }></div>
- 
+      {/* Name and live current share one caption block. Kept out of the top-right
+          quadrant, which is where the emission arrows overhang the node box. */}
+      <SchematicLabel placement={isHorizontal ? 'below' : 'right'}>
+        <div>{data.label || 'LED'}</div>
+        <div ref={textRef} className="text-slate-400 dark:text-slate-500 empty:hidden" />
+      </SchematicLabel>
+
       <Handle 
         type="source" 
         position={isHorizontal ? (isLeft ? Position.Left : Position.Right) : (isUp ? Position.Top : Position.Bottom)} 

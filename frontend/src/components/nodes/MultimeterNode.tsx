@@ -2,6 +2,7 @@ import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { useEffect, useRef, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
 import type { NodePropertiesProps } from './registry';
+import { DEVICE_CARD_DARK } from './schematic';
 
 export function MultimeterProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -12,7 +13,7 @@ export function MultimeterProperties({ node, updateData }: NodePropertiesProps) 
           type="text"
           value={(node.data.label as string) || 'Multimeter'}
           onChange={e => updateData('label', e.target.value)}
-          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
         />
       </div>
       <div className="mb-3">
@@ -133,9 +134,9 @@ export const MultimeterNode = memo(function MultimeterNode({ id, data }: any) {
     : (data.mode === 'current' ? '0.000 A' : '0.000 V');
 
   return (
-    <div className="bg-gray-800 border-2 border-gray-900 rounded-md p-2 w-32 flex flex-col items-center justify-center relative shadow-lg">
+    <div className={`${DEVICE_CARD_DARK} px-2 py-1.5 w-28 flex flex-col items-center justify-center relative`}>
       {data.label && (
-        <div className="text-[9px] font-bold text-gray-300 mb-1 truncate max-w-[110px] tracking-wider uppercase">
+        <div className="text-[9px] font-bold text-gray-300 mb-1 truncate max-w-full tracking-wider uppercase">
           {data.label}
         </div>
       )}

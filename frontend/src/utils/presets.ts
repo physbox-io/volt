@@ -20,9 +20,9 @@ export const basicBlink: CircuitPreset = {
   name: 'Basic Blink',
   recommendedSimLength: 1.0,
   nodes: [
-    { id: 'sg1', type: 'signalgen', position: { x: 100, y: 116 }, data: { label: 'SIGNALGEN', waveform: 'square', frequency: 1, amplitude: 5 } },
-    { id: 'r1', type: 'resistor', position: { x: 350, y: 152 }, data: { label: '330Ω' } },
-    { id: 'led1', type: 'led', position: { x: 500, y: 168 }, data: { label: 'LED', color: 'red', v_drop: 2.0, max_current: 20, orientation: 'vertical' } },
+    { id: 'sg1', type: 'signalgen', position: { x: 120, y: 136 }, data: { label: 'SIGNALGEN', waveform: 'square', frequency: 1, amplitude: 5 } },
+    { id: 'r1', type: 'resistor', position: { x: 350, y: 153 }, data: { label: '330Ω' } },
+    { id: 'led1', type: 'led', position: { x: 500, y: 165 }, data: { label: 'LED', color: 'red', v_drop: 2.0, max_current: 20, orientation: 'vertical' } },
     { id: 'g1', type: 'ground', position: { x: 504, y: 260 }, data: { label: 'GND' } },
     { id: 'g2', type: 'ground', position: { x: 152, y: 260 }, data: { label: 'GND' } },
   ],
@@ -42,10 +42,10 @@ export const timer555Blink: CircuitPreset = {
     { id: 't555', type: 'timer555', position: { x: 400, y: 200 }, data: { label: '555 Timer' } },
     { id: 'r1', type: 'resistor', position: { x: 580, y: 48 }, data: { label: '10kΩ', orientation: 'vertical' } },
     { id: 'r2', type: 'resistor', position: { x: 580, y: 148 }, data: { label: '47kΩ', orientation: 'vertical' } },
-    { id: 'c1', type: 'capacitor', position: { x: 580, y: 248 }, data: { label: '10µF', orientation: 'vertical' } },
+    { id: 'c1', type: 'capacitor', position: { x: 580, y: 264 }, data: { label: '10µF', orientation: 'vertical' } },
     { id: 'r3', type: 'resistor', position: { x: 280, y: 280 }, data: { label: '330Ω', orientation: 'left' } },
-    { id: 'led1', type: 'led', position: { x: 180, y: 280 }, data: { label: 'LED', color: 'blue', v_drop: 2.0, max_current: 20, orientation: 'left' } },
-    { id: 'g1', type: 'ground', position: { x: 100, y: 280 }, data: { label: 'GND' } },
+    { id: 'led1', type: 'led', position: { x: 180, y: 276 }, data: { label: 'LED', color: 'blue', v_drop: 2.0, max_current: 20, orientation: 'left' } },
+    { id: 'g1', type: 'ground', position: { x: 100, y: 292 }, data: { label: 'GND' } },
     { id: 'g2', type: 'ground', position: { x: 580, y: 348 }, data: { label: 'GND' } },
   ],
   edges: [
@@ -75,9 +75,9 @@ export const sineAudio: CircuitPreset = {
   name: 'Sine Wave Audio',
   recommendedSimLength: 1.0,
   nodes: [
-    { id: 'sg1', type: 'signalgen', position: { x: 100, y: 150 }, data: { label: 'Tone', waveform: 'sine', frequency: 440, amplitude: 2 } },
-    { id: 'spk1', type: 'speaker', position: { x: 400, y: 150 }, data: { label: 'Speaker' } },
-    { id: 'g1', type: 'ground', position: { x: 400, y: 300 }, data: { label: 'GND' } },
+    { id: 'sg1', type: 'signalgen', position: { x: 100, y: 152 }, data: { label: 'Tone', waveform: 'sine', frequency: 440, amplitude: 2 } },
+    { id: 'spk1', type: 'speaker', position: { x: 400, y: 157 }, data: { label: 'Speaker' } },
+    { id: 'g1', type: 'ground', position: { x: 412, y: 300 }, data: { label: 'GND' } },
     { id: 'g2', type: 'ground', position: { x: 100, y: 300 }, data: { label: 'GND' } },
   ],
   edges: [
@@ -95,26 +95,26 @@ export const bjtAmp: CircuitPreset = {
     { id: 'mic1', type: 'microphone', position: { x: 100, y: 300 }, data: { label: 'Mic', pwlData: [{t:0,v:0}, {t:0.001,v:0.02}, {t:0.002,v:-0.02}, {t:0.003,v:0}] } },
     
     // Input coupling
-    { id: 'cin', type: 'capacitor', position: { x: 252, y: 316 }, data: { label: '10µF' } },
+    { id: 'cin', type: 'capacitor', position: { x: 252, y: 314.5 }, data: { label: '10µF' } },
     
     // Bias
     { id: 'r1', type: 'resistor', position: { x: 400, y: 150 }, data: { label: '47kΩ', orientation: 'vertical' } },
     { id: 'r2', type: 'resistor', position: { x: 400, y: 400 }, data: { label: '10kΩ', orientation: 'vertical' } },
-    { id: 'j_bias', type: 'junction', position: { x: 400, y: 316 }, data: {} },
+    { id: 'j_bias', type: 'junction', position: { x: 411.5, y: 326 }, data: {} },
     
     // Transistor
-    { id: 'q1', type: 'npn', position: { x: 600, y: 300 }, data: { label: '2N3904', bf: 300 } },
+    { id: 'q1', type: 'npn', position: { x: 600, y: 310.5 }, data: { label: '2N3904', bf: 300 } },
     
     // Collector & Emitter resistors
     { id: 'rc', type: 'resistor', position: { x: 612, y: 150 }, data: { label: '2.2kΩ', orientation: 'vertical' } },
     { id: 're', type: 'resistor', position: { x: 612, y: 450 }, data: { label: '1kΩ', orientation: 'vertical' } },
     
     // Output coupling & Speaker
-    { id: 'cout', type: 'capacitor', position: { x: 800, y: 300 }, data: { label: '470µF' } },
-    { id: 'spk1', type: 'speaker', position: { x: 1000, y: 300 }, data: { label: 'Speaker', acCouple: true, normalize: true } },
+    { id: 'cout', type: 'capacitor', position: { x: 800, y: 298.5 }, data: { label: '470µF' } },
+    { id: 'spk1', type: 'speaker', position: { x: 1000, y: 286.5 }, data: { label: 'Speaker', acCouple: true, normalize: true } },
     
     // Grounds
-    { id: 'g1', type: 'ground', position: { x: 100, y: 600 }, data: { label: 'GND' } },
+    { id: 'g1', type: 'ground', position: { x: 120, y: 600 }, data: { label: 'GND' } },
   ],
   edges: [
     // Power rails
@@ -152,7 +152,7 @@ export const micSpeaker: CircuitPreset = {
   recommendedSimLength: 1.0,
   nodes: [
     { id: 'mic1', type: 'microphone', position: { x: 100, y: 200 }, data: { label: 'Mic', amplification: 100 } },
-    { id: 'spk1', type: 'speaker', position: { x: 400, y: 200 }, data: { label: 'Speaker' } },
+    { id: 'spk1', type: 'speaker', position: { x: 400, y: 202.5 }, data: { label: 'Speaker' } },
     { id: 'g1', type: 'ground', position: { x: 250, y: 400 }, data: { label: 'GND' } },
   ],
   edges: [
@@ -167,15 +167,15 @@ export const classBamp: CircuitPreset = {
   recommendedSimLength: 1.0,
   nodes: [
     { id: 'v1', type: 'voltage', position: { x: 50, y: 50 }, data: { label: '12V' } },
-    { id: 'mic1', type: 'microphone', position: { x: 50, y: 300 }, data: { label: 'Mic', amplification: 50 } },
-    { id: 'cin', type: 'capacitor', position: { x: 250, y: 300 }, data: { label: '10uF' } },
+    { id: 'mic1', type: 'microphone', position: { x: 52, y: 300 }, data: { label: 'Mic', amplification: 50 } },
+    { id: 'cin', type: 'capacitor', position: { x: 250, y: 314.5 }, data: { label: '10uF' } },
     { id: 'r1', type: 'resistor', position: { x: 400, y: 150 }, data: { label: '10k' } },
-    { id: 'r2', type: 'resistor', position: { x: 400, y: 450 }, data: { label: '10k' } },
+    { id: 'r2', type: 'resistor', position: { x: 400, y: 450 }, data: { orientation: 'left', label: '10k' } },
     { id: 'q1', type: 'npn', position: { x: 600, y: 200 }, data: { label: 'NPN', bf: 200 } },
     { id: 'q2', type: 'pnp', position: { x: 600, y: 400 }, data: { label: 'PNP', bf: 200 } },
-    { id: 'cout', type: 'capacitor', position: { x: 800, y: 320 }, data: { label: '470uF' } },
+    { id: 'cout', type: 'capacitor', position: { x: 800, y: 332 }, data: { label: '470uF' } },
     { id: 'spk1', type: 'speaker', position: { x: 1000, y: 320 }, data: { label: 'Speaker', acCouple: true, normalize: true } },
-    { id: 'g1', type: 'ground', position: { x: 50, y: 550 }, data: { label: 'GND' } },
+    { id: 'g1', type: 'ground', position: { x: 72, y: 550 }, data: { label: 'GND' } },
   ],
   edges: [
     { id: 'e-v1-q1c', source: 'v1', target: 'q1', sourceHandle: 'pos', targetHandle: 'c', type: 'smoothstep' },
@@ -204,18 +204,18 @@ export const classABamp: CircuitPreset = {
   recommendedSimLength: 1.0,
   nodes: [
     { id: 'v1', type: 'voltage', position: { x: 50, y: 50 }, data: { label: '12V' } },
-    { id: 'mic1', type: 'microphone', position: { x: 50, y: 350 }, data: { label: 'Mic', amplification: 50 } },
-    { id: 'cin', type: 'capacitor', position: { x: 250, y: 350 }, data: { label: '10uF' } },
+    { id: 'mic1', type: 'microphone', position: { x: 52, y: 352 }, data: { label: 'Mic', amplification: 50 } },
+    { id: 'cin', type: 'capacitor', position: { x: 250, y: 366.5 }, data: { label: '10uF' } },
     { id: 'r1', type: 'resistor', position: { x: 420, y: 100 }, data: { label: '4.7k' } },
     { id: 'rbias', type: 'resistor', position: { x: 520, y: 340 }, data: { label: '1.1k' } },
-    { id: 'r2', type: 'resistor', position: { x: 420, y: 560 }, data: { label: '4.7k' } },
+    { id: 'r2', type: 'resistor', position: { x: 420, y: 560 }, data: { orientation: 'left', label: '4.7k' } },
     { id: 'q1', type: 'npn', position: { x: 680, y: 220 }, data: { label: 'NPN', bf: 200 } },
-    { id: 'q2', type: 'pnp', position: { x: 680, y: 450 }, data: { label: 'PNP', bf: 200 } },
+    { id: 'q2', type: 'pnp', position: { x: 680, y: 452 }, data: { label: 'PNP', bf: 200 } },
     { id: 're1', type: 'resistor', position: { x: 850, y: 290 }, data: { label: '22' } },
-    { id: 're2', type: 'resistor', position: { x: 850, y: 420 }, data: { label: '22' } },
-    { id: 'cout', type: 'capacitor', position: { x: 1020, y: 350 }, data: { label: '470uF' } },
-    { id: 'spk1', type: 'speaker', position: { x: 1200, y: 350 }, data: { label: 'Speaker', acCouple: true, normalize: true } },
-    { id: 'g1', type: 'ground', position: { x: 50, y: 650 }, data: { label: 'GND' } },
+    { id: 're2', type: 'resistor', position: { x: 850, y: 440 }, data: { label: '22' } },
+    { id: 'cout', type: 'capacitor', position: { x: 1020, y: 364 }, data: { label: '470uF' } },
+    { id: 'spk1', type: 'speaker', position: { x: 1200, y: 352 }, data: { label: 'Speaker', acCouple: true, normalize: true } },
+    { id: 'g1', type: 'ground', position: { x: 72, y: 650 }, data: { label: 'GND' } },
   ],
   edges: [
     { id: 'e-v1-q1c', source: 'v1', target: 'q1', sourceHandle: 'pos', targetHandle: 'c', type: 'smoothstep' },
@@ -246,23 +246,26 @@ export const bridgeRectifier: CircuitPreset = {
   name: 'Full Bridge Rectifier',
   recommendedSimLength: 1.0,
   nodes: [
-    { id: 'vac', type: 'acvoltage', position: { x: 50, y: 200 }, data: { label: '10V 60Hz', amplitude: 10, frequency: 60 } },
-    
-    // Diode bridge
-    { id: 'd1', type: 'diode', position: { x: 300, y: 100 }, data: { label: 'D1' } },
-    { id: 'd2', type: 'diode', position: { x: 300, y: 300 }, data: { label: 'D2' } },
-    { id: 'd3', type: 'diode', position: { x: 500, y: 100 }, data: { label: 'D3' } },
-    { id: 'd4', type: 'diode', position: { x: 500, y: 300 }, data: { label: 'D4', orientation: 'left' } },
-    
-    // Load & Filter
-    { id: 'rload', type: 'resistor', position: { x: 750, y: 200 }, data: { label: '1k' } },
-    { id: 'cfilter', type: 'capacitor', position: { x: 900, y: 200 }, data: { label: '100u' } },
-    
-    // Scope
-    { id: 'scope1', type: 'scope', position: { x: 1100, y: 200 }, data: { label: 'Input vs Output' } },
-    
-    // GND
-    { id: 'gnd1', type: 'ground', position: { x: 600, y: 500 }, data: { label: 'GND' } },
+    // Drawn as the canonical two-leg bridge: each vertical leg carries a pair of
+    // diodes (cathode up), the AC taps sit at the leg midpoints, V+ is the top
+    // rail and V- the bottom rail. A true 45-degree diamond needs diagonal
+    // symbols the renderer does not have, so this is its axis-aligned equal.
+    { id: 'vac', type: 'acvoltage', position: { x: 100, y: 200 }, data: { label: '10V 60Hz', amplitude: 10, frequency: 60 } },
+
+    // Left leg: AC+ tap between d1 (up to V+) and d2 (down to V-)
+    { id: 'd1', type: 'diode', position: { x: 300, y: 140 }, data: { label: 'D1', orientation: 'up' } },
+    { id: 'd2', type: 'diode', position: { x: 300, y: 260 }, data: { label: 'D2', orientation: 'up' } },
+    // Right leg: AC- tap between d3 and d4
+    { id: 'd3', type: 'diode', position: { x: 500, y: 140 }, data: { label: 'D3', orientation: 'up' } },
+    { id: 'd4', type: 'diode', position: { x: 500, y: 260 }, data: { label: 'D4', orientation: 'up' } },
+
+    // Load & filter hang between the two rails
+    { id: 'rload', type: 'resistor', position: { x: 690, y: 160 }, data: { label: '1k', orientation: 'vertical' } },
+    { id: 'cfilter', type: 'capacitor', position: { x: 820, y: 160 }, data: { label: '100u', orientation: 'vertical' } },
+
+    { id: 'scope1', type: 'scope', position: { x: 950, y: 120 }, data: { label: 'Input vs Output' } },
+
+    { id: 'gnd1', type: 'ground', position: { x: 588, y: 380 }, data: { label: 'GND' } },
   ],
   edges: [
     // AC Source to bridge
@@ -295,10 +298,10 @@ export const mcuBlink: CircuitPreset = {
   name: 'MCU Blink',
   recommendedSimLength: 1.0,
   nodes: [
-    { id: 'mcu1', type: 'mcu', position: { x: 100, y: 150 }, data: { label: 'Microcontroller', code: "pinMode('D0', 'OUTPUT');\n\nwhile(true) {\n  digitalWrite('D0', 1);\n  sleep(500);\n  digitalWrite('D0', 0);\n  sleep(500);\n}" } },
-    { id: 'r1', type: 'resistor', position: { x: 400, y: 180 }, data: { label: '330Ω' } },
-    { id: 'led1', type: 'led', position: { x: 600, y: 180 }, data: { label: 'LED', color: 'blue', v_drop: 2.0, max_current: 20 } },
-    { id: 'g1', type: 'ground', position: { x: 600, y: 350 }, data: { label: 'GND' } },
+    { id: 'mcu1', type: 'mcu', position: { x: 100, y: 152 }, data: { label: 'Microcontroller', code: "pinMode('D0', 'OUTPUT');\n\nwhile(true) {\n  digitalWrite('D0', 1);\n  sleep(500);\n  digitalWrite('D0', 0);\n  sleep(500);\n}" } },
+    { id: 'r1', type: 'resistor', position: { x: 400, y: 175.5 }, data: { label: '330Ω' } },
+    { id: 'led1', type: 'led', position: { x: 600, y: 187.5 }, data: { label: 'LED', color: 'blue', v_drop: 2.0, max_current: 20 } },
+    { id: 'g1', type: 'ground', position: { x: 604, y: 350 }, data: { label: 'GND' } },
   ],
   edges: [
     { id: 'e-mcu-r1', source: 'mcu1', target: 'r1', sourceHandle: 'D0', targetHandle: 'in', type: 'smoothstep' },
@@ -311,9 +314,9 @@ export const mcuSpeaker: CircuitPreset = {
   name: 'MCU Speaker Tone',
   recommendedSimLength: 1.0,
   nodes: [
-    { id: 'mcu1', type: 'mcu', position: { x: 100, y: 150 }, data: { label: 'Microcontroller', code: "pinMode('D1', 'OUTPUT');\n\n// Generate 500Hz square wave\nconst halfPeriod = 1;\nwhile(true) {\n  digitalWrite('D1', 1);\n  sleep(halfPeriod);\n  digitalWrite('D1', 0);\n  sleep(halfPeriod);\n}" } },
-    { id: 'spk1', type: 'speaker', position: { x: 400, y: 150 }, data: { label: 'Speaker' } },
-    { id: 'g1', type: 'ground', position: { x: 400, y: 300 }, data: { label: 'GND' } },
+    { id: 'mcu1', type: 'mcu', position: { x: 100, y: 152 }, data: { label: 'Microcontroller', code: "pinMode('D1', 'OUTPUT');\n\n// Generate 500Hz square wave\nconst halfPeriod = 1;\nwhile(true) {\n  digitalWrite('D1', 1);\n  sleep(halfPeriod);\n  digitalWrite('D1', 0);\n  sleep(halfPeriod);\n}" } },
+    { id: 'spk1', type: 'speaker', position: { x: 400, y: 175.5 }, data: { label: 'Speaker' } },
+    { id: 'g1', type: 'ground', position: { x: 412, y: 300 }, data: { label: 'GND' } },
   ],
   edges: [
     { id: 'e-mcu-spk1', source: 'mcu1', target: 'spk1', sourceHandle: 'D1', targetHandle: 'in', type: 'smoothstep' },
@@ -325,9 +328,9 @@ export const mcuAnalogOut: CircuitPreset = {
   name: 'MCU Sine Wave (A0)',
   recommendedSimLength: 1.0,
   nodes: [
-    { id: 'mcu1', type: 'mcu', position: { x: 100, y: 150 }, data: { label: 'Microcontroller', code: "pinMode('A0', 'OUTPUT');\n\n// Generate ~5Hz sine wave\nconst freq = 5;\nconst points = 20;\nconst dt = 1000 / (freq * points);\n\nwhile(true) {\n  for(let i=0; i<points; i++) {\n    const rad = (i / points) * 2 * Math.PI;\n    const val = (Math.sin(rad) + 1) * 127;\n    analogWrite('A0', val);\n    \n    // Log first period\n    if (millis() < 1000 / freq) {\n      Serial.println(`t=${millis().toFixed(0)} val=${val.toFixed(0)}`);\n    }\n    sleep(dt);\n  }\n}" } },
-    { id: 'scope1', type: 'scope', position: { x: 400, y: 150 }, data: { label: 'A0 Output' } },
-    { id: 'g1', type: 'ground', position: { x: 400, y: 300 }, data: { label: 'GND' } },
+    { id: 'mcu1', type: 'mcu', position: { x: 100, y: 164 }, data: { label: 'Microcontroller', code: "pinMode('A0', 'OUTPUT');\n\n// Generate ~5Hz sine wave\nconst freq = 5;\nconst points = 20;\nconst dt = 1000 / (freq * points);\n\nwhile(true) {\n  for(let i=0; i<points; i++) {\n    const rad = (i / points) * 2 * Math.PI;\n    const val = (Math.sin(rad) + 1) * 127;\n    analogWrite('A0', val);\n    \n    // Log first period\n    if (millis() < 1000 / freq) {\n      Serial.println(`t=${millis().toFixed(0)} val=${val.toFixed(0)}`);\n    }\n    sleep(dt);\n  }\n}" } },
+    { id: 'scope1', type: 'scope', position: { x: 400, y: 151.1 }, data: { label: 'A0 Output' } },
+    { id: 'g1', type: 'ground', position: { x: 400, y: 294.29999999999995 }, data: { label: 'GND' } },
   ],
   edges: [
     { id: 'e-mcu-scope', source: 'mcu1', target: 'scope1', sourceHandle: 'A0', targetHandle: 'ch1', type: 'smoothstep' },
@@ -339,9 +342,9 @@ export const mcuAnalogIn: CircuitPreset = {
   name: 'MCU Analog Read (A0)',
   recommendedSimLength: 1.0,
   nodes: [
-    { id: 'vac1', type: 'acvoltage', position: { x: 50, y: 180 }, data: { label: '5V 40Hz', amplitude: 5, frequency: 40 } },
-    { id: 'mcu1', type: 'mcu', position: { x: 300, y: 150 }, data: { label: 'Microcontroller', code: "pinMode('A0', 'INPUT');\n\n// Read A0 every 5ms and log it\nwhile(true) {\n  const val = analogRead('A0');\n  Serial.println(`t=${millis()}ms -> A0: ${val}`);\n  sleep(5);\n}" } },
-    { id: 'g1', type: 'ground', position: { x: 50, y: 300 }, data: { label: 'GND' } },
+    { id: 'vac1', type: 'acvoltage', position: { x: 52, y: 184 }, data: { label: '5V 40Hz', amplitude: 5, frequency: 40 } },
+    { id: 'mcu1', type: 'mcu', position: { x: 300, y: 148.5 }, data: { label: 'Microcontroller', code: "pinMode('A0', 'INPUT');\n\n// Read A0 every 5ms and log it\nwhile(true) {\n  const val = analogRead('A0');\n  Serial.println(`t=${millis()}ms -> A0: ${val}`);\n  sleep(5);\n}" } },
+    { id: 'g1', type: 'ground', position: { x: 60, y: 300 }, data: { label: 'GND' } },
     { id: 'g2', type: 'ground', position: { x: 300, y: 350 }, data: { label: 'GND' } },
   ],
   edges: [
@@ -355,12 +358,12 @@ export const mcuPassThrough: CircuitPreset = {
   name: 'MCU Audio Sampler',
   recommendedSimLength: 1.0,
   nodes: [
-    { id: 'sg1', type: 'signalgen', position: { x: 50, y: 180 }, data: { label: '440Hz Sine', waveform: 'sine', frequency: 440, amplitude: 5 } },
-    { id: 'mcu1', type: 'mcu', position: { x: 300, y: 150 }, data: { label: 'Microcontroller', code: "pinMode('A0', 'INPUT');\npinMode('A1', 'OUTPUT');\n\n// Pass-through sampling at 1kHz (1ms)\nwhile(true) {\n  const val = analogRead('A0');\n  // Convert 10-bit ADC to 8-bit DAC\n  analogWrite('A1', val / 4);\n  sleep(1);\n}" } },
-    { id: 'spk1', type: 'speaker', position: { x: 600, y: 180 }, data: { label: 'Speaker' } },
+    { id: 'sg1', type: 'signalgen', position: { x: 50, y: 164 }, data: { label: '440Hz Sine', waveform: 'sine', frequency: 440, amplitude: 5 } },
+    { id: 'mcu1', type: 'mcu', position: { x: 300, y: 157.5 }, data: { label: 'Microcontroller', code: "pinMode('A0', 'INPUT');\npinMode('A1', 'OUTPUT');\n\n// Pass-through sampling at 1kHz (1ms)\nwhile(true) {\n  const val = analogRead('A0');\n  // Convert 10-bit ADC to 8-bit DAC\n  analogWrite('A1', val / 4);\n  sleep(1);\n}" } },
+    { id: 'spk1', type: 'speaker', position: { x: 600, y: 181 }, data: { label: 'Speaker' } },
     { id: 'g1', type: 'ground', position: { x: 50, y: 300 }, data: { label: 'GND' } },
     { id: 'g2', type: 'ground', position: { x: 300, y: 350 }, data: { label: 'GND' } },
-    { id: 'g3', type: 'ground', position: { x: 600, y: 300 }, data: { label: 'GND' } },
+    { id: 'g3', type: 'ground', position: { x: 612, y: 300 }, data: { label: 'GND' } },
   ],
   edges: [
     { id: 'e-sg-mcu', source: 'sg1', target: 'mcu1', sourceHandle: 'out', targetHandle: 'A0', type: 'smoothstep' },
@@ -377,22 +380,22 @@ export const mcuCleanAudioSampler: CircuitPreset = {
   nodes: [
     // Signal generation (2V amplitude so it swings 0.5V to 4.5V when biased at 2.5V)
     { id: 'sg1', type: 'signalgen', position: { x: 50, y: 300 }, data: { label: '440Hz Sine', waveform: 'sine', frequency: 440, amplitude: 2 } },
-    { id: 'cin', type: 'capacitor', position: { x: 200, y: 300 }, data: { label: '10µF AC Couple', capacitance: 10e-6 } },
+    { id: 'cin', type: 'capacitor', position: { x: 200, y: 317 }, data: { label: '10µF AC Couple', capacitance: 10e-6 } },
     
     // DC Bias network
-    { id: 'v1', type: 'voltage', position: { x: 350, y: 50 }, data: { label: '5V' } },
-    { id: 'r1', type: 'resistor', position: { x: 350, y: 150 }, data: { label: '10k' } },
-    { id: 'r2', type: 'resistor', position: { x: 350, y: 400 }, data: { label: '10k' } },
+    { id: 'v1', type: 'voltage', position: { x: 352, y: 50 }, data: { label: '5V' } },
+    { id: 'r1', type: 'resistor', position: { x: 364, y: 150 }, data: { label: '10k' } },
+    { id: 'r2', type: 'resistor', position: { x: 350, y: 400 }, data: { orientation: 'left', label: '10k' } },
     
     // Microcontroller
     { id: 'mcu1', type: 'mcu', position: { x: 550, y: 250 }, data: { label: 'Microcontroller', code: "pinMode('A0', 'INPUT');\npinMode('A1', 'OUTPUT');\n\n// 10kHz sampling for high fidelity\nwhile(true) {\n  const val = analogRead('A0');\n  analogWrite('A1', val / 4);\n  sleep(0.1);\n}" } },
     
     // Reconstruction Low-Pass Filter
-    { id: 'rout', type: 'resistor', position: { x: 800, y: 250 }, data: { label: '1k' } },
+    { id: 'rout', type: 'resistor', position: { x: 800, y: 264 }, data: { label: '1k' } },
     { id: 'cout', type: 'capacitor', position: { x: 950, y: 400 }, data: { label: '0.1µF LPF' } },
     
     // Output
-    { id: 'spk1', type: 'speaker', position: { x: 1100, y: 250 }, data: { label: 'Speaker' } },
+    { id: 'spk1', type: 'speaker', position: { x: 1100, y: 252 }, data: { label: 'Speaker' } },
     
     // Grounds
     { id: 'g1', type: 'ground', position: { x: 50, y: 500 }, data: { label: 'GND' } },
@@ -434,8 +437,8 @@ export const mixedLogicBlink: CircuitPreset = {
     { id: 'sg2', type: 'signalgen', position: { x: 50, y: 300 }, data: { label: 'Clock 2Hz', waveform: 'square', frequency: 2, amplitude: 5 } },
     { id: 'and1', type: 'and', position: { x: 300, y: 200 }, data: { label: 'AND Gate' } },
     { id: 'r1', type: 'resistor', position: { x: 500, y: 200 }, data: { label: '330Ω' } },
-    { id: 'led1', type: 'led', position: { x: 700, y: 200 }, data: { label: 'Output', color: 'lime', v_drop: 2.0, max_current: 20 } },
-    { id: 'g1', type: 'ground', position: { x: 700, y: 350 }, data: { label: 'GND' } },
+    { id: 'led1', type: 'led', position: { x: 700, y: 212 }, data: { label: 'Output', color: 'lime', v_drop: 2.0, max_current: 20 } },
+    { id: 'g1', type: 'ground', position: { x: 704, y: 350 }, data: { label: 'GND' } },
     { id: 'g2', type: 'ground', position: { x: 50, y: 200 }, data: { label: 'GND' } },
     { id: 'g3', type: 'ground', position: { x: 50, y: 400 }, data: { label: 'GND' } },
   ],
@@ -456,31 +459,31 @@ export const opAmpAmp: CircuitPreset = {
     { id: 'vcc', type: 'voltage', position: { x: 100, y: 50 }, data: { label: '12V' } },
     { id: 'g_vcc', type: 'ground', position: { x: 100, y: 120 }, data: { label: 'GND' } },
     
-    { id: 'mic1', type: 'microphone', position: { x: 50, y: 180 }, data: { label: 'Mic', amplification: 1 } },
-    { id: 'g_mic', type: 'ground', position: { x: 50, y: 280 }, data: { label: 'GND' } },
+    { id: 'mic1', type: 'microphone', position: { x: 52, y: 180 }, data: { label: 'Mic', amplification: 1 } },
+    { id: 'g_mic', type: 'ground', position: { x: 72, y: 280 }, data: { label: 'GND' } },
     
-    { id: 'cin', type: 'capacitor', position: { x: 200, y: 232 }, data: { label: '0.1uF' } },
+    { id: 'cin', type: 'capacitor', position: { x: 200, y: 200 }, data: { label: '0.1uF' } },
     
     // Bias divider for single supply op-amp
     { id: 'r_b1', type: 'resistor', position: { x: 352, y: 152 }, data: { label: '100k', orientation: 'vertical' } },
     { id: 'r_b2', type: 'resistor', position: { x: 352, y: 252 }, data: { label: '100k', orientation: 'vertical' } },
     { id: 'g_rb2', type: 'ground', position: { x: 352, y: 332 }, data: { label: 'GND' } },
-    { id: 'j_op_bias', type: 'junction', position: { x: 352, y: 232 }, data: {} },
+    { id: 'j_op_bias', type: 'junction', position: { x: 363.5, y: 211.5 }, data: {} },
     
     // Op-amp
-    { id: 'oa1', type: 'opamp', position: { x: 450, y: 154 }, data: { label: 'LM358' } },
-    { id: 'g_oa', type: 'ground', position: { x: 474, y: 260 }, data: { label: 'GND' } },
+    { id: 'oa1', type: 'opamp', position: { x: 452, y: 156 }, data: { label: 'LM358' } },
+    { id: 'g_oa', type: 'ground', position: { x: 480, y: 260 }, data: { label: 'GND' } },
     
     // Feedback network (Gain = 1 + Rf/Rg)
-    { id: 'rf', type: 'resistor', position: { x: 462, y: 50 }, data: { label: '10k' } },
+    { id: 'rf', type: 'resistor', position: { x: 462, y: 50 }, data: { orientation: 'left', label: '10k' } },
     { id: 'rg', type: 'resistor', position: { x: 300, y: 152 }, data: { label: '1k', orientation: 'vertical' } },
     { id: 'cg', type: 'capacitor', position: { x: 300, y: 232 }, data: { label: '100uF', orientation: 'vertical' } },
     { id: 'g_cg', type: 'ground', position: { x: 300, y: 312 }, data: { label: 'GND' } },
     
     // Output coupling
-    { id: 'cout', type: 'capacitor', position: { x: 600, y: 178 }, data: { label: '47uF' } },
-    { id: 'spk1', type: 'speaker', position: { x: 720, y: 150 }, data: { label: 'Speaker', acCouple: true, normalize: true } },
-    { id: 'g_spk', type: 'ground', position: { x: 720, y: 270 }, data: { label: 'GND' } },
+    { id: 'cout', type: 'capacitor', position: { x: 600, y: 184 }, data: { label: '47uF' } },
+    { id: 'spk1', type: 'speaker', position: { x: 720, y: 172 }, data: { label: 'Speaker', acCouple: true, normalize: true } },
+    { id: 'g_spk', type: 'ground', position: { x: 732, y: 270 }, data: { label: 'GND' } },
   ],
   edges: [
     // Power
@@ -519,18 +522,18 @@ export const boostConverter: CircuitPreset = {
   recommendedSimLength: 0.05,
   nodes: [
     { id: 'v5v', type: 'voltage', position: { x: 50, y: 250 }, data: { label: '5V IN' } },
-    { id: 'l1', type: 'inductor', position: { x: 250, y: 150 }, data: { label: '100uH' } },
-    { id: 'sw1', type: 'nmos', position: { x: 450, y: 300 }, data: { label: 'Switch', vto: 2.0, kp: 0.5 } },
+    { id: 'l1', type: 'inductor', position: { x: 252, y: 150 }, data: { label: '100uH' } },
+    { id: 'sw1', type: 'nmos', position: { x: 452, y: 300 }, data: { label: 'Switch', vto: 2.0, kp: 0.5 } },
     { id: 'pwm1', type: 'signalgen', position: { x: 50, y: 450 }, data: { label: 'PWM 50kHz', waveform: 'square', frequency: 50000, amplitude: 5, dutyCycle: 50 } },
     
     { id: 'd1', type: 'diode', position: { x: 550, y: 150 }, data: { label: 'Schottky', v_drop: 0.3 } },
     { id: 'c1', type: 'capacitor', position: { x: 750, y: 250 }, data: { label: '100uF' } },
-    { id: 'rload', type: 'resistor', position: { x: 900, y: 250 }, data: { label: '1k Load' } },
+    { id: 'rload', type: 'resistor', position: { x: 900, y: 250 }, data: { orientation: 'left', label: '1k Load' } },
     
-    { id: 'mm_in', type: 'multimeter', position: { x: 200, y: 400 }, data: { label: 'Input Voltage' } },
+    { id: 'mm_in', type: 'multimeter', position: { x: 218, y: 400 }, data: { label: 'Input Voltage' } },
     { id: 'mm_out', type: 'multimeter', position: { x: 1000, y: 250 }, data: { label: 'Output Voltage' } },
     
-    { id: 'g1', type: 'ground', position: { x: 450, y: 550 }, data: { label: 'GND' } },
+    { id: 'g1', type: 'ground', position: { x: 476, y: 550 }, data: { label: 'GND' } },
   ],
   edges: [
     // Power in
@@ -583,8 +586,8 @@ export const bistableMultivibrator: CircuitPreset = {
     // Triggers (Set/Reset switches)
     { id: 'sw1', type: 'switch', position: { x: 50, y: 448 }, data: { label: 'SET', isOpen: true } },
     { id: 'sw2', type: 'switch', position: { x: 550, y: 448 }, data: { label: 'RESET', isOpen: true, orientation: 'left' } },
-    { id: 'r_trig1', type: 'resistor', position: { x: 132, y: 448 }, data: { label: '1k' } },
-    { id: 'r_trig2', type: 'resistor', position: { x: 468, y: 448 }, data: { label: '1k', orientation: 'left' } },
+    { id: 'r_trig1', type: 'resistor', position: { x: 132, y: 456 }, data: { label: '1k' } },
+    { id: 'r_trig2', type: 'resistor', position: { x: 468, y: 456 }, data: { label: '1k', orientation: 'left' } },
     
     { id: 'g1', type: 'ground', position: { x: 320, y: 560 }, data: { label: 'GND' } },
   ],
@@ -630,8 +633,8 @@ export const astableMultivibrator: CircuitPreset = {
   name: 'Astable Multivibrator (Blinker)',
   recommendedSimLength: 2.0,
   nodes: [
-    { id: 'vcc', type: 'voltage', position: { x: 320, y: 48 }, data: { label: '5V' } },
-    { id: 'q1', type: 'npn', position: { x: 208, y: 352 }, data: { label: 'Q1' } },
+    { id: 'vcc', type: 'voltage', position: { x: 340, y: 48 }, data: { label: '5V' } },
+    { id: 'q1', type: 'npn', position: { x: 232, y: 352 }, data: { label: 'Q1' } },
     { id: 'q2', type: 'npn', position: { x: 400, y: 352 }, data: { label: 'Q2' } },
     { id: 'rc1', type: 'resistor', position: { x: 220, y: 144 }, data: { label: '330', orientation: 'vertical' } },
     { id: 'rc2', type: 'resistor', position: { x: 412, y: 144 }, data: { label: '330', orientation: 'vertical' } },
@@ -668,11 +671,11 @@ export const potDimmer: CircuitPreset = {
   name: 'Pot LED Dimmer',
   recommendedSimLength: 0.5,
   nodes: [
-    { id: 'v1', type: 'voltage', position: { x: 50, y: 150 }, data: { label: '5V' } },
-    { id: 'pot1', type: 'potentiometer', position: { x: 250, y: 150 }, data: { label: '1k', position: 50 } },
-    { id: 'r1', type: 'resistor', position: { x: 450, y: 150 }, data: { label: '100' } },
-    { id: 'led1', type: 'led', position: { x: 650, y: 150 }, data: { label: 'LED', color: 'lime', v_drop: 2.0, max_current: 20 } },
-    { id: 'mm1', type: 'multimeter', position: { x: 350, y: 50 }, data: { label: 'Wiper V' } },
+    { id: 'v1', type: 'voltage', position: { x: 50, y: 172 }, data: { label: '5V' } },
+    { id: 'pot1', type: 'potentiometer', position: { x: 250, y: 152 }, data: { label: '1k', position: 50 } },
+    { id: 'r1', type: 'resistor', position: { x: 450, y: 140 }, data: { label: '100' } },
+    { id: 'led1', type: 'led', position: { x: 650, y: 152 }, data: { label: 'LED', color: 'lime', v_drop: 2.0, max_current: 20 } },
+    { id: 'mm1', type: 'multimeter', position: { x: 350, y: 57.5 }, data: { label: 'Wiper V' } },
     { id: 'g1', type: 'ground', position: { x: 350, y: 350 }, data: { label: 'GND' } },
   ],
   edges: [
@@ -693,14 +696,14 @@ export const sevenSegDirect: CircuitPreset = {
   nodes: [
     { id: 'v1', type: 'voltage', position: { x: 50, y: 50 }, data: { label: '5V' } },
     // Direct drive: wire 5V to segments a,b,c,d,e,f to show "0"
-    { id: 'seg1', type: 'sevenseg', position: { x: 400, y: 150 }, data: { label: '7-SEG' } },
+    { id: 'seg1', type: 'sevenseg', position: { x: 400, y: 148.3 }, data: { label: '7-SEG' } },
     { id: 'ra', type: 'resistor', position: { x: 200, y: 80 }, data: { label: '330' } },
-    { id: 'rb', type: 'resistor', position: { x: 200, y: 140 }, data: { label: '330' } },
+    { id: 'rb', type: 'resistor', position: { x: 200, y: 156 }, data: { label: '330' } },
     { id: 'rc', type: 'resistor', position: { x: 200, y: 200 }, data: { label: '330' } },
     { id: 'rd', type: 'resistor', position: { x: 200, y: 260 }, data: { label: '330' } },
     { id: 're', type: 'resistor', position: { x: 200, y: 320 }, data: { label: '330' } },
     { id: 'rf', type: 'resistor', position: { x: 200, y: 380 }, data: { label: '330' } },
-    { id: 'g1', type: 'ground', position: { x: 400, y: 400 }, data: { label: 'GND' } },
+    { id: 'g1', type: 'ground', position: { x: 420, y: 400 }, data: { label: 'GND' } },
   ],
   edges: [
     // Resistors from 5V
@@ -761,7 +764,7 @@ export const buckConverter: CircuitPreset = {
   recommendedSimLength: 0.05,
   nodes: [
     { id: 'v1',    type: 'voltage',    position: { x: 50,   y: 250 }, data: { label: '24V IN', value: 24 } },
-    { id: 'sw1',   type: 'nmos',       position: { x: 300,  y: 300 }, data: { label: 'NMOS Switch', vto: 2.0, kp: 0.5 } },
+    { id: 'sw1',   type: 'nmos',       position: { x: 308,  y: 300 }, data: { label: 'NMOS Switch', vto: 2.0, kp: 0.5 } },
     { id: 'pwm1',  type: 'signalgen',  position: { x: 300,  y: 500 }, data: { label: 'PWM 1kHz 22%', waveform: 'square', frequency: 1000, amplitude: 10, dutyCycle: 22 } },
     { id: 'd1',    type: 'diode',      position: { x: 500,  y: 400 }, data: { label: 'Schottky', v_drop: 0.3, orientation: 'left' } },
     { id: 'l1',    type: 'inductor',   position: { x: 650,  y: 250 }, data: { label: '2mH' } },
@@ -791,13 +794,13 @@ export const transformerRectifier: CircuitPreset = {
   recommendedSimLength: 0.1,
   nodes: [
     { id: 'vac1', type: 'acvoltage', position: { x: 50, y: 200 }, data: { label: '24V 60Hz', amplitude: 24, frequency: 60 } },
-    { id: 'xfmr1', type: 'transformer', position: { x: 250, y: 180 }, data: { label: 'Step Down', l_pri: '1H', l_sec: '75mH', k: 0.99, l_pri_label: '1H', l_sec_label: '75mH' } },
+    { id: 'xfmr1', type: 'transformer', position: { x: 250, y: 188 }, data: { label: 'Step Down', l_pri: '1H', l_sec: '75mH', k: 0.99, l_pri_label: '1H', l_sec_label: '75mH' } },
     { id: 'd1', type: 'diode', position: { x: 450, y: 120 }, data: { label: 'D1' } },
     { id: 'd2', type: 'diode', position: { x: 450, y: 280 }, data: { label: 'D2', orientation: 'left' } },
     { id: 'd3', type: 'diode', position: { x: 580, y: 120 }, data: { label: 'D3' } },
     { id: 'd4', type: 'diode', position: { x: 580, y: 280 }, data: { label: 'D4', orientation: 'left' } },
     { id: 'c1', type: 'capacitor', position: { x: 750, y: 200 }, data: { label: '220u' } },
-    { id: 'r1', type: 'resistor', position: { x: 900, y: 200 }, data: { label: '1kΩ' } },
+    { id: 'r1', type: 'resistor', position: { x: 900, y: 200 }, data: { orientation: 'left', label: '1kΩ' } },
     { id: 'mm1', type: 'multimeter', position: { x: 1050, y: 200 }, data: { label: 'DC Output' } },
     { id: 'g1', type: 'ground', position: { x: 510, y: 420 }, data: { label: 'GND' } },
   ],
@@ -826,9 +829,9 @@ export const dffBlinker: CircuitPreset = {
   recommendedSimLength: 2.0,
   nodes: [
     { id: 'sg1', type: 'signalgen', position: { x: 50, y: 200 }, data: { label: 'Clock 2Hz', waveform: 'square', frequency: 2, amplitude: 5 } },
-    { id: 'dff1', type: 'dff', position: { x: 280, y: 160 }, data: { label: 'Divider' } },
-    { id: 'r1', type: 'resistor', position: { x: 520, y: 130 }, data: { label: '330Ω' } },
-    { id: 'led1', type: 'led', position: { x: 670, y: 130 }, data: { label: 'Q LED', color: 'cyan', v_drop: 2.0 } },
+    { id: 'dff1', type: 'dff', position: { x: 280, y: 173 }, data: { label: 'Divider' } },
+    { id: 'r1', type: 'resistor', position: { x: 520, y: 132 }, data: { label: '330Ω' } },
+    { id: 'led1', type: 'led', position: { x: 670, y: 144 }, data: { label: 'Q LED', color: 'cyan', v_drop: 2.0 } },
     { id: 'g1', type: 'ground', position: { x: 450, y: 350 }, data: { label: 'GND' } },
   ],
   edges: [
@@ -866,7 +869,7 @@ export const heltecLightToFreqHIL: CircuitPreset = {
     { id: 'r_c2', type: 'resistor', position: { x: 640, y: 100 }, data: { label: '1kΩ', resistance: 1000, orientation: 'vertical' } },
     { id: 'c1', type: 'capacitor', position: { x: 480, y: 200 }, data: { label: '4.7µF', capacitance: 4.7e-6 } },
     { id: 'c2', type: 'capacitor', position: { x: 560, y: 200 }, data: { label: '4.7µF', capacitance: 4.7e-6 } },
-    { id: 'q1', type: 'npn', position: { x: 440, y: 280 }, data: { label: 'Q1' } },
+    { id: 'q1', type: 'npn', position: { x: 456, y: 280 }, data: { label: 'Q1' } },
     { id: 'q2', type: 'npn', position: { x: 600, y: 280 }, data: { label: 'Q2' } },
     { id: 'scope1', type: 'scope', position: { x: 740, y: 120 }, data: { label: 'Oscilloscope', width: 240, height: 160 } },
     { id: 'gnd_osc', type: 'ground', position: { x: 520, y: 400 }, data: { label: 'GND' } },
@@ -937,9 +940,9 @@ export const ldrWebcamDemo: CircuitPreset = {
     { id: 'v1', type: 'voltage', position: { x: 50, y: 180 }, data: { label: '5V' } },
     { id: 'ldr1', type: 'ldr', position: { x: 220, y: 80 }, data: { label: 'LDR Sensor', r_dark: 100000, r_dark_label: '100k', lightLevel: 0.5 } },
     { id: 'r1', type: 'resistor', position: { x: 220, y: 220 }, data: { label: '10kΩ', orientation: 'vertical' } },
-    { id: 'mm1', type: 'multimeter', position: { x: 370, y: 100 }, data: { label: 'LDR Out V' } },
-    { id: 'led1', type: 'led', position: { x: 550, y: 80 }, data: { label: 'Photo-LED', color: 'gold', photodiodeMode: true, lightSensitivity: 50, lightLevel: 0.5, orientation: 'vertical' } },
-    { id: 'r2', type: 'resistor', position: { x: 550, y: 220 }, data: { label: '100kΩ', orientation: 'vertical' } },
+    { id: 'mm1', type: 'multimeter', position: { x: 384, y: 100 }, data: { label: 'LDR Out V' } },
+    { id: 'led1', type: 'led', position: { x: 552, y: 80 }, data: { label: 'Photo-LED', color: 'gold', photodiodeMode: true, lightSensitivity: 50, lightLevel: 0.5, orientation: 'vertical' } },
+    { id: 'r2', type: 'resistor', position: { x: 556, y: 220 }, data: { label: '100kΩ', orientation: 'vertical' } },
     { id: 'mm2', type: 'multimeter', position: { x: 700, y: 100 }, data: { label: 'LED Out V' } },
     { id: 'g1', type: 'ground', position: { x: 450, y: 400 }, data: { label: 'GND' } },
   ],

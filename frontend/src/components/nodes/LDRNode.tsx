@@ -1,6 +1,7 @@
 import { Handle, Position } from '@xyflow/react';
 import { sanitizeSpiceValue } from '../../utils/spice';
 import type { NodePropertiesProps } from './registry';
+import { SchematicLabel } from './schematic';
 
 export function ldrDefaultData() {
   return { label: 'LDR', r_dark: 100000, r_dark_label: '100k', lightLevel: 0.5 };
@@ -19,7 +20,7 @@ export function LDRProperties({ node, updateData, webcam }: NodePropertiesProps)
             updateData('r_dark_label', e.target.value);
             updateData('r_dark', sanitizeSpiceValue(e.target.value));
           }}
-          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
         />
       </div>
 
@@ -120,11 +121,11 @@ export function LDRNode({ data, selected }: any) {
         viewBox="0 0 48 48" 
         fill="none" 
         stroke={selected ? '#3b82f6' : 'currentColor'} 
-        strokeWidth="1.2" 
+        strokeWidth="1.4" 
         strokeLinecap="round" 
         strokeLinejoin="round"
         style={{ overflow: 'visible' }}
-        className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
+        className={`text-slate-700 dark:text-slate-200 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.65)]' : ''}`}
       >
         {/* Left & Right leads */}
         <path d="M 0 24 H 14" />
@@ -137,17 +138,17 @@ export function LDRNode({ data, selected }: any) {
         <circle cx="24" cy="24" r="13" />
 
         {/* Light Illumination Arrows */}
-        <path d="M 12 10 L 18 16" strokeWidth="1.0" />
-        <path d="M 15 16 H 18 V 13" strokeWidth="1.0" />
+        <path d="M 12 10 L 18 16" strokeWidth="1" />
+        <path d="M 15 16 H 18 V 13" strokeWidth="1" />
         
-        <path d="M 17 6 L 23 12" strokeWidth="1.0" />
-        <path d="M 20 12 H 23 V 9" strokeWidth="1.0" />
+        <path d="M 17 6 L 23 12" strokeWidth="1" />
+        <path d="M 20 12 H 23 V 9" strokeWidth="1" />
       </svg>
 
       {/* Label and light level status */}
-      <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[7px] font-bold font-mono text-slate-600 dark:text-slate-400 text-center pointer-events-none whitespace-nowrap">
+      <SchematicLabel placement="below">
         LDR • {isWebcamActive ? '📹 ' : ''}{Math.round(lightLevel * 100)}%
-      </div>
+      </SchematicLabel>
 
       {/* Bidirectional Right Handle */}
       <Handle 

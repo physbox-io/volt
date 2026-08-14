@@ -1,6 +1,8 @@
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { AlertCircle } from 'lucide-react';
 import type { NodePropertiesProps } from './registry';
+import { useCallback } from 'react';
+import { DEVICE_CARD, DEVICE_TITLE, DEVICE_SCREEN, DeviceField, STROKE } from './schematic';
 
 export function SignalGeneratorProperties({ node, updateData, simLength }: NodePropertiesProps) {
   return (
@@ -36,20 +38,68 @@ export function SignalGeneratorProperties({ node, updateData, simLength }: NodeP
   );
 }
 
-export function SignalGeneratorNode({ data }: any) {
+/** One cycle of the selected waveform, drawn to fill the node's screen area. */
+function WaveformPath({ type }: { type: string }) {
+  const d = type === 'square'
+    ? 'M 2 18 H 12 V 6 H 26 V 18 H 40 V 6 H 50 V 18 H 62'
+    : 'M 2 12 C 8 2, 14 2, 20 12 S 32 22, 38 12 S 50 2, 56 12 L 62 12';
+  return (
+    <path
+      d={d}
+      fill="none"
+      strokeWidth={STROKE.line}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="stroke-slate-700 dark:stroke-slate-200"
+    />
+  );
+}
+
+export function SignalGeneratorNode({ id, data }: any) {
+  const { setNodes } = useReactFlow();
   const type = data.waveform || 'sine';
   const freq = data.frequency || 1;
   const amp = data.amplitude || 5;
 
+  const update = useCallback((patch: Record<string, any>) => {
+    setNodes((nds: any[]) => nds.map(n => n.id === id ? { ...n, data: { ...n.data, ...patch } } : n));
+  }, [id, setNodes]);
+
   return (
-    <div className="bg-blue-100 border-2 border-blue-600 rounded-md p-3 w-32 h-[96px] flex flex-col items-center justify-center relative shadow-sm">
-      <div className="text-xs font-bold text-blue-900 mb-1">Signal Gen</div>
-      <div className="text-[10px] font-mono text-gray-700 bg-white px-2 py-1 rounded w-full mb-1 border border-gray-300">
-        Type: {type}
+    <div className={`${DEVICE_CARD} px-1.5 py-1 w-[88px] flex flex-col items-center gap-1 relative`}>
+      <div className={DEVICE_TITLE}>Sig Gen</div>
+
+      {/* The waveform is the component's identity, and doubles as its toggle. */}
+      <button
+        type="button"
+        title={`Waveform: ${type} (click to switch)`}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => update({ waveform: type === 'square' ? 'sine' : 'square' })}
+        className={`nodrag nopan ${DEVICE_SCREEN} w-full h-[22px] flex items-center justify-center
+                    hover:border-blue-400 dark:hover:border-blue-600 transition-colors`}
+      >
+        <svg width="64" height="24" viewBox="0 0 64 24" style={{ overflow: 'visible' }}>
+          <WaveformPath type={type} />
+        </svg>
+      </button>
+
+      <div className="flex items-baseline justify-between w-full px-[1px]">
+        <DeviceField
+          value={amp}
+          unit="V"
+          step={0.1}
+          title="Amplitude"
+          onCommit={(v) => update({ amplitude: v })}
+        />
+        <DeviceField
+          value={freq}
+          unit="Hz"
+          min={0}
+          title="Frequency"
+          onCommit={(v) => update({ frequency: v })}
+        />
       </div>
-      <div className="text-[10px] font-mono text-gray-700 bg-white px-2 py-1 rounded w-full border border-gray-300">
-        {amp}V, {freq}Hz
-      </div>
+
       <Handle type="source" position={Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
       <Handle type="target" position={Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
       <Handle type="source" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" />

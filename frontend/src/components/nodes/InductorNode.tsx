@@ -1,6 +1,7 @@
 import { Handle, Position } from '@xyflow/react';
 import { getNodeDefaultName } from '../../utils/nodeNaming';
 import type { NodePropertiesProps } from './registry';
+import { SchematicLabel } from './schematic';
 
 export function InductorProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -42,10 +43,10 @@ export function InductorNode({ id, data, selected }: any) {
         viewBox={isVertical ? "0 0 24 40" : "0 0 40 24"} 
         fill="none" 
         stroke={selected ? '#3b82f6' : 'currentColor'} 
-        strokeWidth="1.2" 
+        strokeWidth="1.4" 
         strokeLinecap="round" 
         style={{ overflow: 'visible', transform: isLeft ? 'scaleX(-1)' : isUp ? 'scaleY(-1)' : undefined }}
-        className={`text-slate-855 dark:text-slate-145 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.8)]' : ''}`}
+        className={`text-slate-700 dark:text-slate-200 transition-colors ${selected ? 'drop-shadow-[0_0_3px_rgba(59,130,246,0.65)]' : ''}`}
       >
         {isVertical ? (
           <path d="M 12 -2 V 8 A 4,4 0 0,1 12,16 A 4,4 0 0,1 12,24 A 4,4 0 0,1 12,32 V 42" />
@@ -54,12 +55,11 @@ export function InductorNode({ id, data, selected }: any) {
         )}
       </svg>
 
-      <div className={isVertical 
-        ? "absolute left-[20px] top-1/2 -translate-y-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 pointer-events-none whitespace-nowrap" 
-        : "absolute -bottom-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold font-mono text-slate-600 dark:text-slate-400 text-center pointer-events-none whitespace-nowrap"
-      }>
-        {name}: {data.label || '100u'}
-      </div>
+      <SchematicLabel
+        placement={isVertical ? 'right' : 'below'}
+        name={name}
+        value={data.label || '100u'}
+      />
       
       <Handle 
         type="source" 
