@@ -47,7 +47,7 @@
   "schema": {
     "nodeFields": {
       "id": "string \u2014 unique component identifier",
-      "type": "string \u2014 component type (resistor, capacitor, inductor, diode, zener, led, switch, multimeter, scope, speaker, microphone, npn, pnp, nmos, pmos, voltage, currentsource, acvoltage, signalgen, ground, mcu, heltec_v4, sevensegment, potentiometer, opamp, timer555, transformer, dff, ldr, junction, and, or, not, nand, nor, xor)",
+      "type": "string \u2014 component type (resistor, capacitor, inductor, diode, zener, led, switch, multimeter, scope, speaker, microphone, npn, pnp, nmos, pmos, voltage, currentsource, acvoltage, signalgen, ground, mcu, heltec_v4, sevenseg, potentiometer, opamp, timer555, transformer, dff, ldr, junction, and, or, not, nand, nor, xor, jumper, pinheader, via, mountinghole, cutout)",
       "position": {
         "x": "number \u2014 X position on canvas",
         "y": "number \u2014 Y position on canvas"
@@ -145,7 +145,7 @@
         "out",
         "wiper"
       ],
-      "sevensegment": [
+      "sevenseg": [
         "a",
         "b",
         "c",
@@ -240,7 +240,30 @@
       "not": [
         "in1",
         "out"
-      ]
+      ],
+      "multimeter": [
+        "pos",
+        "neg"
+      ],
+      "currentsource": [
+        "pos",
+        "neg"
+      ],
+      "jumper": [
+        "a",
+        "b"
+      ],
+      "pinheader": [
+        "1",
+        "2",
+        "3",
+        "... one id per pad"
+      ],
+      "via": [
+        "1"
+      ],
+      "mountinghole": [],
+      "cutout": []
     },
     "spiceModels": {
       "potentiometer": {
@@ -252,7 +275,7 @@
           "R_bottom": "TotalResistance * WiperPos ohms"
         }
       },
-      "sevensegment": {
+      "sevenseg": {
         "description": "Common Cathode 7-segment display node. Assumes common pin is grounded.",
         "activationThreshold": "2.5V \u2014 segment lights up if (V_seg - V_common) > 2.5V"
       },
@@ -294,7 +317,17 @@
     "probeMode": {
       "description": "Allows clicking on a wire/edge after a simulation run to inspect voltage at that node.",
       "behavior": "Displays a floating tooltip showing the Net name and the final voltage value of the SPICE node."
-    }
+    },
+    "boardOnlyTypes": {
+      "nonSimulating": [
+        "pinheader",
+        "via",
+        "mountinghole",
+        "cutout"
+      ],
+      "note": "Placed, drilled and routed on the board but emitting no SPICE device. Edges to a pin header or via still join nets \u2014 the part itself just contributes no component. 'jumper' is the exception: the router draws no copper for it, but electrically it is a wire (a 1 milliohm resistor between its 'a' and 'b' terminals) and it does simulate."
+    },
+    "pinHeaderTerminals": "Pad numbers as strings, numbered row-major from '1' \u2014 a 2x5 header has terminals '1' through '10'."
   },
   "examples": [
     {
