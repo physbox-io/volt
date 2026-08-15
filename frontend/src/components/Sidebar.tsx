@@ -1,7 +1,19 @@
 import type { DragEvent } from 'react';
 import { X } from 'lucide-react';
+import { useCoarsePointer } from '../hooks/useCoarsePointer';
 
-export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+export function Sidebar({
+  isOpen,
+  onClose,
+  onPickPart,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  /** Place a part without dragging it — see `partProps` below. */
+  onPickPart?: (nodeType: string, label?: string) => void;
+}) {
+  const coarsePointer = useCoarsePointer();
+
   if (!isOpen) return null;
 
   const onDragStart = (event: DragEvent, nodeType: string, label?: string) => {
@@ -10,13 +22,44 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     event.dataTransfer.effectAllowed = 'move';
   };
 
+  /**
+   * How a palette entry gets onto the canvas.
+   *
+   * Dragging is the whole interaction on a desktop and is untouched. HTML5
+   * drag-and-drop, though, simply does not fire for touch input — on a phone
+   * every part in this palette was inert, which is to say the app could open a
+   * saved circuit but never build one. So on a coarse pointer a tap drops the
+   * part into the middle of the canvas instead and puts the drawer away, ready
+   * to be dragged into place with a finger like any other node.
+   *
+   * Gated on the pointer rather than the width so a click on a desktop still
+   * only selects text, never silently adds a component.
+   */
+  const partProps = (nodeType: string, label?: string) => ({
+    className: itemClass,
+    draggable: true,
+    onDragStart: (event: DragEvent) => onDragStart(event, nodeType, label),
+    ...(coarsePointer
+      ? {
+          onClick: () => {
+            onPickPart?.(nodeType, label);
+            onClose();
+          },
+        }
+      : {}),
+  });
+
   const itemClass = "px-1 py-1.5 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center text-center cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all group";
   const sectionTitleClass = "text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-3 mb-1.5";
   // One ink for every palette icon; the section heading carries the category.
   const iconClass = "mb-0.5 text-slate-600 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors";
 
   return (
-    <div className="fixed inset-0 z-40 lg:relative lg:z-10 flex h-full pointer-events-none">
+    /* z-[120] below `lg`, above the note card's 100: as an overlay the drawer
+       has to cover what it is drawn on top of, and a card left floating over
+       the palette swallowed the taps meant for the parts underneath it. At
+       `lg` the palette is a column in the flow and keeps its old `z-10`. */
+    <div className="fixed inset-0 z-[120] lg:relative lg:z-10 flex h-full pointer-events-none">
       {/* Backdrop for mobile */}
       <div 
         className="fixed inset-0 bg-slate-900/20 backdrop-blur-xs lg:hidden pointer-events-auto" 
@@ -29,13 +72,16 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
             <X size={18} />
           </button>
         </div>
-      
+        {coarsePointer && (
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">
+            Tap a part to drop it on the canvas.
+          </p>
+        )}
+
         <div className={sectionTitleClass}>Transistors</div>
         <div className="grid grid-cols-2 gap-1.5">
           <div 
-            onDragStart={(event) => onDragStart(event, 'npn')} 
-            draggable 
-            className={itemClass}
+            {...partProps('npn')}
           >
             <div className={iconClass}>
               <svg width="22" height="22" viewBox="0 0 60 60" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -49,9 +95,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
             <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">NPN BJT</span>
           </div>
           <div 
-            onDragStart={(event) => onDragStart(event, 'pnp')} 
-            draggable 
-            className={itemClass}
+            {...partProps('pnp')}
           >
             <div className={iconClass}>
               <svg width="22" height="22" viewBox="0 0 60 60" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -65,9 +109,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
             <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">PNP BJT</span>
           </div>
           <div 
-            onDragStart={(event) => onDragStart(event, 'nmos')} 
-            draggable 
-            className={itemClass}
+            {...partProps('nmos')}
           >
             <div className={iconClass}>
               <svg width="22" height="22" viewBox="0 0 60 60" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -83,9 +125,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
             <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">NMOS</span>
           </div>
           <div 
-            onDragStart={(event) => onDragStart(event, 'pmos')} 
-            draggable 
-            className={itemClass}
+            {...partProps('pmos')}
           >
             <div className={iconClass}>
               <svg width="22" height="22" viewBox="0 0 60 60" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -108,9 +148,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
             return (
               <div 
                 key={gate}
-                onDragStart={(event) => onDragStart(event, gate)} 
-                draggable 
-                className={itemClass}
+                {...partProps(gate)}
               >
                 <div className={iconClass}>
                   {gate === 'and' && (
@@ -158,8 +196,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
         <div className="grid grid-cols-2 gap-1.5">
           {/* DC Voltage */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'voltage', '5V')} draggable
+            {...partProps('voltage', '5V')}
           >
             <div className={iconClass}>
               <svg width="20" height="20" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
@@ -174,8 +211,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Ground */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'ground')} draggable
+            {...partProps('ground')}
           >
             <div className={iconClass}>
               <svg width="20" height="18" viewBox="0 0 24 20" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -187,8 +223,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Resistor */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'resistor', '1k')} draggable
+            {...partProps('resistor', '1k')}
           >
             <div className={iconClass}>
               <svg width="30" height="16" viewBox="0 0 80 40" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -200,8 +235,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Capacitor */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'capacitor', '10u')} draggable
+            {...partProps('capacitor', '10u')}
           >
             <div className={iconClass}>
               <svg width="26" height="20" viewBox="0 0 64 48" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -216,8 +250,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Inductor */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'inductor', '100u')} draggable
+            {...partProps('inductor', '100u')}
           >
             <div className={iconClass}>
               <svg width="30" height="16" viewBox="0 0 80 40" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -229,8 +262,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Diode */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'diode')} draggable
+            {...partProps('diode')}
           >
             <div className={iconClass}>
               <svg width="26" height="20" viewBox="0 0 64 48" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -245,8 +277,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* LED */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'led')} draggable
+            {...partProps('led')}
           >
             <div className={iconClass}>
               <svg width="26" height="20" viewBox="0 0 64 48" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -263,8 +294,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* 555 Timer */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'timer555')} draggable
+            {...partProps('timer555')}
           >
             <div className={iconClass}>
               <div className="border border-cyan-300 dark:border-cyan-700 rounded px-1.5 py-0.5 text-[9px] font-bold">NE555</div>
@@ -274,8 +304,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Microcontroller */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'mcu')} draggable
+            {...partProps('mcu')}
           >
             <div className={iconClass}>
               <div className="border border-indigo-300 dark:border-indigo-700 rounded px-1.5 py-0.5 text-[9px] font-bold">MCU</div>
@@ -285,8 +314,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Heltec V4 HIL */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'heltec_v4')} draggable
+            {...partProps('heltec_v4')}
           >
             <div className={iconClass}>
               <div className="border border-blue-300 dark:border-blue-700 rounded px-1 py-0.5 text-[9px] font-bold">HELTEC</div>
@@ -296,8 +324,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Op-Amp */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'opamp')} draggable
+            {...partProps('opamp')}
           >
             <div className={iconClass}>
               <svg width="24" height="20" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -309,8 +336,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Multimeter */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'multimeter')} draggable
+            {...partProps('multimeter')}
           >
             <div className={iconClass}>
               <div className="border border-emerald-300 dark:border-emerald-700 rounded px-1 py-0.5 font-mono text-[8px] font-bold">0.00 V</div>
@@ -320,8 +346,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* DC Source */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'voltage', '5V')} draggable
+            {...partProps('voltage', '5V')}
           >
             <div className={iconClass}>
               <svg width="20" height="20" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
@@ -336,8 +361,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* AC Source */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'acvoltage', '10V 60Hz')} draggable
+            {...partProps('acvoltage', '10V 60Hz')}
           >
             <div className={iconClass}>
               <svg width="20" height="20" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
@@ -350,8 +374,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Signal Gen */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'signalgen')} draggable
+            {...partProps('signalgen')}
           >
             <div className={iconClass}>
               <div className="border border-teal-300 dark:border-teal-700 rounded px-1 py-0.5 text-[8px] font-bold">~ SINE</div>
@@ -361,8 +384,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Oscilloscope */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'scope')} draggable
+            {...partProps('scope')}
           >
             <div className={iconClass}>
               <div className="border border-indigo-300 dark:border-indigo-700 rounded w-9 h-5 flex items-center justify-center overflow-hidden">
@@ -376,8 +398,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Speaker */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'speaker')} draggable
+            {...partProps('speaker')}
           >
             <div className={iconClass}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -389,8 +410,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Mic */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'microphone')} draggable
+            {...partProps('microphone')}
           >
             <div className={iconClass}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -403,8 +423,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Switch */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'switch')} draggable
+            {...partProps('switch')}
           >
             <div className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg mb-1 group-hover:scale-105 transition-transform text-slate-700 dark:text-slate-300">
               <svg width="24" height="18" viewBox="0 0 40 30" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -418,8 +437,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Pot */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'potentiometer', '10k')} draggable
+            {...partProps('potentiometer', '10k')}
           >
             <div className={iconClass}>
               <svg width="24" height="18" viewBox="0 0 32 14" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -433,8 +451,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* 7-Seg */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'sevenseg')} draggable
+            {...partProps('sevenseg')}
           >
             <div className={iconClass}>
               <div className="border border-sky-300 dark:border-sky-700 rounded w-5 h-5 flex items-center justify-center font-mono text-[10px] font-bold">8</div>
@@ -444,8 +461,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* I Source */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'currentsource', '10m')} draggable
+            {...partProps('currentsource', '10m')}
           >
             <div className={iconClass}>
               <svg width="20" height="20" viewBox="0 0 28 28" fill="none" stroke="currentColor" strokeWidth="2">
@@ -459,8 +475,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* Transformer */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'transformer')} draggable
+            {...partProps('transformer')}
           >
             <div className={iconClass}>
               <svg width="20" height="20" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
@@ -475,8 +490,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* D Flip-Flop */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'dff')} draggable
+            {...partProps('dff')}
           >
             <div className={iconClass}>
               <div className="border border-indigo-300 dark:border-indigo-700 rounded px-1.5 py-0.5 text-[8px] font-bold">DFF</div>
@@ -486,8 +500,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           {/* LDR */}
           <div 
-            className={itemClass}
-            onDragStart={(e) => onDragStart(e, 'ldr')} draggable
+            {...partProps('ldr')}
           >
             <div className={iconClass}>
               <svg width="20" height="20" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
@@ -496,6 +509,73 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
               </svg>
             </div>
             <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">LDR</span>
+          </div>
+        </div>
+
+        {/*
+          Board-only parts. These are placed and milled but contribute nothing
+          to the simulation, so they live in their own section rather than
+          mixed in with the components.
+        */}
+        <div className={sectionTitleClass}>PCB / Mechanical</div>
+        <div className="grid grid-cols-2 gap-1.5">
+          {/* Pin Header */}
+          <div {...partProps('pinheader', 'Header')}>
+            <div className={iconClass}>
+              <svg width="26" height="16" viewBox="0 0 52 32" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="2" y="8" width="48" height="16" rx="2" />
+                <circle cx="11" cy="16" r="2.5" fill="currentColor" stroke="none" />
+                <circle cx="21" cy="16" r="2.5" fill="currentColor" stroke="none" />
+                <circle cx="31" cy="16" r="2.5" fill="currentColor" stroke="none" />
+                <circle cx="41" cy="16" r="2.5" fill="currentColor" stroke="none" />
+              </svg>
+            </div>
+            <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">Pin Header</span>
+          </div>
+
+          {/* Via */}
+          <div {...partProps('via', 'Via')}>
+            <div className={iconClass}>
+              <svg width="20" height="20" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="3">
+                <circle cx="24" cy="24" r="14" />
+                <circle cx="24" cy="24" r="5" fill="currentColor" stroke="none" />
+              </svg>
+            </div>
+            <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">Via</span>
+          </div>
+
+          {/* Mounting Hole */}
+          <div {...partProps('mountinghole', 'Mount')}>
+            <div className={iconClass}>
+              <svg width="20" height="20" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="24" cy="24" r="18" strokeDasharray="4 4" />
+                <circle cx="24" cy="24" r="9" strokeWidth="2.5" />
+              </svg>
+            </div>
+            <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">Mounting Hole</span>
+          </div>
+
+          {/* Wire Jumper */}
+          <div {...partProps('jumper', 'Jumper')}>
+            <div className={iconClass}>
+              <svg width="26" height="16" viewBox="0 0 52 32" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M 10 22 Q 26 2 42 22" />
+                <circle cx="10" cy="22" r="3.5" fill="currentColor" stroke="none" />
+                <circle cx="42" cy="22" r="3.5" fill="currentColor" stroke="none" />
+              </svg>
+            </div>
+            <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">Wire Jumper</span>
+          </div>
+
+          {/* Board Cutout */}
+          <div {...partProps('cutout', 'Cutout')}>
+            <div className={iconClass}>
+              <svg width="24" height="18" viewBox="0 0 48 36" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="2" y="2" width="44" height="32" rx="2" />
+                <rect x="14" y="11" width="20" height="14" rx="1.5" strokeDasharray="3 2.5" />
+              </svg>
+            </div>
+            <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">Board Cutout</span>
           </div>
         </div>
       </aside>

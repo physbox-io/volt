@@ -35,7 +35,48 @@ export interface RouterOptions {
   edgeClearanceMm: number;
   /** Extra cost per 45-degree turn, in grid steps. Discourages staircasing. */
   bendPenalty: number;
+  /**
+   * How hard to try before giving up, as a wall-clock budget in milliseconds
+   * for the whole board. Ordering strategies and rip-up passes stop once it is
+   * spent, and the best result so far is returned. Defaults to
+   * DEFAULT_ROUTING_BUDGET_MS.
+   */
+  budgetMs?: number;
+  /** Called after each ordering strategy so a host can show progress. */
+  onProgress?: (info: RouteProgress) => void;
+  /**
+   * Copper-free regions no net may cross — drilled mounting holes, and any
+   * other pad that carries no net. Without these a trace happily routes
+   * straight through a hole, or shorts against an unused header pin.
+   */
+  obstacles?: RouteObstacle[];
 }
+
+/**
+ * A keepout that belongs to no net: circular when `radiusMm` is given,
+ * rectangular when `widthMm`/`heightMm` are.
+ */
+export interface RouteObstacle {
+  x: number;
+  y: number;
+  radiusMm?: number;
+  widthMm?: number;
+  heightMm?: number;
+}
+
+export interface RouteProgress {
+  /** Strategy passes finished so far. */
+  pass: number;
+  /** Total passes this budget allows, as an upper bound. */
+  totalPasses: number;
+  /** Best completion fraction seen so far, 0..1. */
+  completion: number;
+  /** Milliseconds elapsed. */
+  elapsedMs: number;
+}
+
+/** Wall-clock budget used when the caller does not specify one. */
+export const DEFAULT_ROUTING_BUDGET_MS = 8000;
 
 /** A pin that must be connected, in board millimetres. */
 export interface RoutePin {
@@ -109,6 +150,19 @@ function stampDisc(grid: Grid, cx: number, cy: number, r: number, net: number): 
       const dx = cellX(grid, gx) - cx;
       const dy = cellY(grid, gy) - cy;
       if (dx * dx + dy * dy <= r2) claim(grid, gy * grid.cols + gx, net);
+    }
+  }
+}
+
+/** Stamps an axis-aligned rectangular keepout, centred on (cx, cy). */
+function stampRect(grid: Grid, cx: number, cy: number, w: number, h: number, net: number): void {
+  const gx0 = Math.max(0, toGx(grid, cx - w / 2));
+  const gx1 = Math.min(grid.cols - 1, toGx(grid, cx + w / 2));
+  const gy0 = Math.max(0, toGy(grid, cy - h / 2));
+  const gy1 = Math.min(grid.rows - 1, toGy(grid, cy + h / 2));
+  for (let gy = gy0; gy <= gy1; gy++) {
+    for (let gx = gx0; gx <= gx1; gx++) {
+      claim(grid, gy * grid.cols + gx, net);
     }
   }
 }
@@ -219,6 +273,68 @@ class MinHeap {
 }
 
 /**
+ * Is `goal` connected to any of `starts` through cells this net may occupy?
+ *
+ * A plain flood fill over the same move rules as the A*, so it answers exactly
+ * the question "does a path exist at all". It is O(cells) and runs before the
+ * A*, which lets a genuinely fenced-in pin fail in about a millisecond instead
+ * of after an exhaustive best-first search. That in turn is what makes it safe
+ * to give the A* a budget large enough to actually finish: it only ever runs
+ * when a path is known to exist.
+ */
+function isReachable(
+  grid: Grid,
+  starts: Set<number>,
+  goal: number,
+  net: number,
+  scratch: Uint8Array,
+  queue: Int32Array
+): boolean {
+  const n = grid.cols * grid.rows;
+  scratch.fill(0);
+  let tail = 0;
+  for (const s of starts) {
+    if (s < 0 || s >= n || scratch[s]) continue;
+    const c = grid.cells[s];
+    if (c !== FREE && c !== net) continue;
+    scratch[s] = 1;
+    queue[tail++] = s;
+  }
+
+  for (let head = 0; head < tail; head++) {
+    const idx = queue[head];
+    if (idx === goal) return true;
+    const x = idx % grid.cols;
+    const y = (idx / grid.cols) | 0;
+
+    for (let d = 0; d < 8; d++) {
+      const nx = x + DX[d];
+      const ny = y + DY[d];
+      if (nx < 0 || ny < 0 || nx >= grid.cols || ny >= grid.rows) continue;
+
+      const nIdx = ny * grid.cols + nx;
+      if (scratch[nIdx]) continue;
+      const cell = grid.cells[nIdx];
+      if (cell !== FREE && cell !== net) continue;
+
+      // Same diagonal-squeeze rule as findPath, so the two agree exactly.
+      if (d >= 4) {
+        const sideA = grid.cells[y * grid.cols + nx];
+        const sideB = grid.cells[ny * grid.cols + x];
+        if (
+          (sideA !== FREE && sideA !== net) ||
+          (sideB !== FREE && sideB !== net)
+        ) continue;
+      }
+
+      scratch[nIdx] = 1;
+      queue[tail++] = nIdx;
+    }
+  }
+  return false;
+}
+
+/**
  * Multi-source A*: from any cell in `starts` to any cell in `goals`, for a
  * single net.
  *
@@ -236,7 +352,8 @@ function findPath(
   starts: Set<number>,
   goals: Set<number>,
   net: number,
-  bendPenalty: number
+  bendPenalty: number,
+  hWeight: number = 1.0
 ): number[] | null {
   const n = grid.cols * grid.rows;
   const NDIR = 9; // 8 directions + 'no previous direction' at index 8
@@ -248,6 +365,7 @@ function findPath(
   // Heuristic: octile distance to the nearest goal cell.
   const goalList = [...goals];
   const h = (idx: number): number => {
+    if (hWeight <= 0) return 0;
     const x = idx % grid.cols;
     const y = (idx / grid.cols) | 0;
     let best = Infinity;
@@ -259,7 +377,7 @@ function findPath(
       const d = dx + dy + (Math.SQRT2 - 2) * Math.min(dx, dy);
       if (d < best) best = d;
     }
-    return best;
+    return best * hWeight;
   };
 
   const open = new MinHeap();
@@ -272,7 +390,20 @@ function findPath(
     open.push(h(s), state);
   }
 
+  // Budget scales with the board: a fixed cap silently fails long detours on a
+  // large auto-grown board, where the search legitimately has to expand a large
+  // fraction of the grid before it finds its way around the placed modules.
+  // Every state can be closed at most once, so this is an upper bound rather
+  // than a cutoff — callers only reach here once a path is known to exist, and
+  // a fixed cutoff here used to abandon perfectly routable long detours on a
+  // large auto-grown board.
+  let expanded = 0;
+  const MAX_EXPANDED = size + 1;
+
   while (open.size > 0) {
+    if (++expanded > MAX_EXPANDED) {
+      return null;
+    }
     const state = open.pop();
     if (closed[state]) continue;
     closed[state] = 1;
@@ -376,10 +507,13 @@ function buildMst(pins: RoutePin[]): [number, number][] {
 }
 
 /**
- * Routes every net. Nets are ordered shortest-first so that small local
- * connections claim their space before long hauls carve the board up.
+ * Routes every net for a given net ordering.
  */
-export function routeBoard(pins: RoutePin[], opts: RouterOptions): RouteResult {
+function singlePassRoute(
+  pins: RoutePin[],
+  opts: RouterOptions,
+  order: [string, RoutePin[]][]
+): RouteResult {
   const grid = makeGrid(opts);
   stampBoardEdge(grid, opts);
 
@@ -390,50 +524,62 @@ export function routeBoard(pins: RoutePin[], opts: RouterOptions): RouteResult {
   const halfTrace = opts.traceWidthMm / 2;
   const keepout = opts.clearanceMm + halfTrace;
 
+  // Netless keepouts first, so that a pad overlapping one still wins below and
+  // keeps its own escape route.
+  for (const ob of opts.obstacles ?? []) {
+    if (ob.widthMm !== undefined && ob.heightMm !== undefined) {
+      stampRect(grid, ob.x, ob.y, ob.widthMm + keepout * 2, ob.heightMm + keepout * 2, CONFLICT);
+    } else {
+      stampDisc(grid, ob.x, ob.y, (ob.radiusMm ?? 0) + keepout, CONFLICT);
+    }
+  }
+
   // Stamp every pad's keepout before routing anything.
   for (const pin of pins) {
     stampDisc(grid, pin.x, pin.y, pin.padRadiusMm + keepout, netIndex.get(pin.netId)!);
   }
 
-  // A pad's own centre must stay reachable even if a neighbouring pad's
-  // keepout spilled over it and turned it into CONFLICT.
+  // A pad's own copper disc must stay reachable and claimable for its own net
+  // so the router can escape outward even if a neighbouring pad's keepout overlapped it.
   const padCell = new Map<string, number>();
   for (const pin of pins) {
+    const net = netIndex.get(pin.netId)!;
+    const gx0 = Math.max(0, toGx(grid, pin.x - pin.padRadiusMm));
+    const gx1 = Math.min(grid.cols - 1, toGx(grid, pin.x + pin.padRadiusMm));
+    const gy0 = Math.max(0, toGy(grid, pin.y - pin.padRadiusMm));
+    const gy1 = Math.min(grid.rows - 1, toGy(grid, pin.y + pin.padRadiusMm));
+    const r2 = pin.padRadiusMm * pin.padRadiusMm;
+    for (let gy = gy0; gy <= gy1; gy++) {
+      for (let gx = gx0; gx <= gx1; gx++) {
+        const dx = cellX(grid, gx) - pin.x;
+        const dy = cellY(grid, gy) - pin.y;
+        if (dx * dx + dy * dy <= r2) {
+          grid.cells[gy * grid.cols + gx] = net;
+        }
+      }
+    }
     const gx = Math.max(0, Math.min(grid.cols - 1, toGx(grid, pin.x)));
     const gy = Math.max(0, Math.min(grid.rows - 1, toGy(grid, pin.y)));
     const idx = gy * grid.cols + gx;
-    grid.cells[idx] = netIndex.get(pin.netId)!;
+    grid.cells[idx] = net;
     padCell.set(pin.key, idx);
   }
-
-  const byNet = new Map<string, RoutePin[]>();
-  for (const pin of pins) {
-    if (!byNet.has(pin.netId)) byNet.set(pin.netId, []);
-    byNet.get(pin.netId)!.push(pin);
-  }
-
-  // Shortest total MST length first.
-  const order = [...byNet.entries()].sort((a, b) => {
-    const len = (ps: RoutePin[]) =>
-      buildMst(ps).reduce(
-        (s, [i, j]) => s + Math.hypot(ps[i].x - ps[j].x, ps[i].y - ps[j].y),
-        0
-      );
-    return len(a[1]) - len(b[1]);
-  });
 
   const traces: RoutedTrace[] = [];
   const unrouted: UnroutedConnection[] = [];
   let required = 0;
   let achieved = 0;
 
+  // Reused across every reachability probe in this pass.
+  const cellCount = grid.cols * grid.rows;
+  const reachScratch = new Uint8Array(cellCount);
+  const reachQueue = new Int32Array(cellCount);
+
   for (const [netId, netPins] of order) {
     const net = netIndex.get(netId)!;
     const mst = buildMst(netPins);
     required += mst.length;
 
-    // Cells already reachable for this net; a new branch may terminate on any
-    // of them, which is how a 3+ pin net becomes one connected copper region.
     const reached = new Set<number>();
 
     for (const [i, j] of mst) {
@@ -442,9 +588,14 @@ export function routeBoard(pins: RoutePin[], opts: RouterOptions): RouteResult {
       const startIdx = padCell.get(a.key)!;
       const goalIdx = padCell.get(b.key)!;
 
-      // Any copper already laid for this net is a valid place to branch from.
       const startSet = new Set<number>([startIdx, ...reached]);
-      const path = findPath(grid, startSet, new Set([goalIdx]), net, opts.bendPenalty);
+
+      // Cheap existence check first. If the goal is fenced off there is no
+      // point running the A* at all, and skipping it is what keeps a board
+      // that cannot be fully routed from taking tens of seconds.
+      const path = isReachable(grid, startSet, goalIdx, net, reachScratch, reachQueue)
+        ? findPath(grid, startSet, new Set([goalIdx]), net, opts.bendPenalty, 1.0)
+        : null;
 
       if (!path || path.length < 2) {
         unrouted.push({
@@ -478,3 +629,119 @@ export function routeBoard(pins: RoutePin[], opts: RouterOptions): RouteResult {
     completion: required === 0 ? 1 : achieved / required,
   };
 }
+
+/**
+ * Routes every net using multi-order strategy exploration & rip-up retry.
+ */
+export function routeBoard(pins: RoutePin[], opts: RouterOptions): RouteResult {
+  const byNet = new Map<string, RoutePin[]>();
+  for (const pin of pins) {
+    if (!byNet.has(pin.netId)) byNet.set(pin.netId, []);
+    byNet.get(pin.netId)!.push(pin);
+  }
+
+  const netEntries = [...byNet.entries()];
+  if (netEntries.length === 0) {
+    return { traces: [], unrouted: [], completion: 1 };
+  }
+
+  const calcMstLen = (ps: RoutePin[]) =>
+    buildMst(ps).reduce((s, [i, j]) => s + Math.hypot(ps[i].x - ps[j].x, ps[i].y - ps[j].y), 0);
+
+  const calcAvgY = (ps: RoutePin[]) =>
+    ps.reduce((s, p) => s + p.y, 0) / Math.max(1, ps.length);
+
+  const calcAvgX = (ps: RoutePin[]) =>
+    ps.reduce((s, p) => s + p.x, 0) / Math.max(1, ps.length);
+
+  // Strategy 1: Shortest MST first
+  const orderShortest = [...netEntries].sort((a, b) => calcMstLen(a[1]) - calcMstLen(b[1]));
+
+  // Strategy 2: Longest MST first (long outer routes get perimeter before interior fills)
+  const orderLongest = [...netEntries].sort((a, b) => calcMstLen(b[1]) - calcMstLen(a[1]));
+
+  // Strategy 3: Top to Bottom Y
+  const orderTopDown = [...netEntries].sort((a, b) => calcAvgY(b[1]) - calcAvgY(a[1]));
+
+  // Strategy 4: Bottom to Top Y
+  const orderBottomUp = [...netEntries].sort((a, b) => calcAvgY(a[1]) - calcAvgY(b[1]));
+
+  // Strategy 5: Left to Right X
+  const orderLeftRight = [...netEntries].sort((a, b) => calcAvgX(a[1]) - calcAvgX(b[1]));
+
+  const candidateOrders = [orderShortest, orderLongest, orderTopDown, orderBottomUp, orderLeftRight];
+
+  // Deterministic pseudo-random, for the shuffle passes.
+  let seed = 1337;
+  const pseudoRandom = () => {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
+
+  const budgetMs = opts.budgetMs ?? DEFAULT_ROUTING_BUDGET_MS;
+  const startedAt = Date.now();
+  const RIP_UP_PASSES = 4;
+  const SHUFFLE_PASSES = 8;
+  const totalPasses = candidateOrders.length + RIP_UP_PASSES + SHUFFLE_PASSES;
+
+  let bestResult: RouteResult | null = null;
+  let pass = 0;
+
+  /**
+   * Runs one ordering and keeps it if it beats the best so far. Returns false
+   * once the caller should stop — either the board is fully routed or the
+   * wall-clock budget is spent.
+   */
+  const tryOrder = (order: [string, RoutePin[]][]): boolean => {
+    const res = singlePassRoute(pins, opts, order);
+    if (!bestResult || res.completion > bestResult.completion) bestResult = res;
+    pass++;
+    opts.onProgress?.({
+      pass,
+      totalPasses,
+      completion: bestResult.completion,
+      elapsedMs: Date.now() - startedAt,
+    });
+    return bestResult.completion < 1 && Date.now() - startedAt < budgetMs;
+  };
+
+  // Strategy sweep. The first pass always runs, however small the budget —
+  // returning nothing at all would be worse than overrunning slightly.
+  for (const order of candidateOrders) {
+    if (!tryOrder(order)) return bestResult!;
+  }
+
+  // Rip-up & retry: repeatedly move the nets that failed to the front.
+  let currentOrder = [...orderShortest];
+  for (let ripIter = 0; ripIter < RIP_UP_PASSES; ripIter++) {
+    const unroutedNetIds = new Set(bestResult!.unrouted.map(u => u.netId));
+    if (unroutedNetIds.size === 0) break;
+
+    currentOrder = [...currentOrder].sort((a, b) => {
+      const aFailed = unroutedNetIds.has(a[0]);
+      const bFailed = unroutedNetIds.has(b[0]);
+      if (aFailed && !bFailed) return -1;
+      if (!aFailed && bFailed) return 1;
+      return 0;
+    });
+
+    if (ripIter > 0 && currentOrder.length > 1) {
+      currentOrder.push(currentOrder.shift()!);
+    }
+
+    if (!tryOrder(currentOrder)) return bestResult!;
+  }
+
+  // Permutation search, if anything is still unrouted.
+  for (let iter = 0; iter < SHUFFLE_PASSES; iter++) {
+    const shuffled = [...netEntries];
+    for (let k = shuffled.length - 1; k > 0; k--) {
+      const j = Math.floor(pseudoRandom() * (k + 1));
+      [shuffled[k], shuffled[j]] = [shuffled[j], shuffled[k]];
+    }
+    if (!tryOrder(shuffled)) return bestResult!;
+  }
+
+  return bestResult!;
+}
+

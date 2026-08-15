@@ -13,6 +13,9 @@ html, body, #root {
   background-color: #f8fafc;
   color: #0f172a;
   overflow: hidden;
+  /* Stops a drag that starts near the top of the canvas from being taken over
+     by pull-to-refresh, which reloads the page and loses the circuit. */
+  overscroll-behavior: none;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
@@ -349,6 +352,42 @@ aside.glass-panel h3:hover {
 .react-flow__node:hover .react-flow__handle,
 .react-flow__connection-connecting .react-flow__handle {
   transform: translate(-50%, -50%) scale(1.5) !important;
+}
+
+/*
+  Touch input.
+
+  Pins are hidden until the node is hovered, which is a gesture a finger does
+  not have — on a phone every pin was invisible and 4px wide, so no wire could
+  be drawn at all. On a coarse pointer they are drawn permanently and at a size
+  a fingertip can actually land on. This is keyed on the pointer device, not
+  the window width, so a narrow desktop window keeps the clean hover behaviour.
+*/
+@media (pointer: coarse) {
+  .react-flow__handle {
+    width: 9px !important;
+    height: 9px !important;
+    opacity: 0.55 !important;
+  }
+
+  .dark .react-flow__handle {
+    opacity: 0.65 !important;
+  }
+
+  /* The pin's ink stays small; the hit area around it does not. */
+  .react-flow__handle::after {
+    content: '';
+    position: absolute;
+    inset: -9px;
+  }
+
+  /* React Flow's own zoom/fit buttons are 22px here to match the panel chrome,
+     which is under half a fingertip. */
+  .react-flow .react-flow__controls-button {
+    width: 34px;
+    height: 34px;
+    padding: 7px;
+  }
 }
 
 

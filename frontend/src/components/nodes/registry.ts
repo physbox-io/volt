@@ -43,6 +43,11 @@ import { LDRProperties, ldrDefaultData } from './LDRNode';
 import { SevenSegmentProperties } from './SevenSegmentNode';
 import { CurrentSourceProperties } from './CurrentSourceNode';
 import { HeltecV4Properties, heltecV4DefaultData } from './HeltecV4Node';
+import { PinHeaderProperties, pinHeaderDefaultData } from './PinHeaderNode';
+import { ViaProperties, viaDefaultData } from './ViaNode';
+import { MountingHoleProperties, mountingHoleDefaultData } from './MountingHoleNode';
+import { JumperProperties, jumperDefaultData } from './JumperNode';
+import { CutoutProperties, cutoutDefaultData } from './CutoutNode';
 
 export const nodeRegistry: Record<string, NodeMeta> = {
   voltage: { Properties: VoltageProperties },
@@ -71,4 +76,10 @@ export const nodeRegistry: Record<string, NodeMeta> = {
   sevenseg: { Properties: SevenSegmentProperties },
   currentsource: { Properties: CurrentSourceProperties },
   heltec_v4: { Properties: HeltecV4Properties, defaultData: heltecV4DefaultData },
+  // Mechanical / board-only parts. They never reach the SPICE netlist.
+  pinheader: { Properties: PinHeaderProperties, defaultData: pinHeaderDefaultData },
+  via: { Properties: ViaProperties, defaultData: viaDefaultData },
+  mountinghole: { Properties: MountingHoleProperties, defaultData: mountingHoleDefaultData },
+  jumper: { Properties: JumperProperties, defaultData: jumperDefaultData },
+  cutout: { Properties: CutoutProperties, defaultData: cutoutDefaultData },
 };

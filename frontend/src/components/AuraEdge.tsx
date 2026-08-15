@@ -2,6 +2,9 @@ import { BaseEdge, type EdgeProps, getSmoothStepPath, useReactFlow } from '@xyfl
 import { useEffect, useState, createContext, useContext, useMemo, useCallback, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../utils/playbackTicker';
 import { getHandleCoord } from '../utils/nodeGeometry';
+import { getEffectiveMcuConfig } from '../utils/mcuConfig';
+import { getPinHeaderSize } from './nodes/PinHeaderNode';
+import { getCutoutSize } from './nodes/CutoutNode';
 
 // Junction dots are owned entirely by JunctionNode.tsx: every real electrical
 // T-tap in this app is created via the wire-drop-splice flow in App.tsx,
@@ -84,6 +87,28 @@ export function getNodeDimensions(type: string, data: any) {
     case 'transistorNPN':
     case 'transistorPNP':
       return { width: 48, height: 48 };
+    case 'mcu': {
+      const cfg = getEffectiveMcuConfig(data);
+      const leftCount = cfg.pins.filter(p => p.side === 'left').length;
+      const rightCount = cfg.pins.filter(p => p.side === 'right').length;
+      const topCount = cfg.pins.filter(p => p.side === 'top').length;
+      const bottomCount = cfg.pins.filter(p => p.side === 'bottom').length;
+      const maxSidePins = Math.max(leftCount, rightCount, 4);
+      const maxEdgePins = Math.max(topCount, bottomCount, 0);
+      const width = Math.max(96, (maxEdgePins + 1) * 24);
+      const height = Math.max(128, 28 + maxSidePins * 22);
+      return { width, height };
+    }
+    case 'pinheader':
+      return getPinHeaderSize(data);
+    case 'via':
+      return { width: 16, height: 16 };
+    case 'mountinghole':
+      return { width: 22, height: 22 };
+    case 'jumper':
+      return { width: 44, height: 24 };
+    case 'cutout':
+      return getCutoutSize(data);
     default:
       return { width: 48, height: 32 };
   }

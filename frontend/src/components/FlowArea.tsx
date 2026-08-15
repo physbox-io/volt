@@ -48,6 +48,11 @@ import { TransformerNode } from './nodes/TransformerNode';
 import { DFlipFlopNode } from './nodes/DFlipFlopNode';
 import { LDRNode } from './nodes/LDRNode';
 import { JunctionNode } from './nodes/JunctionNode';
+import { PinHeaderNode } from './nodes/PinHeaderNode';
+import { ViaNode } from './nodes/ViaNode';
+import { MountingHoleNode } from './nodes/MountingHoleNode';
+import { JumperNode } from './nodes/JumperNode';
+import { CutoutNode } from './nodes/CutoutNode';
 import { AuraEdge, EdgePathContext } from './AuraEdge';
 import { findNearestEdgeAtPoint, getHandleCoord } from '../utils/nodeGeometry';
 import { computeBranchDots } from '../utils/branchDots';
@@ -97,13 +102,19 @@ const nodeTypes = {
   dff: DFlipFlopNode,
   ldr: LDRNode,
   junction: JunctionNode,
+  pinheader: PinHeaderNode,
+  via: ViaNode,
+  mountinghole: MountingHoleNode,
+  jumper: JumperNode,
+  cutout: CutoutNode,
 };
 
 let nodeId = 1;
 
 export function FlowArea({
   nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange, onConnect, onNodeClick,
-  probeMode, onEdgeProbe, isSimulating, fitKey, hasNoteCard, noteCardRect
+  probeMode, onEdgeProbe, isSimulating, fitKey, hasNoteCard, noteCardRect,
+  pickedPart, onPickedPartPlaced,
 }: any) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, getViewport, setViewport, getNodes, getInternalNode } = useReactFlow();
@@ -340,22 +351,8 @@ export function FlowArea({
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const onDrop = useCallback(
-    (event: DragEvent) => {
-      event.preventDefault();
-      if (isSimulating) return;
-      const type = event.dataTransfer.getData('application/reactflow');
-      const label = event.dataTransfer.getData('application/reactflow-label');
-
-      if (typeof type === 'undefined' || !type) {
-        return;
-      }
-
-      const position = screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-
+  const addPart = useCallback(
+    (type: string, label: string | undefined, position: { x: number; y: number }) => {
       const defaultDataFn = nodeRegistry[type]?.defaultData;
       const initialData: any = defaultDataFn ? defaultDataFn(label) : { label, isOn: false };
 
@@ -368,8 +365,46 @@ export function FlowArea({
 
       setNodes((nds: any[]) => nds.concat(newNode));
     },
-    [screenToFlowPosition, setNodes, isSimulating]
+    [setNodes]
   );
+
+  const onDrop = useCallback(
+    (event: DragEvent) => {
+      event.preventDefault();
+      if (isSimulating) return;
+      const type = event.dataTransfer.getData('application/reactflow');
+      const label = event.dataTransfer.getData('application/reactflow-label');
+
+      if (typeof type === 'undefined' || !type) {
+        return;
+      }
+
+      addPart(type, label, screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+    },
+    [screenToFlowPosition, addPart, isSimulating]
+  );
+
+  // A part tapped in the palette on a touch device, which has no drag-and-drop
+  // and so no drop point. It lands in the middle of whatever the operator is
+  // currently looking at, stepped a little each time so that tapping three
+  // resistors in a row gives three resistors rather than one on top of two.
+  const tapCascade = useRef(0);
+  useEffect(() => {
+    if (!pickedPart || isSimulating) return;
+    const pane = reactFlowWrapper.current;
+    if (!pane) return;
+    const rect = pane.getBoundingClientRect();
+    const step = tapCascade.current++ % 6;
+    const centre = screenToFlowPosition({
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    });
+    addPart(pickedPart.type, pickedPart.label, {
+      x: Math.round((centre.x + step * 24) / 8) * 8,
+      y: Math.round((centre.y + step * 24) / 8) * 8,
+    });
+    onPickedPartPlaced?.();
+  }, [pickedPart, isSimulating, screenToFlowPosition, addPart, onPickedPartPlaced]);
 
   const onNodeDragStop = useCallback((_event: any, draggedNode: Node) => {
     const updatedNodes = nodes.map(n => n.id === draggedNode.id ? draggedNode : n);
@@ -417,6 +452,7 @@ export function FlowArea({
         defaultEdgeOptions={{ type: 'aura' }}
         snapToGrid={true}
         snapGrid={[4, 4]}
+        proOptions={{ hideAttribution: true }}
         fitView
       >
         {/* Drafting grid: 16px reads as guidance, the 8px default read as noise.

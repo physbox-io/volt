@@ -31,17 +31,26 @@ import {
   type Poly,
   type Pt,
 } from './pcbGeometry';
-import { routeBoard, type RoutePin, type RoutedTrace, type UnroutedConnection } from './pcbRouter';
+import {
+  routeBoard,
+  DEFAULT_ROUTING_BUDGET_MS,
+  type RouteObstacle,
+  type RoutePin,
+  type RoutedTrace,
+  type UnroutedConnection,
+  type RouteProgress,
+} from './pcbRouter';
 
 export interface PcbOptions {
-  boardWidthMm: number;        // Board width in mm (default 60)
-  boardHeightMm: number;       // Board height in mm (default 40)
+  boardWidthMm: number;        // Board width, or minimum width when auto-sizing
+  boardHeightMm: number;       // Board height, or minimum height when auto-sizing
   traceWidthMm: number;        // Target trace width in mm (default 0.4)
   clearanceMm: number;         // Copper-to-copper clearance in mm (default 0.4)
   isolationPasses: number;     // Number of offset passes (1, 2, or 3)
   vBitAngleDeg: number;        // V-bit included angle in degrees
   vBitTipMm: number;           // V-bit tip width in mm
   routingGridMm: number;       // Maze router grid resolution (default 0.25)
+  routingBudgetMs: number;     // Wall-clock budget for the maze router (default 8000)
   cutFeedrate: number;         // Feedrate for isolation milling (mm/min)
   travelFeedrate: number;      // Rapid feedrate (mm/min)
   plungeFeedrate: number;      // Z plunge rate (mm/min)
@@ -57,21 +66,24 @@ export interface PcbOptions {
   tabWidthMm: number;          // Width of each holding tab
   tabHeightMm: number;         // Height of uncut material left at each tab
   pauseOnToolChange: boolean;  // Insert T<N> M6 pauses
-  autoGrowBoard: boolean;      // Enlarge the board if parts do not fit
+  autoGrowBoard: boolean;      // Size the board to the parts (never below the requested size)
   rampedPlunge?: boolean;      // Enable 3D ramped entry for plunges (default true)
   rubOutClearing?: boolean;    // Clear unassigned copper areas (default false)
   airCutZOffset?: number;      // Z offset for Air Cut dry runs (default 20mm)
 }
 
 export const DEFAULT_PCB_OPTIONS: PcbOptions = {
-  boardWidthMm: 60,
-  boardHeightMm: 40,
+  // A floor, not a target: with auto-size on the board shrinks to the parts, so
+  // this is deliberately small enough not to pad a simple board out.
+  boardWidthMm: 20,
+  boardHeightMm: 20,
   traceWidthMm: 0.4,
   clearanceMm: 0.4,
   isolationPasses: 1,
   vBitAngleDeg: 30,
   vBitTipMm: 0.1,
   routingGridMm: 0.25,
+  routingBudgetMs: DEFAULT_ROUTING_BUDGET_MS,
   cutFeedrate: 300,
   travelFeedrate: 1500,
   plungeFeedrate: 100,
@@ -87,11 +99,61 @@ export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   tabWidthMm: 3.0,
   tabHeightMm: 0.6,
   pauseOnToolChange: true,
-  autoGrowBoard: true,
+  autoGrowBoard: false,
   rampedPlunge: true,
   rubOutClearing: false,
   airCutZOffset: 20,
 };
+
+/**
+ * Computes suggested board dimensions (widthMm, heightMm) to comfortably accommodate
+ * all physical components and perimeter routing channels in a circuit.
+ */
+export function calculateSuggestedBoardSize(
+  circuitNodes: Node[],
+  options?: Partial<PcbOptions>
+): { widthMm: number; heightMm: number } {
+  const nodes = circuitNodes || [];
+  const physicalNodes = nodes.filter(n => isPhysical(n.type));
+  if (physicalNodes.length === 0) {
+    return { widthMm: 45, heightMm: 35 };
+  }
+
+  const profileToolDia = options?.profileToolDiaMm ?? DEFAULT_PCB_OPTIONS.profileToolDiaMm;
+  const traceWidth = options?.traceWidthMm ?? DEFAULT_PCB_OPTIONS.traceWidthMm;
+  const clearance = options?.clearanceMm ?? DEFAULT_PCB_OPTIONS.clearanceMm;
+
+  const gap = Math.max(3.5, traceWidth + clearance * 5);
+  const edge = Math.max(7.0, profileToolDia + 4.5);
+
+  const inputs = physicalNodes.map(node => {
+    const data = (node.data ?? {}) as {
+      orientation?: string;
+      packageId?: string;
+      pins?: number;
+    };
+    const orientation = data.orientation;
+    const rotationDeg: 0 | 90 = orientation === 'vertical' || orientation === 'up' ? 90 : 0;
+    const footprint = resolveFootprint(data.packageId, node.type, data.pins || 2, node.data);
+    const widthMm = rotationDeg === 90 ? footprint.heightMm : footprint.widthMm;
+    const heightMm = rotationDeg === 90 ? footprint.widthMm : footprint.heightMm;
+    return { widthMm, heightMm };
+  });
+
+  const need = inputs.reduce((s, c) => s + (c.widthMm + gap) * (c.heightMm + gap), 0) * 1.7;
+  const side = Math.sqrt(Math.max(need, 1));
+  const minW = Math.max(...inputs.map(c => c.widthMm), 0) + edge * 2 + gap;
+  const minH = Math.max(...inputs.map(c => c.heightMm), 0) + edge * 2 + gap;
+
+  // Round up to nearest 5mm for standard clean stock sizing
+  const rawW = Math.max(30, Math.ceil(Math.max(side + edge * 2, minW)));
+  const rawH = Math.max(30, Math.ceil(Math.max(side + edge * 2, minH)));
+
+  const widthMm = Math.ceil(rawW / 5) * 5;
+  const heightMm = Math.ceil(rawH / 5) * 5;
+
+  return { widthMm, heightMm };
+}
 
 export interface PlacedComponent {
   id: string;
@@ -103,6 +165,7 @@ export interface PlacedComponent {
   footprint: ComponentFootprint;
   widthMm: number;           // Courtyard after rotation
   heightMm: number;
+  data?: any;
 }
 
 export interface PlacedPad {
@@ -136,6 +199,17 @@ export interface DrillPoint {
   pinNumber: string | number;
 }
 
+/** A region milled clean through the board by the profile tool. */
+export interface BoardCutout {
+  componentId: string;
+  shape: 'rect' | 'circle';
+  /** Centre, in board coordinates. */
+  x: number;
+  y: number;
+  widthMm: number;
+  heightMm: number;
+}
+
 export interface DrcViolation {
   severity: 'error' | 'warning';
   message: string;
@@ -151,6 +225,7 @@ export interface PcbLayoutResult {
   traces: TraceSegment[];
   isolationPaths: IsolationPath[];
   drills: DrillPoint[];
+  cutouts: BoardCutout[];
   unrouted: UnroutedConnection[];
   violations: DrcViolation[];
   warnings: string[];
@@ -217,6 +292,7 @@ interface PlacementInput {
   footprint: ComponentFootprint;
   widthMm: number;
   heightMm: number;
+  data?: any;
 }
 
 /**
@@ -226,31 +302,37 @@ interface PlacementInput {
 function placeComponents(
   inputs: PlacementInput[],
   opts: PcbOptions,
-  warnings: string[]
+  warnings: string[],
+  spreadScale = 1
 ): { placed: PlacedComponent[]; boardWidthMm: number; boardHeightMm: number } {
+  // Gap between courtyards: room for at least one trace plus clearances.
+  // `spreadScale` loosens it on later attempts, when a tighter packing turned
+  // out to leave the router nowhere to go.
+  const gap = Math.max(3.5, opts.traceWidthMm + opts.clearanceMm * 5) * spreadScale;
+  const edge = Math.max(7.0, opts.profileToolDiaMm + 4.5);
+
+  // Auto-sizing on: the board is cropped to whatever the parts actually occupy,
+  // but never shrinks below the requested dimensions — so the requested size
+  // acts as a minimum, and raising it still grows the board.
+  // Auto-sizing off: the board is exactly the size requested, and parts are
+  // packed into it whether or not they fit.
+  const autoSize = opts.autoGrowBoard;
+
   let boardW = opts.boardWidthMm;
   let boardH = opts.boardHeightMm;
 
-  // Gap between courtyards: room for at least one trace plus clearances.
-  const gap = Math.max(1.5, opts.traceWidthMm + opts.clearanceMm * 3);
-  const edge = Math.max(2.0, opts.profileToolDiaMm + 1.0);
-
-  if (opts.autoGrowBoard) {
-    // Total courtyard area plus gaps, padded for routing channels, squared off.
+  if (autoSize) {
+    // Seed area: total courtyard area plus gaps, padded for routing channels.
+    // This is only where the relaxation starts — the final size comes from the
+    // packed result, not from here.
     const need =
-      inputs.reduce((s, c) => s + (c.widthMm + gap) * (c.heightMm + gap), 0) * 2.4;
+      inputs.reduce((s, c) => s + (c.widthMm + gap) * (c.heightMm + gap), 0) * 1.7;
     const side = Math.sqrt(Math.max(need, 1));
-    if (side + edge * 2 > boardW) boardW = Math.ceil(side + edge * 2);
-    if (side + edge * 2 > boardH) boardH = Math.ceil(side + edge * 2);
+    boardW = Math.ceil(side + edge * 2);
+    boardH = Math.ceil(side + edge * 2);
     // Nothing may be narrower than the widest part.
     boardW = Math.max(boardW, Math.ceil(Math.max(...inputs.map(c => c.widthMm), 0) + edge * 2 + gap));
     boardH = Math.max(boardH, Math.ceil(Math.max(...inputs.map(c => c.heightMm), 0) + edge * 2 + gap));
-    if (boardW !== opts.boardWidthMm || boardH !== opts.boardHeightMm) {
-      warnings.push(
-        `Board grown to ${boardW} x ${boardH} mm to fit ${inputs.length} parts ` +
-        `(requested ${opts.boardWidthMm} x ${opts.boardHeightMm} mm).`
-      );
-    }
   }
 
   // Normalise schematic coordinates into the usable board area.
@@ -261,18 +343,16 @@ function placeComponents(
     minY = Math.min(minY, c.schematicY);
     maxY = Math.max(maxY, c.schematicY);
   }
-  const spanX = maxX - minX > 1 ? maxX - minX : 1;
-  const spanY = maxY - minY > 1 ? maxY - minY : 1;
 
   const pos = inputs.map((c, i) => {
     if (inputs.length === 1) return { x: boardW / 2, y: boardH / 2 };
     const usableW = Math.max(1, boardW - edge * 2 - c.widthMm);
     const usableH = Math.max(1, boardH - edge * 2 - c.heightMm);
+    const normX = maxX > minX ? (c.schematicX - minX) / (maxX - minX) : 0.5;
+    const normY = maxY > minY ? (c.schematicY - minY) / (maxY - minY) : 0.5;
     return {
-      x: edge + c.widthMm / 2 + ((c.schematicX - minX) / spanX) * usableW,
-      // Nudge identical coordinates apart so relaxation has a gradient to work
-      // with instead of two parts sitting exactly on top of each other.
-      y: edge + c.heightMm / 2 + ((c.schematicY - minY) / spanY) * usableH + (i % 2) * 0.01,
+      x: edge + c.widthMm / 2 + normX * usableW,
+      y: edge + c.heightMm / 2 + normY * usableH + (i % 2) * 0.01,
     };
   });
 
@@ -311,6 +391,43 @@ function placeComponents(
     if (!moved) break;
   }
 
+  // Crop to what the parts actually occupy. The relaxation spreads them across
+  // the seed area, so without this the board would always come out at the seed
+  // size however little copper it carries.
+  if (autoSize && inputs.length > 0) {
+    let minPX = Infinity, minPY = Infinity, maxPX = -Infinity, maxPY = -Infinity;
+    for (let i = 0; i < inputs.length; i++) {
+      minPX = Math.min(minPX, pos[i].x - inputs[i].widthMm / 2);
+      maxPX = Math.max(maxPX, pos[i].x + inputs[i].widthMm / 2);
+      minPY = Math.min(minPY, pos[i].y - inputs[i].heightMm / 2);
+      maxPY = Math.max(maxPY, pos[i].y + inputs[i].heightMm / 2);
+    }
+
+    // Keep a routing channel around the outside of the parts, on top of the
+    // edge margin, so perimeter traces still have somewhere to run.
+    const margin = edge + gap;
+    let shiftX = margin - minPX;
+    let shiftY = margin - minPY;
+    boardW = Math.ceil(maxPX - minPX + margin * 2);
+    boardH = Math.ceil(maxPY - minPY + margin * 2);
+
+    // The requested size is a floor, not a target. When it is the larger of the
+    // two, centre the packed parts in it rather than leaving them in a corner.
+    if (opts.boardWidthMm > boardW) {
+      shiftX += (opts.boardWidthMm - boardW) / 2;
+      boardW = opts.boardWidthMm;
+    }
+    if (opts.boardHeightMm > boardH) {
+      shiftY += (opts.boardHeightMm - boardH) / 2;
+      boardH = opts.boardHeightMm;
+    }
+
+    for (const p of pos) {
+      p.x += shiftX;
+      p.y += shiftY;
+    }
+  }
+
   const placed: PlacedComponent[] = inputs.map((c, i) => ({
     id: c.id,
     name: c.name,
@@ -321,7 +438,22 @@ function placeComponents(
     footprint: c.footprint,
     widthMm: c.widthMm,
     heightMm: c.heightMm,
+    data: c.data,
   }));
+
+  // A fixed board that cannot physically hold the parts is worth saying plainly,
+  // rather than letting it surface as a pile of routing failures.
+  if (!autoSize) {
+    const needW = Math.max(...inputs.map(c => c.widthMm), 0) + edge * 2;
+    const needH = Math.max(...inputs.map(c => c.heightMm), 0) + edge * 2;
+    if (boardW < needW || boardH < needH) {
+      warnings.push(
+        `Board is ${boardW} x ${boardH} mm but the largest part needs at least ` +
+        `${Math.ceil(needW)} x ${Math.ceil(needH)} mm including edge clearance. ` +
+        `Enlarge the board or turn auto-size on.`
+      );
+    }
+  }
 
   // Report any collision the relaxation could not resolve.
   for (let i = 0; i < placed.length; i++) {
@@ -346,10 +478,18 @@ function placeComponents(
 // Main entry point
 // ---------------------------------------------------------------------------
 
+/** Progress from the routing stage, for hosts that run the layout off-thread. */
+export interface LayoutProgress extends RouteProgress {
+  /** Board-growth attempt this progress belongs to, 1-based. */
+  attempt: number;
+  totalAttempts: number;
+}
+
 export function generatePcbLayout(
   circuitNodes: Node[],
   circuitEdges: Edge[],
-  userOptions?: Partial<PcbOptions>
+  userOptions?: Partial<PcbOptions>,
+  onProgress?: (p: LayoutProgress) => void
 ): PcbLayoutResult {
   const options: PcbOptions = { ...DEFAULT_PCB_OPTIONS, ...userOptions };
   const warnings: string[] = [];
@@ -378,7 +518,7 @@ export function generatePcbLayout(
     const orientation = data.orientation;
     const rotationDeg: 0 | 90 =
       orientation === 'vertical' || orientation === 'up' ? 90 : 0;
-    const footprint = resolveFootprint(data.packageId, node.type, data.pins || 2);
+    const footprint = resolveFootprint(data.packageId, node.type, data.pins || 2, node.data);
     return {
       id: node.id || `comp_${idx}`,
       name: data.label || data.name || node.id || `C${idx + 1}`,
@@ -389,34 +529,52 @@ export function generatePcbLayout(
       footprint,
       widthMm: rotationDeg === 90 ? footprint.heightMm : footprint.widthMm,
       heightMm: rotationDeg === 90 ? footprint.widthMm : footprint.heightMm,
+      data: node.data,
     };
   });
 
   // 2-4. Place and route. An unroutable net is usually a space problem, so
   // retry on a progressively larger board and keep the best attempt.
+  // The budget covers all three attempts together, so a bigger budget buys more
+  // search rather than three times the wait.
+  const ATTEMPTS = 3;
+  const deadline = Date.now() + Math.max(0, options.routingBudgetMs);
+
   let best: LayoutAttempt | null = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const scale = 1 + attempt * 0.35;
-    const candidate = placeAndRoute(inputs, nets, {
-      ...options,
-      boardWidthMm: Math.ceil(options.boardWidthMm * scale),
-      boardHeightMm: Math.ceil(options.boardHeightMm * scale),
-    });
+  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+    // Attempt 1 packs as tightly as the parts allow. Only if that cannot be
+    // routed do later attempts trade board area for routing channels.
+    const spreadScale = 1 + attempt * 0.4;
+    const candidate = placeAndRoute(
+      inputs,
+      nets,
+      options,
+      Math.max(0, deadline - Date.now()),
+      onProgress
+        ? p => onProgress({ ...p, attempt: attempt + 1, totalAttempts: ATTEMPTS })
+        : undefined,
+      spreadScale
+    );
+    // A later attempt only wins if it routes strictly more; an equally complete
+    // but larger board is a worse board.
     if (!best || candidate.routing.completion > best.routing.completion) {
       best = candidate;
     }
     if (best.routing.completion >= 1) break;
   }
 
-  const { placed, boardWidthMm, boardHeightMm, pads, routing } = best!;
+  const { placed, boardWidthMm, boardHeightMm, pads, cutouts, routing } = best!;
   const compById = new Map(placed.map(c => [c.id, c]));
   violations.push(...best!.violations);
   warnings.push(...best!.warnings);
 
-  if (boardWidthMm !== options.boardWidthMm || boardHeightMm !== options.boardHeightMm) {
+  if (
+    options.autoGrowBoard &&
+    (boardWidthMm !== options.boardWidthMm || boardHeightMm !== options.boardHeightMm)
+  ) {
     warnings.push(
-      `Board sized to ${boardWidthMm} x ${boardHeightMm} mm to fit and route ` +
-      `${inputs.length} parts (requested ${options.boardWidthMm} x ${options.boardHeightMm} mm).`
+      `Board auto-sized to ${boardWidthMm} x ${boardHeightMm} mm for ${inputs.length} parts ` +
+      `(requested ${options.boardWidthMm} x ${options.boardHeightMm} mm).`
     );
   }
 
@@ -533,6 +691,7 @@ export function generatePcbLayout(
     traces,
     isolationPaths: sortedIsolationPaths,
     drills,
+    cutouts,
     unrouted: routing.unrouted,
     violations,
     warnings,
@@ -559,6 +718,7 @@ interface LayoutAttempt {
   boardWidthMm: number;
   boardHeightMm: number;
   pads: PlacedPad[];
+  cutouts: BoardCutout[];
   routing: ReturnType<typeof routeBoard>;
   violations: DrcViolation[];
   warnings: string[];
@@ -572,12 +732,16 @@ interface LayoutAttempt {
 function placeAndRoute(
   inputs: PlacementInput[],
   nets: PcbNet[],
-  opts: PcbOptions
+  opts: PcbOptions,
+  budgetMs?: number,
+  onProgress?: (p: RouteProgress) => void,
+  spreadScale = 1
 ): LayoutAttempt {
   const violations: DrcViolation[] = [];
   const warnings: string[] = [];
 
-  const { placed, boardWidthMm, boardHeightMm } = placeComponents(inputs, opts, warnings);
+  const { placed, boardWidthMm, boardHeightMm } =
+    placeComponents(inputs, opts, warnings, spreadScale);
   const compById = new Map(placed.map(c => [c.id, c]));
 
   // Pads, each bound to its net via the handle -> pin mapping.
@@ -603,7 +767,7 @@ function placeAndRoute(
     for (const port of net.ports) {
       const comp = compById.get(port.nodeId);
       if (!comp) continue;
-      const mapping = resolveHandleToPin(comp.type, port.handleId, comp.footprint);
+      const mapping = resolveHandleToPin(comp.type, port.handleId, comp.footprint, comp.data);
       if (!mapping) {
         violations.push({
           severity: 'error',
@@ -651,7 +815,38 @@ function placeAndRoute(
     }
   }
 
+  // Every pad that ended up on no net is still physical copper or a drilled
+  // hole, so the router has to keep clear of it.
+  const obstacles: RouteObstacle[] = pads
+    .filter(p => !p.netId)
+    .map(p => {
+      const { w, h } = padOffset(p.spec, compById.get(p.componentId)!.rotationDeg);
+      return { x: p.x, y: p.y, radiusMm: Math.max(w, h) / 2 };
+    });
+
+  // Cutouts have no pads at all — they are pure keepout, and are milled by the
+  // profile tool rather than the isolation tool.
+  const cutouts: BoardCutout[] = [];
+  for (const comp of placed) {
+    if (comp.type !== 'cutout') continue;
+    const shape = comp.data?.cutoutShape === 'circle' ? 'circle' : 'rect';
+    cutouts.push({
+      componentId: comp.id,
+      shape,
+      x: comp.x,
+      y: comp.y,
+      widthMm: comp.widthMm,
+      heightMm: comp.heightMm,
+    });
+    if (shape === 'circle') {
+      obstacles.push({ x: comp.x, y: comp.y, radiusMm: Math.max(comp.widthMm, comp.heightMm) / 2 });
+    } else {
+      obstacles.push({ x: comp.x, y: comp.y, widthMm: comp.widthMm, heightMm: comp.heightMm });
+    }
+  }
+
   const routing = routeBoard(routePins, {
+    obstacles,
     boardWidthMm,
     boardHeightMm,
     gridMm: opts.routingGridMm,
@@ -659,9 +854,19 @@ function placeAndRoute(
     clearanceMm: opts.clearanceMm,
     edgeClearanceMm: Math.max(1.0, opts.profileToolDiaMm),
     bendPenalty: 1.5,
+    budgetMs,
+    onProgress,
   });
 
-  return { placed, boardWidthMm, boardHeightMm, pads, routing, violations, warnings };
+  return { placed, boardWidthMm, boardHeightMm, pads, cutouts, routing, violations, warnings };
+}
+
+/** A well-formed but empty layout, used for errors and as a placeholder. */
+export function emptyPcbLayout(
+  userOptions?: Partial<PcbOptions>,
+  error = 'No layout yet.'
+): PcbLayoutResult {
+  return emptyResult({ ...DEFAULT_PCB_OPTIONS, ...userOptions }, error);
 }
 
 function emptyResult(options: PcbOptions, error: string): PcbLayoutResult {
@@ -675,6 +880,7 @@ function emptyResult(options: PcbOptions, error: string): PcbLayoutResult {
     traces: [],
     isolationPaths: [],
     drills: [],
+    cutouts: [],
     unrouted: [],
     violations: [{ severity: 'error', message: error }],
     warnings: [],
@@ -741,6 +947,18 @@ export function renderPcbSvg(
     svg += `  <rect x="${(comp.x - hw).toFixed(3)}" y="${(comp.y - hh).toFixed(3)}" width="${comp.widthMm.toFixed(3)}" height="${comp.heightMm.toFixed(3)}" fill="none" stroke="#ffffff" stroke-width="0.15" opacity="0.55" rx="0.4" />\n`;
     const label = String(comp.name).replace(/[<>&]/g, '');
     svg += `  <text x="${comp.x.toFixed(3)}" y="${(comp.y - hh - 0.4).toFixed(3)}" fill="#ffffff" font-size="1.4" font-family="monospace" text-anchor="middle">${label}</text>\n`;
+  }
+
+  // Cutouts: milled clean through, so show them as holes in the substrate.
+  for (const cut of result.cutouts) {
+    if (cut.shape === 'circle') {
+      svg += `  <circle cx="${cut.x}" cy="${cut.y}" r="${Math.max(cut.widthMm, cut.heightMm) / 2}" ` +
+        `fill="#0b0f14" stroke="#ef5350" stroke-width="0.15" stroke-dasharray="0.8,0.5" />\n`;
+    } else {
+      svg += `  <rect x="${cut.x - cut.widthMm / 2}" y="${cut.y - cut.heightMm / 2}" ` +
+        `width="${cut.widthMm}" height="${cut.heightMm}" ` +
+        `fill="#0b0f14" stroke="#ef5350" stroke-width="0.15" stroke-dasharray="0.8,0.5" />\n`;
+    }
   }
 
   // Profile cut path (tool centreline).
@@ -898,6 +1116,38 @@ export function estimatePcbMachiningMetrics(
   };
 }
 
+/**
+ * Tool-centre contour for a cutout, offset *inward* by the tool radius since
+ * the material being removed is on the inside. Returns null when the cutout is
+ * too small for the tool to fit.
+ */
+function cutoutToolpath(cut: BoardCutout, options: PcbOptions): Pt[] | null {
+  const r = options.profileToolDiaMm / 2;
+
+  if (cut.shape === 'circle') {
+    const radius = Math.max(cut.widthMm, cut.heightMm) / 2 - r;
+    if (radius <= 0.05) return null;
+    const steps = Math.max(24, Math.ceil((2 * Math.PI * radius) / 0.4));
+    const pts: Pt[] = [];
+    for (let i = 0; i <= steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      pts.push({ x: cut.x + radius * Math.cos(a), y: cut.y + radius * Math.sin(a) });
+    }
+    return pts;
+  }
+
+  const hw = cut.widthMm / 2 - r;
+  const hh = cut.heightMm / 2 - r;
+  if (hw <= 0.05 || hh <= 0.05) return null;
+  return [
+    { x: cut.x - hw, y: cut.y - hh },
+    { x: cut.x + hw, y: cut.y - hh },
+    { x: cut.x + hw, y: cut.y + hh },
+    { x: cut.x - hw, y: cut.y + hh },
+    { x: cut.x - hw, y: cut.y - hh },
+  ];
+}
+
 /** Profile cut path, offset outward by the tool radius, with holding tabs. */
 function profileToolpath(
   result: PcbLayoutResult,
@@ -943,6 +1193,9 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   g.push(`; Nets:       ${result.nets.length}`);
   g.push(`; Traces:     ${result.traces.length}`);
   g.push(`; Drills:     ${result.drills.length}`);
+  if (result.cutouts.length > 0) {
+    g.push(`; Cutouts:    ${result.cutouts.length}`);
+  }
   g.push(`; Trace/clr:  ${options.traceWidthMm}mm / ${options.clearanceMm}mm`);
   g.push(`; V-bit cuts: ${result.effectiveToolDiaMm.toFixed(3)}mm wide at Z${options.isolationDepthZ}`);
   g.push(`; Routed:     ${(result.completion * 100).toFixed(1)}%`);
@@ -1054,6 +1307,37 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   if (options.pauseOnToolChange) {
     g.push(`T99 M6 ; Tool 99: ${options.profileToolDiaMm}mm end mill`);
     g.push(`G4 P1`);
+  }
+
+  // Internal features first: the board is still fully captive, so the cutout
+  // slugs come free while the outside edge is still uncut.
+  const stepDown = Math.abs(options.zStepdown) || 0.8;
+  for (const cut of result.cutouts) {
+    const path = cutoutToolpath(cut, options);
+    if (!path) {
+      g.push(
+        `; SKIPPED cutout on ${cut.componentId}: ` +
+        `${cut.widthMm.toFixed(1)}x${cut.heightMm.toFixed(1)}mm is smaller than the ` +
+        `${options.profileToolDiaMm}mm end mill.`
+      );
+      continue;
+    }
+    g.push(``);
+    g.push(
+      `; --- cutout ${cut.componentId} (${cut.shape}, ` +
+      `${cut.widthMm.toFixed(1)}x${cut.heightMm.toFixed(1)}mm) ---`
+    );
+    g.push(`G0 Z${f3(options.safeZ)}`);
+    g.push(`G0 X${f3(path[0].x)} Y${f3(path[0].y)}`);
+    let cz = 0;
+    while (cz > options.profileDepthZ) {
+      cz = Math.max(options.profileDepthZ, cz - stepDown);
+      g.push(`G1 Z${f3(cz)} F${options.plungeFeedrate}`);
+      for (let i = 1; i < path.length; i++) {
+        g.push(`G1 X${f3(path[i].x)} Y${f3(path[i].y)} F${options.cutFeedrate}`);
+      }
+    }
+    g.push(`G0 Z${f3(options.safeZ)}`);
   }
 
   const { corners, tabs } = profileToolpath(result, options);

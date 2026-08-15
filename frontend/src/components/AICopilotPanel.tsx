@@ -361,7 +361,9 @@ Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
   };
 
   return (
-    <aside className="w-full sm:w-96 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-l border-slate-200 dark:border-slate-800 flex flex-col h-full shrink-0 shadow-2xl z-40 absolute right-0 inset-y-0 sm:relative animate-in slide-in-from-right-8 duration-300">
+    /* A permanent column at `lg` (unchanged); below it there is not room for a
+       24rem column beside a schematic, so it covers the canvas instead. */
+    <aside className="w-full lg:w-96 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-l border-slate-200 dark:border-slate-800 flex flex-col h-full shrink-0 shadow-2xl z-40 max-lg:z-[110] absolute right-0 inset-y-0 lg:relative animate-in slide-in-from-right-8 duration-300">
       {/* Header */}
       <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-950/40 shrink-0">
         <div className="flex items-center gap-2">

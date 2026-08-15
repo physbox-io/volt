@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Node, Edge } from '@xyflow/react';
-import { X } from 'lucide-react';
+import { X, Trash2 } from 'lucide-react';
 import { ORIENTABLE_NODE_TYPES, ORIENTATION_HANDLE_REMAP } from '../utils/nodeGeometry';
 import { getNodeDefaultName } from '../utils/nodeNaming';
 import { datasheets } from '../utils/datasheets';
@@ -10,7 +10,7 @@ import { nodeRegistry } from './nodes/registry';
 const ORIENTATION_SELECTABLE_TYPES = ['resistor', 'capacitor', 'inductor', 'diode', 'zener', 'led', 'switch', 'voltage', 'acvoltage', 'currentsource'];
 const PASSIVE_NAMED_TYPES = ['resistor', 'capacitor', 'inductor'];
 
-export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSimulation, simLength }: { selectedNode: any, setNodes: any, setEdges: any, isSimulating: boolean, runSimulation: () => void, simLength: number }) {
+export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSimulation, simLength, isOpen, onClose }: { selectedNode: any, setNodes: any, setEdges: any, isSimulating: boolean, runSimulation: () => void, simLength: number, /** Drawer state below `lg`; ignored at `lg`, where this is a column. */ isOpen?: boolean, onClose?: () => void }) {
   const simDebounceTimerRef = useRef<any>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -191,16 +191,52 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
   const TypeProperties = meta?.Properties;
 
   return (
-    <aside className="fixed inset-y-0 right-0 w-64 glass-panel border-l border-slate-200 dark:border-slate-800 p-4 bg-white/95 dark:bg-slate-900/95 shadow-xl lg:shadow-none z-40 lg:relative lg:z-10 overflow-y-auto transition-colors">
+    /*
+      `absolute`, not `fixed`, for the overlay below `lg`: pinned to the
+      viewport it ran the full height of the screen, covering the header above
+      and the status bar below it. Against the workspace it sits between them.
+      At `lg` this is a permanent column (`lg:relative`), where neither applies.
+    */
+    <aside
+      className={`absolute inset-y-0 right-0 w-64 max-lg:max-w-[80vw] glass-panel border-l border-slate-200 dark:border-slate-800 p-4 bg-white/95 dark:bg-slate-900/95 shadow-xl lg:shadow-none z-40 max-lg:z-[110] lg:relative lg:z-10 overflow-y-auto transition-colors max-lg:transition-transform max-lg:duration-200 ${
+        // Below `lg` the drawer waits off the right-hand edge until it is asked
+        // for. `pointer-events-none` as well as the translate, so that a panel
+        // parked off screen cannot swallow taps meant for the canvas.
+        isOpen ? 'max-lg:translate-x-0' : 'max-lg:translate-x-full max-lg:pointer-events-none'
+      }`}
+    >
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-bold text-slate-700 dark:text-slate-200 text-xs uppercase tracking-wider">Properties</h2>
-        <button
-          onClick={() => setNodes((nds: Node[]) => nds.map(n => ({ ...n, selected: false })))}
-          className="lg:hidden p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400"
-          title="Close Properties"
-        >
-          <X size={20} />
-        </button>
+        <div className="flex items-center gap-1">
+          {/*
+            Deleting a part is the bin in the top bar and the Delete key, and on
+            a phone there is no Delete key and the drawer is covering the part
+            the bin would act on. So the drawer carries its own bin, acting on
+            the component it is showing — same edit as the top bar's, so undo
+            treats it the same way.
+          */}
+          <button
+            onClick={() => {
+              setNodes((nds: Node[]) => nds.filter(n => n.id !== selectedNode.id));
+              setEdges((eds: Edge[]) => eds.filter(e => e.source !== selectedNode.id && e.target !== selectedNode.id));
+            }}
+            disabled={isSimulating}
+            className="lg:hidden p-1 hover:bg-red-50 dark:hover:bg-red-950/40 rounded text-red-500 disabled:opacity-30 disabled:hover:bg-transparent"
+            title={isSimulating ? 'Stop the simulation to edit the circuit.' : 'Delete this component'}
+          >
+            <Trash2 size={18} />
+          </button>
+          {/* Closes the drawer and leaves the component selected: the bar's
+              bin, undo and the keyboard all act on the selection, so putting
+              the panel away must not throw that away too. */}
+          <button
+            onClick={onClose}
+            className="lg:hidden p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400"
+            title="Close Properties"
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
       <div className="text-[10px] text-slate-400 dark:text-slate-500 mb-3 font-mono">ID: {selectedNode.id}</div>
 
@@ -219,6 +255,13 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
           onChange={e => updateData('packageId', e.target.value)}
           className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-indigo-500 focus:outline-none cursor-pointer"
         >
+          {selectedNode.type === 'mcu' && (
+            <optgroup label="Microcontroller / Module Geometry">
+              <option value={(selectedNode.data?.packageId as string) || 'MCU-PARAMETRIC'}>
+                {(selectedNode.data?.packageId as string) || 'Parametric MCU / Board Module'}
+              </option>
+            </optgroup>
+          )}
           <optgroup label="Through-Hole (THT)">
             <option value="AXIAL-0.3">Axial Resistor/Diode (0.3" / 7.62mm pitch)</option>
             <option value="LED-5MM">Radial 5mm THT (LED / Capacitor)</option>
@@ -232,11 +275,18 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
             <option value="POT-3PIN">Potentiometer (3-Pin, 2.54mm)</option>
             <option value="TRANSFORMER-4P">Transformer (2 Primary / 2 Secondary)</option>
             <option value="TACT-4PIN">6x6mm Tactile Switch</option>
-            <option value="HEADER-1x02">2-Pin Header (2.54mm pitch)</option>
-            <option value="HEADER-1x03">3-Pin Header (2.54mm pitch)</option>
-            <option value="HEADER-1x04">4-Pin Header (2.54mm pitch)</option>
-            <option value="HEADER-1x06">6-Pin Header (2.54mm pitch)</option>
-            <option value="HEADER-1x08">8-Pin Header (2.54mm pitch)</option>
+            <option value="CC1101">CC1101 RF Module (2x4 Dupont Header)</option>
+            <option value="HELTEC-V4">Heltec WiFi LoRa 32 V4 (Dual Header Board)</option>
+            <option value="HEADER-1x02">1x2 Pin Header (2.54mm pitch)</option>
+            <option value="HEADER-1x03">1x3 Pin Header (2.54mm pitch)</option>
+            <option value="HEADER-1x04">1x4 Pin Header (2.54mm pitch)</option>
+            <option value="HEADER-1x06">1x6 Pin Header (2.54mm pitch)</option>
+            <option value="HEADER-1x08">1x8 Pin Header (2.54mm pitch)</option>
+            <option value="HEADER-2x02">2x2 Pin Dupont Header (2.54mm pitch)</option>
+            <option value="HEADER-2x03">2x3 Pin Dupont Header (2.54mm pitch)</option>
+            <option value="HEADER-2x04">2x4 Pin Dupont Header (2.54mm pitch)</option>
+            <option value="HEADER-2x06">2x6 Pin Dupont Header (2.54mm pitch)</option>
+            <option value="HEADER-2x08">2x8 Pin Dupont Header (2.54mm pitch)</option>
             <option value="TERMINAL-2P">5.08mm Screw Terminal (2-Pin)</option>
             <option value="TERMINAL-3P">5.08mm Screw Terminal (3-Pin)</option>
           </optgroup>

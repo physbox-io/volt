@@ -19,9 +19,9 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import {
-  generatePcbLayout,
   generateExcellon,
   generateAirCutGcode,
+  calculateSuggestedBoardSize,
   DEFAULT_PCB_OPTIONS,
   type PcbOptions,
 } from '../utils/pcbExporter';
@@ -30,10 +30,23 @@ import {
   PCB_MATERIAL_PRESETS,
   calculatePcbFeeds,
 } from '../utils/pcbTooling';
+import { usePcbLayout } from '../hooks/usePcbLayout';
 import { webSerialManager } from '../utils/webSerialManager';
 import { getGridStats, findUnwarpableCommands, suggestProbeGrid, type ProbeGrid } from '../utils/meshLeveler';
 import { PcbToolpathPreview } from './PcbToolpathPreview';
 import { InfoTip } from './InfoTip';
+
+/**
+ * Wall-clock budgets offered for the maze router. Most boards finish in well
+ * under a second; the larger budgets exist for dense boards where the router
+ * needs to try many net orderings before one of them fits.
+ */
+const ROUTING_EFFORT_PRESETS = [
+  { ms: 2000, label: 'Fast — 2s' },
+  { ms: 8000, label: 'Standard — 8s' },
+  { ms: 30000, label: 'Thorough — 30s' },
+  { ms: 120000, label: 'Exhaustive — 2min' },
+];
 
 interface ExportPcbModalProps {
   onClose: () => void;
@@ -48,7 +61,14 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   edges = [],
   onOpenAICopilot,
 }) => {
-  const [options, setOptions] = useState<PcbOptions>(DEFAULT_PCB_OPTIONS);
+  const [options, setOptions] = useState<PcbOptions>(() => {
+    const suggested = calculateSuggestedBoardSize(nodes, DEFAULT_PCB_OPTIONS);
+    return {
+      ...DEFAULT_PCB_OPTIONS,
+      boardWidthMm: suggested.widthMm,
+      boardHeightMm: suggested.heightMm,
+    };
+  });
   const [activeTab, setActiveTab] = useState<'layout' | 'cam' | 'serial'>('layout');
   const [serialState, setSerialState] = useState(webSerialManager.getState());
   const [autoLevel, setAutoLevel] = useState(true);
@@ -68,13 +88,18 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     });
   }, []);
 
-  const result = useMemo(() => {
-    return generatePcbLayout(nodes, edges, options);
-  }, [nodes, edges, options]);
+  // Routing runs in a worker: a dense board takes seconds, and blocking the
+  // main thread for that long makes the whole editor feel broken.
+  const { result, isRouting, progress, hasResult } = usePcbLayout(nodes, edges, options);
 
   const suggestedGrid = useMemo(() => {
     return suggestProbeGrid(options.boardWidthMm, options.boardHeightMm, 4, 8);
   }, [options.boardWidthMm, options.boardHeightMm]);
+
+  const nextEffortMs =
+    ROUTING_EFFORT_PRESETS.find(p => p.ms > options.routingBudgetMs)?.ms ??
+    options.routingBudgetMs;
+  const atMaxEffort = nextEffortMs === options.routingBudgetMs;
 
   const errorCount = result.violations.filter(v => v.severity === 'error').length;
   const boardTag = `${result.boardWidthMm}x${result.boardHeightMm}mm`;
@@ -125,6 +150,15 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     }
   };
 
+  const handleFitToCircuit = () => {
+    const suggested = calculateSuggestedBoardSize(nodes, options);
+    setOptions(prev => ({
+      ...prev,
+      boardWidthMm: suggested.widthMm,
+      boardHeightMm: suggested.heightMm,
+    }));
+  };
+
   /** Probes the board surface and stores the resulting offset grid. */
   const runProbe = async (): Promise<ProbeGrid | null> => {
     setBusy('probing');
@@ -171,18 +205,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-  };
-
-  const handleDownloadGcode = () => {
-    const finalGcode = webSerialManager.applyHeightmapToGcode(result.gcode, activeHeightmap);
-    const suffix = activeHeightmap ? '_levelled' : '';
-    downloadFile(finalGcode, `pcb_milling_${boardTag}${suffix}.gcode`, 'text/plain;charset=utf-8');
-  };
-
-  const handleDownloadAirCutGcode = () => {
-    const finalGcode = webSerialManager.applyHeightmapToGcode(result.gcode, activeHeightmap);
-    const airCutGcode = generateAirCutGcode(finalGcode, airCutZOffset);
-    downloadFile(airCutGcode, `pcb_milling_AIR_CUT_${boardTag}.gcode`, 'text/plain;charset=utf-8');
   };
 
   const handleDownloadDrill = () => {
@@ -485,8 +507,46 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
             <div className="p-4 flex-1 space-y-3 text-xs">
               {activeTab === 'layout' && (
                 <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={options.autoGrowBoard}
+                        onChange={e =>
+                          setOptions({
+                            ...options,
+                            autoGrowBoard: e.target.checked,
+                            ...(e.target.checked
+                              ? {}
+                              : {
+                                  boardWidthMm: result.boardWidthMm,
+                                  boardHeightMm: result.boardHeightMm,
+                                }),
+                          })
+                        }
+                        className="cursor-pointer"
+                      />
+                      <span className="text-slate-300 font-semibold">Auto-size board</span>
+                      <InfoTip>
+                        On, the board is sized dynamically to fit the parts. Off, the board is exactly the fixed dimensions you set.
+                      </InfoTip>
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={handleFitToCircuit}
+                      className="text-[11px] text-cyan-400 hover:text-cyan-300 hover:underline cursor-pointer flex items-center gap-1 font-semibold"
+                      title="Recalculate dimensions to comfortably fit all components in the circuit"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Fit to circuit
+                    </button>
+                  </div>
+
                   <div>
-                    <label className="flex items-center gap-1.5 text-slate-400 font-semibold mb-1">Board Width (mm)</label>
+                    <label className="flex items-center gap-1.5 text-slate-400 font-semibold mb-1">
+                      {options.autoGrowBoard ? 'Minimum Width (mm)' : 'Board Width (mm)'}
+                    </label>
                     <input
                       type="number"
                       value={options.boardWidthMm}
@@ -495,7 +555,9 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                     />
                   </div>
                   <div>
-                    <label className="flex items-center gap-1.5 text-slate-400 font-semibold mb-1">Board Height (mm)</label>
+                    <label className="flex items-center gap-1.5 text-slate-400 font-semibold mb-1">
+                      {options.autoGrowBoard ? 'Minimum Height (mm)' : 'Board Height (mm)'}
+                    </label>
                     <input
                       type="number"
                       value={options.boardHeightMm}
@@ -503,6 +565,15 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200"
                     />
                   </div>
+                  {options.autoGrowBoard && (
+                    <p className="text-[11px] text-slate-500">
+                      Auto-sized to{' '}
+                      <span className="text-slate-300 font-semibold">
+                        {result.boardWidthMm} x {result.boardHeightMm} mm
+                      </span>
+                      . Untick to force an exact size.
+                    </p>
+                  )}
                   <div>
                     <label className="flex items-center gap-1.5 text-slate-400 font-semibold mb-1">Trace Width (mm)</label>
                     <input
@@ -522,6 +593,49 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       onChange={e => setOptions({ ...options, clearanceMm: parseFloat(e.target.value) || 0.3 })}
                       className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200"
                     />
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-1.5 text-slate-400 font-semibold mb-1">
+                      Routing Effort
+                      <InfoTip>
+                        How long the maze router may search for a way around obstacles before
+                        giving up. A denser board needs a bigger budget; routing runs in the
+                        background either way.
+                      </InfoTip>
+                    </label>
+                    <select
+                      value={options.routingBudgetMs}
+                      onChange={e =>
+                        setOptions({ ...options, routingBudgetMs: parseInt(e.target.value, 10) })
+                      }
+                      className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200 font-sans"
+                    >
+                      {ROUTING_EFFORT_PRESETS.map(p => (
+                        <option key={p.ms} value={p.ms}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                    {isRouting && (
+                      <div className="mt-2 flex items-center gap-2 text-[11px] text-sky-300">
+                        <RefreshCw size={11} className="animate-spin shrink-0" />
+                        <span>
+                          {progress
+                            ? `Routing — pass ${progress.pass}/${progress.totalPasses}, ` +
+                              `board ${progress.attempt}/${progress.totalAttempts}, ` +
+                              `${(progress.completion * 100).toFixed(0)}% connected`
+                            : 'Routing…'}
+                        </span>
+                      </div>
+                    )}
+                    {!isRouting && hasResult && result.completion < 1 && !atMaxEffort && (
+                      <button
+                        onClick={() => setOptions({ ...options, routingBudgetMs: nextEffortMs })}
+                        className="mt-2 w-full px-2 py-1.5 bg-amber-500/10 border border-amber-500/40 rounded text-[11px] text-amber-300 hover:bg-amber-500/20 transition"
+                      >
+                        {(result.completion * 100).toFixed(0)}% routed — try again with a bigger budget
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -844,43 +958,46 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
             </div>
 
             {/* Bottom Action Footer */}
-            <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex flex-wrap items-center justify-between gap-2">
+            <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleDownloadSvg}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded flex items-center gap-1 cursor-pointer text-xs"
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded flex items-center gap-1.5 cursor-pointer text-xs transition-colors"
+                  title="Download SVG vector layout for fabrication or etching"
                 >
                   <Download className="w-3.5 h-3.5 text-emerald-400" />
-                  SVG
+                  Download SVG
                 </button>
                 <button
                   onClick={handleDownloadDrill}
                   disabled={result.drills.length === 0}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-semibold rounded flex items-center gap-1 cursor-pointer text-xs"
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-semibold rounded flex items-center gap-1.5 cursor-pointer text-xs transition-colors"
+                  title="Download Excellon drill file (.drl)"
                 >
                   <Download className="w-3.5 h-3.5 text-cyan-400" />
-                  Drill (.drl)
+                  Download Drill (.drl)
                 </button>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleDownloadAirCutGcode}
-                  disabled={!result.success}
-                  title="Download G-code shifted +20mm above stock for dry run testing"
-                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-semibold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm"
+                  onClick={handleAirCutBoard}
+                  disabled={!result.success || machineBusy}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm"
+                  title="Run air cut dry run live on connected machine"
                 >
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  Air Cut G-Code
+                  Air Cut (+{airCutZOffset}mm)
                 </button>
 
                 <button
-                  onClick={handleDownloadGcode}
-                  disabled={!result.success}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm"
+                  onClick={handleMillBoard}
+                  disabled={!result.success || machineBusy}
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm"
+                  title="Start live isolation milling on CNC machine via Web Serial"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  Download PCB G-Code
+                  {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                  Mill PCB Live
                 </button>
               </div>
             </div>

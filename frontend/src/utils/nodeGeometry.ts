@@ -12,6 +12,13 @@ export const ORIENTATION_HANDLE_REMAP: Record<string, string> = {
   out: 'in',
 };
 
+import { getEffectiveMcuConfig } from './mcuConfig';
+import {
+  getPinHeaderGeometry,
+  getPinHeaderHandles,
+  PIN_HEADER_CELL_PX,
+} from '../components/nodes/PinHeaderNode';
+
 export function getHandlesForNode(node: Node): string[] {
   if (node.type === 'timer555') {
     return ['1', '2', '3', '4', '5', '6', '7', '8'];
@@ -24,6 +31,22 @@ export function getHandlesForNode(node: Node): string[] {
   }
   if (node.type === 'junction') {
     return ['in', 'out'];
+  }
+  if (node.type === 'mcu') {
+    return getEffectiveMcuConfig(node.data).pins.map(p => p.id);
+  }
+  if (node.type === 'pinheader') {
+    return getPinHeaderHandles(node.data);
+  }
+  if (node.type === 'via') {
+    return ['1'];
+  }
+  // Mechanical only: no electrical pins at all.
+  if (node.type === 'mountinghole' || node.type === 'cutout') {
+    return [];
+  }
+  if (node.type === 'jumper') {
+    return ['a', 'b'];
   }
   return ['in', 'out'];
 }
@@ -49,6 +72,55 @@ export function getHandleCoord(node: any, handleId: string): { x: number; y: num
   // bottom edge; 'out'/'in' already resolve to the correct side below.
   if (handleId === 'gnd' && (node.type === 'signalgen' || node.type === 'microphone' || node.type === 'speaker')) {
     return { x: x + w / 2, y: y + h };
+  }
+
+  // Header pads sit on a fixed grid, matching PinHeaderNode's own layout.
+  if (node.type === 'pinheader') {
+    const { rows, cols } = getPinHeaderGeometry(node.data);
+    const pin = parseInt(handleId, 10);
+    if (pin >= 1 && pin <= rows * cols) {
+      const r = Math.floor((pin - 1) / cols);
+      const c = (pin - 1) % cols;
+      return {
+        x: x + 4 + c * PIN_HEADER_CELL_PX + PIN_HEADER_CELL_PX / 2,
+        y: y + 4 + r * PIN_HEADER_CELL_PX + PIN_HEADER_CELL_PX / 2,
+      };
+    }
+  }
+  if (node.type === 'via') {
+    return { x: x + w / 2, y: y + h / 2 };
+  }
+  if (node.type === 'jumper') {
+    return { x: handleId === 'a' ? x : x + w, y: y + h / 2 };
+  }
+
+  if (node.type === 'mcu') {
+    const cfg = getEffectiveMcuConfig(node.data);
+    const leftPins = cfg.pins.filter(p => p.side === 'left');
+    const rightPins = cfg.pins.filter(p => p.side === 'right');
+    const topPins = cfg.pins.filter(p => p.side === 'top');
+    const bottomPins = cfg.pins.filter(p => p.side === 'bottom');
+
+    const lIdx = leftPins.findIndex(p => p.id === handleId);
+    if (lIdx >= 0) {
+      const step = (h - 32) / Math.max(1, leftPins.length);
+      return { x, y: y + 24 + (lIdx + 0.5) * step };
+    }
+    const rIdx = rightPins.findIndex(p => p.id === handleId);
+    if (rIdx >= 0) {
+      const step = (h - 32) / Math.max(1, rightPins.length);
+      return { x: x + w, y: y + 24 + (rIdx + 0.5) * step };
+    }
+    const tIdx = topPins.findIndex(p => p.id === handleId);
+    if (tIdx >= 0) {
+      const step = (w - 24) / Math.max(1, topPins.length);
+      return { x: x + 12 + (tIdx + 0.5) * step, y };
+    }
+    const bIdx = bottomPins.findIndex(p => p.id === handleId);
+    if (bIdx >= 0) {
+      const step = (w - 24) / Math.max(1, bottomPins.length);
+      return { x: x + 12 + (bIdx + 0.5) * step, y: y + h };
+    }
   }
 
   // Pins 1-4 run down the left, 8-5 down the right, on a fixed 16px pitch
@@ -98,6 +170,11 @@ export function getHandleCoord(node: any, handleId: string): { x: number; y: num
 }
 
 export const getHandlePosition = (node: any, handleId: string): string => {
+  if (node.type === 'mcu') {
+    const cfg = getEffectiveMcuConfig(node.data);
+    const pin = cfg.pins.find(p => p.id === handleId);
+    if (pin) return pin.side;
+  }
   if (node.type === 'timer555') {
     const pin = parseInt(handleId);
     if (pin >= 1 && pin <= 4) return 'left';
@@ -119,6 +196,18 @@ export const getHandlePosition = (node: any, handleId: string): string => {
   }
   if (node.type === 'junction') {
     return 'left';
+  }
+  // Top row of a header faces up, the rest face down.
+  if (node.type === 'pinheader') {
+    const { cols } = getPinHeaderGeometry(node.data);
+    const pin = parseInt(handleId, 10);
+    return pin >= 1 && pin <= cols ? 'top' : 'bottom';
+  }
+  if (node.type === 'via') {
+    return 'top';
+  }
+  if (node.type === 'jumper') {
+    return handleId === 'a' ? 'left' : 'right';
   }
   if (node.type === 'scope') {
     return 'left';

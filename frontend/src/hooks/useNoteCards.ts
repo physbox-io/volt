@@ -28,7 +28,11 @@ export function useNoteCards({ selectedPreset, userPresets }: UseNoteCardsArgs) 
       setNoteCards([{
         id: `preset_note_${selectedPreset}`,
         markdown: preset.noteCard,
-        minimized: false,
+        // A 300px card is a corner of a desktop canvas and most of a phone's,
+        // so on a narrow screen it arrives rolled up to its title bar. The note
+        // is still there and one tap away — it just isn't standing in front of
+        // the circuit it describes.
+        minimized: window.innerWidth < 1024,
         x: defaultX,
         y: 20
       }]);

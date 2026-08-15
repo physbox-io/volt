@@ -225,6 +225,9 @@ const HANDLE_ORDER: Record<string, string[]> = {
   pmos: ['g', 'd', 's'],
   mcu: ['5V', 'GND', 'D0', 'D1', 'D2', 'D3', 'A0', 'A1'],
   heltec_v4: ['3V3', 'GND', 'GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41'],
+  // Board-only parts. Pin headers and vias name their handles after the pad
+  // number, so they resolve by direct match and need no entry here.
+  jumper: ['a', 'b'],
 };
 
 /**
@@ -253,6 +256,20 @@ const HANDLE_PIN_OVERRIDE: Record<string, Record<string, string>> = {
     in: '1',
     out: '3',
   },
+  // Heltec WiFi LoRa 32 V4 (36-pin dual header: left row 1..18, right row 19..36)
+  heltec_v4: {
+    '3V3': '1',
+    'GND': '2',
+    'GPIO_1': '3',
+    'GPIO_3': '5',
+    'VIN': '19',
+    'GND_2': '20',
+    'GND2': '20',
+    'GPIO_33': '23',
+    'GPIO_36': '26',
+    'GPIO_37': '27',
+    'GPIO_41': '31',
+  },
 };
 
 export interface PinMapping {
@@ -270,7 +287,8 @@ export interface PinMapping {
 export function resolveHandleToPin(
   nodeType: string | undefined,
   handleId: string,
-  footprint: ComponentFootprint
+  footprint: ComponentFootprint,
+  customNodeData?: any
 ): PinMapping | undefined {
   const pads = footprint.pads;
   if (pads.length === 0) return undefined;
@@ -285,11 +303,31 @@ export function resolveHandleToPin(
     if (idx >= 0) return { pinNumber: pads[idx].pinNumber, padIndex: idx };
   }
 
-  // 2. Direct match against a pad's pin number (555 '1'..'8', headers, etc).
+  // 2. Direct match against a pad's pin number (555 '1'..'8', headers, pin names, etc).
   const direct = pads.findIndex(
     p => String(p.pinNumber).toLowerCase() === handle.toLowerCase()
   );
   if (direct >= 0) return { pinNumber: pads[direct].pinNumber, padIndex: direct };
+
+  // 2b. Custom MCU pin lookup
+  if (type === 'mcu' && customNodeData?.mcuConfig?.pins) {
+    const mcuPins = customNodeData.mcuConfig.pins;
+    const pinIdx = mcuPins.findIndex((p: any) =>
+      p.id.toLowerCase() === handle.toLowerCase() || p.label.toLowerCase() === handle.toLowerCase()
+    );
+    if (pinIdx >= 0) {
+      const pin = mcuPins[pinIdx];
+      // Try match by pin.pinNumber
+      if (pin.pinNumber !== undefined) {
+        const pIdx = pads.findIndex(p => String(p.pinNumber).toLowerCase() === String(pin.pinNumber).toLowerCase());
+        if (pIdx >= 0) return { pinNumber: pads[pIdx].pinNumber, padIndex: pIdx };
+      }
+      // Try positional index
+      if (pinIdx < pads.length) {
+        return { pinNumber: pads[pinIdx].pinNumber, padIndex: pinIdx };
+      }
+    }
+  }
 
   // 3. Positional mapping from the type's canonical handle order.
   const order = HANDLE_ORDER[type];

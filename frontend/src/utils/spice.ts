@@ -1,5 +1,6 @@
 import { type Node, type Edge } from '@xyflow/react';
 import { executeMcuCode, type PWLPoint } from './mcu';
+import { getEffectiveMcuConfig } from './mcuConfig';
 
 /** Strip Unicode symbols from component labels to produce valid SPICE values.
  *  e.g. '47kΩ' → '47k', '10µF' → '10uF' */
@@ -12,6 +13,13 @@ export function sanitizeSpiceValue(val: string): string {
   
   return cleaned.replace(/[^\x20-\x7E]/g, '');
 }
+
+/**
+ * Node types that exist only on the board. They are placed, drilled and routed,
+ * but they emit no SPICE device — a pin header, via or mounting hole has no
+ * electrical behaviour of its own.
+ */
+export const NON_SIMULATING_TYPES = new Set(['pinheader', 'via', 'mountinghole', 'cutout']);
 
 export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: number = 1.0, simResolution: 'normal' | 'high' = 'normal', mcuWaveforms: Record<string, Record<string, PWLPoint[]>> = {}, initialConditions?: Record<string, number>, hilMaxStepMs?: number): { netlist: string; portToNet: Record<string, string>; mcuLogs: Record<string, string[]> } {
   let netlist = "Circuit Simulation\n";
@@ -94,6 +102,17 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
   let hasDff = false;
   // 2. Generate SPICE statements for each node
   nodes.forEach(node => {
+    // Board-only parts. A header pin or via is a wire, so the nets its edges
+    // create are still real — the part itself just contributes no device.
+    if (NON_SIMULATING_TYPES.has(node.type as string)) return;
+
+    // A wire jumper is board-only in the sense that the router never draws
+    // copper for it, but electrically it is a wire, so it does belong here.
+    if (node.type === 'jumper') {
+      netlist += `R_${node.id} ${getNet(node.id, 'a')} ${getNet(node.id, 'b')} 0.001\n`;
+      return;
+    }
+
     if (node.type === 'resistor') {
       const val = node.data.resistance !== undefined ? node.data.resistance : sanitizeSpiceValue(String(node.data.label || '1k'));
       const n1 = getNet(node.id, 'in');
@@ -356,37 +375,44 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       node.data.state = newState;
       mcuLogs[node.id] = logs;
 
-      const pins = ['D0', 'D1', 'D2', 'D3', 'A0', 'A1'];
+      const mcuConfig = getEffectiveMcuConfig(node.data);
+      const pins = mcuConfig.pins;
+
       for (const pin of pins) {
-        const net = getNet(node.id, pin);
-        if (pinModes[pin] === 'OUTPUT' && pwlOutputs[pin] && pwlOutputs[pin].length > 0) {
-          // Output pin driving voltage
-          const pwlData = pwlOutputs[pin];
-          const POINTS_PER_LINE = 8;
-          const intNet = `int_mcu_${node.id}_${pin}`;
-          let pwlLines = `V_${node.id}_${pin} ${intNet} 0 PWL(\n`;
-          for (let i = 0; i < pwlData.length; i++) {
-            const p = pwlData[i];
-            if (i % POINTS_PER_LINE === 0) pwlLines += '+ ';
-            pwlLines += `${(p.t / 1000).toExponential(6)} ${p.v.toExponential(6)} `;
-            if ((i + 1) % POINTS_PER_LINE === 0 || i === pwlData.length - 1) pwlLines += '\n';
-          }
-          pwlLines += '+ )\n';
-          // Add 20 ohm series resistor for output (typical for Arduino GPIO)
-          netlist += pwlLines;
-          netlist += `R_${node.id}_${pin}_out ${intNet} ${net} 20\n`;
+        const pinId = pin.id;
+        const net = getNet(node.id, pinId);
+
+        if (pin.type === 'power' || pinId === '5V' || pinId === '3V3' || pinId === 'VCC' || pinId === 'VIN' || pin.voltage !== undefined) {
+          const vLevel = pin.voltage !== undefined ? pin.voltage : (pinId === '3V3' ? 3.3 : 5.0);
+          const intPowerNet = `int_mcu_${node.id}_${pinId}`;
+          netlist += `V_${node.id}_${pinId} ${intPowerNet} 0 DC ${vLevel}\n`;
+          netlist += `R_${node.id}_${pinId}_res ${intPowerNet} ${net} 1\n`;
+        } else if (pin.type === 'ground' || pinId === 'GND' || pinId.startsWith('GND')) {
+          netlist += `R_${node.id}_${pinId} ${net} 0 1m\n`;
         } else {
-          // Input pin (or unconfigured), 100M resistor to ground to prevent floating
-          netlist += `R_${node.id}_${pin} ${net} 0 100MEG\n`;
+          // General IO / Digital / Analog
+          if (pinModes[pinId] === 'OUTPUT' && pwlOutputs[pinId] && pwlOutputs[pinId].length > 0) {
+            // Output pin driving voltage
+            const pwlData = pwlOutputs[pinId];
+            const POINTS_PER_LINE = 8;
+            const intNet = `int_mcu_${node.id}_${pinId}`;
+            let pwlLines = `V_${node.id}_${pinId} ${intNet} 0 PWL(\n`;
+            for (let i = 0; i < pwlData.length; i++) {
+              const p = pwlData[i];
+              if (i % POINTS_PER_LINE === 0) pwlLines += '+ ';
+              pwlLines += `${(p.t / 1000).toExponential(6)} ${p.v.toExponential(6)} `;
+              if ((i + 1) % POINTS_PER_LINE === 0 || i === pwlData.length - 1) pwlLines += '\n';
+            }
+            pwlLines += '+ )\n';
+            // Add 20 ohm series resistor for output (typical for MCU GPIO)
+            netlist += pwlLines;
+            netlist += `R_${node.id}_${pinId}_out ${intNet} ${net} 20\n`;
+          } else {
+            // Input pin (or unconfigured), 100M resistor to ground to prevent floating
+            netlist += `R_${node.id}_${pinId} ${net} 0 100MEG\n`;
+          }
         }
       }
-      // VCC and GND pins
-      const vccNet = getNet(node.id, '5V');
-      const gndNet = getNet(node.id, 'GND');
-      const int5VNet = `int_mcu_${node.id}_5V`;
-      netlist += `V_${node.id}_5V ${int5VNet} 0 DC 5\n`;
-      netlist += `R_${node.id}_5V_res ${int5VNet} ${vccNet} 1\n`; // 1 ohm to avoid singular matrix with other 5V sources
-      netlist += `R_${node.id}_GND ${gndNet} 0 1m\n`;
     }
     else if (node.type === 'transformer') {
       const p1 = getNet(node.id, 'p1');

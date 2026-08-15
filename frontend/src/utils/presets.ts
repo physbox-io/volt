@@ -8,7 +8,7 @@ export interface CircuitPreset {
   noteCard?: string;
 }
 
-export const DEFAULT_PRESET_KEY = 'basicBlink';
+export const DEFAULT_PRESET_KEY = 'heltecCc1101';
 
 export const empty: CircuitPreset = {
   name: 'Empty',
@@ -1082,5 +1082,139 @@ export const presets: Record<string, CircuitPreset> = {
   heltecGPIOToCYDSpeakerHIL: {
     ...heltecGPIOToCYDSpeakerHIL,
     noteCard: `# Heltec GPIO to CYD Speaker HIL 🌐\n\nThis Hardware-in-the-Loop (HIL) preset reads real analog voltage from Heltec GPIO 1 and plays a mapped frequency tone on the physical CYD speaker!\n\n### How it works:\n- **Heltec V4**: The physical analog voltage (e.g. from a potentiometer or LDR) on **GPIO 1** is sampled.\n- **MCU Component**: Runs custom JavaScript code in the simulator to read **A0** (wired to GPIO 1), map the level to a frequency, and generate a square wave on **D1**.\n- **CYD Speaker**: The virtual speaker plays the sound locally, and its waveform is also resampled to 16kHz and streamed as binary frames to the physical CYD speaker!`
+  },
+  heltecCc1101: {
+    name: 'Heltec V4 + CC1101 RF Transceiver',
+    recommendedSimLength: 1.0,
+    nodes: [
+      {
+        id: 'heltec1',
+        type: 'heltec_v4',
+        position: { x: 120, y: 100 },
+        data: {
+          label: 'Heltec V4',
+          ip: '192.168.1.244',
+          hilExecutionMode: 'native',
+          packageId: 'HELTEC-V4',
+        },
+      },
+      {
+        id: 'cc1101',
+        type: 'mcu',
+        position: { x: 500, y: 100 },
+        data: {
+          label: 'CC1101 Transceiver',
+          packageId: 'CC1101',
+          mcuConfig: {
+            presetKey: 'cc1101',
+            style: 'header_matrix',
+            pinCount: 8,
+            widthMm: 19.0,
+            heightMm: 17.0,
+            pitchMm: 2.54,
+            rowSpacingMm: 2.54,
+            isSmd: false,
+            drillDiaMm: 1.0,
+            padWidthMm: 1.8,
+            padHeightMm: 1.8,
+            pins: [
+              { id: 'VCC', label: 'VCC (3V3)', type: 'power', side: 'left', pinNumber: 1, voltage: 3.3 },
+              { id: 'GND', label: 'GND', type: 'ground', side: 'left', pinNumber: 2 },
+              { id: 'MOSI', label: 'SI/MOSI', type: 'io', side: 'left', pinNumber: 3 },
+              { id: 'SCLK', label: 'SCLK', type: 'io', side: 'left', pinNumber: 4 },
+              { id: 'MISO', label: 'SO/MISO', type: 'io', side: 'right', pinNumber: 5 },
+              { id: 'GDO2', label: 'GDO2', type: 'io', side: 'right', pinNumber: 6 },
+              { id: 'GDO0', label: 'GDO0', type: 'io', side: 'right', pinNumber: 7 },
+              { id: 'CSN', label: 'CSN', type: 'io', side: 'right', pinNumber: 8 },
+            ],
+          },
+          code: `// CC1101 Sub-1GHz RF Transceiver SPI Interface
+pinMode('CSN', 'OUTPUT');
+pinMode('SCLK', 'OUTPUT');
+pinMode('MOSI', 'OUTPUT');
+pinMode('MISO', 'INPUT');
+pinMode('GDO0', 'INPUT');
+
+digitalWrite('CSN', 1);
+digitalWrite('SCLK', 0);
+Serial.println("CC1101 Initialized ready for RF TX/RX");
+`,
+        },
+      },
+      {
+        id: 'gnd1',
+        type: 'ground',
+        position: { x: 380, y: 350 },
+        data: { label: 'GND' },
+      },
+    ],
+    edges: [
+      {
+        id: 'e_vcc',
+        source: 'heltec1',
+        sourceHandle: '3V3',
+        target: 'cc1101',
+        targetHandle: 'VCC',
+        type: 'smoothstep',
+      },
+      {
+        id: 'e_gnd',
+        source: 'heltec1',
+        sourceHandle: 'GND',
+        target: 'gnd1',
+        targetHandle: 'in',
+        type: 'smoothstep',
+      },
+      {
+        id: 'e_cc_gnd',
+        source: 'cc1101',
+        sourceHandle: 'GND',
+        target: 'gnd1',
+        targetHandle: 'in',
+        type: 'smoothstep',
+      },
+      {
+        id: 'e_mosi',
+        source: 'heltec1',
+        sourceHandle: 'GPIO_3',
+        target: 'cc1101',
+        targetHandle: 'MOSI',
+        type: 'smoothstep',
+      },
+      {
+        id: 'e_miso',
+        source: 'heltec1',
+        sourceHandle: 'GPIO_1',
+        target: 'cc1101',
+        targetHandle: 'MISO',
+        type: 'smoothstep',
+      },
+      {
+        id: 'e_sclk',
+        source: 'heltec1',
+        sourceHandle: 'GPIO_33',
+        target: 'cc1101',
+        targetHandle: 'SCLK',
+        type: 'smoothstep',
+      },
+      {
+        id: 'e_csn',
+        source: 'heltec1',
+        sourceHandle: 'GPIO_36',
+        target: 'cc1101',
+        targetHandle: 'CSN',
+        type: 'smoothstep',
+      },
+      {
+        id: 'e_gdo0',
+        source: 'heltec1',
+        sourceHandle: 'GPIO_37',
+        target: 'cc1101',
+        targetHandle: 'GDO0',
+        type: 'smoothstep',
+      },
+    ],
+    noteCard: `# Heltec V4 + CC1101 RF Transceiver 📻\n\nConnects the **Heltec WiFi LoRa 32 V4** development board to an external **CC1101 Sub-1GHz RF Transceiver module** via an 8-pin (2x4) Dupont connector.\n\n### Connections:\n- **VCC (3.3V)**: Powered from Heltec 3V3 rail.\n- **GND**: Shared system ground.\n- **MOSI (SI)**: Heltec GPIO 3.\n- **MISO (SO)**: Heltec GPIO 1 (ADC/IO).\n- **SCLK**: Heltec GPIO 33.\n- **CSN**: Heltec GPIO 36 (Chip Select Active Low).\n- **GDO0**: Heltec GPIO 37 (Packet TX/RX Interrupt).\n\n### PCB Milling & CAM Routing:\nClick **Export PCB / G-Code** to see the full dual-layer board layout, $2.54\\text{ mm}$ Dupont matrix footprint for CC1101, and CNC milling isolation toolpaths routed directly to all pins!`
   }
 };
+

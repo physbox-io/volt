@@ -33,28 +33,46 @@ export function NoteCardOverlay({ card, isEditing, onToggleEdit, onToggleMinimiz
 }) {
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
 
-  const handleTitleMouseDown = (e: React.MouseEvent) => {
+  // Pointer, not mouse, events: a finger and a stylus then move the card by the
+  // same code path as a cursor. A mouse drag behaves exactly as it did.
+  const handleTitleMouseDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
     dragRef.current = { startX: e.clientX, startY: e.clientY, origX: card.x, origY: card.y };
-    const handleMouseMove = (me: MouseEvent) => {
+    const handleMouseMove = (me: PointerEvent) => {
       if (!dragRef.current) return;
       onMove(dragRef.current.origX + me.clientX - dragRef.current.startX, dragRef.current.origY + me.clientY - dragRef.current.startY);
     };
-    const handleMouseUp = () => { dragRef.current = null; window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    const handleMouseUp = () => {
+      dragRef.current = null;
+      window.removeEventListener('pointermove', handleMouseMove);
+      window.removeEventListener('pointerup', handleMouseUp);
+      window.removeEventListener('pointercancel', handleMouseUp);
+    };
+    window.addEventListener('pointermove', handleMouseMove);
+    window.addEventListener('pointerup', handleMouseUp);
+    window.addEventListener('pointercancel', handleMouseUp);
   };
 
   return (
     <div
       data-note-card
-      style={{ position: 'absolute', left: card.x, top: card.y, zIndex: 100, width: 300 }}
-      className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl overflow-hidden"
+      // `maxWidth` so the card cannot hang off the side of a phone, where its
+      // close button would be the part that went over the edge.
+      style={{ position: 'absolute', left: card.x, top: card.y, width: 300, maxWidth: 'calc(100vw - 24px)' }}
+      /*
+        The stacking order is a class, not the inline `zIndex` it used to be,
+        so that it can differ by width. On a desktop the card floats in a corner
+        of the canvas and nothing else wants that space. On a phone every panel
+        and modal is full-width, and a card pinned above them covered the thing
+        the user had just opened — so below `lg` it drops beneath them while
+        staying above the canvas it annotates.
+      */
+      className="z-[100] max-lg:z-[45] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl overflow-hidden"
     >
       {/* Title bar */}
       <div
         className="flex items-center justify-between px-3 py-2 bg-slate-50/80 dark:bg-slate-950/40 border-b border-slate-100 dark:border-slate-800 cursor-move select-none"
-        onMouseDown={handleTitleMouseDown}
+        onPointerDown={handleTitleMouseDown}
       >
         <div className="flex items-center gap-1.5">
           <FileText className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />

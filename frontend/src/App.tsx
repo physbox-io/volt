@@ -14,9 +14,10 @@ import '@xyflow/react/dist/style.css';
 
 import { HELTEC_V4_GPIO_PINS } from './components/nodes/HeltecV4Node';
 import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
+import { getEffectiveMcuConfig } from './utils/mcuConfig';
 import { buildNetlistResultIndex, findNetGraph } from './utils/netlistResult';
 import { isPortConnected } from './utils/graphTopology';
-import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer } from 'lucide-react';
+import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
 import { ExportPcbModal } from './components/ExportPcbModal';
 import { playbackTicker } from './utils/playbackTicker';
@@ -143,6 +144,20 @@ export default function App() {
   const [isPcbModalOpen, setIsPcbModalOpen] = useState(false);
   const [showAura, setShowAura] = useState(savedSettings.showAura ?? false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
+  // A palette entry tapped on a touch device, waiting for FlowArea to place it
+  // at the middle of the canvas. `seq` makes two taps of the same part two
+  // distinct requests rather than one unchanged object the effect ignores.
+  const [pickedPart, setPickedPart] = useState<{ type: string; label?: string; seq: number } | null>(null);
+  /**
+   * Whether the properties inspector is showing as an overlay drawer.
+   *
+   * Only consulted below `lg` — on a desktop the inspector is a permanent
+   * column beside the canvas and this is ignored, so nothing here can change
+   * the desktop layout. Below `lg` the drawer covers most of the canvas, so it
+   * opens when it is asked for and not merely because a part was selected:
+   * touching a component to move it is not a request to read its datasheet.
+   */
+  const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
   const [probeMode, setProbeMode] = useState(false);
   const [probeData, setProbeData] = useState<{
     netName: string;
@@ -1228,11 +1243,13 @@ export default function App() {
          const mcuWaveforms: any = {};
          for (const mcu of mcuNodes) {
            mcuWaveforms[mcu.id] = {};
-           for (const pin of ['D0', 'D1', 'D2', 'D3', 'A0', 'A1']) {
-             const net = portToNet[`${mcu.id}-${pin}`];
+           const mcuPins = getEffectiveMcuConfig(mcu.data).pins;
+           for (const pin of mcuPins) {
+             const pinId = pin.id;
+             const net = portToNet[`${mcu.id}-${pinId}`];
              const graph = findNetGraph(result, net);
              if (graph) {
-               mcuWaveforms[mcu.id][pin] = graph.timestamps_ms.map((t: number, i: number) => ({
+               mcuWaveforms[mcu.id][pinId] = graph.timestamps_ms.map((t: number, i: number) => ({
                  t, v: graph.voltage_levels[i]
                }));
              }
@@ -1458,6 +1475,14 @@ export default function App() {
     }
   }, [setNodes, runSimulation, isSimulating, initialConditions]);
 
+  // Losing the selection closes the drawer, so that the next component tapped
+  // does not reopen it unasked — below `lg` it is opened from the bar, never as
+  // a side effect of touching the circuit. Inert at `lg`, where the inspector
+  // is a column and this flag is not read.
+  useEffect(() => {
+    if (!nodes.some(n => n.selected)) setIsPropertiesOpen(false);
+  }, [nodes]);
+
   const deleteSelected = useCallback(() => {
     if (isSimulatingRef.current) return;
     setNodes(nds => nds.filter(n => !n.selected));
@@ -1493,9 +1518,21 @@ export default function App() {
   });
 
   return (
-    <div className={`flex flex-col h-screen w-full transition-colors duration-200 ${darkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'} font-sans overflow-hidden`}>
-      <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 md:px-6 py-1.5 flex items-center justify-between shadow-xs z-10 transition-colors">
-        <div className="flex items-center gap-2 md:gap-4">
+    /*
+      `h-dvh`, not `h-screen`: on a phone `100vh` is the viewport measured with
+      the URL bar hidden, so the status bar along the bottom — probe toggle,
+      duration, resolution — sat underneath the browser chrome and could not be
+      reached. On a desktop the two are the same number.
+    */
+    <div className={`flex flex-col h-dvh w-full transition-colors duration-200 ${darkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'} font-sans overflow-hidden`}>
+      {/*
+        Below `lg` the bar wraps onto as many rows as it needs instead of
+        squeezing everything onto one. Written as `max-lg:` overrides on top of
+        the classes that were already here, so at desktop width this element
+        carries exactly what it carried before.
+      */}
+      <header className="shrink-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 md:px-6 py-1.5 flex items-center justify-between shadow-xs z-10 transition-colors max-lg:flex-wrap max-lg:justify-start max-lg:gap-y-1.5 max-lg:px-2">
+        <div className="flex items-center gap-2 md:gap-4 min-w-0 max-lg:w-full">
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-850 rounded-md lg:hidden text-slate-650 dark:text-slate-400 cursor-pointer"
@@ -1503,9 +1540,11 @@ export default function App() {
           >
             <Menu size={20} />
           </button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <Logo />
-            <div>
+            {/* The mark alone identifies the app on a phone; the wordmark,
+                badge and tagline are the first thing to give up the width. */}
+            <div className="hidden md:block">
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-extrabold tracking-tight text-slate-900 dark:text-white font-sans">
                   Physbox <span className="text-blue-500 dark:text-blue-400 font-normal">Volt</span>
@@ -1520,11 +1559,11 @@ export default function App() {
           <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 hidden lg:block"></div>
           
           {/* Preset Selector */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
+          <div className="flex items-center min-w-0 max-lg:flex-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
             <select
               value={selectedPreset}
               onChange={handlePresetChange}
-              className="bg-transparent text-slate-700 dark:text-slate-100 text-xs rounded-md block px-2 py-1 outline-none font-medium cursor-pointer border-none"
+              className="bg-transparent text-slate-700 dark:text-slate-100 text-xs rounded-md block px-2 py-1 outline-none font-medium cursor-pointer border-none max-lg:flex-1 max-lg:min-w-0"
             >
               <optgroup label="⬜ Built-in Presets" className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300">
                 {Object.keys(presets).map(key => (
@@ -1567,9 +1606,17 @@ export default function App() {
           </div>
         </div>
         
-        <div className="flex items-center gap-2 md:gap-3">
+        {/*
+          Simulation, files and utilities. Below `lg` this takes a row of its
+          own and wraps within it rather than dropping buttons: everything here
+          is either a file operation or a simulation control, and deciding on
+          the user's behalf that they won't want to export a netlist or mill a
+          PCB from a phone is how a mobile layout ends up being a demo of the
+          app rather than the app.
+        */}
+        <div className="flex items-center gap-2 md:gap-3 min-w-0 max-lg:w-full max-lg:flex-wrap max-lg:justify-between max-lg:gap-y-1.5">
           {/* Simulation Controller Block */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
+          <div className="flex items-center shrink-0 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
             <button 
               onClick={() => { setInitialConditions({}); runSimulation(undefined, {}); }}
               disabled={isSimulating}
@@ -1600,7 +1647,7 @@ export default function App() {
           </div>
 
           {/* Files & Actions Segmented Group */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
+          <div className="flex items-center shrink-0 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
             <button 
               onClick={() => {
                 if (selectedPreset && userPresets[selectedPreset]) {
@@ -1672,7 +1719,7 @@ export default function App() {
           <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 mx-0.5 hidden sm:block" />
 
           {/* Right Utilities (Dark Mode, Docs, Settings, Copilot, GitHub) */}
-          <div className="flex items-center gap-1.5 md:gap-2">
+          <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
             {/* Dark Mode Toggle */}
             <button
               onClick={toggleDarkMode}
@@ -1680,6 +1727,26 @@ export default function App() {
               title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
             >
               {darkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />}
+            </button>
+
+            {/*
+              Properties inspector — a permanent column at `lg`, a drawer below
+              it, opened from here. The mirror of the components hamburger on
+              the other end of the bar: one button for the palette going in, one
+              for the inspector coming out. Disabled with nothing selected,
+              because the inspector has nothing to show until then.
+            */}
+            <button
+              onClick={() => setIsPropertiesOpen(!isPropertiesOpen)}
+              disabled={!nodes.some(n => n.selected)}
+              className={`lg:hidden flex items-center justify-center w-8 h-8 rounded-full border transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs disabled:opacity-40 disabled:cursor-not-allowed ${
+                isPropertiesOpen
+                  ? 'bg-blue-100 border-blue-400 text-blue-700 dark:bg-blue-955 dark:border-blue-700 dark:text-blue-400'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-650 dark:text-slate-300 bg-white dark:bg-slate-900'
+              }`}
+              title={nodes.some(n => n.selected) ? 'Properties' : 'Select a component to see its properties'}
+            >
+              <PanelRight className="w-4 h-4" />
             </button>
 
             {/* Docs (Info) */}
@@ -1735,7 +1802,11 @@ export default function App() {
       </header>
 
       <div className="flex flex-1 relative min-h-0 overflow-hidden">
-        <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+        <Sidebar
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+          onPickPart={(type, label) => setPickedPart(prev => ({ type, label, seq: (prev?.seq ?? 0) + 1 }))}
+        />
         
         {/* Floating Status Indicators */}
         <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20 flex flex-col gap-2 pointer-events-none items-center">
@@ -1772,6 +1843,8 @@ export default function App() {
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
             onNodeClick={onNodeClick}
             isSimulating={isSimulating}
+            pickedPart={pickedPart}
+            onPickedPartPlaced={() => setPickedPart(null)}
             probeMode={probeMode}
             onEdgeProbe={(edgeId: string, event: React.MouseEvent) => {
               if (!probeMode || !simResultRef.current) return;
@@ -1809,14 +1882,24 @@ export default function App() {
           />
         </ReactFlowProvider>
       </EdgePathProvider>
+        {/* Dimmer behind the inspector drawer. Only exists below `lg`, where the
+            inspector is an overlay; tapping the circuit puts it away. */}
+        {isPropertiesOpen && nodes.find(n => n.selected) && (
+          <div
+            className="lg:hidden absolute inset-0 z-[105] bg-slate-950/30"
+            onClick={() => setIsPropertiesOpen(false)}
+          />
+        )}
         {nodes.find(n => n.selected) && (
-          <PropertiesPanel 
-            selectedNode={nodes.find(n => n.selected)!} 
-            setNodes={setNodes} 
-            setEdges={setEdges} 
-            isSimulating={isSimulating} 
+          <PropertiesPanel
+            selectedNode={nodes.find(n => n.selected)!}
+            setNodes={setNodes}
+            setEdges={setEdges}
+            isSimulating={isSimulating}
             runSimulation={runSimulation}
             simLength={simLength}
+            isOpen={isPropertiesOpen}
+            onClose={() => setIsPropertiesOpen(false)}
           />
         )}
         {noteCards.map(card => (
@@ -1910,9 +1993,14 @@ export default function App() {
       </div>
 
       {/* Bottom Status Bar matching Etch */}
-      <footer className="h-8 w-full bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800/80 px-4 flex items-center justify-between z-20 text-[11px] text-slate-500 dark:text-slate-400 font-mono select-none transition-colors">
+      {/*
+        Below `lg` the bar wraps rather than squeezing. Probe mode, duration and
+        resolution are what a run is defined by, so none of it is something to
+        drop on a narrow screen.
+      */}
+      <footer className="h-8 shrink-0 w-full bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800/80 px-4 flex items-center justify-between z-20 text-[11px] text-slate-500 dark:text-slate-400 font-mono select-none transition-colors max-lg:h-auto max-lg:flex-wrap max-lg:justify-start max-lg:px-2 max-lg:py-1 max-lg:gap-x-3 max-lg:gap-y-1">
         {/* Left: Probe Toggle & Circuit Metrics */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 max-lg:shrink-0">
           <button
             onClick={() => { setProbeMode(!probeMode); setProbeData(null); }}
             className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] transition-colors cursor-pointer ${
@@ -1934,7 +2022,7 @@ export default function App() {
         </div>
 
         {/* Right: Simulation Parameters (Duration & Resolution) */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 max-lg:shrink-0">
           {/* Duration Block */}
           <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 ${nodes.some(n => n.type === 'heltec_v4') ? 'opacity-50 cursor-not-allowed' : ''}`}>
             <label htmlFor="bottom-duration" className="text-slate-500 dark:text-slate-400 font-semibold">
