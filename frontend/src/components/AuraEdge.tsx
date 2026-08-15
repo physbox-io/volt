@@ -187,15 +187,18 @@ function alignTerminalRuns(
   if (points.length < 3) return points;
   const pts = points.map(p => ({ ...p }));
   const isHorizontal = (pos: string) => pos === 'left' || pos === 'right';
+  const isVertical = (pos: string) => pos === 'top' || pos === 'bottom';
   const same = (a: number, b: number) => Math.abs(a - b) < 0.01;
 
   // Leading run: every interior point sharing pts[1]'s cross-axis value. The
   // run's value is captured up front — the loop overwrites it as it goes.
+  // Direction-agnostic endpoints (junction dots, position 'none') skip
+  // alignment — there is no pin axis to pull the run onto.
   const last = pts.length - 1;
   if (isHorizontal(sourcePosition)) {
     const runY = pts[1].y;
     for (let i = 1; i < last && same(pts[i].y, runY); i++) pts[i].y = sourceY;
-  } else {
+  } else if (isVertical(sourcePosition)) {
     const runX = pts[1].x;
     for (let i = 1; i < last && same(pts[i].x, runX); i++) pts[i].x = sourceX;
   }
@@ -204,7 +207,7 @@ function alignTerminalRuns(
   if (isHorizontal(targetPosition)) {
     const runY = pts[last - 1].y;
     for (let i = last - 1; i > 0 && same(pts[i].y, runY); i--) pts[i].y = targetY;
-  } else {
+  } else if (isVertical(targetPosition)) {
     const runX = pts[last - 1].x;
     for (let i = last - 1; i > 0 && same(pts[i].x, runX); i--) pts[i].x = targetX;
   }
@@ -243,7 +246,7 @@ function squareOffDiagonals(points: Point[], sourcePosition: string): Point[] {
   return out;
 }
 
-function routeOrthogonal({
+export function routeOrthogonal({
   sourceX,
   sourceY,
   sourcePosition,
@@ -351,11 +354,17 @@ function routeOrthogonal({
   const startStateKey = `${start.x},${start.y},${startDir}`;
   gScore.set(startStateKey, 0);
 
+  // Barely-inflated heuristic: at 1.5 the search was greedy enough to commit
+  // to corridor-hugging routes with extra lane-shift zigzags (each one two
+  // needless bends) rather than exploring a clean 2-bend detour around a
+  // component. 1.1 keeps most of the speedup without visibly suboptimal wires.
+  const H_WEIGHT = 1.1;
+
   openSet.push({
     x: start.x,
     y: start.y,
     dir: startDir,
-    f: 1.5 * manhattanDistance(start, end) + tieBreak,
+    f: H_WEIGHT * manhattanDistance(start, end) + tieBreak,
   });
 
   const getNeighbors = (curr: State): State[] => {
@@ -378,7 +387,7 @@ function routeOrthogonal({
 
   let endState: State | null = null;
   let iterations = 0;
-  const maxIterations = 8000;
+  const maxIterations = 24000;
 
   while (openSet.size > 0 && iterations < maxIterations) {
     iterations++;
@@ -398,7 +407,18 @@ function routeOrthogonal({
 
     for (const neighbor of getNeighbors(curr)) {
       const isBend = curr.dir !== 'none' && curr.dir !== neighbor.dir;
-      let stepCost = gridStep + (isBend ? bendPenalty : 0);
+
+      // Wires on the same net should share one trunk and branch late, not run
+      // as parallel duplicates. Travelling along a cell an already-routed
+      // same-net wire occupies is nearly free, so A* prefers to merge onto
+      // it. Only the TRAVEL is discounted — discounting bends as well let
+      // routes bounce on and off a trunk for free, drawing 4px zigzags along
+      // pin rows wherever an obstacle interrupted the trunk.
+      let travel = gridStep;
+      if (trunkCells && trunkCells.has(`${neighbor.x},${neighbor.y}`)) {
+        travel *= TRUNK_DISCOUNT;
+      }
+      let stepCost = travel + (isBend ? bendPenalty : 0);
 
       // Check target entry direction alignment
       if (neighbor.x === end.x && neighbor.y === end.y) {
@@ -414,13 +434,6 @@ function routeOrthogonal({
         stepCost += softObstacles.get(`${neighbor.x},${neighbor.y}`) || 0;
       }
 
-      // Wires on the same net should share one trunk and branch late, not run
-      // as parallel duplicates. Travelling along a cell an already-routed
-      // same-net wire occupies is nearly free, so A* prefers to merge onto it.
-      if (trunkCells && trunkCells.has(`${neighbor.x},${neighbor.y}`)) {
-        stepCost *= TRUNK_DISCOUNT;
-      }
-
       const tentativeG = currG + stepCost;
 
       const neighborKey = `${neighbor.x},${neighbor.y},${neighbor.dir}`;
@@ -434,7 +447,7 @@ function routeOrthogonal({
           x: neighbor.x,
           y: neighbor.y,
           dir: neighbor.dir,
-          f: tentativeG + 1.5 * manhattanDistance(neighbor, end) + tieBreak,
+          f: tentativeG + H_WEIGHT * manhattanDistance(neighbor, end) + tieBreak,
         });
       }
     }
@@ -550,6 +563,107 @@ function buildSoftObstacles(
   return softObstacles;
 }
 
+/**
+ * Merge near-miss parallel runs onto a same-net sibling's run.
+ *
+ * The A* trunk-cell discount only helps when the search actually expands the
+ * trunk corridor — its heuristic prices all travel at full cost, so a
+ * discounted lane a few px off the explored corridor is never reached, and
+ * two same-net wires end up descending 4-8px apart ("two wires doing the
+ * same thing"). This post-pass fixes that geometrically: any interior run
+ * lying within SNAP_DIST of a parallel sibling run with substantial overlap
+ * is shifted exactly onto it, provided the moved run and the small neighbor
+ * extensions stay clear of obstacles. Only lower-sorted siblings are snapped
+ * to (same rank order as trunk-following), and a snapped run lands exactly
+ * on the sibling, so the pass is idempotent and the layout still settles.
+ */
+const SNAP_DIST = 8;
+
+function snapRunsToSiblings(points: Point[], sibPaths: Point[][], obstacles: Obstacle[]): Point[] {
+  const pts = points.map(p => ({ ...p }));
+
+  for (let i = 1; i + 2 < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const vertical = Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) > 0.01;
+    const horizontal = Math.abs(a.y - b.y) < 0.01 && Math.abs(a.x - b.x) > 0.01;
+    if (!vertical && !horizontal) continue;
+
+    const runLo = vertical ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+    const runHi = vertical ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+    const runPos = vertical ? a.x : a.y;
+    const minOverlap = Math.min(24, (runHi - runLo) / 2);
+
+    let snapTo: number | null = null;
+    let snapGap = SNAP_DIST + 1;
+    for (const sib of sibPaths) {
+      for (let s = 0; s < sib.length - 1; s++) {
+        const p1 = sib[s];
+        const p2 = sib[s + 1];
+        const sibVertical = Math.abs(p1.x - p2.x) < 0.01;
+        if (sibVertical !== vertical) continue;
+        const sibPos = vertical ? p1.x : p1.y;
+        const gap = Math.abs(sibPos - runPos);
+        if (gap < 0.01 || gap > SNAP_DIST || gap >= snapGap) continue;
+        const sibLo = vertical ? Math.min(p1.y, p2.y) : Math.min(p1.x, p2.x);
+        const sibHi = vertical ? Math.max(p1.y, p2.y) : Math.max(p1.x, p2.x);
+        if (Math.min(runHi, sibHi) - Math.max(runLo, sibLo) < minOverlap) continue;
+        snapTo = sibPos;
+        snapGap = gap;
+      }
+    }
+    if (snapTo == null) continue;
+
+    // The shift must not flip either neighbor segment's direction.
+    const prev = pts[i - 1];
+    const next = pts[i + 2];
+    const prevAnchor = vertical ? prev.x : prev.y;
+    const nextAnchor = vertical ? next.x : next.y;
+    if ((prevAnchor - runPos) * (prevAnchor - snapTo) < 0) continue;
+    if ((nextAnchor - runPos) * (nextAnchor - snapTo) < 0) continue;
+
+    // The moved run plus the two tiny neighbor extensions must stay clear.
+    const moved: [Point, Point] = vertical
+      ? [{ x: snapTo, y: runLo }, { x: snapTo, y: runHi }]
+      : [{ x: runLo, y: snapTo }, { x: runHi, y: snapTo }];
+    const extA: [Point, Point] = vertical
+      ? [{ x: Math.min(runPos, snapTo), y: a.y }, { x: Math.max(runPos, snapTo), y: a.y }]
+      : [{ x: a.x, y: Math.min(runPos, snapTo) }, { x: a.x, y: Math.max(runPos, snapTo) }];
+    const extB: [Point, Point] = vertical
+      ? [{ x: Math.min(runPos, snapTo), y: b.y }, { x: Math.max(runPos, snapTo), y: b.y }]
+      : [{ x: b.x, y: Math.min(runPos, snapTo) }, { x: b.x, y: Math.max(runPos, snapTo) }];
+    if (
+      segmentIntersectsObstacle(moved[0], moved[1], obstacles) ||
+      segmentIntersectsObstacle(extA[0], extA[1], obstacles) ||
+      segmentIntersectsObstacle(extB[0], extB[1], obstacles)
+    ) continue;
+
+    if (vertical) {
+      a.x = snapTo;
+      b.x = snapTo;
+    } else {
+      a.y = snapTo;
+      b.y = snapTo;
+    }
+  }
+
+  return simplifyCollinear(pts);
+}
+
+// Whether an orthogonal polyline passes within `tol` px of a point. For
+// axis-aligned segments the inflated-bbox test IS the distance test.
+function pathNearPoint(pts: Point[], p: Point, tol: number): boolean {
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    if (
+      p.x >= Math.min(a.x, b.x) - tol && p.x <= Math.max(a.x, b.x) + tol &&
+      p.y >= Math.min(a.y, b.y) - tol && p.y <= Math.max(a.y, b.y) + tol
+    ) return true;
+  }
+  return false;
+}
+
 function segmentIntersectsObstacle(p1: Point, p2: Point, obstacles: Obstacle[]): boolean {
   const minX = Math.min(p1.x, p2.x);
   const maxX = Math.max(p1.x, p2.x);
@@ -630,8 +744,20 @@ export function getSchematicPath({
     // React Flow insets an edge endpoint a couple of px into its handle, so
     // "same axis" is a small tolerance rather than equality; the run is then
     // snapped onto the source pin's axis so it stays perfectly straight.
-    const sp = clampToPin(nodes, sourceX, sourceY, sourcePosition, sourceId);
-    const tp = clampToPin(nodes, targetX, targetY, targetPosition, targetId);
+    let sp = clampToPin(nodes, sourceX, sourceY, sourcePosition, sourceId);
+    let tp = clampToPin(nodes, targetX, targetY, targetPosition, targetId);
+
+    // A junction is a direction-agnostic dot, but its handles are declared
+    // Position.Left, which made the router leave/enter it horizontally with
+    // an 8px lead — a dog-leg around every junction that sits on a vertical
+    // wire. Neutralize the direction and pin the endpoint exactly on the dot
+    // (React Flow reports the handle center half a px off the 1px node).
+    const srcJunction = nodes.find((n: any) => n.id === sourceId && n.type === 'junction');
+    const tgtJunction = nodes.find((n: any) => n.id === targetId && n.type === 'junction');
+    const srcPos = srcJunction ? 'none' : sourcePosition;
+    const tgtPos = tgtJunction ? 'none' : targetPosition;
+    if (srcJunction) sp = { x: srcJunction.position.x, y: srcJunction.position.y };
+    if (tgtJunction) tp = { x: tgtJunction.position.x, y: tgtJunction.position.y };
 
     const AXIS_EPS = 4;
     const straight =
@@ -644,18 +770,21 @@ export function getSchematicPath({
       return `M ${sp.x} ${sp.y} L ${straight.x} ${straight.y}`;
     }
 
+    // Same own-node treatment as the straight-shot case above: the two nodes
+    // being joined keep their bodies as obstacles, shrunk by PIN_INSET so a
+    // wire can run along its own pin row. With full-size own boxes, a route
+    // leaving a pin sideways had to hop 4px around its own component's
+    // inflated box and back — a signature micro-zigzag at almost every pin.
     const obstacles: Obstacle[] = nodes
       .filter((n: any) => n.type !== 'junction')
       .map((n: any) => {
         const w = n.measured?.width || getNodeDimensions(n.type, n.data).width;
         const h = n.measured?.height || getNodeDimensions(n.type, n.data).height;
-        return {
-          x: n.position.x,
-          y: n.position.y,
-          width: w,
-          height: h,
-        };
-      });
+        const own = n.id === sourceId || n.id === targetId;
+        const i = own ? PIN_INSET : 0;
+        return { x: n.position.x + i, y: n.position.y + i, width: w - 2 * i, height: h - 2 * i };
+      })
+      .filter((o: Obstacle) => o.width > 0 && o.height > 0);
 
     const otherPaths: Record<string, Point[]> = {};
     for (const [id, pts] of Object.entries(otherEdgesPaths)) {
@@ -681,7 +810,15 @@ export function getSchematicPath({
     }
 
     // Only follow trunks already laid by same-net edges that sort before this
-    // one, matching buildSoftObstacles' ordering so the layout still settles.
+    // one. The ordering is what makes the layout settle: following ALL
+    // siblings lets two same-net wires leapfrog onto each other's previous
+    // lane forever (each pass they swap — a live re-render loop). Rank makes
+    // it a DAG: the first-sorted edge routes free and everyone later merges
+    // onto it. Whether followers CAN merge is the router's job — the A*
+    // heuristic has to be near-admissible or the leader picks a lane its
+    // siblings are physically unable to join (e.g. one that dead-ends inside
+    // a follower's own body), which is where parallel duplicate runs came
+    // from historically.
     const trunkCells = new Set<string>();
     for (const sibId of sameNetIds) {
       if (sibId >= edgeId) continue;
@@ -699,13 +836,14 @@ export function getSchematicPath({
     const softObstacles = buildSoftObstacles(otherPaths, edgeId, sameNetIds, sourceX, sourceY, targetX, targetY, 4);
     const tieBreak = (sourceIndex + targetIndex) * 0.001;
 
+
     let aStarPath = routeOrthogonal({
       sourceX: sp.x,
       sourceY: sp.y,
-      sourcePosition,
+      sourcePosition: srcPos,
       targetX: tp.x,
       targetY: tp.y,
-      targetPosition,
+      targetPosition: tgtPos,
       obstacles,
       gridStep: 4,
       bendPenalty: 20,
@@ -720,10 +858,10 @@ export function getSchematicPath({
       aStarPath = routeOrthogonal({
         sourceX: sp.x,
         sourceY: sp.y,
-        sourcePosition,
+        sourcePosition: srcPos,
         targetX: tp.x,
         targetY: tp.y,
-        targetPosition,
+        targetPosition: tgtPos,
         obstacles,
         gridStep: 4,
         bendPenalty: 20,
@@ -735,6 +873,19 @@ export function getSchematicPath({
     }
 
     if (aStarPath) {
+      const sibPaths = [...sameNetIds]
+        .filter(sid => sid < edgeId)
+        .map(sid => otherPaths[sid])
+        .filter((p): p is Point[] => !!p && p.length >= 2);
+      if (sibPaths.length > 0) {
+        const pts: Point[] = [];
+        for (const m of aStarPath.matchAll(/[ML]\s*(-?\d+\.?\d*)\s*[\s,]\s*(-?\d+\.?\d*)/g)) {
+          pts.push({ x: parseFloat(m[1]), y: parseFloat(m[2]) });
+        }
+        const snapped = snapRunsToSiblings(pts, sibPaths, obstacles);
+        aStarPath = `M ${snapped[0].x} ${snapped[0].y}`;
+        for (let i = 1; i < snapped.length; i++) aStarPath += ` L ${snapped[i].x} ${snapped[i].y}`;
+      }
       return aStarPath;
     }
   }
@@ -1056,6 +1207,29 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
 
   const isHovered = context?.hoveredEdgeId === id;
 
+  // Same-net wires deliberately route on top of each other (trunk sharing),
+  // so "the wire" under the cursor is often a bundle of edges. Any waypoint
+  // interaction has to hit every bundled edge at the grab point — moving just
+  // one used to peel it out of the bundle, leaving two wires drawn for the
+  // same net ("dragging the rail split it in two").
+  const collectBundleIds = useCallback((clickPos: { x: number; y: number }) => {
+    const ids = new Set<string>([id]);
+    const paths = context?.paths || {};
+    const myPorts = new Set([
+      `${source}-${sourceHandle || 'out'}`,
+      `${target}-${targetHandle || 'in'}`,
+    ]);
+    for (const e of getEdges()) {
+      if (e.id === id) continue;
+      const a = `${e.source}-${e.sourceHandle || 'out'}`;
+      const b = `${e.target}-${e.targetHandle || 'in'}`;
+      if (!myPorts.has(a) && !myPorts.has(b)) continue;
+      const pts = paths[e.id];
+      if (pts && pathNearPoint(pts, clickPos, 8)) ids.add(e.id);
+    }
+    return ids;
+  }, [id, source, target, sourceHandle, targetHandle, context?.paths, getEdges]);
+
   const handleWireMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -1065,6 +1239,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     const startY = e.clientY;
 
     const clickPos = screenToFlowPosition({ x: startX, y: startY });
+    const bundleIds = collectBundleIds(clickPos);
 
     const initialW = waypoints[0] || { x: clickPos.x, y: clickPos.y };
     const initialX = initialW.x;
@@ -1075,7 +1250,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const dx = moveEvent.clientX - startX;
       const dy = moveEvent.clientY - startY;
-      
+
       const flowDx = dx / zoom;
       const flowDy = dy / zoom;
 
@@ -1083,7 +1258,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
       const newY = Math.round((initialY + flowDy) / 4) * 4;
 
       setEdges((eds: any[]) => eds.map(edge => {
-        if (edge.id !== id) return edge;
+        if (!bundleIds.has(edge.id)) return edge;
         return {
           ...edge,
           data: {
@@ -1102,14 +1277,17 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  }, [id, waypoints, screenToFlowPosition, getViewport, setEdges]);
+  }, [waypoints, screenToFlowPosition, getViewport, setEdges, collectBundleIds]);
 
   const handleWireDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
 
+    const clickPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+    const bundleIds = collectBundleIds(clickPos);
+
     setEdges((eds: any[]) => eds.map(edge => {
-      if (edge.id !== id) return edge;
+      if (!bundleIds.has(edge.id)) return edge;
       return {
         ...edge,
         data: {
@@ -1118,7 +1296,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
         }
       };
     }));
-  }, [id, setEdges]);
+  }, [setEdges, screenToFlowPosition, collectBundleIds]);
   
   return (
     <>

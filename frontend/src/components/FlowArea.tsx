@@ -1,8 +1,9 @@
-import { useState, useCallback, useEffect, useRef, useContext, type DragEvent } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, useContext, type DragEvent } from 'react';
 import {
   ReactFlow,
   Controls,
   Background,
+  ViewportPortal,
   type Node,
   type Edge,
   useReactFlow,
@@ -48,7 +49,8 @@ import { DFlipFlopNode } from './nodes/DFlipFlopNode';
 import { LDRNode } from './nodes/LDRNode';
 import { JunctionNode } from './nodes/JunctionNode';
 import { AuraEdge, EdgePathContext } from './AuraEdge';
-import { findNearestEdgeAtPoint } from '../utils/nodeGeometry';
+import { findNearestEdgeAtPoint, getHandleCoord } from '../utils/nodeGeometry';
+import { computeBranchDots } from '../utils/branchDots';
 import { isPortConnected, mergeOverlappingNodesAndJunctions, splitEdgesOnOverlappingNodes, simplifyEdges } from '../utils/graphTopology';
 
 const edgeTypes = {
@@ -104,7 +106,25 @@ export function FlowArea({
   probeMode, onEdgeProbe, isSimulating, fitKey, hasNoteCard, noteCardRect
 }: any) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition, getViewport, setViewport, getNodes } = useReactFlow();
+  const { screenToFlowPosition, getViewport, setViewport, getNodes, getInternalNode } = useReactFlow();
+
+  // Handle coordinates as React Flow actually measured them in the DOM.
+  // The hand-maintained table in nodeGeometry only approximates instrument
+  // pins (scope/multimeter/MCU resolve to the node center), so anything doing
+  // proximity tests against pins goes through this instead.
+  const measuredHandleCoord = useCallback((node: Node, handleId: string) => {
+    const internal = getInternalNode(node.id);
+    const hb = internal?.internals?.handleBounds;
+    const all = [...(hb?.source ?? []), ...(hb?.target ?? [])];
+    const h = all.find(hh => (hh.id ?? null) === handleId) ?? all[0];
+    if (internal && h) {
+      return {
+        x: internal.internals.positionAbsolute.x + h.x + h.width / 2,
+        y: internal.internals.positionAbsolute.y + h.y + h.height / 2,
+      };
+    }
+    return getHandleCoord(node, handleId);
+  }, [getInternalNode]);
   // Supplied by App so FlowArea doesn't need to know how note cards are rendered.
   const cardRectRef = useRef<(() => DOMRect | null) | null>(null);
   cardRectRef.current = noteCardRect ?? null;
@@ -163,6 +183,13 @@ export function FlowArea({
   const context = useContext(EdgePathContext);
   const setHoveredEdgeId = context?.setHoveredEdgeId;
 
+  // T-taps where a same-net wire branches off a shared trunk (see branchDots.ts).
+  const contextPaths = context?.paths;
+  const branchDots = useMemo(
+    () => computeBranchDots(edges, contextPaths || {}),
+    [edges, contextPaths]
+  );
+
   const [previewJunction, setPreviewJunction] = useState<{ x: number; y: number } | null>(null);
   const connectingStartRef = useRef<{ nodeId: string; handleId: string; handleType: string } | null>(null);
 
@@ -178,7 +205,7 @@ export function FlowArea({
     }
 
     const dropPoint = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-    const match = findNearestEdgeAtPoint(nodes, edges, dropPoint, connectingStartRef.current.nodeId, 16);
+    const match = findNearestEdgeAtPoint(nodes, edges, dropPoint, connectingStartRef.current.nodeId, 16, contextPaths);
 
     if (match) {
       setPreviewJunction(match.projectionPoint);
@@ -187,7 +214,7 @@ export function FlowArea({
       setPreviewJunction(null);
       setHoveredEdgeId(null);
     }
-  }, [nodes, edges, screenToFlowPosition, setHoveredEdgeId, context?.hoveredEdgeId, previewJunction]);
+  }, [nodes, edges, screenToFlowPosition, setHoveredEdgeId, context?.hoveredEdgeId, previewJunction, contextPaths]);
 
   const onConnectEnd = useCallback((event: any) => {
     if (setHoveredEdgeId) setHoveredEdgeId(null);
@@ -231,7 +258,7 @@ export function FlowArea({
     const dropPoint = screenToFlowPosition({ x: clientX, y: clientY });
 
     // Find if the drop point is close to any existing edge
-    const edgeMatch = findNearestEdgeAtPoint(nodes, edges, dropPoint, connectingStartRef.current.nodeId, 16);
+    const edgeMatch = findNearestEdgeAtPoint(nodes, edges, dropPoint, connectingStartRef.current.nodeId, 16, contextPaths);
     const matchedEdge: any = edgeMatch?.edge ?? null;
     const projectionPoint = edgeMatch?.projectionPoint ?? { x: Math.round(dropPoint.x / 8) * 8, y: Math.round(dropPoint.y / 8) * 8 };
 
@@ -306,7 +333,7 @@ export function FlowArea({
     }
 
     connectingStartRef.current = null;
-  }, [nodes, edges, setNodes, setEdges, screenToFlowPosition, setHoveredEdgeId]);
+  }, [nodes, edges, setNodes, setEdges, screenToFlowPosition, setHoveredEdgeId, contextPaths]);
 
   const onDragOver = useCallback((event: DragEvent) => {
     event.preventDefault();
@@ -346,13 +373,13 @@ export function FlowArea({
 
   const onNodeDragStop = useCallback((_event: any, draggedNode: Node) => {
     const updatedNodes = nodes.map(n => n.id === draggedNode.id ? draggedNode : n);
-    const merged = mergeOverlappingNodesAndJunctions(updatedNodes, edges);
-    const split = splitEdgesOnOverlappingNodes(merged.nodes, merged.edges);
+    const merged = mergeOverlappingNodesAndJunctions(updatedNodes, edges, measuredHandleCoord);
+    const split = splitEdgesOnOverlappingNodes(merged.nodes, merged.edges, contextPaths);
     const simplifiedEdges = simplifyEdges(split.nodes, split.edges);
     
     setNodes(split.nodes);
     setEdges(simplifiedEdges);
-  }, [nodes, edges, setNodes, setEdges]);
+  }, [nodes, edges, setNodes, setEdges, measuredHandleCoord, contextPaths]);
 
   const handleEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
     if (probeMode && onEdgeProbe) {
@@ -397,6 +424,15 @@ export function FlowArea({
             land on the grid). */}
         <Background color="#cbd5e1" gap={16} size={1} />
         <Controls />
+        <ViewportPortal>
+          {branchDots.map(d => (
+            <div
+              key={`${d.x},${d.y}`}
+              className="absolute w-2 h-2 rounded-full bg-slate-700 dark:bg-slate-300 pointer-events-none"
+              style={{ transform: `translate(${d.x - 4}px, ${d.y - 4}px)` }}
+            />
+          ))}
+        </ViewportPortal>
       </ReactFlow>
 
       {/* Connection point drop preview dot */}

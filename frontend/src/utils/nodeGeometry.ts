@@ -39,6 +39,18 @@ export function getHandleCoord(node: any, handleId: string): { x: number; y: num
   const w = node.measured?.width || getNodeDimensions(node.type, node.data).width;
   const h = node.measured?.height || getNodeDimensions(node.type, node.data).height;
 
+  // Diode/LED pins are electrically named but sit where in/out sit; without
+  // this mapping they fell through to the node-center fallback, which put
+  // edge hit-testing (junction drops) and overlap merging off by half a body.
+  if (handleId === 'anode') handleId = 'in';
+  else if (handleId === 'cathode') handleId = 'out';
+
+  // Instrument cards (sig gen, mic, speaker) hang their ground pin off the
+  // bottom edge; 'out'/'in' already resolve to the correct side below.
+  if (handleId === 'gnd' && (node.type === 'signalgen' || node.type === 'microphone' || node.type === 'speaker')) {
+    return { x: x + w / 2, y: y + h };
+  }
+
   // Pins 1-4 run down the left, 8-5 down the right, on a fixed 16px pitch
   // starting 32px below the node origin. Timer555Node.tsx lays the rows out
   // with explicit heights so these constants stay true.
@@ -108,6 +120,15 @@ export const getHandlePosition = (node: any, handleId: string): string => {
   if (node.type === 'junction') {
     return 'left';
   }
+  if (node.type === 'scope') {
+    return 'left';
+  }
+  if (node.type === 'multimeter') {
+    return 'bottom';
+  }
+  if (handleId === 'gnd') {
+    return 'bottom';
+  }
   // Default components
   const orientation = node.data?.orientation || 'horizontal';
   const isLeft = orientation === 'left';
@@ -127,13 +148,20 @@ export const getHandlePosition = (node: any, handleId: string): string => {
  * `point`, excluding edges connected to `excludeNodeId`. Used both for live
  * junction-preview while dragging a connection and for splitting an edge
  * when a junction/ground node is dropped onto it.
+ *
+ * Prefer passing `renderedPaths` (the EdgePathContext registry) — those are
+ * the wires exactly as drawn. The fallback recomputes each path from this
+ * file's hand-maintained handle geometry, which only approximates instrument
+ * pins (scope/multimeter/MCU handles resolve to the node center), so hits on
+ * those wires can land visibly off.
  */
 export function findNearestEdgeAtPoint(
   nodes: Node[],
   edges: Edge[],
   point: { x: number; y: number },
   excludeNodeId?: string,
-  maxDist = 16
+  maxDist = 16,
+  renderedPaths?: Record<string, { x: number; y: number }[]>
 ): { edge: Edge; projectionPoint: { x: number; y: number } } | null {
   const snapX = Math.round(point.x / 8) * 8;
   const snapY = Math.round(point.y / 8) * 8;
@@ -143,44 +171,54 @@ export function findNearestEdgeAtPoint(
       continue;
     }
 
-    const srcNode: any = nodes.find(n => n.id === edge.source);
-    const tgtNode: any = nodes.find(n => n.id === edge.target);
-    if (!srcNode || !tgtNode) continue;
+    let points = renderedPaths?.[edge.id];
+    if (!points || points.length < 2) {
+      const srcNode: any = nodes.find(n => n.id === edge.source);
+      const tgtNode: any = nodes.find(n => n.id === edge.target);
+      if (!srcNode || !tgtNode) continue;
 
-    const sourceHandle = edge.sourceHandle || 'out';
-    const targetHandle = edge.targetHandle || 'in';
-    const pSrc = getHandleCoord(srcNode, sourceHandle);
-    const pTgt = getHandleCoord(tgtNode, targetHandle);
+      const sourceHandle = edge.sourceHandle || 'out';
+      const targetHandle = edge.targetHandle || 'in';
+      const pSrc = getHandleCoord(srcNode, sourceHandle);
+      const pTgt = getHandleCoord(tgtNode, targetHandle);
 
-    const pathD = getSchematicPath({
-      sourceX: pSrc.x,
-      sourceY: pSrc.y,
-      sourcePosition: getHandlePosition(srcNode, sourceHandle),
-      targetX: pTgt.x,
-      targetY: pTgt.y,
-      targetPosition: getHandlePosition(tgtNode, targetHandle),
-      nodes,
-      sourceId: edge.source,
-      targetId: edge.target,
-    });
+      const pathD = getSchematicPath({
+        sourceX: pSrc.x,
+        sourceY: pSrc.y,
+        sourcePosition: getHandlePosition(srcNode, sourceHandle),
+        targetX: pTgt.x,
+        targetY: pTgt.y,
+        targetPosition: getHandlePosition(tgtNode, targetHandle),
+        nodes,
+        sourceId: edge.source,
+        targetId: edge.target,
+      });
 
-    const points: { x: number; y: number }[] = [];
-    const matches = pathD.matchAll(/[ML]\s*(-?\d+\.?\d*)\s*(-?\d+\.?\d*)/g);
-    for (const match of matches) {
-      points.push({ x: parseFloat(match[1]), y: parseFloat(match[2]) });
+      points = [];
+      const matches = pathD.matchAll(/[ML]\s*(-?\d+\.?\d*)\s*(-?\d+\.?\d*)/g);
+      for (const match of matches) {
+        points.push({ x: parseFloat(match[1]), y: parseFloat(match[2]) });
+      }
     }
 
     for (let i = 0; i < points.length - 1; i++) {
       const p1 = points[i];
       const p2 = points[i + 1];
 
+      // The projection point snaps to the grid only ALONG the wire; across the
+      // wire it must keep the segment's exact coordinate. Wire runs are not
+      // guaranteed to lie on the 8px grid (a pin at x=516, say), and snapping
+      // the cross-axis used to shift the spliced junction a few px off the
+      // wire — the dot floated beside the line and the replacement edges
+      // picked up a permanent jog.
       if (Math.abs(p1.y - p2.y) < 1) {
         const minX = Math.min(p1.x, p2.x);
         const maxX = Math.max(p1.x, p2.x);
         if (point.x >= minX - 4 && point.x <= maxX + 4) {
           const dist = Math.abs(point.y - p1.y);
           if (dist < maxDist) {
-            return { edge, projectionPoint: { x: snapX, y: Math.round(p1.y / 8) * 8 } };
+            const along = Math.min(maxX, Math.max(minX, snapX));
+            return { edge, projectionPoint: { x: along, y: p1.y } };
           }
         }
       } else if (Math.abs(p1.x - p2.x) < 1) {
@@ -189,7 +227,8 @@ export function findNearestEdgeAtPoint(
         if (point.y >= minY - 4 && point.y <= maxY + 4) {
           const dist = Math.abs(point.x - p1.x);
           if (dist < maxDist) {
-            return { edge, projectionPoint: { x: Math.round(p1.x / 8) * 8, y: snapY } };
+            const along = Math.min(maxY, Math.max(minY, snapY));
+            return { edge, projectionPoint: { x: p1.x, y: along } };
           }
         }
       }

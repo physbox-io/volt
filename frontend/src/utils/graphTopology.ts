@@ -97,7 +97,13 @@ export function simplifyEdges(nodes: Node[], edges: Edge[]): Edge[] {
   return keepEdges;
 }
 
-export function mergeOverlappingNodesAndJunctions(nodes: Node[], edges: Edge[]): { nodes: Node[], edges: Edge[] } {
+export function mergeOverlappingNodesAndJunctions(
+  nodes: Node[],
+  edges: Edge[],
+  // Precise handle-coordinate lookup (e.g. React Flow's measured handleBounds).
+  // The default table only approximates instrument pins.
+  coordFn: (node: Node, handleId: string) => { x: number; y: number } = getHandleCoord
+): { nodes: Node[], edges: Edge[] } {
   let updatedNodes = [...nodes];
   let updatedEdges = [...edges];
 
@@ -137,7 +143,7 @@ export function mergeOverlappingNodesAndJunctions(nodes: Node[], edges: Edge[]):
       if (node.type === 'junction') continue;
       const handles = getHandlesForNode(node);
       for (const handle of handles) {
-        const coord = getHandleCoord(node, handle);
+        const coord = coordFn(node, handle);
         if (Math.hypot(coord.x - junc.position.x, coord.y - junc.position.y) < 12) {
           // Merge junction junc into this handle
           updatedEdges = updatedEdges.map(edge => {
@@ -189,14 +195,18 @@ export function mergeOverlappingNodesAndJunctions(nodes: Node[], edges: Edge[]):
   return { nodes: updatedNodes, edges: updatedEdges };
 }
 
-export function splitEdgesOnOverlappingNodes(nodes: Node[], edges: Edge[]): { nodes: Node[], edges: Edge[] } {
+export function splitEdgesOnOverlappingNodes(
+  nodes: Node[],
+  edges: Edge[],
+  renderedPaths?: Record<string, { x: number; y: number }[]>
+): { nodes: Node[], edges: Edge[] } {
   let updatedNodes = [...nodes];
   let updatedEdges = [...edges];
 
   const connectableNodes = updatedNodes.filter(n => n.type === 'junction' || n.type === 'ground');
 
   for (const node of connectableNodes) {
-    const match = findNearestEdgeAtPoint(updatedNodes, updatedEdges, node.position, node.id, 8);
+    const match = findNearestEdgeAtPoint(updatedNodes, updatedEdges, node.position, node.id, 8, renderedPaths);
     const matchedEdge = match?.edge ?? null;
 
     if (matchedEdge) {
