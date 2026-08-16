@@ -39,7 +39,9 @@ export function DocsModal({ onClose }: DocsModalProps) {
   const [activeTab, setActiveTab] = useState<'about' | 'usage' | 'simulation' | 'audio' | 'milling' | 'license'>('about');
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+    // Same modal layer as every other full-screen dialog. At z-[100] this tied
+    // with the note card, leaving DOM order to decide which one won.
+    <div className="fixed inset-0 bg-black/50 z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-200">
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-4xl w-full h-[80vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
           <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Documentation</h2>

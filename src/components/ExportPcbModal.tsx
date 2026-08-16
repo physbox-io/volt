@@ -240,6 +240,27 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const machineBusy =
     !!busy || isPaused || serialState.status === 'RUNNING' || serialState.status === 'PROBING';
 
+  /**
+   * An M0 / M6 pause: the stream stopped between lines and the machine has
+   * drained, so it is standing still and will accept commands.
+   */
+  const isStreamPaused =
+    serialState.status === 'PAUSED_TOOL' || serialState.status === 'PAUSED_MATERIAL';
+
+  /**
+   * Jogging and re-zeroing are allowed when idle *and* during a stream pause —
+   * changing a bit is exactly when work Z0 stops being valid, so re-probing has
+   * to be reachable without cancelling the job.
+   *
+   * Not during an operator feed hold: GRBL is in Hold and would refuse the
+   * move, and shifting position part-way through a cut would ruin the resume.
+   */
+  const manualMoveBlocked =
+    !!busy ||
+    isRunning ||
+    serialState.status === 'PROBING' ||
+    serialState.status === 'PAUSED_OPERATOR';
+
   const ensureConnected = async () => {
     if (serialState.connected) return true;
     setMachineError(null);
@@ -326,7 +347,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   };
 
   const handleZeroZ = async () => {
-    if (machineBusy) return;
+    if (manualMoveBlocked) return;
     if (!(await ensureConnected())) return;
     setBusy('zeroing');
     setMachineError(null);
@@ -346,7 +367,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * point — which is why the thickness has to be the real one.
    */
   const handleZeroZOnPlate = async () => {
-    if (machineBusy) return;
+    if (manualMoveBlocked) return;
     if (!(await ensureConnected())) return;
     setBusy('zeroing');
     setMachineError(null);
@@ -400,7 +421,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   };
 
   const handleJog = async (axis: 'X' | 'Y' | 'Z', direction: 1 | -1) => {
-    if (machineBusy) return;
+    if (manualMoveBlocked) return;
     if (!(await ensureConnected())) return;
     const dist = jogStep * direction;
     try {
@@ -469,7 +490,10 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+    // z-[99999] is the modal layer every other full-screen dialog here uses.
+    // At z-50 this sat *below* the note card's z-[100], so a preset's card
+    // floated over the dialog the user had just opened.
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
       <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[92vh]">
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-100/70 dark:bg-slate-950/60">
           <div className="flex items-center gap-3">
@@ -1021,10 +1045,42 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                         <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
                         <span>{serialState.pauseMessage || 'Job paused'}</span>
                       </div>
+                      {/* A new bit is a different length, so work Z0 is stale
+                          the moment it goes in. Without this the only choices
+                          were to resume at the wrong depth or throw the job
+                          away. Offered at any stream pause, since an M0 stop
+                          can also mean the tool came out. */}
+                      {isStreamPaused && (
+                        <div className="space-y-1.5 pb-1">
+                          <div className="text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
+                            A new bit changes the tool length — re-zero Z before resuming, or the
+                            job cuts at the wrong depth.
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleZeroZ}
+                              disabled={manualMoveBlocked}
+                              className="flex-1 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              {busy === 'zeroing' && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                              Re-zero Z on copper
+                            </button>
+                            <button
+                              onClick={handleZeroZOnPlate}
+                              disabled={manualMoveBlocked}
+                              className="flex-1 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] cursor-pointer"
+                            >
+                              Re-zero Z on plate
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex gap-2">
                         <button
                           onClick={handleResume}
-                          className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-semibold cursor-pointer"
+                          disabled={!!busy}
+                          className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded font-semibold cursor-pointer"
                         >
                           Resume
                         </button>
@@ -1064,7 +1120,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       <div></div>
                       <button
                         onClick={() => handleJog('Y', 1)}
-                        disabled={machineBusy}
+                        disabled={manualMoveBlocked}
                         className="w-10 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded flex items-center justify-center cursor-pointer"
                         title="Jog Y+"
                       >
@@ -1072,7 +1128,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       </button>
                       <button
                         onClick={() => handleJog('Z', 1)}
-                        disabled={machineBusy}
+                        disabled={manualMoveBlocked}
                         className="px-2 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded text-[10px] font-bold cursor-pointer"
                         title="Jog Z+"
                       >
@@ -1081,7 +1137,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
 
                       <button
                         onClick={() => handleJog('X', -1)}
-                        disabled={machineBusy}
+                        disabled={manualMoveBlocked}
                         className="w-10 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded flex items-center justify-center cursor-pointer"
                         title="Jog X-"
                       >
@@ -1097,7 +1153,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       </button>
                       <button
                         onClick={() => handleJog('X', 1)}
-                        disabled={machineBusy}
+                        disabled={manualMoveBlocked}
                         className="w-10 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded flex items-center justify-center cursor-pointer"
                         title="Jog X+"
                       >
@@ -1107,7 +1163,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       <div></div>
                       <button
                         onClick={() => handleJog('Y', -1)}
-                        disabled={machineBusy}
+                        disabled={manualMoveBlocked}
                         className="w-10 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded flex items-center justify-center cursor-pointer"
                         title="Jog Y-"
                       >
@@ -1115,7 +1171,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       </button>
                       <button
                         onClick={() => handleJog('Z', -1)}
-                        disabled={machineBusy}
+                        disabled={manualMoveBlocked}
                         className="px-2 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded text-[10px] font-bold cursor-pointer"
                         title="Jog Z-"
                       >
@@ -1126,7 +1182,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                     <div className="flex gap-2 pt-1">
                       <button
                         onClick={handleZeroZ}
-                        disabled={machineBusy}
+                        disabled={manualMoveBlocked}
                         title="Probe straight onto the copper, using the continuity clip"
                         className="flex-1 py-1 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
                       >
@@ -1135,7 +1191,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       </button>
                       <button
                         onClick={handleZeroZOnPlate}
-                        disabled={machineBusy}
+                        disabled={manualMoveBlocked}
                         title={`Probe onto the touch plate and set Z0 ${touchPlateMm}mm below the contact point`}
                         className="flex-1 py-1 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
                       >

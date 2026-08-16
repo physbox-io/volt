@@ -219,6 +219,59 @@ for (let i = 1; i < fake.received.length; i++) {
 }
 check('never travels without retracting first', !dragged);
 
+// --- 2b. Zeroing on a touch plate retracts UP, not into the plate ---------
+// `G10 L20 P1 Z12` makes the contact point work Z 12, so an absolute retract
+// to anything below 12 drives the tool down through the plate. This drilled a
+// hole in a real touch plate, so it is pinned here.
+await reconnect();
+await webSerialManager.zeroZ(12);
+
+const offsetIdx = fake.received.findIndex(l => /^G10 L20 P1 Z12/.test(l));
+check('plate offset is applied', offsetIdx >= 0, fake.received.join(' | '));
+
+const afterOffset = fake.received.slice(offsetIdx + 1);
+const firstMove = afterOffset.find(l => /(^|\s)G[01](\s|$)/.test(l));
+check(
+  'retracts relatively after zeroing on the plate',
+  !!firstMove && /(^|\s)G91(\s|$)/.test(firstMove),
+  firstMove || '(no move after offset)'
+);
+// An absolute Z move here is the exact bug: it is a coordinate in the frame
+// G10 just redefined, not a lift.
+check(
+  'no absolute Z move straight after the offset',
+  !afterOffset.some(l => /^G0 Z-?[\d.]+$/.test(l)),
+  afterOffset.join(' | ')
+);
+check('absolute mode restored after zeroing', afterOffset.some(l => /(^|\s)G90(\s|$)/.test(l)));
+
+// --- 2c. Re-zeroing at a tool change keeps the job paused, not idle -------
+// Changing a bit invalidates work Z0, so re-zeroing has to be possible without
+// cancelling the job — and it has to give the pause back when it finishes, or
+// the resume banner disappears with the job still half-streamed.
+await reconnect();
+await webSerialManager.startJob(['G90 G21', 'G1 X1.000', 'T1 M6', 'G1 X2.000'].join('\n'));
+check(
+  'tool change pauses the job',
+  webSerialManager.getState().status === 'PAUSED_TOOL',
+  webSerialManager.getState().status
+);
+
+await webSerialManager.zeroZ(12);
+check(
+  'still paused after a re-zero',
+  webSerialManager.getState().status === 'PAUSED_TOOL',
+  webSerialManager.getState().status
+);
+
+await webSerialManager.resumeJob();
+check(
+  'job runs to completion after the re-zero',
+  webSerialManager.getState().status === 'IDLE',
+  webSerialManager.getState().status
+);
+check('post-change line was sent', fake.received.includes('G1 X2.000'));
+
 // --- 3. A missed probe fails loudly instead of returning a flat map --------
 await reconnect({ probeMisses: true });
 let probeErr = '';

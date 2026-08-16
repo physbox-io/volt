@@ -43,6 +43,8 @@ const PROBE_TIMEOUT_MS = 60_000;
 const TELEMETRY_INTERVAL_MS = 1000;
 /** Touch plate thickness assumed when a caller does not pass one, in mm. */
 const DEFAULT_TOUCH_PLATE_MM = 12;
+/** How far the tool lifts off the surface after a probe touches, in mm. */
+const PROBE_RETRACT_MM = 5;
 
 /**
  * GRBL 1.1 `error:N` codes, in the operator's terms. Bare "error:9" says
@@ -860,16 +862,23 @@ class WebSerialManager {
    */
   public async zeroZ(touchPlateThicknessMm = DEFAULT_TOUCH_PLATE_MM): Promise<void> {
     this.assertUnlocked();
+    // Re-zeroing is the main reason to stop for a tool change, so this has to
+    // be callable mid-job. The status is restored rather than forced to IDLE:
+    // clobbering a PAUSED_TOOL would take the resume banner off screen while
+    // the job was still sitting there half-streamed.
+    const resumeStatus = this.state.status;
     this.updateState({ status: 'PROBING' });
     try {
       await this.sendLine('G21');
       await this.sendLine('G90');
       await this.probeDown(30, 50);
       await this.sendLine(`G10 L20 P1 Z${touchPlateThicknessMm.toFixed(3)}`);
-      await this.sendLine('G0 Z10.000');
+      await this.retract(PROBE_RETRACT_MM);
       await this.drain();
     } finally {
-      if (this.state.status === 'PROBING') this.updateState({ status: 'IDLE' });
+      if (this.state.status === 'PROBING') {
+        this.updateState({ status: resumeStatus === 'PROBING' ? 'IDLE' : resumeStatus });
+      }
     }
   }
 
@@ -880,17 +889,35 @@ class WebSerialManager {
    */
   public async zeroZOnSurface(): Promise<void> {
     this.assertUnlocked();
+    // See zeroZ: an in-job re-zero must give the pause back when it finishes.
+    const resumeStatus = this.state.status;
     this.updateState({ status: 'PROBING' });
     try {
       await this.sendLine('G21');
       await this.sendLine('G90');
       await this.probeDown(25, 50);
       await this.sendLine('G10 L20 P1 Z0');
-      await this.sendLine('G0 Z2.000');
+      await this.retract(PROBE_RETRACT_MM);
       await this.drain();
     } finally {
-      if (this.state.status === 'PROBING') this.updateState({ status: 'IDLE' });
+      if (this.state.status === 'PROBING') {
+        this.updateState({ status: resumeStatus === 'PROBING' ? 'IDLE' : resumeStatus });
+      }
     }
+  }
+
+  /**
+   * Lifts the tool by a distance, in relative mode.
+   *
+   * Retracting off a probe has to be relative. An absolute `G0 Z<n>` is a move
+   * to a coordinate in a frame that `G10 L20` has just redefined, and the tool
+   * is standing at whatever height the probe stopped at: after zeroing on a
+   * 12 mm plate the contact point *is* work Z 12, so an absolute `G0 Z10`
+   * drives 2 mm further down — into the plate.
+   */
+  private async retract(mm: number): Promise<void> {
+    await this.sendLine(`G91 G0 Z${Math.abs(mm).toFixed(3)}`);
+    await this.sendLine('G90');
   }
 
   /**
