@@ -17,6 +17,20 @@ import {
   type ProbeGrid,
   type ProbePoint,
 } from './meshLeveler';
+import {
+  WebSerialTransport,
+  WebSocketTransport,
+  type GrblTransport,
+} from './grblTransport';
+
+/** GRBL realtime bytes: acted on the instant they arrive, never acknowledged. */
+const RT_STATUS = 0x3f; // '?'  status report
+const RT_HOLD = 0x21; // '!'  feed hold
+const RT_RESUME = 0x7e; // '~'  cycle start / resume
+const RT_SOFT_RESET = 0x18; // Ctrl-X soft reset
+
+/** How the machine is reached. USB Web Serial stays the default. */
+export type TransportMode = 'usb' | 'wifi';
 
 /** GRBL's serial RX buffer. 128 bytes, kept one byte clear for safety. */
 const GRBL_RX_BUFFER_BYTES = 127;
@@ -80,10 +94,13 @@ interface PendingAck {
 }
 
 class WebSerialManager {
-  private port: any = null;
-  private reader: ReadableStreamDefaultReader<string> | null = null;
-  private writer: WritableStreamDefaultWriter<string> | null = null;
-  private isReading = false;
+  /** The active byte pipe — a USB Web Serial port or a WiFi WebSocket proxy. */
+  private transport: GrblTransport | null = null;
+  /** Chosen transport + its WiFi target. Set via setTransport before connect. */
+  private transportMode: TransportMode = 'usb';
+  private wifiIp = '';
+  /** Accumulates serial RX across chunks; parsed line by line on each '\n'. */
+  private rxBuffer = '';
   private statusPollTimer: any = null;
 
   private gcodeQueue: string[] = [];
@@ -136,7 +153,22 @@ class WebSerialManager {
   private lastTelemetryStatus: MachineStatus | null = null;
 
   public isSupported(): boolean {
+    // WiFi rides on WebSocket, which is always available; USB needs Web Serial.
+    if (this.transportMode === 'wifi') return true;
     return typeof navigator !== 'undefined' && 'serial' in navigator;
+  }
+
+  /**
+   * Chooses how the machine is reached. Call before connect(). USB (Web Serial)
+   * is the default; WiFi routes byte I/O through a WebSocket proxy at `ip`.
+   */
+  public setTransport(mode: TransportMode, ip?: string): void {
+    this.transportMode = mode;
+    if (ip !== undefined) this.wifiIp = ip;
+  }
+
+  public getTransportMode(): TransportMode {
+    return this.transportMode;
   }
 
   public getState(): MachineState {
@@ -203,7 +235,10 @@ class WebSerialManager {
     this.notify();
   }
 
-  /** Requests USB port from user and opens connection at 115200 baud. */
+  /**
+   * Opens the machine link over the selected transport (USB by default; WiFi if
+   * chosen via setTransport) at 115200 baud. For USB this prompts for a port.
+   */
   public async connect(baudRate = 115200): Promise<boolean> {
     if (this.state.connected) return true;
 
@@ -214,29 +249,27 @@ class WebSerialManager {
 
     try {
       this.updateState({ status: 'CONNECTING' });
-      this.port = await (navigator as any).serial.requestPort();
-      await this.port!.open({ baudRate });
 
-      // These pipes reject when the port closes or the cable is pulled; that
-      // is handled by disconnect(), so swallow it rather than leaving a
-      // floating unhandled rejection.
-      const textDecoder = new TextDecoderStream();
-      this.port!.readable!.pipeTo(textDecoder.writable).catch(() => {});
-      this.reader = textDecoder.readable.getReader();
+      const transport: GrblTransport =
+        this.transportMode === 'wifi'
+          ? new WebSocketTransport(this.wifiIp, baudRate)
+          : new WebSerialTransport(baudRate);
+      transport.onData(chunk => this.handleData(chunk));
+      await transport.connect();
+      this.transport = transport;
 
-      const textEncoder = new TextEncoderStream();
-      textEncoder.readable.pipeTo(this.port!.writable!).catch(() => {});
-      this.writer = textEncoder.writable.getWriter();
-
-      this.isReading = true;
-      this.readLoop();
-
-      this.updateState({ status: 'IDLE', connected: true, lastError: undefined });
+      this.rxBuffer = '';
+      this.updateState({
+        status: 'IDLE',
+        connected: true,
+        lastError: undefined,
+        portName: this.transportMode === 'wifi' ? `WiFi ${this.wifiIp}` : 'USB Serial',
+      });
 
       // GRBL status polling. '?' is a realtime command: it bypasses the RX
       // buffer and draws no 'ok', so it is safe to send during a job too.
       this.statusPollTimer = setInterval(() => {
-        if (this.state.connected) this.sendRaw('?');
+        if (this.state.connected) void this.writeRealtime(RT_STATUS);
       }, 250);
 
       // Ask for the controller's settings so limits and rates can be read
@@ -247,29 +280,26 @@ class WebSerialManager {
 
       return true;
     } catch (e: any) {
-      this.updateState({ status: 'ERROR', connected: false, lastError: e.message || 'Failed to open serial port' });
+      this.transport = null;
+      this.updateState({ status: 'ERROR', connected: false, lastError: e.message || 'Failed to open the machine link' });
       return false;
     }
   }
 
-  /** Disconnects from serial port. */
+  /** Closes the machine link and tears down the transport. */
   public async disconnect() {
-    this.isReading = false;
     this.isJobRunning = false;
     if (this.statusPollTimer) clearInterval(this.statusPollTimer);
-    this.failPending(new Error('Serial port disconnected'));
+    this.failPending(new Error('Machine link disconnected'));
 
     try {
-      if (this.reader) await this.reader.cancel();
-      if (this.writer) await this.writer.close();
-      if (this.port) await this.port.close();
+      if (this.transport) await this.transport.disconnect();
     } catch (e) {
       // Ignore cleanup errors
     }
 
-    this.port = null;
-    this.reader = null;
-    this.writer = null;
+    this.transport = null;
+    this.rxBuffer = '';
     this.updateState({ status: 'DISCONNECTED', connected: false, progressPercent: 0, probeProgress: undefined });
   }
 
@@ -319,16 +349,17 @@ class WebSerialManager {
    * return value, which would silently collapse this back into send-and-wait.
    */
   private async enqueueLine(line: string): Promise<{ ack: Promise<void> }> {
-    if (!this.writer) throw new Error('Not connected to a machine');
+    if (!this.transport) throw new Error('Not connected to a machine');
 
-    const payload = line + '\n';
-    const bytes = payload.length;
+    // The transport appends the '\n', but it is still a byte on the wire, so it
+    // is counted against GRBL's RX buffer exactly as before.
+    const bytes = line.length + 1;
 
     // The second clause lets an oversized line through once the buffer is
     // empty, rather than waiting forever for room that will never exist.
     while (this.inflightBytes() + bytes > GRBL_RX_BUFFER_BYTES && this.inflight.length > 0) {
       await new Promise<void>(resolve => this.bufferWaiters.push(resolve));
-      if (!this.writer) throw new Error('Not connected to a machine');
+      if (!this.transport) throw new Error('Not connected to a machine');
     }
 
     const ack = new Promise<void>((resolve, reject) => {
@@ -338,7 +369,7 @@ class WebSerialManager {
       this.inflight.push({ bytes, resolve, reject, timer });
     });
 
-    await this.sendRaw(payload);
+    await this.transport.writeLine(line);
     return { ack };
   }
 
@@ -357,45 +388,28 @@ class WebSerialManager {
     }
   }
 
-  private async sendRaw(data: string) {
-    if (this.writer) {
-      await this.writer.write(data);
-    }
-  }
-
   /**
    * Writes a GRBL realtime byte. These jump the line: they are acted on the
    * moment they arrive rather than being queued behind the job, which is the
    * whole point of a feed hold. They are never acknowledged with an 'ok', so
    * they must not go through `enqueueLine`.
    */
-  private async writeRealtime(byte: string): Promise<void> {
-    if (!this.writer || !this.state.connected) return;
-    try {
-      await this.writer.write(byte);
-    } catch {
-      // The read loop reports the disconnect; a realtime byte is fire-and-forget.
-    }
+  private async writeRealtime(byte: number): Promise<void> {
+    if (!this.transport || !this.state.connected) return;
+    await this.transport.writeRealtime(byte);
   }
 
-  /** Continuous read loop processing serial input responses from GRBL/Marlin. */
-  private async readLoop() {
-    let buffer = '';
-    while (this.isReading && this.reader) {
-      try {
-        const { value, done } = await this.reader.read();
-        if (done) break;
-        if (value) {
-          buffer += value;
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-          for (const l of lines) {
-            this.parseLine(l.trim());
-          }
-        }
-      } catch (e) {
-        break;
-      }
+  /**
+   * Handles a raw serial RX chunk from the transport, whether it arrived over
+   * USB or was relayed as a WebSocket `grbl_data` frame. Chunks are byte-for-
+   * byte serial text, so they are accumulated and split on '\n' identically.
+   */
+  private handleData(chunk: string) {
+    this.rxBuffer += chunk;
+    const lines = this.rxBuffer.split('\n');
+    this.rxBuffer = lines.pop() || '';
+    for (const l of lines) {
+      this.parseLine(l.trim());
     }
   }
 
@@ -611,7 +625,7 @@ class WebSerialManager {
     if (!this.isJobRunning || this.isPaused) return;
     this.isPaused = true;
     this.pauseKind = 'operator';
-    await this.writeRealtime('!');
+    await this.writeRealtime(RT_HOLD);
     this.updateState({
       status: 'PAUSED_OPERATOR',
       pauseMessage: 'Paused. The spindle is still running and Z has not moved.',
@@ -628,7 +642,7 @@ class WebSerialManager {
     // Only a feed hold needs cycle start. After a stream pause the machine has
     // already drained and is idle, and `~` there would be a no-op at best.
     if (kind === 'operator') {
-      await this.writeRealtime('~');
+      await this.writeRealtime(RT_RESUME);
     }
     return this.processQueue();
   }
@@ -857,11 +871,11 @@ class WebSerialManager {
 
   /** Emergency Stop (Ctrl+X soft reset, then spindle off). */
   public async eStop(): Promise<void> {
-    if (!this.writer) return;
+    if (!this.transport) return;
     this.isJobRunning = false;
-    await this.sendRaw('\x18'); // Ctrl+X soft reset
+    await this.writeRealtime(RT_SOFT_RESET); // Ctrl+X soft reset
     this.failPending(new Error('Emergency stop'));
-    await this.sendRaw('M5\n');
+    await this.transport.writeLine('M5');
   }
 }
 

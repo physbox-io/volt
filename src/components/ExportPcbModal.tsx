@@ -82,6 +82,13 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const [isAirCutMode, setIsAirCutMode] = useState<boolean>(false);
   const [jogStep, setJogStep] = useState<number>(1.0);
 
+  // How the machine is reached: direct USB (Web Serial) or WiFi via an ESP32
+  // WebSocket proxy. USB stays the default; the WiFi IP is remembered.
+  const [transportMode, setTransportMode] = useState<'usb' | 'wifi'>(
+    () => (localStorage.getItem('grblTransport') === 'wifi' ? 'wifi' : 'usb')
+  );
+  const [wifiIp, setWifiIp] = useState<string>(() => localStorage.getItem('grblWifiIp') || '');
+
   React.useEffect(() => {
     return webSerialManager.addListener(state => {
       setSerialState(state);
@@ -195,8 +202,19 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const ensureConnected = async () => {
     if (serialState.connected) return true;
     setMachineError(null);
+    if (transportMode === 'wifi' && !wifiIp.trim()) {
+      setMachineError('Enter the device IP address for WiFi mode');
+      return false;
+    }
+    webSerialManager.setTransport(transportMode, wifiIp.trim());
     const connected = await webSerialManager.connect();
-    if (!connected) setMachineError('Could not open the serial port');
+    if (!connected) {
+      setMachineError(
+        transportMode === 'wifi'
+          ? `Could not connect to the device at ${wifiIp.trim()}`
+          : 'Could not open the serial port'
+      );
+    }
     return connected;
   };
 
@@ -799,20 +817,67 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
 
               {activeTab === 'serial' && (
                 <div className="space-y-3">
-                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between">
-                    <div>
-                      <div className="font-semibold text-slate-200">GRBL Machine Connection</div>
-                      <div className="text-[10px] text-slate-400">
-                        {serialState.connected ? `Connected (${serialState.portName || 'Serial'})` : 'Disconnected'}
+                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-semibold text-slate-200">GRBL Machine Connection</div>
+                        <div className="text-[10px] text-slate-400">
+                          {serialState.connected ? `Connected (${serialState.portName || 'Serial'})` : 'Disconnected'}
+                        </div>
                       </div>
+                      <button
+                        onClick={ensureConnected}
+                        disabled={serialState.connected}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded cursor-pointer"
+                      >
+                        {serialState.connected
+                          ? 'Connected'
+                          : transportMode === 'wifi'
+                          ? 'Connect WiFi'
+                          : 'Connect Serial'}
+                      </button>
                     </div>
-                    <button
-                      onClick={ensureConnected}
-                      disabled={serialState.connected}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded cursor-pointer"
-                    >
-                      {serialState.connected ? 'Connected' : 'Connect Serial'}
-                    </button>
+
+                    {/* Transport picker: USB (Web Serial) or WiFi (ESP32 proxy) */}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {(['usb', 'wifi'] as const).map(mode => (
+                        <button
+                          key={mode}
+                          onClick={() => {
+                            setTransportMode(mode);
+                            localStorage.setItem('grblTransport', mode);
+                          }}
+                          disabled={serialState.connected}
+                          className={`py-1.5 rounded text-[11px] font-semibold border cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                            transportMode === mode
+                              ? 'bg-emerald-600/30 border-emerald-500 text-emerald-300'
+                              : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          {mode === 'usb' ? 'USB (Web Serial)' : 'WiFi'}
+                        </button>
+                      ))}
+                    </div>
+
+                    {transportMode === 'wifi' && (
+                      <div>
+                        <label className="text-[10px] text-slate-400 font-semibold mb-1 block">
+                          Device IP address
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="192.168.1.50"
+                          value={wifiIp}
+                          disabled={serialState.connected}
+                          onChange={e => {
+                            setWifiIp(e.target.value);
+                            localStorage.setItem('grblWifiIp', e.target.value);
+                          }}
+                          className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200 font-mono text-[11px] disabled:opacity-40"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {/* Operator feed hold, while a job is actually moving */}
