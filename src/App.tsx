@@ -371,14 +371,28 @@ export default function App() {
   const heltecNode = nodes.find(n => n.type === 'heltec_v4');
   const heltecId = heltecNode?.id;
   const heltecIp = heltecNode?.data?.ip;
+  // Opt-in only: the board is reached over plain ws://, which the browser blocks as
+  // mixed content when the app is served over https (and a blocked/failing connection
+  // attempt can take WebSerial down with it). Nothing dials out until the user clicks
+  // Connect on the node or starts a HIL run.
+  const heltecHilEnabled = !!heltecNode?.data?.hilEnabled;
 
   useEffect(() => {
-    if (heltecId && heltecIp) {
+    if (heltecId && heltecIp && heltecHilEnabled) {
       if (!hilConnectedRef.current && (!hilSocketRef.current || hilSocketRef.current.readyState === WebSocket.CLOSED)) {
         const node = nodes.find(n => n.id === heltecId);
         if (node) {
           ensureHILConnection(heltecIp as string, node);
         }
+      }
+    } else if (!heltecHilEnabled && hilSocketRef.current) {
+      // User turned HIL off (or the node lost its enable flag): tear the socket down.
+      hilRunningRef.current = false;
+      hilConnectedRef.current = false;
+      try { hilSocketRef.current.close(); } catch (e) {}
+      hilSocketRef.current = null;
+      if (heltecId) {
+        setNodes(nds => nds.map(n => n.id === heltecId ? { ...n, data: { ...n.data, isConnected: false } } : n));
       }
     }
     return () => {
@@ -394,7 +408,7 @@ export default function App() {
         }
       }
     };
-  }, [heltecId, heltecIp, nodes]);
+  }, [heltecId, heltecIp, heltecHilEnabled, nodes]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => {
@@ -439,20 +453,37 @@ export default function App() {
 
 
 
-  const ensureHILConnection = (ip: string, node: Node) => {
+  /** Returns false if no connection could even be attempted (e.g. blocked as mixed content). */
+  const ensureHILConnection = (ip: string, node: Node): boolean => {
     if (hilSocketRef.current && (hilSocketRef.current.readyState === WebSocket.OPEN || hilSocketRef.current.readyState === WebSocket.CONNECTING)) {
-      return;
+      return true;
     }
 
-    console.log(`[HIL] Connecting to CYD board at ws://${ip}`);
-    setNodes(nds => nds.map(n => n.id === node.id ? { ...n, data: { ...n.data, isConnected: false } } : n));
-    
+    // ws:// from an https page is blocked by the browser as mixed content, and the
+    // failed handshake can also wedge WebSerial. Bail out with a clear message instead
+    // of letting the socket fail opaquely.
+    const isSecurePage = typeof window !== 'undefined' && window.location.protocol === 'https:';
+    const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(ip);
+    if (isSecurePage && !isLocalHost && !/^wss:\/\//i.test(ip)) {
+      console.warn(`[HIL] Refusing to open ws://${ip} from an https page — the browser blocks mixed content. Serve the app over http (or tunnel the board over wss://) to use HIL.`);
+      setNodes(nds => nds.map(n => n.id === node.id
+        ? { ...n, data: { ...n.data, isConnected: false, hilEnabled: false, hilError: 'Blocked: ws:// cannot be opened from an https page.' } }
+        : n));
+      return false;
+    }
+
+    const url = /^wss?:\/\//i.test(ip) ? ip : `ws://${ip}`;
+    console.log(`[HIL] Connecting to CYD board at ${url}`);
+    // Mark the node as HIL-enabled so the background effect doesn't tear this socket
+    // down when the connection was initiated by starting a run rather than by the button.
+    setNodes(nds => nds.map(n => n.id === node.id ? { ...n, data: { ...n.data, isConnected: false, hilEnabled: true, hilError: undefined } } : n));
+
     try {
-      const ws = new WebSocket(`ws://${ip}`);
+      const ws = new WebSocket(url);
       hilSocketRef.current = ws;
 
       ws.onopen = () => {
-        console.log(`[HIL] WebSocket connected to CYD at ws://${ip}`);
+        console.log(`[HIL] WebSocket connected to CYD at ${url}`);
         hilConnectedRef.current = true;
         setNodes(nds => nds.map(n => n.id === node.id ? { ...n, data: { ...n.data, isConnected: true } } : n));
 
@@ -626,7 +657,9 @@ export default function App() {
       };
     } catch (err) {
       console.error("[HIL] Failed to open WebSocket:", err);
+      return false;
     }
+    return true;
   };
 
   // Which of the heltec node's GPIO pins actually have a wire attached in the circuit graph.
@@ -1219,7 +1252,16 @@ export default function App() {
             }
           }, 150);
         } else {
-          ensureHILConnection(ip, heltecNode);
+          if (!ensureHILConnection(ip, heltecNode)) {
+            // Couldn't even attempt the socket (e.g. ws:// blocked on an https page) —
+            // unwind the run instead of leaving the UI stuck in "simulating".
+            hilRunningRef.current = false;
+            hilBackgroundPollActiveRef.current = false;
+            setIsSpiceRunning(false);
+            setIsSimulating(false);
+            alert(`Can't reach the board at ${ip}: the browser blocks plain ws:// connections from an https page. Run the app over http (or expose the board over wss://) to use hardware-in-the-loop.`);
+            return { ok: false };
+          }
         }
         return { ok: true };
       }

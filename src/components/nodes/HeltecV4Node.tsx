@@ -1,4 +1,4 @@
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { Wifi, WifiOff, ExternalLink } from 'lucide-react';
 import { memo } from 'react';
 import type { NodePropertiesProps } from './registry';
@@ -31,6 +31,10 @@ export function heltecV4DefaultData() {
       GPIO_37: 0.0,
       GPIO_41: 0.0
     },
+    // Opt-in: nothing contacts the board over ws:// until the user clicks Connect on
+    // the node (or starts a HIL run). Auto-connecting from an https page is blocked as
+    // mixed content and can take WebSerial down with it.
+    hilEnabled: false,
     isConnected: false
   };
 }
@@ -180,8 +184,16 @@ export function HeltecV4Properties({ node, updateData, isSimulating }: NodePrope
   );
 }
 
-export const HeltecV4Node = memo(function HeltecV4Node({ data, selected }: any) {
+export const HeltecV4Node = memo(function HeltecV4Node({ id, data, selected }: any) {
+  const { setNodes } = useReactFlow();
   const isConnected = !!data.isConnected;
+  const hilEnabled = !!data.hilEnabled;
+
+  const toggleHil = () => {
+    setNodes((nds: any[]) => nds.map(n =>
+      n.id === id ? { ...n, data: { ...n.data, hilEnabled: !hilEnabled } } : n
+    ));
+  };
   const pins = data.pins || {};
   const pinVoltages = data.pinVoltages || {};
 
@@ -240,19 +252,39 @@ export const HeltecV4Node = memo(function HeltecV4Node({ data, selected }: any) 
           </a>
         </div>
         <div className="flex items-center gap-1.5">
-          {isConnected ? (
-            <>
-              <Wifi className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-              <span className="text-[8px] text-emerald-400 font-mono">CONNECTED</span>
-            </>
-          ) : (
-            <>
-              <WifiOff className="w-3.5 h-3.5 text-slate-500" />
-              <span className="text-[8px] text-slate-500 font-mono">OFFLINE</span>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={toggleHil}
+            className="nodrag flex items-center gap-1.5 px-1 py-0.5 rounded hover:bg-slate-900 transition-colors"
+            title={hilEnabled
+              ? 'Disconnect from the board (stops the ws:// connection)'
+              : 'Connect to the board over ws:// — only works from a plain-http page or over a secure tunnel'}
+          >
+            {isConnected ? (
+              <>
+                <Wifi className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                <span className="text-[8px] text-emerald-400 font-mono">CONNECTED</span>
+              </>
+            ) : hilEnabled ? (
+              <>
+                <Wifi className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                <span className="text-[8px] text-amber-400 font-mono">CONNECTING</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="w-3.5 h-3.5 text-slate-500" />
+                <span className="text-[8px] text-slate-500 font-mono">CONNECT</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
+
+      {data.hilError && (
+        <div className="px-3 py-1.5 text-[8px] font-mono text-rose-400 bg-rose-950/40 border-b border-rose-900/50 leading-snug">
+          {data.hilError}
+        </div>
+      )}
 
       {/* Pins layout */}
       <div className="p-3 grid grid-cols-2 gap-x-4 gap-y-3 relative">

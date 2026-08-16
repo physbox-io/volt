@@ -8,7 +8,10 @@ export interface CircuitPreset {
   noteCard?: string;
 }
 
-export const DEFAULT_PRESET_KEY = 'heltecCc1101';
+// Keep this a plain simulated circuit: presets containing a Heltec HIL node try to
+// reach the board over ws://, which the browser blocks as mixed content on the
+// deployed (https) site and can knock out WebSerial along with it.
+export const DEFAULT_PRESET_KEY = 'basicBlink';
 
 export const empty: CircuitPreset = {
   name: 'Empty',

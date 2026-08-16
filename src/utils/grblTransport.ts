@@ -25,6 +25,14 @@ export interface GrblTransport {
 /** Longest wait for the WiFi proxy to open the machine link before giving up. */
 const WS_CONNECT_TIMEOUT_MS = 8000;
 
+/** The subset of proxy JSON frames this transport acts on. */
+interface GrblFrame {
+  type?: string;
+  open?: boolean;
+  err?: string;
+  data?: string;
+}
+
 // ---------------------------------------------------------------------------
 // USB — Web Serial
 // ---------------------------------------------------------------------------
@@ -196,9 +204,9 @@ export class WebSocketTransport implements GrblTransport {
 
       this.ws.onmessage = ev => {
         if (typeof ev.data !== 'string') return;
-        let msg: any;
+        let msg: GrblFrame;
         try {
-          msg = JSON.parse(ev.data);
+          msg = JSON.parse(ev.data) as GrblFrame;
         } catch {
           return;
         }
