@@ -12,7 +12,7 @@ RUN npm install
 RUN npm run build
 
 # Build the frontend application
-WORKDIR /app/frontend
+WORKDIR /app
 RUN npm install
 RUN npm run build
 
@@ -20,7 +20,7 @@ RUN npm run build
 FROM nginx:stable-alpine
 
 # Copy built assets from builder stage
-COPY --from=builder /app/frontend/dist /usr/share/nginx/html
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf

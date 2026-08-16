@@ -22,9 +22,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-*.txt
-!src/components/systemInstructions.txt
-output*
+
+# App scratch output (scoped to the app root / src so the vendored
+# ngspice sources under ngspice-wasm/ keep their .txt fixtures)
+/*.txt
+/src/**/*.txt
+!/src/components/systemInstructions.txt
+/output*
 *.pid
-revert.js
-test_*.js
+/revert.js
+/test_*.js

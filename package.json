@@ -15,7 +15,7 @@
     "@xyflow/react": "^12.10.2",
     "clipper-lib": "^6.4.2",
     "clsx": "^2.1.1",
-    "eecircuit-engine": "file:../ngspice-wasm/EEcircuit-engine",
+    "eecircuit-engine": "file:./ngspice-wasm/EEcircuit-engine",
     "lucide-react": "^1.14.0",
     "puppeteer": "^24.42.0",
     "react": "^19.2.5",

@@ -150,5 +150,5 @@ If component types, data fields, or simulation actions in the React app change, 
 2. **`mcp-docs/circuit.json`** inside the MCP server repository (`expt_mcp/mcp-docs/circuit.json`). This is a fallback copy committed to the MCP repo so users can run it standalone without cloning the simulator.
 
 If you also change React hook commands:
-- Update **`frontend/src/hooks/useMCPBridge.ts`** to handle the command and map it to canvas nodes/wires.
+- Update **`src/hooks/useMCPBridge.ts`** to handle the command and map it to canvas nodes/wires.
 

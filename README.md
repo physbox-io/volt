@@ -14,7 +14,7 @@ A high-fidelity, interactive electronics playground built with React and powered
 
 ## 📂 Project Structure
 
-- `frontend/`: The React application containing the UI, component library, and circuit logic.
+- `src/`: The React application containing the UI, component library, and circuit logic.
 - `ngspice-wasm/EEcircuit-engine/`: The TypeScript wrapper for the Ngspice WASM module.
 - `ngspice-wasm/ngspice-ngspice/`: The original C source code and build infrastructure for Ngspice.
 
@@ -33,20 +33,19 @@ A high-fidelity, interactive electronics playground built with React and powered
    npm run build
    ```
 
-2. **Install Frontend Dependencies**:
+2. **Install Frontend Dependencies** (from the repo root):
    ```bash
-   cd ../../frontend
+   cd ../..
    npm install
    ```
 
 ### Running the Application
 
-Start the development server from the `frontend` directory:
+Start the development server from the repo root:
 ```bash
-cd frontend
 npm run dev
 ```
-The application will be available at `http://localhost:5173`.
+The application will be available at `http://localhost:5174`.
 
 ## 🧪 Testing
 

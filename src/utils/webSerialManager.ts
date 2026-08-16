@@ -9,6 +9,7 @@
 // drag the bit across the board.
 // ---------------------------------------------------------------------------
 
+import { postMachineTelemetry } from './apiClient';
 import {
   warpGcode,
   gridFromPoints,
@@ -23,6 +24,8 @@ const GRBL_RX_BUFFER_BYTES = 127;
 const ACK_TIMEOUT_MS = 180_000;
 /** Longest wait for a [PRB:] report after G38.2. */
 const PROBE_TIMEOUT_MS = 60_000;
+/** Minimum gap between telemetry posts, when the status has not changed. */
+const TELEMETRY_INTERVAL_MS = 1000;
 
 export type MachineStatus =
   | 'DISCONNECTED'
@@ -32,6 +35,7 @@ export type MachineStatus =
   | 'PROBING'
   | 'PAUSED_MATERIAL'
   | 'PAUSED_TOOL'
+  | 'PAUSED_OPERATOR'
   | 'ALARM'
   | 'ERROR';
 
@@ -87,6 +91,16 @@ class WebSerialManager {
   private completedLines = 0;
   private isJobRunning = false;
   private isPaused = false;
+  /**
+   * How the current pause came about. A stream pause (M0 / M6) drained the
+   * buffer and left the machine idle, so resuming just feeds it again. An
+   * operator pause is a GRBL feed hold with the planner still full, so resuming
+   * has to send cycle start before anything else moves.
+   */
+  private pauseKind: 'stream' | 'operator' | null = null;
+
+  /** GRBL's `$$` settings, populated on connect. Empty until they arrive. */
+  private grblSettings = new Map<number, number>();
 
   /** Lines written to the port whose 'ok' has not come back yet, in order. */
   private inflight: PendingAck[] = [];
@@ -111,6 +125,16 @@ class WebSerialManager {
 
   private listeners: Set<MachineStateListener> = new Set();
 
+  /**
+   * Telemetry pacing. The status poll runs at 4Hz and every reply calls
+   * `notify()`, so posting from there unthrottled would be a request per poll
+   * for the whole length of a job. Position is sampled at 1Hz instead, while a
+   * change of status goes out immediately — that is the part someone watching
+   * remotely actually needs promptly.
+   */
+  private lastTelemetryAt = 0;
+  private lastTelemetryStatus: MachineStatus | null = null;
+
   public isSupported(): boolean {
     return typeof navigator !== 'undefined' && 'serial' in navigator;
   }
@@ -128,6 +152,50 @@ class WebSerialManager {
   private notify() {
     const currentState = this.getState();
     this.listeners.forEach(l => l(currentState));
+    this.reportTelemetry(currentState);
+  }
+
+  /** Maps our machine status onto the shared cross-app telemetry vocabulary. */
+  private telemetryStatus(status: MachineStatus): string {
+    switch (status) {
+      case 'RUNNING':
+      case 'PROBING':
+        return 'running';
+      case 'PAUSED_MATERIAL':
+      case 'PAUSED_TOOL':
+      case 'PAUSED_OPERATOR':
+        return 'paused';
+      case 'ALARM':
+      case 'ERROR':
+        return 'error';
+      default:
+        return 'idle';
+    }
+  }
+
+  /**
+   * Streams machine state to the PhysBox API so a job can be watched from
+   * another device. `postMachineTelemetry` is a no-op unless the user is signed
+   * in, so this costs nothing for a local-only user.
+   */
+  private reportTelemetry(state: MachineState) {
+    if (!state.connected) return;
+
+    const now = Date.now();
+    const statusChanged = state.status !== this.lastTelemetryStatus;
+    if (!statusChanged && now - this.lastTelemetryAt < TELEMETRY_INTERVAL_MS) return;
+
+    this.lastTelemetryAt = now;
+    this.lastTelemetryStatus = state.status;
+
+    void postMachineTelemetry('circuit', {
+      status: this.telemetryStatus(state.status),
+      progressPercent: state.progressPercent,
+      currentLine: state.currentLine,
+      totalLines: state.totalLines,
+      xyz: { ...state.wpos },
+      lastError: state.lastError ?? null,
+    });
   }
 
   private updateState(patch: Partial<MachineState>) {
@@ -170,6 +238,12 @@ class WebSerialManager {
       this.statusPollTimer = setInterval(() => {
         if (this.state.connected) this.sendRaw('?');
       }, 250);
+
+      // Ask for the controller's settings so limits and rates can be read
+      // rather than assumed. Failure is not fatal — a controller that does not
+      // answer `$$` just leaves the map empty.
+      this.grblSettings.clear();
+      this.sendLine('$$').catch(() => {});
 
       return true;
     } catch (e: any) {
@@ -289,6 +363,21 @@ class WebSerialManager {
     }
   }
 
+  /**
+   * Writes a GRBL realtime byte. These jump the line: they are acted on the
+   * moment they arrive rather than being queued behind the job, which is the
+   * whole point of a feed hold. They are never acknowledged with an 'ok', so
+   * they must not go through `enqueueLine`.
+   */
+  private async writeRealtime(byte: string): Promise<void> {
+    if (!this.writer || !this.state.connected) return;
+    try {
+      await this.writer.write(byte);
+    } catch {
+      // The read loop reports the disconnect; a realtime byte is fire-and-forget.
+    }
+  }
+
   /** Continuous read loop processing serial input responses from GRBL/Marlin. */
   private async readLoop() {
     let buffer = '';
@@ -335,10 +424,28 @@ class WebSerialManager {
 
       let status: MachineStatus = this.state.status;
       if (grblState.startsWith('Alarm')) status = 'ALARM';
-      else if (grblState.startsWith('Hold')) status = 'PAUSED_MATERIAL';
+      // A reported Hold only names the pause when we do not already know why we
+      // are paused — otherwise the poll would relabel an operator feed hold or a
+      // tool change as a material swap a fraction of a second after it started.
+      else if (grblState.startsWith('Hold')) {
+        status = this.isPaused ? this.state.status : 'PAUSED_OPERATOR';
+      }
       else if (!this.isJobRunning && this.state.status !== 'PROBING') status = 'IDLE';
 
       this.updateState({ mpos, wpos, status });
+      return;
+    }
+
+    // Settings report: `$30=1000`. GRBL answers `$$` with one of these per
+    // setting, each followed by its own 'ok', so they are read here and not
+    // treated as a response to anything.
+    if (/^\$\d+=/.test(line)) {
+      const [key, value] = line.slice(1).split('=');
+      const num = parseInt(key, 10);
+      const val = parseFloat(value);
+      if (Number.isFinite(num) && Number.isFinite(val)) {
+        this.grblSettings.set(num, val);
+      }
       return;
     }
 
@@ -440,6 +547,7 @@ class WebSerialManager {
       if (line.startsWith('M0') || line.startsWith('M00')) {
         await this.drain();
         this.isPaused = true;
+        this.pauseKind = 'stream';
         this.currentQueueIndex++;
         this.updateState({ status: 'PAUSED_MATERIAL', pauseMessage: 'M0 Pause: Swap material sheet and click Resume.' });
         return;
@@ -447,6 +555,7 @@ class WebSerialManager {
       if (line.includes('M6') || line.startsWith('T')) {
         await this.drain();
         this.isPaused = true;
+        this.pauseKind = 'stream';
         this.currentQueueIndex++;
         this.updateState({ status: 'PAUSED_TOOL', pauseMessage: `Tool Change: ${line}. Change bit and click Resume.` });
         return;
@@ -492,11 +601,35 @@ class WebSerialManager {
     }
   }
 
-  /** Resumes execution after interactive pause (M0 or M6 tool change). */
+  /**
+   * Operator-initiated pause: a GRBL feed hold, which decelerates and stops
+   * without losing position or discarding the planner. This is the button to
+   * reach for when a cut looks wrong but is not yet worth an E-stop, and it is
+   * the only way to stop a running job short of one.
+   */
+  public async pauseJob(): Promise<void> {
+    if (!this.isJobRunning || this.isPaused) return;
+    this.isPaused = true;
+    this.pauseKind = 'operator';
+    await this.writeRealtime('!');
+    this.updateState({
+      status: 'PAUSED_OPERATOR',
+      pauseMessage: 'Paused. The spindle is still running and Z has not moved.',
+    });
+  }
+
+  /** Resumes after either an operator feed hold or an M0 / M6 stream pause. */
   public async resumeJob() {
     if (!this.isPaused) return;
+    const kind = this.pauseKind;
     this.isPaused = false;
+    this.pauseKind = null;
     this.updateState({ status: 'RUNNING', pauseMessage: undefined });
+    // Only a feed hold needs cycle start. After a stream pause the machine has
+    // already drained and is idle, and `~` there would be a no-op at best.
+    if (kind === 'operator') {
+      await this.writeRealtime('~');
+    }
     return this.processQueue();
   }
 
@@ -504,6 +637,7 @@ class WebSerialManager {
   public async cancelJob() {
     this.isJobRunning = false;
     this.isPaused = false;
+    this.pauseKind = null;
     this.gcodeQueue = [];
     await this.eStop();
     this.updateState({ status: 'IDLE', progressPercent: 0 });
@@ -527,6 +661,69 @@ class WebSerialManager {
   /** Sets current XY position as G54 Work Origin (0,0). */
   public async zeroXY(): Promise<void> {
     await this.sendLine('G10 L20 P1 X0 Y0');
+  }
+
+  /**
+   * Sets the current position of one axis — or all three — as work zero.
+   * `G10 L20 P1` is a real work offset rather than the temporary shift `G92`
+   * gives, so it survives a reset.
+   */
+  public async zeroAxis(axis: 'X' | 'Y' | 'Z' | 'ALL'): Promise<void> {
+    await this.sendLine(
+      axis === 'ALL' ? 'G10 L20 P1 X0 Y0 Z0' : `G10 L20 P1 ${axis}0`
+    );
+  }
+
+  /**
+   * Returns to work origin, lifting first. Going straight there in one move
+   * would drag the tool across the board at whatever Z it happens to be at.
+   */
+  public async gotoWorkOrigin(safeZMm = 5): Promise<void> {
+    await this.sendLine('G21 G90');
+    await this.sendLine(`G0 Z${safeZMm.toFixed(3)}`);
+    await this.sendLine('G0 X0 Y0');
+  }
+
+  /**
+   * Traces the outline of a job with the spindle off, at clearance height.
+   *
+   * This is the check that the board actually fits the copper blank that is
+   * clamped down, made before anything plunges. The spindle is explicitly
+   * stopped first: after zeroing Z the tool is sitting on the surface of the
+   * stock, and framing from there with the spindle running would drag a
+   * spinning cutter right around the outline of the board.
+   */
+  public async frameJob(
+    bounds: { minX: number; minY: number; maxX: number; maxY: number },
+    opts: { safeZMm?: number; feedRate?: number } = {}
+  ): Promise<void> {
+    const { safeZMm = 5, feedRate = 2000 } = opts;
+    const { minX, minY, maxX, maxY } = bounds;
+
+    await this.sendLine('M5');
+    await this.sendLine('G21 G90');
+    await this.sendLine(`G0 Z${safeZMm.toFixed(3)}`);
+
+    const corners: Array<[number, number]> = [
+      [minX, minY],
+      [maxX, minY],
+      [maxX, maxY],
+      [minX, maxY],
+      [minX, minY],
+    ];
+    for (const [x, y] of corners) {
+      await this.sendLine(`G1 X${x.toFixed(3)} Y${y.toFixed(3)} F${feedRate}`);
+    }
+  }
+
+  /** GRBL's `$$` settings as read on connect. Empty if they never arrived. */
+  public getGrblSettings(): Map<number, number> {
+    return new Map(this.grblSettings);
+  }
+
+  /** A single `$$` setting, or `undefined` if it was never reported. */
+  public getGrblSetting(number: number): number | undefined {
+    return this.grblSettings.get(number);
   }
 
   /** Runs Auto Z-Probe Macro for CNC Tool Changes. */

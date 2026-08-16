@@ -39,7 +39,7 @@ When modifying the engine (`EEcircuit-engine`) and testing in the `frontend` via
 
 ### Troubleshooting Steps
 1. Rebuild the engine: `npm run build` in `EEcircuit-engine`.
-2. Clear Vite cache: `rm -rf node_modules/.vite` in `frontend`.
+2. Clear Vite cache: `rm -rf node_modules/.vite` at the repo root.
 3. Restart dev server: `npm run dev`.
 
 ## 4. UI/UX for Looping Animations

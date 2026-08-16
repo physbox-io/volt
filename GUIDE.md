@@ -10,10 +10,10 @@ This document captures environment configurations, path resolutions, and workflo
 * **WSL NVM Environment Execution**: Node/npm are managed via NVM inside WSL (e.g. `~/.nvm/`). Because NVM is initialized in `.bashrc` / `.bash_profile`, non-interactive shells cannot resolve node or npm commands. If standard commands fail, explicitly export the NVM Node path to your `PATH` or use an interactive/login bash shell:
   ```bash
   # Execute dev server using NVM path:
-  wsl -d Ubuntu-20.04 -e bash -c "export PATH=/home/boab/.nvm/versions/node/v20.20.0/bin:/usr/local/bin:/usr/bin:/bin; cd /home/boab/circuit/frontend && npm run dev"
+  wsl -d Ubuntu-20.04 -e bash -c "export PATH=/home/boab/.nvm/versions/node/v20.20.0/bin:/usr/local/bin:/usr/bin:/bin; cd /home/boab/circuit && npm run dev"
 
   # Run build using NVM path:
-  wsl -d Ubuntu-20.04 -e bash -c "export PATH=/home/boab/.nvm/versions/node/v20.20.0/bin:/usr/local/bin:/usr/bin:/bin; cd /home/boab/circuit/frontend && npm run build"
+  wsl -d Ubuntu-20.04 -e bash -c "export PATH=/home/boab/.nvm/versions/node/v20.20.0/bin:/usr/local/bin:/usr/bin:/bin; cd /home/boab/circuit && npm run build"
   ```
 
 ## 🔌 CYD/Heltec HIL Debugging (`~/cyd-native`, Ubuntu-24.04 WSL distro)

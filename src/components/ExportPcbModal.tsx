@@ -185,7 +185,10 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   };
 
   const isPaused =
-    serialState.status === 'PAUSED_TOOL' || serialState.status === 'PAUSED_MATERIAL';
+    serialState.status === 'PAUSED_TOOL' ||
+    serialState.status === 'PAUSED_MATERIAL' ||
+    serialState.status === 'PAUSED_OPERATOR';
+  const isRunning = serialState.status === 'RUNNING';
   const machineBusy =
     !!busy || isPaused || serialState.status === 'RUNNING' || serialState.status === 'PROBING';
 
@@ -298,6 +301,37 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       await webSerialManager.sendLine(cmd);
     } catch (e: any) {
       setMachineError(e?.message || 'Jog command failed');
+    }
+  };
+
+  /** Feed-holds a running job. Motion stops; nothing is lost. */
+  const handlePause = async () => {
+    setMachineError(null);
+    try {
+      await webSerialManager.pauseJob();
+    } catch (e: any) {
+      setMachineError(e?.message || 'Could not pause the job');
+    }
+  };
+
+  /**
+   * Traces the board outline with the spindle off, so the blank can be checked
+   * against the job before any of it is cut.
+   */
+  const handleFrameBoard = async () => {
+    if (machineBusy) return;
+    if (!(await ensureConnected())) return;
+    setMachineError(null);
+    setBusy('milling');
+    try {
+      await webSerialManager.frameJob(
+        { minX: 0, minY: 0, maxX: result.boardWidthMm, maxY: result.boardHeightMm },
+        { safeZMm: options.safeZ }
+      );
+    } catch (e: any) {
+      setMachineError(e?.message || 'Framing failed');
+    } finally {
+      setBusy('');
     }
   };
 
@@ -781,6 +815,16 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                     </button>
                   </div>
 
+                  {/* Operator feed hold, while a job is actually moving */}
+                  {isRunning && (
+                    <button
+                      onClick={handlePause}
+                      className="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white rounded font-semibold cursor-pointer"
+                    >
+                      Pause job
+                    </button>
+                  )}
+
                   {/* Tool changes pause banner */}
                   {isPaused && (
                     <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded space-y-2">
@@ -930,6 +974,16 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       >
                         <Compass className="w-3.5 h-3.5" />
                         {activeHeightmap ? 'Re-probe surface' : 'Probe surface'}
+                      </button>
+
+                      <button
+                        onClick={handleFrameBoard}
+                        disabled={machineBusy}
+                        title="Trace the board outline with the spindle off, to check the blank before cutting"
+                        className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded font-semibold flex items-center justify-center gap-1.5 cursor-pointer text-xs"
+                      >
+                        <Crosshair className="w-3.5 h-3.5" />
+                        Frame {result.boardWidthMm}x{result.boardHeightMm}
                       </button>
                     </div>
 

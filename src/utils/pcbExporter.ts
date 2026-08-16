@@ -99,7 +99,7 @@ export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   tabWidthMm: 3.0,
   tabHeightMm: 0.6,
   pauseOnToolChange: true,
-  autoGrowBoard: false,
+  autoGrowBoard: true,
   rampedPlunge: true,
   rubOutClearing: false,
   airCutZOffset: 20,
