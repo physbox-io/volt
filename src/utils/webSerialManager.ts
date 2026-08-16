@@ -41,6 +41,8 @@ const ACK_TIMEOUT_MS = 180_000;
 const PROBE_TIMEOUT_MS = 60_000;
 /** Minimum gap between telemetry posts, when the status has not changed. */
 const TELEMETRY_INTERVAL_MS = 1000;
+/** Touch plate thickness assumed when a caller does not pass one, in mm. */
+const DEFAULT_TOUCH_PLATE_MM = 12;
 
 /**
  * GRBL 1.1 `error:N` codes, in the operator's terms. Bare "error:9" says
@@ -79,6 +81,26 @@ function describeGrblError(line: string): string {
   const code = Number(/^error:\s*(\d+)/.exec(line)?.[1]);
   const detail = Number.isFinite(code) ? GRBL_ERRORS[code] : undefined;
   return detail ? `${detail} (${line})` : `Machine rejected a command (${line})`;
+}
+
+/** GRBL 1.1 `ALARM:N` codes. 4 and 5 are the two a probing job actually hits. */
+const GRBL_ALARMS: Record<number, string> = {
+  1: 'Hard limit triggered — the machine hit a limit switch and its position is lost. Home ($H) before doing anything else.',
+  2: 'Soft limit: the commanded move goes outside the machine travel. Check work zero and the job origin.',
+  3: 'Reset while in motion — position is lost. Home ($H) to recover.',
+  4: 'Probe failed: the probe was already triggered before the cycle started. Check the continuity clip is not shorted to the bit.',
+  5: 'Probe failed: the tool travelled its full search distance without touching the surface. Check the continuity clip is attached to the copper and the bit started close above it.',
+  6: 'Homing failed — reset during the homing cycle.',
+  7: 'Homing failed — safety door opened during homing.',
+  8: 'Homing failed: the limit switch did not clear on pull-off. Check the switch and $27.',
+  9: 'Homing failed: no limit switch found within the search distance.',
+};
+
+/** Turns a raw `ALARM:N` line into something an operator can act on. */
+function describeGrblAlarm(line: string): string {
+  const code = Number(/^ALARM:\s*(\d+)/.exec(line)?.[1]);
+  const detail = Number.isFinite(code) ? GRBL_ALARMS[code] : undefined;
+  return detail ? `${detail} (${line})` : `Machine alarm: ${line}`;
 }
 
 export type MachineStatus =
@@ -550,8 +572,9 @@ class WebSerialManager {
 
     if (line.startsWith('ALARM:')) {
       this.isJobRunning = false;
-      this.updateState({ status: 'ALARM', lastError: line });
-      this.failPending(new Error(`Machine alarm: ${line}`));
+      const detail = describeGrblAlarm(line);
+      this.updateState({ status: 'ALARM', lastError: detail });
+      this.failPending(new Error(detail));
       return;
     }
 
@@ -830,11 +853,24 @@ class WebSerialManager {
     return this.grblSettings.get(number);
   }
 
-  /** Runs Auto Z-Probe Macro for CNC Tool Changes. */
-  public async zeroZ(touchPlateThicknessMm = 15.0): Promise<void> {
-    await this.probeDown(30, 50);
-    await this.sendLine(`G10 L20 P1 Z${touchPlateThicknessMm.toFixed(3)}`);
-    await this.sendLine('G0 Z10.000');
+  /**
+   * Sets work Z0 using a conductive touch plate. The tool stops on *top* of the
+   * plate, so Z0 sits `touchPlateThicknessMm` below the contact point — pass
+   * the real thickness or every cut is off by the difference.
+   */
+  public async zeroZ(touchPlateThicknessMm = DEFAULT_TOUCH_PLATE_MM): Promise<void> {
+    this.assertUnlocked();
+    this.updateState({ status: 'PROBING' });
+    try {
+      await this.sendLine('G21');
+      await this.sendLine('G90');
+      await this.probeDown(30, 50);
+      await this.sendLine(`G10 L20 P1 Z${touchPlateThicknessMm.toFixed(3)}`);
+      await this.sendLine('G0 Z10.000');
+      await this.drain();
+    } finally {
+      if (this.state.status === 'PROBING') this.updateState({ status: 'IDLE' });
+    }
   }
 
   /**
@@ -860,6 +896,17 @@ class WebSerialManager {
   /**
    * Single G38.2 probe toward the work surface, resolving with the contact
    * point reported by GRBL. Rejects if the probe never touches.
+   *
+   * The probe is issued in **relative** mode (`G91`), so `maxDepthMm` is the
+   * distance the tool will actually travel searching for the surface. Sent in
+   * absolute mode it would instead mean "probe down to work Z = -depth", which
+   * is a completely different move: with work Z0 unset — or left over from a
+   * previous session — the tool descends whatever fraction of the gap happens
+   * to remain, finds nothing, and GRBL raises ALARM:5. If the current work Z is
+   * already below the target it would probe *upward*, away from the stock.
+   *
+   * `G90` is restored afterwards on its own line, since every caller and all
+   * generated job G-code assumes absolute positioning.
    */
   private async probeDown(maxDepthMm: number, feed: number): Promise<{ x: number; y: number; z: number }> {
     // Register the waiter before sending: the [PRB:] report can arrive in the
@@ -873,16 +920,25 @@ class WebSerialManager {
     });
 
     try {
-      await this.sendLine(`G38.2 Z${(-Math.abs(maxDepthMm)).toFixed(3)} F${feed}`);
+      // G91 (group 3) and G38.2 (group 1) are different modal groups, so they
+      // are legal on one line — unlike a `G91 … G90` pair, which is error:21.
+      await this.sendLine(`G91 G38.2 Z${(-Math.abs(maxDepthMm)).toFixed(3)} F${feed}`);
     } catch (err) {
       if (this.probeWaiter) {
         clearTimeout(this.probeWaiter.timer);
         this.probeWaiter = null;
       }
+      // Restore absolute mode even on a rejected probe, or every subsequent
+      // move in the job would be interpreted as a relative one.
+      await this.sendLine('G90').catch(() => {});
       throw err;
     }
 
-    return probed;
+    try {
+      return await probed;
+    } finally {
+      await this.sendLine('G90').catch(() => {});
+    }
   }
 
   /**
@@ -901,6 +957,16 @@ class WebSerialManager {
     const clearance = opts.clearanceMm ?? 2;
     const probeFeed = opts.probeFeed ?? 50;
     const travelFeed = opts.travelFeed ?? 1500;
+
+    // Each point probes downward from the retract height, so a search shorter
+    // than that retract cannot reach the copper at all. Caught here rather than
+    // at the machine, where it surfaces as ALARM:5 on the first point.
+    if (probeDepth <= clearance) {
+      throw new Error(
+        `Probe search depth (${probeDepth}mm) must exceed the retract height (${clearance}mm), ` +
+          'or the probe stops above the surface without touching it.'
+      );
+    }
 
     const stepX = (opts.maxX - opts.minX) / (cols - 1);
     const stepY = (opts.maxY - opts.minY) / (rows - 1);

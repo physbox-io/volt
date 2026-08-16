@@ -48,6 +48,27 @@ const ROUTING_EFFORT_PRESETS = [
   { ms: 120000, label: 'Exhaustive — 2min' },
 ];
 
+/** Search distance for a mesh probe point, measured down from the retract. */
+const DEFAULT_PROBE_DEPTH_MM = 3;
+/** Retract height between probe points and rapid moves. */
+const DEFAULT_SAFE_Z_MM = 2;
+/** Thickness of the touch plate used to set work Z0. */
+const DEFAULT_TOUCH_PLATE_MM = 12;
+
+/**
+ * Reads a persisted machine setting. These are bench measurements — plate
+ * thickness, retract height — that belong to the machine rather than to any
+ * one board, so they survive both the modal closing and a page reload.
+ * A stored value that is not a finite positive number is ignored: a bad
+ * thickness silently zeroes Z in the wrong place.
+ */
+function readNumericSetting(key: string, fallback: number): number {
+  const raw = localStorage.getItem(key);
+  if (raw === null) return fallback;
+  const value = parseFloat(raw);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
 interface ExportPcbModalProps {
   onClose: () => void;
   nodes?: Node[];
@@ -67,11 +88,31 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       ...DEFAULT_PCB_OPTIONS,
       boardWidthMm: suggested.widthMm,
       boardHeightMm: suggested.heightMm,
+      // Retract height is a property of the bench, not of this board, so the
+      // saved one wins over the built-in default.
+      safeZ: readNumericSetting('grblSafeZMm', DEFAULT_PCB_OPTIONS.safeZ),
     };
   });
   const [activeTab, setActiveTab] = useState<'layout' | 'cam' | 'serial'>('layout');
   const [serialState, setSerialState] = useState(webSerialManager.getState());
   const [autoLevel, setAutoLevel] = useState(true);
+  /**
+   * How far the tool searches downward for the copper on each probe point, as
+   * a travel distance from the retract height. It has to clear the retract plus
+   * however far the blank sags — too short and the probe runs out of travel
+   * without touching, which GRBL reports as ALARM:5.
+   */
+  const [probeDepthMm, setProbeDepthMm] = useState<number>(() =>
+    readNumericSetting('grblProbeDepthMm', DEFAULT_PROBE_DEPTH_MM)
+  );
+  /**
+   * Thickness of the conductive touch plate, in mm. After the tool touches the
+   * top of the plate, work Z0 is set to this height — so it has to match the
+   * plate actually on the bench, or every cut is off by the difference.
+   */
+  const [touchPlateMm, setTouchPlateMm] = useState<number>(() =>
+    readNumericSetting('grblTouchPlateMm', DEFAULT_TOUCH_PLATE_MM)
+  );
   const [busy, setBusy] = useState<'' | 'probing' | 'zeroing' | 'milling' | 'homing'>('');
   const [machineError, setMachineError] = useState<string | null>(null);
   const [heightmap, setHeightmap] = useState<{ grid: ProbeGrid; boardTag: string } | null>(null);
@@ -178,7 +219,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
         maxY: result.boardHeightMm,
         cols: suggestedGrid.cols,
         rows: suggestedGrid.rows,
-        probeDepthMm: 3,
+        probeDepthMm,
         clearanceMm: options.safeZ,
       });
       setHeightmap({ grid, boardTag });
@@ -299,6 +340,26 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     }
   };
 
+  /**
+   * Sets work Z0 using the touch plate rather than the copper itself. The tool
+   * stops on top of the plate, so Z0 lands `touchPlateMm` below the contact
+   * point — which is why the thickness has to be the real one.
+   */
+  const handleZeroZOnPlate = async () => {
+    if (machineBusy) return;
+    if (!(await ensureConnected())) return;
+    setBusy('zeroing');
+    setMachineError(null);
+    try {
+      await webSerialManager.zeroZ(touchPlateMm);
+      setHeightmap(null);
+    } catch (e: any) {
+      setMachineError(e?.message || 'Zeroing Z on the touch plate failed');
+    } finally {
+      setBusy('');
+    }
+  };
+
   const handleZeroXY = async () => {
     if (machineBusy) return;
     if (!(await ensureConnected())) return;
@@ -409,20 +470,20 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[92vh]">
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+      <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[92vh]">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-100/70 dark:bg-slate-950/60">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400">
+            <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-600 dark:text-emerald-400">
               <Cpu className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 PCB Milling &amp; CAM Engine
-                <span className="text-xs font-normal px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <span className="text-xs font-normal px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
                   WebSerial CNC
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Automated trace routing, isolation toolpaths, through-hole drilling, air cuts, and surface heightmaps.
                 <InfoTip>
                   Generates a single-sided copper board from your schematic. Download the G-code and drill
@@ -438,13 +499,13 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
               className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
               title="Open AI Copilot to analyze PCB design and fix layout issues"
             >
-              <Sparkles className="w-4 h-4 text-indigo-200" />
+              <Sparkles className="w-4 h-4 text-indigo-700 dark:text-indigo-200" />
               <span>Sparkles Copilot</span>
             </button>
 
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -453,7 +514,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
 
         <div className="flex-1 grid grid-cols-1 md:grid-cols-12 overflow-hidden">
           {/* Main Visualizer Area */}
-          <div className="md:col-span-7 p-5 bg-slate-950/40 flex flex-col justify-between border-r border-slate-800 overflow-y-auto">
+          <div className="md:col-span-7 p-5 bg-slate-100/70 dark:bg-slate-950/40 flex flex-col justify-between border-r border-slate-200 dark:border-slate-800 overflow-y-auto">
             {activeTab === 'cam' ? (
               <div className="flex-1 flex flex-col min-h-[360px]">
                 <PcbToolpathPreview
@@ -466,24 +527,24 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
               </div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center min-h-[360px]">
-                <div className="w-full flex items-center justify-between mb-2 text-xs text-slate-400">
+                <div className="w-full flex items-center justify-between mb-2 text-xs text-slate-500 dark:text-slate-400">
                   <span className="flex items-center gap-1.5 font-mono">
-                    <Layers className="w-3.5 h-3.5 text-emerald-400" />
+                    <Layers className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                     {result.boardWidthMm}mm × {result.boardHeightMm}mm PCB Board
                   </span>
-                  <span className="text-emerald-400 font-mono">
+                  <span className="text-emerald-600 dark:text-emerald-400 font-mono">
                     {result.components.length} Parts | {result.nets.length} Nets | {result.drills.length} Drills
                   </span>
                 </div>
 
-                <div className="w-full aspect-[4/3] bg-slate-900 border border-slate-800 rounded-lg p-2 shadow-inner flex items-center justify-center overflow-hidden">
+                <div className="w-full aspect-[4/3] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-2 shadow-inner flex items-center justify-center overflow-hidden">
                   <div
                     className="w-full h-full"
                     dangerouslySetInnerHTML={{ __html: result.svg }}
                   />
                 </div>
 
-                <div className="w-full mt-2 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                <div className="w-full mt-2 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                   <div className="flex items-center gap-3">
                     <span className="flex items-center gap-1">
                       <span className="w-2.5 h-2.5 rounded-full bg-[#d4af37]"></span> Copper
@@ -496,12 +557,12 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                     </span>
                   </div>
                   {gridStats && (
-                    <span className="text-cyan-400 font-bold flex items-center gap-1">
+                    <span className="text-cyan-700 dark:text-cyan-400 font-bold flex items-center gap-1">
                       <Check className="w-3 h-3" /> Levelled — {suggestedGrid.cols}×{suggestedGrid.rows} mesh ({gridStats.spanZ.toFixed(3)}mm warp)
                     </span>
                   )}
                   {heightmapStale && (
-                    <span className="text-amber-400 font-bold flex items-center gap-1">
+                    <span className="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1">
                       <AlertTriangle className="w-3 h-3" /> Heightmap discarded (board resized)
                     </span>
                   )}
@@ -510,13 +571,13 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
             )}
 
             {unwarpable.length > 0 && (
-              <div className="p-2 mt-2 bg-amber-500/10 border border-amber-500/30 rounded text-[11px] text-amber-300">
+              <div className="p-2 mt-2 bg-amber-500/10 border border-amber-500/30 rounded text-[11px] text-amber-700 dark:text-amber-300">
                 Not compensated: {unwarpable.join(', ')} — these run at commanded depth.
               </div>
             )}
 
             {(machineError || serialState.lastError) && (
-              <div className="p-2 mt-2 bg-red-500/10 border border-red-500/30 rounded text-[11px] text-red-300 flex items-start gap-1.5">
+              <div className="p-2 mt-2 bg-red-500/10 border border-red-500/30 rounded text-[11px] text-red-700 dark:text-red-300 flex items-start gap-1.5">
                 <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
                 <span>{machineError || serialState.lastError}</span>
               </div>
@@ -525,12 +586,12 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
             {/* Design Rule Check Warnings / Errors */}
             <div className="w-full mt-3 space-y-1 max-h-28 overflow-y-auto">
               {result.success ? (
-                <div className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-400">
+                <div className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-600 dark:text-emerald-400">
                   <Check className="w-3.5 h-3.5 shrink-0" />
                   DRC Passed — {Math.round(result.completion * 100)}% routed, isolation safe.
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 text-[11px] font-mono text-red-400 font-bold">
+                <div className="flex items-center gap-1.5 text-[11px] font-mono text-red-600 dark:text-red-400 font-bold">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                   {errorCount} DRC Error{errorCount === 1 ? '' : 's'} — G-code output blocked.
                 </div>
@@ -539,7 +600,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                 <div
                   key={i}
                   className={`text-[10px] font-mono pl-5 ${
-                    v.severity === 'error' ? 'text-red-300' : 'text-amber-300'
+                    v.severity === 'error' ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300'
                   }`}
                 >
                   {v.severity === 'error' ? '✕' : '⚠'} {v.message}
@@ -549,14 +610,14 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
           </div>
 
           {/* Settings & Machine Control Panel */}
-          <div className="md:col-span-5 bg-slate-900/60 flex flex-col justify-between overflow-y-auto">
-            <div className="flex border-b border-slate-800 bg-slate-950/40 text-slate-400 text-xs">
+          <div className="md:col-span-5 bg-white/70 dark:bg-slate-900/60 flex flex-col justify-between overflow-y-auto">
+            <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-950/40 text-slate-500 dark:text-slate-400 text-xs">
               <button
                 onClick={() => setActiveTab('layout')}
                 className={`flex-1 py-3 border-b-2 text-center transition-colors cursor-pointer ${
                   activeTab === 'layout'
-                    ? 'border-emerald-500 text-emerald-400 font-bold'
-                    : 'border-transparent hover:text-slate-200'
+                    ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold'
+                    : 'border-transparent hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
               >
                 Layout
@@ -565,8 +626,8 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                 onClick={() => setActiveTab('cam')}
                 className={`flex-1 py-3 border-b-2 text-center transition-colors cursor-pointer ${
                   activeTab === 'cam'
-                    ? 'border-emerald-500 text-emerald-400 font-bold'
-                    : 'border-transparent hover:text-slate-200'
+                    ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold'
+                    : 'border-transparent hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
               >
                 CAM &amp; Tooling
@@ -575,8 +636,8 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                 onClick={() => setActiveTab('serial')}
                 className={`flex-1 py-3 border-b-2 text-center transition-colors cursor-pointer ${
                   activeTab === 'serial'
-                    ? 'border-emerald-500 text-emerald-400 font-bold'
-                    : 'border-transparent hover:text-slate-200'
+                    ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold'
+                    : 'border-transparent hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
               >
                 WebSerial
@@ -605,7 +666,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                         }
                         className="cursor-pointer"
                       />
-                      <span className="text-slate-300 font-semibold">Auto-size board</span>
+                      <span className="text-slate-600 dark:text-slate-300 font-semibold">Auto-size board</span>
                       <InfoTip>
                         On, the board is sized dynamically to fit the parts. Off, the board is exactly the fixed dimensions you set.
                       </InfoTip>
@@ -614,7 +675,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                     <button
                       type="button"
                       onClick={handleFitToCircuit}
-                      className="text-[11px] text-cyan-400 hover:text-cyan-300 hover:underline cursor-pointer flex items-center gap-1 font-semibold"
+                      className="text-[11px] text-cyan-700 dark:text-cyan-400 hover:text-cyan-600 dark:hover:text-cyan-300 hover:underline cursor-pointer flex items-center gap-1 font-semibold"
                       title="Recalculate dimensions to comfortably fit all components in the circuit"
                     >
                       <RefreshCw className="w-3 h-3" />
@@ -623,58 +684,58 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                   </div>
 
                   <div>
-                    <label className="flex items-center gap-1.5 text-slate-400 font-semibold mb-1">
+                    <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
                       {options.autoGrowBoard ? 'Minimum Width (mm)' : 'Board Width (mm)'}
                     </label>
                     <input
                       type="number"
                       value={options.boardWidthMm}
                       onChange={e => setOptions({ ...options, boardWidthMm: parseFloat(e.target.value) || 50 })}
-                      className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200"
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
                   <div>
-                    <label className="flex items-center gap-1.5 text-slate-400 font-semibold mb-1">
+                    <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
                       {options.autoGrowBoard ? 'Minimum Height (mm)' : 'Board Height (mm)'}
                     </label>
                     <input
                       type="number"
                       value={options.boardHeightMm}
                       onChange={e => setOptions({ ...options, boardHeightMm: parseFloat(e.target.value) || 40 })}
-                      className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200"
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
                   {options.autoGrowBoard && (
                     <p className="text-[11px] text-slate-500">
                       Auto-sized to{' '}
-                      <span className="text-slate-300 font-semibold">
+                      <span className="text-slate-600 dark:text-slate-300 font-semibold">
                         {result.boardWidthMm} x {result.boardHeightMm} mm
                       </span>
                       . Untick to force an exact size.
                     </p>
                   )}
                   <div>
-                    <label className="flex items-center gap-1.5 text-slate-400 font-semibold mb-1">Trace Width (mm)</label>
+                    <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">Trace Width (mm)</label>
                     <input
                       type="number"
                       step="0.05"
                       value={options.traceWidthMm}
                       onChange={e => setOptions({ ...options, traceWidthMm: parseFloat(e.target.value) || 0.4 })}
-                      className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200"
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
                   <div>
-                    <label className="flex items-center gap-1.5 text-slate-400 font-semibold mb-1">Trace Clearance (mm)</label>
+                    <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">Trace Clearance (mm)</label>
                     <input
                       type="number"
                       step="0.05"
                       value={options.clearanceMm}
                       onChange={e => setOptions({ ...options, clearanceMm: parseFloat(e.target.value) || 0.3 })}
-                      className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200"
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
                   <div>
-                    <label className="flex items-center gap-1.5 text-slate-400 font-semibold mb-1">
+                    <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
                       Routing Effort
                       <InfoTip>
                         How long the maze router may search for a way around obstacles before
@@ -687,7 +748,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       onChange={e =>
                         setOptions({ ...options, routingBudgetMs: parseInt(e.target.value, 10) })
                       }
-                      className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200 font-sans"
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-sans"
                     >
                       {ROUTING_EFFORT_PRESETS.map(p => (
                         <option key={p.ms} value={p.ms}>
@@ -696,7 +757,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       ))}
                     </select>
                     {isRouting && (
-                      <div className="mt-2 flex items-center gap-2 text-[11px] text-sky-300">
+                      <div className="mt-2 flex items-center gap-2 text-[11px] text-sky-700 dark:text-sky-300">
                         <RefreshCw size={11} className="animate-spin shrink-0" />
                         <span>
                           {progress
@@ -710,7 +771,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                     {!isRouting && hasResult && result.completion < 1 && !atMaxEffort && (
                       <button
                         onClick={() => setOptions({ ...options, routingBudgetMs: nextEffortMs })}
-                        className="mt-2 w-full px-2 py-1.5 bg-amber-500/10 border border-amber-500/40 rounded text-[11px] text-amber-300 hover:bg-amber-500/20 transition"
+                        className="mt-2 w-full px-2 py-1.5 bg-amber-500/10 border border-amber-500/40 rounded text-[11px] text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition"
                       >
                         {(result.completion * 100).toFixed(0)}% routed — try again with a bigger budget
                       </button>
@@ -722,14 +783,14 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
               {activeTab === 'cam' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="flex items-center justify-between text-slate-300 font-semibold mb-1">
+                    <label className="flex items-center justify-between text-slate-600 dark:text-slate-300 font-semibold mb-1">
                       <span>Tool Preset</span>
-                      <span className="text-[10px] text-emerald-400">T1-T6 Catalog</span>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400">T1-T6 Catalog</span>
                     </label>
                     <select
                       value={selectedToolId}
                       onChange={e => handleToolPresetChange(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200 font-sans"
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-sans"
                     >
                       {PCB_TOOL_PRESETS.map(tool => (
                         <option key={tool.id} value={tool.id}>
@@ -740,14 +801,14 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                   </div>
 
                   <div>
-                    <label className="flex items-center justify-between text-slate-300 font-semibold mb-1">
+                    <label className="flex items-center justify-between text-slate-600 dark:text-slate-300 font-semibold mb-1">
                       <span>Material Substrate</span>
-                      <span className="text-[10px] text-emerald-400">Feeds &amp; Speeds</span>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400">Feeds &amp; Speeds</span>
                     </label>
                     <select
                       value={selectedMaterialId}
                       onChange={e => handleMaterialPresetChange(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200 font-sans"
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-sans"
                     >
                       {PCB_MATERIAL_PRESETS.map(mat => (
                         <option key={mat.id} value={mat.id}>
@@ -758,9 +819,9 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                   </div>
 
                   <div>
-                    <label className="flex items-center justify-between text-slate-300 font-semibold mb-1">
+                    <label className="flex items-center justify-between text-slate-600 dark:text-slate-300 font-semibold mb-1">
                       <span>Air Cut Z-Offset</span>
-                      <span className="text-[10px] text-amber-400 font-mono">+{airCutZOffset}mm Z</span>
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-mono">+{airCutZOffset}mm Z</span>
                     </label>
                     <div className="flex gap-1.5">
                       {[10, 20, 50].map(off => (
@@ -772,8 +833,8 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                           }}
                           className={`flex-1 py-1 rounded cursor-pointer text-[11px] font-semibold border ${
                             airCutZOffset === off
-                              ? 'bg-amber-600/30 border-amber-500 text-amber-300'
-                              : 'bg-slate-950 border-slate-700 text-slate-400 hover:text-slate-200'
+                              ? 'bg-amber-100 dark:bg-amber-600/30 border-amber-500 text-amber-700 dark:text-amber-300'
+                              : 'bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                           }`}
                         >
                           +{off}mm
@@ -784,49 +845,49 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-slate-400 font-semibold mb-1 block">Cut Feed (mm/min)</label>
+                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 block">Cut Feed (mm/min)</label>
                       <input
                         type="number"
                         value={options.cutFeedrate}
                         onChange={e => setOptions({ ...options, cutFeedrate: parseInt(e.target.value, 10) || 300 })}
-                        className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200"
+                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                       />
                     </div>
                     <div>
-                      <label className="text-slate-400 font-semibold mb-1 block">Plunge Feed (mm/min)</label>
+                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 block">Plunge Feed (mm/min)</label>
                       <input
                         type="number"
                         value={options.plungeFeedrate}
                         onChange={e => setOptions({ ...options, plungeFeedrate: parseInt(e.target.value, 10) || 80 })}
-                        className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200"
+                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-slate-400 font-semibold mb-1 block">Spindle RPM</label>
+                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 block">Spindle RPM</label>
                       <input
                         type="number"
                         value={options.spindleRpm}
                         onChange={e => setOptions({ ...options, spindleRpm: parseInt(e.target.value, 10) || 12000 })}
-                        className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200"
+                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                       />
                     </div>
                     <div>
-                      <label className="text-slate-400 font-semibold mb-1 block">Isolation Depth (mm)</label>
+                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 block">Isolation Depth (mm)</label>
                       <input
                         type="number"
                         step="0.01"
                         value={options.isolationDepthZ}
                         onChange={e => setOptions({ ...options, isolationDepthZ: parseFloat(e.target.value) || -0.08 })}
-                        className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200"
+                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                       />
                     </div>
                   </div>
 
-                  <div className="p-2.5 bg-slate-950 border border-slate-800 rounded space-y-1.5">
-                    <label className="flex items-center gap-2 cursor-pointer text-slate-300 font-medium">
+                  <div className="p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded space-y-1.5">
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-600 dark:text-slate-300 font-medium">
                       <input
                         type="checkbox"
                         checked={options.rampedPlunge !== false}
@@ -835,7 +896,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       />
                       <span>Enable Ramped Entry Plunges</span>
                     </label>
-                    <p className="text-[10px] text-slate-400 leading-relaxed pl-5">
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed pl-5">
                       Angles Z entry into copper over 1.2mm travel, protecting fragile V-bit tip points from chip shock.
                     </p>
                   </div>
@@ -844,18 +905,18 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
 
               {activeTab === 'serial' && (
                 <div className="space-y-3">
-                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-2.5">
+                  <div className="p-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2.5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="font-semibold text-slate-200">GRBL Machine Connection</div>
-                        <div className="text-[10px] text-slate-400">
+                        <div className="font-semibold text-slate-800 dark:text-slate-200">GRBL Machine Connection</div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400">
                           {serialState.connected ? `Connected (${serialState.portName || 'Serial'})` : 'Disconnected'}
                         </div>
                       </div>
                       <button
                         onClick={ensureConnected}
                         disabled={serialState.connected}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded cursor-pointer"
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded cursor-pointer"
                       >
                         {serialState.connected
                           ? 'Connected'
@@ -877,8 +938,8 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                           disabled={serialState.connected}
                           className={`py-1.5 rounded text-[11px] font-semibold border cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                             transportMode === mode
-                              ? 'bg-emerald-600/30 border-emerald-500 text-emerald-300'
-                              : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
+                              ? 'bg-emerald-100 dark:bg-emerald-600/30 border-emerald-500 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                           }`}
                         >
                           {mode === 'usb' ? 'USB (Web Serial)' : 'WiFi'}
@@ -888,7 +949,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
 
                     {transportMode === 'wifi' && (
                       <div>
-                        <label className="text-[10px] text-slate-400 font-semibold mb-1 block">
+                        <label className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1 block">
                           Device IP address
                         </label>
                         <input
@@ -901,41 +962,47 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                             setWifiIp(e.target.value);
                             localStorage.setItem('grblWifiIp', e.target.value);
                           }}
-                          className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200 font-mono text-[11px] disabled:opacity-40"
+                          className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-mono text-[11px] disabled:opacity-40"
                         />
                       </div>
                     )}
                   </div>
 
-                  {/* Alarm lockout. GRBL boots into this whenever homing is
-                      enabled, and lands here again after a limit trip or a
-                      failed probe. Every G-code line comes back error:9 until
-                      it is cleared, so the way out has to be reachable. */}
+                  {/* Alarm banner. GRBL boots into Alarm whenever homing is
+                      enabled, and lands there again after a limit trip or a
+                      failed probe, refusing every G-code line with error:9
+                      until it is cleared. The banner explains the state; the
+                      controls below it are always present, because homing and
+                      unlocking are equally wanted when nothing is wrong. */}
                   {serialState.status === 'ALARM' && (
-                    <div className="p-3 bg-amber-950/40 border border-amber-600/60 rounded-lg space-y-2">
-                      <div className="text-amber-300 text-[11px] leading-relaxed">
-                        <span className="font-semibold">Machine is in alarm.</span>{' '}
-                        It will reject every command (error:9) until it is unlocked or homed.
-                        {serialState.lastError ? ` ${serialState.lastError}` : ''}
-                      </div>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <button
-                          onClick={handleUnlock}
-                          disabled={!!busy}
-                          className="py-1.5 rounded text-[11px] font-semibold bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white cursor-pointer"
-                        >
-                          Unlock ($X)
-                        </button>
-                        <button
-                          onClick={handleHome}
-                          disabled={!!busy}
-                          className="py-1.5 rounded text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-600 disabled:opacity-40 text-slate-200 cursor-pointer"
-                        >
-                          {busy === 'homing' ? 'Homing…' : 'Home ($H)'}
-                        </button>
-                      </div>
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-600/60 rounded-lg text-amber-700 dark:text-amber-300 text-[11px] leading-relaxed">
+                      <span className="font-semibold">Machine is in alarm.</span>{' '}
+                      It will reject every command (error:9) until it is unlocked or homed.
+                      {serialState.lastError ? ` ${serialState.lastError}` : ''}
                     </div>
                   )}
+
+                  <div className="p-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2">
+                    <div className="font-semibold text-slate-800 dark:text-slate-200 text-[11px]">Machine controls</div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        onClick={handleUnlock}
+                        disabled={!!busy || !serialState.connected}
+                        title="Clear a GRBL alarm lockout"
+                        className="py-1.5 rounded text-[11px] font-semibold bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white cursor-pointer"
+                      >
+                        Unlock ($X)
+                      </button>
+                      <button
+                        onClick={handleHome}
+                        disabled={!!busy || !serialState.connected}
+                        title="Run the homing cycle"
+                        className="py-1.5 rounded text-[11px] font-semibold bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 border border-slate-400 dark:border-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-800 dark:text-slate-200 cursor-pointer"
+                      >
+                        {busy === 'homing' ? 'Homing…' : 'Home ($H)'}
+                      </button>
+                    </div>
+                  </div>
 
                   {/* Operator feed hold, while a job is actually moving */}
                   {isRunning && (
@@ -950,7 +1017,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                   {/* Tool changes pause banner */}
                   {isPaused && (
                     <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded space-y-2">
-                      <div className="text-amber-200 font-semibold flex items-start gap-1.5">
+                      <div className="text-amber-700 dark:text-amber-200 font-semibold flex items-start gap-1.5">
                         <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
                         <span>{serialState.pauseMessage || 'Job paused'}</span>
                       </div>
@@ -963,7 +1030,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                         </button>
                         <button
                           onClick={handleCancel}
-                          className="px-3 py-1.5 bg-slate-800 hover:bg-red-900/60 text-slate-200 rounded font-semibold cursor-pointer"
+                          className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-red-100 dark:hover:bg-red-900/60 text-slate-800 dark:text-slate-200 rounded font-semibold cursor-pointer"
                         >
                           Cancel job
                         </button>
@@ -972,10 +1039,10 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                   )}
 
                   {/* Interactive Jog Keypad Controls */}
-                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-2">
-                    <div className="flex items-center justify-between text-slate-300 font-semibold">
+                  <div className="p-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2">
+                    <div className="flex items-center justify-between text-slate-600 dark:text-slate-300 font-semibold">
                       <span className="flex items-center gap-1">
-                        <Crosshair className="w-3.5 h-3.5 text-emerald-400" />
+                        <Crosshair className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                         Manual Jog Controls
                       </span>
                       <div className="flex gap-1 text-[10px]">
@@ -984,7 +1051,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                             key={st}
                             onClick={() => setJogStep(st)}
                             className={`px-1.5 py-0.5 rounded cursor-pointer ${
-                              jogStep === st ? 'bg-emerald-500 text-white font-bold' : 'bg-slate-800 text-slate-400'
+                              jogStep === st ? 'bg-emerald-500 text-white font-bold' : 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
                             }`}
                           >
                             {st}mm
@@ -998,7 +1065,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       <button
                         onClick={() => handleJog('Y', 1)}
                         disabled={machineBusy}
-                        className="w-10 h-8 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded flex items-center justify-center cursor-pointer"
+                        className="w-10 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded flex items-center justify-center cursor-pointer"
                         title="Jog Y+"
                       >
                         <ArrowUp className="w-4 h-4" />
@@ -1006,7 +1073,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       <button
                         onClick={() => handleJog('Z', 1)}
                         disabled={machineBusy}
-                        className="px-2 h-8 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded text-[10px] font-bold cursor-pointer"
+                        className="px-2 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded text-[10px] font-bold cursor-pointer"
                         title="Jog Z+"
                       >
                         Z+
@@ -1015,7 +1082,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       <button
                         onClick={() => handleJog('X', -1)}
                         disabled={machineBusy}
-                        className="w-10 h-8 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded flex items-center justify-center cursor-pointer"
+                        className="w-10 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded flex items-center justify-center cursor-pointer"
                         title="Jog X-"
                       >
                         <ArrowLeft className="w-4 h-4" />
@@ -1031,7 +1098,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       <button
                         onClick={() => handleJog('X', 1)}
                         disabled={machineBusy}
-                        className="w-10 h-8 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded flex items-center justify-center cursor-pointer"
+                        className="w-10 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded flex items-center justify-center cursor-pointer"
                         title="Jog X+"
                       >
                         <ArrowRight className="w-4 h-4" />
@@ -1041,7 +1108,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       <button
                         onClick={() => handleJog('Y', -1)}
                         disabled={machineBusy}
-                        className="w-10 h-8 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded flex items-center justify-center cursor-pointer"
+                        className="w-10 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded flex items-center justify-center cursor-pointer"
                         title="Jog Y-"
                       >
                         <ArrowDown className="w-4 h-4" />
@@ -1049,7 +1116,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       <button
                         onClick={() => handleJog('Z', -1)}
                         disabled={machineBusy}
-                        className="px-2 h-8 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded text-[10px] font-bold cursor-pointer"
+                        className="px-2 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded text-[10px] font-bold cursor-pointer"
                         title="Jog Z-"
                       >
                         Z-
@@ -1060,19 +1127,51 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       <button
                         onClick={handleZeroZ}
                         disabled={machineBusy}
-                        className="flex-1 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded font-semibold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
+                        title="Probe straight onto the copper, using the continuity clip"
+                        className="flex-1 py-1 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
                       >
                         {busy === 'zeroing' && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
                         Probe Z0 on Copper
                       </button>
+                      <button
+                        onClick={handleZeroZOnPlate}
+                        disabled={machineBusy}
+                        title={`Probe onto the touch plate and set Z0 ${touchPlateMm}mm below the contact point`}
+                        className="flex-1 py-1 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        Probe Z0 on Plate
+                      </button>
+                    </div>
+
+                    {/* The plate thickness is what makes plate-probing land on
+                        the right Z — a wrong number here is a wrong cut depth
+                        on every path, so it is edited right next to the button
+                        that uses it. */}
+                    <div>
+                      <label className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1 block">
+                        Touch plate thickness (mm)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        value={touchPlateMm}
+                        disabled={machineBusy}
+                        onChange={e => {
+                          const v = parseFloat(e.target.value) || DEFAULT_TOUCH_PLATE_MM;
+                          setTouchPlateMm(v);
+                          localStorage.setItem('grblTouchPlateMm', String(v));
+                        }}
+                        className="w-full px-2 py-1.5 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-mono text-[11px] disabled:opacity-40"
+                      />
                     </div>
                   </div>
 
                   {/* Surface Probing & Action Buttons */}
-                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-2">
+                  <div className="p-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-slate-300">Surface Mesh Probing</span>
-                      <span className="text-[10px] text-cyan-400 font-mono">
+                      <span className="font-semibold text-slate-600 dark:text-slate-300">Surface Mesh Probing</span>
+                      <span className="text-[10px] text-cyan-700 dark:text-cyan-400 font-mono">
                         {suggestedGrid.cols}×{suggestedGrid.rows} Auto Mesh
                       </span>
                     </div>
@@ -1083,16 +1182,69 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                         onChange={e => setAutoLevel(e.target.checked)}
                         className="mt-0.5 accent-cyan-500"
                       />
-                      <span className="text-[11px] text-slate-300">
+                      <span className="text-[11px] text-slate-600 dark:text-slate-300">
                         Auto-level surface before milling (re-references heightmap to Z0)
                       </span>
                     </label>
+
+                    {/* Retract height and probe search distance. Both feed the
+                        probe cycle directly: the tool lifts to safe Z between
+                        points, then searches `probeDepthMm` downward from
+                        there. */}
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <div>
+                        <label className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1 block">
+                          Retract / safe Z (mm)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0.5"
+                          value={options.safeZ}
+                          disabled={machineBusy}
+                          onChange={e => {
+                            const v = parseFloat(e.target.value) || DEFAULT_SAFE_Z_MM;
+                            setOptions({ ...options, safeZ: v });
+                            localStorage.setItem('grblSafeZMm', String(v));
+                          }}
+                          className="w-full px-2 py-1.5 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-mono text-[11px] disabled:opacity-40"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1 block">
+                          Probe search depth (mm)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0.5"
+                          value={probeDepthMm}
+                          disabled={machineBusy}
+                          onChange={e => {
+                            const v = parseFloat(e.target.value) || DEFAULT_PROBE_DEPTH_MM;
+                            setProbeDepthMm(v);
+                            localStorage.setItem('grblProbeDepthMm', String(v));
+                          }}
+                          className="w-full px-2 py-1.5 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-mono text-[11px] disabled:opacity-40"
+                        />
+                      </div>
+                    </div>
+
+                    {/* The probe starts at the retract height, so anything less
+                        than that never reaches Z0 at all — it alarms out on the
+                        first point rather than after a slow full-grid pass. */}
+                    {probeDepthMm <= options.safeZ && (
+                      <div className="text-[10px] text-amber-700 dark:text-amber-400 leading-relaxed">
+                        Search depth must exceed the {options.safeZ}mm retract height, or the probe
+                        stops above the copper and the machine raises ALARM:5.
+                      </div>
+                    )}
 
                     <div className="flex gap-2 pt-1">
                       <button
                         onClick={handleStartSurfaceProbe}
                         disabled={machineBusy}
-                        className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 rounded font-semibold flex items-center justify-center gap-1 cursor-pointer text-[11px]"
+                        className="flex-1 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-600 dark:text-slate-300 rounded font-semibold flex items-center justify-center gap-1 cursor-pointer text-[11px]"
                       >
                         <Compass className="w-3.5 h-3.5" />
                         {activeHeightmap ? 'Re-probe surface' : 'Probe surface'}
@@ -1102,7 +1254,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                         onClick={handleFrameBoard}
                         disabled={machineBusy}
                         title="Trace the board outline with the spindle off, to check the blank before cutting"
-                        className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded font-semibold flex items-center justify-center gap-1.5 cursor-pointer text-xs"
+                        className="flex-1 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-semibold flex items-center justify-center gap-1.5 cursor-pointer text-xs"
                       >
                         <Crosshair className="w-3.5 h-3.5" />
                         Frame {result.boardWidthMm}x{result.boardHeightMm}
@@ -1134,23 +1286,23 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
             </div>
 
             {/* Bottom Action Footer */}
-            <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-2">
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-950/60 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleDownloadSvg}
-                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded flex items-center gap-1.5 cursor-pointer text-xs transition-colors"
+                  className="px-3.5 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold rounded flex items-center gap-1.5 cursor-pointer text-xs transition-colors"
                   title="Download SVG vector layout for fabrication or etching"
                 >
-                  <Download className="w-3.5 h-3.5 text-emerald-400" />
+                  <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   Download SVG
                 </button>
                 <button
                   onClick={handleDownloadDrill}
                   disabled={result.drills.length === 0}
-                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-semibold rounded flex items-center gap-1.5 cursor-pointer text-xs transition-colors"
+                  className="px-3.5 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 font-semibold rounded flex items-center gap-1.5 cursor-pointer text-xs transition-colors"
                   title="Download Excellon drill file (.drl)"
                 >
-                  <Download className="w-3.5 h-3.5 text-cyan-400" />
+                  <Download className="w-3.5 h-3.5 text-cyan-700 dark:text-cyan-400" />
                   Download Drill (.drl)
                 </button>
               </div>
@@ -1169,7 +1321,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                 <button
                   onClick={handleMillBoard}
                   disabled={!result.success || machineBusy}
-                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm"
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm"
                   title="Start live isolation milling on CNC machine via Web Serial"
                 >
                   {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}

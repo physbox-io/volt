@@ -113,7 +113,9 @@ class FakeGrbl {
         continue;
       }
 
-      if (line.startsWith('G38.2')) {
+      // `G38.2` is a word on the line, not necessarily the first one — a probe
+      // is issued as `G91 G38.2 Z-… F…` so the depth is a real travel distance.
+      if (line.includes('G38.2')) {
         if (this.opts.probeMisses) {
           this.reply('[PRB:0.000,0.000,0.000:0]');
           this.reply('ok');
@@ -188,8 +190,25 @@ check('machine-coord offset cancelled', Math.abs(getGridStats(grid).spanZ - 0.65
 check('far corner picks up the tilt', Math.abs(grid.points[0][3].z - 0.6) < 1e-6, `${grid.points[0][3].z}`);
 check('probe never overflowed', !fake.overflowed);
 
-const probeLines = fake.received.filter(l => l.startsWith('G38.2'));
+const probeLines = fake.received.filter(l => l.includes('G38.2'));
 check('one probe per point', probeLines.length === 16, `${probeLines.length}`);
+
+// The probe depth is a search *distance*, so it has to go out in relative mode.
+// Sent absolute, `G38.2 Z-3` means "descend to work Z = -3" — from a clearance
+// height of +2 that is a 5 mm move at best, and with work Z0 unset it is a few
+// tenths of a millimetre followed by ALARM:5.
+check(
+  'probes relative, not absolute',
+  probeLines.every(l => /(^|\s)G91(\s|$)/.test(l)),
+  probeLines[0]
+);
+// ...and absolute mode is restored, or every following move is a relative one.
+for (const [i, line] of fake.received.entries()) {
+  if (!line.includes('G38.2')) continue;
+  const restored = fake.received.slice(i + 1, i + 3).some(l => /(^|\s)G90(\s|$)/.test(l));
+  check(`G90 restored after probe ${i}`, restored, fake.received.slice(i, i + 3).join(' | '));
+  break;
+}
 const retracts = fake.received.filter(l => /^G0 Z/.test(l));
 check('retracts between points', retracts.length >= 16, `${retracts.length}`);
 
