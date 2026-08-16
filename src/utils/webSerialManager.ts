@@ -28,6 +28,7 @@ const RT_STATUS = 0x3f; // '?'  status report
 const RT_HOLD = 0x21; // '!'  feed hold
 const RT_RESUME = 0x7e; // '~'  cycle start / resume
 const RT_SOFT_RESET = 0x18; // Ctrl-X soft reset
+const RT_JOG_CANCEL = 0x85; //      cancel an in-flight $J= jog
 
 /** How the machine is reached. USB Web Serial stays the default. */
 export type TransportMode = 'usb' | 'wifi';
@@ -40,6 +41,45 @@ const ACK_TIMEOUT_MS = 180_000;
 const PROBE_TIMEOUT_MS = 60_000;
 /** Minimum gap between telemetry posts, when the status has not changed. */
 const TELEMETRY_INTERVAL_MS = 1000;
+
+/**
+ * GRBL 1.1 `error:N` codes, in the operator's terms. Bare "error:9" says
+ * nothing about what to do next; the overwhelmingly common one here is 9 — the
+ * controller boots into Alarm whenever homing is enabled ($22=1) and refuses
+ * all G-code until `$X` or `$H` clears it.
+ */
+const GRBL_ERRORS: Record<number, string> = {
+  1: 'G-code letter with no number after it',
+  2: 'G-code value was missing or malformed',
+  3: 'Unsupported `$` system command',
+  4: 'A negative value was given where only positive is allowed',
+  5: 'Homing is disabled on this controller ($22=0)',
+  7: 'EEPROM read failed; defaults were restored',
+  8: '`$` command needs the machine to be idle',
+  9: 'The machine is locked out in Alarm — unlock ($X) or home ($H) it first',
+  10: 'Soft limits need homing enabled ($22=1)',
+  11: 'Line was longer than GRBL accepts',
+  15: 'Jog target exceeds the machine travel',
+  16: 'Malformed jog command',
+  17: 'Laser mode needs PWM-capable spindle pins',
+  20: 'Unsupported or invalid G-code command',
+  21: 'Two G-code commands from the same modal group on one line',
+  22: 'Feed rate has not been set (missing F)',
+  23: 'G-code command needs an integer value',
+  24: 'Two commands that both need axis words on one line',
+  25: 'A G-code word was repeated on the line',
+  26: 'G-code command is missing its axis words',
+  33: 'Invalid target — arc or motion endpoint is unreachable',
+  34: 'Arc radius geometry is invalid',
+  38: 'Tool number is out of range',
+};
+
+/** Turns a raw `error:N` line into something an operator can act on. */
+function describeGrblError(line: string): string {
+  const code = Number(/^error:\s*(\d+)/.exec(line)?.[1]);
+  const detail = Number.isFinite(code) ? GRBL_ERRORS[code] : undefined;
+  return detail ? `${detail} (${line})` : `Machine rejected a command (${line})`;
+}
 
 export type MachineStatus =
   | 'DISCONNECTED'
@@ -88,6 +128,8 @@ export type MachineStateListener = (state: MachineState) => void;
 
 interface PendingAck {
   bytes: number;
+  /** The G-code that was sent, so an `error:` can name what the machine refused. */
+  line: string;
   resolve: () => void;
   reject: (e: Error) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -366,7 +408,7 @@ class WebSerialManager {
       const timer = setTimeout(() => {
         this.failPending(new Error(`Timed out waiting for the machine to acknowledge "${line}"`));
       }, ACK_TIMEOUT_MS);
-      this.inflight.push({ bytes, resolve, reject, timer });
+      this.inflight.push({ bytes, line, resolve, reject, timer });
     });
 
     await this.transport.writeLine(line);
@@ -497,7 +539,10 @@ class WebSerialManager {
       const ack = this.inflight.shift();
       if (ack) {
         clearTimeout(ack.timer);
-        ack.reject(new Error(`Machine rejected a command (${line})`));
+        // The offending line matters as much as the code — during a job it is
+        // the only way to tell which G-code the controller choked on.
+        const sent = ack.line ? ` — sending \`${ack.line}\`` : '';
+        ack.reject(new Error(describeGrblError(line) + sent));
       }
       this.wakeBufferWaiters();
       return;
@@ -522,6 +567,8 @@ class WebSerialManager {
 
   /** Starts streaming a G-code job line by line over serial. */
   public async startJob(gcode: string): Promise<void> {
+    this.assertUnlocked();
+
     const rawLines = gcode
       .split('\n')
       .map(l => l.trim())
@@ -661,15 +708,58 @@ class WebSerialManager {
   // Zeroing and probing
   // -------------------------------------------------------------------------
 
+  /**
+   * Nudges the tool by a relative amount — how the bit gets over the corner of
+   * the blank before zeroing.
+   *
+   * `$J=` rather than `G91 G0 … G90`: GRBL parses that as two distance-mode
+   * words (both modal group 3) on one line and answers `error:21`. A jog is
+   * also cancellable mid-move and leaves modal state alone, so the next line
+   * still runs in the mode it expects.
+   */
+  public async jog(
+    delta: { x?: number; y?: number; z?: number },
+    feedRate = 1000
+  ): Promise<void> {
+    const axes = (['x', 'y', 'z'] as const)
+      .filter(a => delta[a] !== undefined && delta[a] !== 0)
+      .map(a => `${a.toUpperCase()}${delta[a]!.toFixed(3)}`)
+      .join(' ');
+    if (!axes) return;
+    this.assertUnlocked();
+    await this.sendLine(`$J=G91 G21 ${axes} F${Math.round(feedRate)}`);
+  }
+
+  /** Cancels an in-flight jog (GRBL realtime 0x85), leaving modal state alone. */
+  public async jogCancel(): Promise<void> {
+    await this.writeRealtime(RT_JOG_CANCEL);
+  }
+
   /** Triggers hardware homing cycle ($H). */
   public async homeMachine(): Promise<void> {
     await this.sendLine('$H');
+    this.updateState({ status: 'IDLE', lastError: undefined });
   }
 
   /** Kills GRBL Alarm state ($X). */
   public async unlockAlarm(): Promise<void> {
     await this.sendLine('$X');
     this.updateState({ status: 'IDLE', lastError: undefined });
+  }
+
+  /**
+   * Refuses to start motion while the controller is locked out. GRBL boots into
+   * Alarm whenever homing is enabled ($22=1), and after a limit trip or a
+   * failed probe — in that state it answers every G-code line with `error:9`.
+   * Failing here names the fix; letting the job start would instead surface as
+   * a rejected command somewhere in the middle of the stream.
+   */
+  private assertUnlocked(): void {
+    if (this.state.status === 'ALARM') {
+      throw new Error(
+        'The machine is in alarm and will refuse every command. Unlock ($X) or home ($H) it first.'
+      );
+    }
   }
 
   /** Sets current XY position as G54 Work Origin (0,0). */
@@ -753,6 +843,7 @@ class WebSerialManager {
    * probe references, so it is the one to set before auto-levelling.
    */
   public async zeroZOnSurface(): Promise<void> {
+    this.assertUnlocked();
     this.updateState({ status: 'PROBING' });
     try {
       await this.sendLine('G21');
@@ -802,6 +893,8 @@ class WebSerialManager {
    * surface — see zeroZOnSurface.
    */
   public async probeSurfaceMesh(opts: ProbeMeshOptions): Promise<ProbeGrid> {
+    this.assertUnlocked();
+
     const cols = Math.max(2, Math.round(opts.cols ?? 4));
     const rows = Math.max(2, Math.round(opts.rows ?? 4));
     const probeDepth = opts.probeDepthMm ?? 3;

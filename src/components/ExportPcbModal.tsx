@@ -72,7 +72,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const [activeTab, setActiveTab] = useState<'layout' | 'cam' | 'serial'>('layout');
   const [serialState, setSerialState] = useState(webSerialManager.getState());
   const [autoLevel, setAutoLevel] = useState(true);
-  const [busy, setBusy] = useState<'' | 'probing' | 'zeroing' | 'milling'>('');
+  const [busy, setBusy] = useState<'' | 'probing' | 'zeroing' | 'milling' | 'homing'>('');
   const [machineError, setMachineError] = useState<string | null>(null);
   const [heightmap, setHeightmap] = useState<{ grid: ProbeGrid; boardTag: string } | null>(null);
 
@@ -310,13 +310,40 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     }
   };
 
+  /**
+   * Clears a GRBL alarm lockout ($X). Until this runs the controller answers
+   * every G-code line with error:9, so nothing else on this tab can work.
+   */
+  const handleUnlock = async () => {
+    if (!(await ensureConnected())) return;
+    setMachineError(null);
+    try {
+      await webSerialManager.unlockAlarm();
+    } catch (e: any) {
+      setMachineError(e?.message || 'Unlock failed');
+    }
+  };
+
+  /** Runs the homing cycle ($H) — the other way out of an alarm lockout. */
+  const handleHome = async () => {
+    if (!(await ensureConnected())) return;
+    setMachineError(null);
+    setBusy('homing');
+    try {
+      await webSerialManager.homeMachine();
+    } catch (e: any) {
+      setMachineError(e?.message || 'Homing failed');
+    } finally {
+      setBusy('');
+    }
+  };
+
   const handleJog = async (axis: 'X' | 'Y' | 'Z', direction: 1 | -1) => {
     if (machineBusy) return;
     if (!(await ensureConnected())) return;
     const dist = jogStep * direction;
-    const cmd = `G91 G0 ${axis}${dist.toFixed(2)} G90`;
     try {
-      await webSerialManager.sendLine(cmd);
+      await webSerialManager.jog({ [axis.toLowerCase()]: dist });
     } catch (e: any) {
       setMachineError(e?.message || 'Jog command failed');
     }
@@ -879,6 +906,36 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       </div>
                     )}
                   </div>
+
+                  {/* Alarm lockout. GRBL boots into this whenever homing is
+                      enabled, and lands here again after a limit trip or a
+                      failed probe. Every G-code line comes back error:9 until
+                      it is cleared, so the way out has to be reachable. */}
+                  {serialState.status === 'ALARM' && (
+                    <div className="p-3 bg-amber-950/40 border border-amber-600/60 rounded-lg space-y-2">
+                      <div className="text-amber-300 text-[11px] leading-relaxed">
+                        <span className="font-semibold">Machine is in alarm.</span>{' '}
+                        It will reject every command (error:9) until it is unlocked or homed.
+                        {serialState.lastError ? ` ${serialState.lastError}` : ''}
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          onClick={handleUnlock}
+                          disabled={!!busy}
+                          className="py-1.5 rounded text-[11px] font-semibold bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white cursor-pointer"
+                        >
+                          Unlock ($X)
+                        </button>
+                        <button
+                          onClick={handleHome}
+                          disabled={!!busy}
+                          className="py-1.5 rounded text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-600 disabled:opacity-40 text-slate-200 cursor-pointer"
+                        >
+                          {busy === 'homing' ? 'Homing…' : 'Home ($H)'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Operator feed hold, while a job is actually moving */}
                   {isRunning && (
