@@ -19,6 +19,8 @@ export interface GrblTransport {
   writeRealtime(byte: number): Promise<void>;
   /** Registers the sink for raw serial RX chunks (byte-for-byte serial text). */
   onData(cb: (chunk: string) => void): void;
+  /** Registers a callback when the connection is closed or dropped unexpectedly. */
+  onDisconnect?(cb: (err?: Error) => void): void;
   isOpen(): boolean;
 }
 
@@ -50,6 +52,7 @@ export class WebSerialTransport implements GrblTransport {
   private isReading = false;
   private open = false;
   private dataCb: ((chunk: string) => void) | null = null;
+  private disconnectCb: ((err?: Error) => void) | null = null;
   private baudRate: number;
 
   constructor(baudRate = 115200) {
@@ -58,6 +61,10 @@ export class WebSerialTransport implements GrblTransport {
 
   onData(cb: (chunk: string) => void): void {
     this.dataCb = cb;
+  }
+
+  onDisconnect(cb: (err?: Error) => void): void {
+    this.disconnectCb = cb;
   }
 
   isOpen(): boolean {
@@ -121,6 +128,10 @@ export class WebSerialTransport implements GrblTransport {
         break;
       }
     }
+    if (this.open) {
+      this.open = false;
+      this.disconnectCb?.();
+    }
   }
 }
 
@@ -139,6 +150,7 @@ export class WebSocketTransport implements GrblTransport {
   private ws: WebSocket | null = null;
   private open = false;
   private dataCb: ((chunk: string) => void) | null = null;
+  private disconnectCb: ((err?: Error) => void) | null = null;
   private ip: string;
   private baudRate: number;
 
@@ -149,6 +161,10 @@ export class WebSocketTransport implements GrblTransport {
 
   onData(cb: (chunk: string) => void): void {
     this.dataCb = cb;
+  }
+
+  onDisconnect(cb: (err?: Error) => void): void {
+    this.disconnectCb = cb;
   }
 
   isOpen(): boolean {
@@ -215,8 +231,12 @@ export class WebSocketTransport implements GrblTransport {
         if (msg.type === 'grbl_status') {
           if (msg.open === true) done();
           else if (msg.open === false) {
-            if (settled) this.open = false; // link dropped after connect
-            else done(new Error(msg.err || 'The device could not open the machine link'));
+            if (settled) {
+              this.open = false;
+              this.disconnectCb?.(new Error(msg.err || 'Machine link dropped'));
+            } else {
+              done(new Error(msg.err || 'The device could not open the machine link'));
+            }
           }
           return;
         }
@@ -227,11 +247,22 @@ export class WebSocketTransport implements GrblTransport {
         // Every other type (mesh_*, hil_*, repl_*, …) is not ours — ignore it.
       };
 
-      this.ws.onerror = () => done(new Error(`Could not connect to ${url}`));
+      this.ws.onerror = () => {
+        if (settled) {
+          this.open = false;
+          this.disconnectCb?.(new Error(`WebSocket connection error to ${url}`));
+        } else {
+          done(new Error(`Could not connect to ${url}`));
+        }
+      };
 
       this.ws.onclose = () => {
         this.open = false;
-        done(new Error(`Connection to ${url} closed before the machine link opened`));
+        if (settled) {
+          this.disconnectCb?.();
+        } else {
+          done(new Error(`Connection to ${url} closed before the machine link opened`));
+        }
       };
     });
   }

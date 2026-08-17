@@ -70,6 +70,20 @@ export interface PcbOptions {
   rampedPlunge?: boolean;      // Enable 3D ramped entry for plunges (default true)
   rubOutClearing?: boolean;    // Clear unassigned copper areas (default false)
   airCutZOffset?: number;      // Z offset for Air Cut dry runs (default 20mm)
+  /**
+   * Extra copper grown around every pad, per side, in mm. Footprint pads are
+   * sized for a factory process; on a milled board a bigger annulus is easier
+   * to solder by hand and survives a drill that wanders a little. 0 keeps the
+   * footprint's own size.
+   */
+  padMarginMm?: number;
+  /**
+   * Drill diameters within this span share one bit, sized to the largest hole
+   * in the group. Footprints carry nominal lead diameters — 0.8, 0.9, 1.0, 1.1
+   * — and drilling each with its own bit means a tool change per size for no
+   * practical gain on a prototype. 0 keeps every nominal size separate.
+   */
+  drillConsolidationMm?: number;
 }
 
 export const DEFAULT_PCB_OPTIONS: PcbOptions = {
@@ -90,7 +104,7 @@ export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   drillFeedrate: 150,
   spindleRpm: 12000,
   safeZ: 2.0,
-  isolationDepthZ: -0.08,
+  isolationDepthZ: -0.16,
   drillDepthZ: -1.8,
   profileDepthZ: -1.6,
   zStepdown: 0.8,
@@ -103,6 +117,8 @@ export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   rampedPlunge: true,
   rubOutClearing: false,
   airCutZOffset: 20,
+  padMarginMm: 0.2,
+  drillConsolidationMm: 0.3,
 };
 
 /**
@@ -265,9 +281,20 @@ function padOffset(
   return { dx: spec.x, dy: spec.y, w: spec.padWidth, h: spec.padHeight };
 }
 
-/** Outer copper polygon of a placed pad. */
-function padPolygon(pad: PlacedPad, rotationDeg: 0 | 90): Poly {
-  const { w, h } = padOffset(pad.spec, rotationDeg);
+/**
+ * Outer copper polygon of a placed pad.
+ *
+ * `marginMm` grows the pad on every side. It is clamped so the copper can never
+ * be shrunk below the drill it surrounds — a pad smaller than its own hole is
+ * an annulus that the drill removes entirely, leaving the joint with nothing to
+ * solder to.
+ */
+function padPolygon(pad: PlacedPad, rotationDeg: 0 | 90, marginMm = 0): Poly {
+  const { w: rawW, h: rawH } = padOffset(pad.spec, rotationDeg);
+  const drill = pad.spec.drillDiameter || 0;
+  const grow = Math.max(marginMm, 0);
+  const w = Math.max(rawW + grow * 2, drill);
+  const h = Math.max(rawH + grow * 2, drill);
   switch (pad.spec.shape) {
     case 'circle':
       return circlePoly(pad.x, pad.y, Math.max(w, h) / 2);
@@ -494,6 +521,9 @@ export function generatePcbLayout(
   const options: PcbOptions = { ...DEFAULT_PCB_OPTIONS, ...userOptions };
   const warnings: string[] = [];
   const violations: DrcViolation[] = [];
+  // Grown pad copper affects both the geometry and what the router treats as
+  // occupied, so it is resolved once here and passed to both.
+  const padMargin = Math.max(0, options.padMarginMm ?? 0);
 
   const nodes = circuitNodes || [];
   const edges = circuitEdges || [];
@@ -602,7 +632,7 @@ export function generatePcbLayout(
   for (const pad of pads) {
     if (!pad.netId) continue;
     const comp = compById.get(pad.componentId)!;
-    addCopper(pad.netId, [padPolygon(pad, comp.rotationDeg)]);
+    addCopper(pad.netId, [padPolygon(pad, comp.rotationDeg, padMargin)]);
   }
   for (const trace of traces) {
     addCopper(trace.netId, strokeToPoly(trace.points, trace.width));
@@ -739,6 +769,9 @@ function placeAndRoute(
 ): LayoutAttempt {
   const violations: DrcViolation[] = [];
   const warnings: string[] = [];
+  // Grown pad copper has to reach the router too, or a trace gets planned
+  // through the annulus the margin just added.
+  const padMargin = Math.max(0, opts.padMarginMm ?? 0);
 
   const { placed, boardWidthMm, boardHeightMm } =
     placeComponents(inputs, opts, warnings, spreadScale);
@@ -810,7 +843,7 @@ function placeAndRoute(
         componentId: pad.componentId,
         x: pad.x,
         y: pad.y,
-        padRadiusMm: Math.max(w, h) / 2,
+        padRadiusMm: Math.max(w, h) / 2 + padMargin,
       });
     }
   }
@@ -821,7 +854,9 @@ function placeAndRoute(
     .filter(p => !p.netId)
     .map(p => {
       const { w, h } = padOffset(p.spec, compById.get(p.componentId)!.rotationDeg);
-      return { x: p.x, y: p.y, radiusMm: Math.max(w, h) / 2 };
+      // Same margin the copper is grown by, or the router would happily run a
+      // trace through the annulus this pad just gained.
+      return { x: p.x, y: p.y, radiusMm: Math.max(w, h) / 2 + padMargin };
     });
 
   // Cutouts have no pads at all — they are pure keepout, and are milled by the
@@ -978,6 +1013,13 @@ const f3 = (n: number) => n.toFixed(3);
 /**
  * Transforms a PCB G-code program into an Air Cut dry run program by shifting
  * all Z-axis plunge and cutting moves upward by `zOffsetMm` (default +20mm).
+ *
+ * Tool changes and the spindle are stripped out. A dry run exists to watch the
+ * whole program trace out in the air, and the board profile is the *last*
+ * operation — behind every drill-bit change. Leaving the `M6` pauses in meant
+ * the run stopped several times before it ever reached the outline, so the one
+ * pass most worth previewing was the one nobody ever saw. Nothing is being cut,
+ * so there is no bit to change and no reason to spin the spindle up either.
  */
 export function generateAirCutGcode(gcode: string, zOffsetMm = 20): string {
   if (!gcode) return gcode;
@@ -986,6 +1028,17 @@ export function generateAirCutGcode(gcode: string, zOffsetMm = 20): string {
     const semiIdx = line.indexOf(';');
     const codePart = semiIdx !== -1 ? line.slice(0, semiIdx) : line;
     const commentPart = semiIdx !== -1 ? line.slice(semiIdx) : '';
+
+    // A tool change line is dropped to a bare comment: the run must not pause,
+    // but the operator still wants to see where the change would have been.
+    if (/\bM0?6\b/.test(codePart) || /^\s*T\d+\s*$/.test(codePart)) {
+      return `; [air cut] tool change skipped:${codePart.trim() ? ' ' + codePart.trim() : ''}${commentPart}`;
+    }
+    // M3/M4 start the spindle; M0 is an unconditional stop. Neither belongs in
+    // a dry run, and a spinning cutter 20mm above the stock is just a hazard.
+    if (/\bM[34]\b/.test(codePart) || /\bM0{1,2}\b/.test(codePart)) {
+      return `; [air cut] skipped: ${codePart.trim()}${commentPart}`;
+    }
 
     const transformedCode = codePart.replace(/\bZ(-?\d+(?:\.\d+)?)\b/gi, (_, zVal) => {
       const z = parseFloat(zVal);
@@ -1264,17 +1317,14 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
     g.push(`; OP 2/3: Through-hole drilling (${result.drills.length} holes)`);
     g.push(`; ==================================================`);
 
-    // Group by diameter so each drill bit is loaded once.
-    const byDia = new Map<number, DrillPoint[]>();
-    for (const d of result.drills) {
-      const key = Math.round(d.diameter * 100) / 100;
-      if (!byDia.has(key)) byDia.set(key, []);
-      byDia.get(key)!.push(d);
-    }
+    const groups = groupDrillsByBit(result.drills, options.drillConsolidationMm ?? 0);
 
     let toolNum = 2;
-    for (const [dia, holes] of [...byDia.entries()].sort((a, b) => a[0] - b[0])) {
-      g.push(`; --- ${holes.length} hole(s) at ${dia}mm ---`);
+    for (const { bitMm, nominals, holes } of groups) {
+      const merged =
+        nominals.length > 1 ? ` (${nominals.map(n => `${n}mm`).join(', ')} drilled at size)` : '';
+      g.push(`; --- ${holes.length} hole(s) at ${bitMm}mm${merged} ---`);
+      const dia = bitMm;
       if (options.pauseOnToolChange) {
         g.push(`T${toolNum} M6 ; Tool ${toolNum}: ${dia}mm drill`);
         g.push(`G4 P1`);
@@ -1396,7 +1446,64 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   return g.join('\n');
 }
 
-/** Excellon drill file, for drilling on a different machine. */
+/** One drill bit and every hole it makes. */
+export interface DrillBitGroup {
+  /** Bit diameter to load, in mm — the largest hole in the group. */
+  bitMm: number;
+  /** The nominal footprint diameters this bit covers, ascending. */
+  nominals: number[];
+  holes: DrillPoint[];
+}
+
+/**
+ * Assigns holes to drill bits, merging nominal sizes that sit within
+ * `toleranceMm` of each other.
+ *
+ * Footprints carry the lead diameter of the part — 0.8 for a resistor, 0.9,
+ * 1.0 for a TO-92, 1.1 — and a strict grouping turns a board with four part
+ * types into four tool changes. On a prototype those all get drilled with one
+ * bit, so sizes within a tolerance are merged and drilled at the largest of
+ * them: a lead is never left without a hole it fits through, only with a
+ * slightly looser one.
+ *
+ * Merging is greedy over ascending sizes and anchored on the smallest member,
+ * so a group can never span more than `toleranceMm` end to end — a chain of
+ * near-neighbours cannot drift a 0.8mm hole up to 2mm.
+ */
+export function groupDrillsByBit(drills: DrillPoint[], toleranceMm: number): DrillBitGroup[] {
+  const byNominal = new Map<number, DrillPoint[]>();
+  for (const d of drills) {
+    const key = Math.round(d.diameter * 100) / 100;
+    if (!byNominal.has(key)) byNominal.set(key, []);
+    byNominal.get(key)!.push(d);
+  }
+
+  const sizes = [...byNominal.keys()].sort((a, b) => a - b);
+  const tol = Math.max(0, toleranceMm);
+  const groups: DrillBitGroup[] = [];
+
+  for (const size of sizes) {
+    const open = groups[groups.length - 1];
+    // Anchored on the group's smallest size, not its last, so the span is bounded.
+    if (open && size - open.nominals[0] <= tol) {
+      open.nominals.push(size);
+      open.bitMm = size; // sizes ascend, so this is the largest so far
+      open.holes.push(...byNominal.get(size)!);
+    } else {
+      groups.push({ bitMm: size, nominals: [size], holes: [...byNominal.get(size)!] });
+    }
+  }
+
+  return groups;
+}
+
+/**
+ * Excellon drill file, for drilling on a different machine.
+ *
+ * Deliberately NOT consolidated: this file goes to a fab or a dedicated drill,
+ * where the tool library is real and the nominal sizes are what should be cut.
+ * Bit merging exists to save tool changes on *this* machine.
+ */
 export function generateExcellon(result: PcbLayoutResult): string {
   const lines: string[] = ['M48', 'METRIC,TZ'];
   const byDia = new Map<number, DrillPoint[]>();

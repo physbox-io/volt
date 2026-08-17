@@ -1531,20 +1531,49 @@ export default function App() {
     setEdges(eds => eds.filter(e => !e.selected));
   }, [setNodes, setEdges]);
 
-  // Keyboard Shortcuts Handler (Delete / Backspace key to delete selected circuit elements)
+  // Keyboard Shortcuts Handler (Undo / Redo / Delete / Deselect)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) {
         return;
       }
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const isModifier = isMac ? e.metaKey : e.ctrlKey;
+
+      if (isModifier && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          if (canRedo) redo();
+        } else {
+          if (canUndo) undo();
+        }
+        return;
+      }
+
+      if (isModifier && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        if (canRedo) redo();
+        return;
+      }
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         deleteSelected();
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        if (probeMode) {
+          setProbeMode(false);
+          setProbeData(null);
+        }
+        setNodes(nds => nds.map(n => n.selected ? { ...n, selected: false } : n));
+        setEdges(eds => eds.map(edge => edge.selected ? { ...edge, selected: false } : edge));
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [deleteSelected]);
+  }, [deleteSelected, undo, redo, canUndo, canRedo, probeMode]);
 
   const { exportJson, importJson } = useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulation });
 
@@ -1970,7 +1999,6 @@ export default function App() {
             onClose={() => setIsPcbModalOpen(false)}
             nodes={nodes}
             edges={edges}
-            onOpenAICopilot={() => setShowAICopilot(true)}
           />
         )}
         {isDocsOpen && <DocsModal onClose={() => setIsDocsOpen(false)} />}

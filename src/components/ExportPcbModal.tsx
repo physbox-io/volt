@@ -6,7 +6,6 @@ import {
   Download,
   Play,
   Layers,
-  Sparkles,
   Check,
   RefreshCw,
   Compass,
@@ -35,6 +34,7 @@ import { webSerialManager } from '../utils/webSerialManager';
 import { getGridStats, findUnwarpableCommands, suggestProbeGrid, type ProbeGrid } from '../utils/meshLeveler';
 import { PcbToolpathPreview } from './PcbToolpathPreview';
 import { InfoTip } from './InfoTip';
+import { JobPauseModal } from './JobPauseModal';
 
 /**
  * Wall-clock budgets offered for the maze router. Most boards finish in well
@@ -73,14 +73,12 @@ interface ExportPcbModalProps {
   onClose: () => void;
   nodes?: Node[];
   edges?: Edge[];
-  onOpenAICopilot?: (contextPrompt?: string) => void;
 }
 
 export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   onClose,
   nodes = [],
   edges = [],
-  onOpenAICopilot,
 }) => {
   const [options, setOptions] = useState<PcbOptions>(() => {
     const suggested = calculateSuggestedBoardSize(nodes, DEFAULT_PCB_OPTIONS);
@@ -95,7 +93,12 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   });
   const [activeTab, setActiveTab] = useState<'layout' | 'cam' | 'serial'>('layout');
   const [serialState, setSerialState] = useState(webSerialManager.getState());
-  const [autoLevel, setAutoLevel] = useState(true);
+  /**
+   * Off by default: a mesh probe is minutes of machine time and needs the
+   * continuity clip attached, so it belongs behind a deliberate press of the
+   * Probe button rather than silently in front of every job.
+   */
+  const [autoLevel, setAutoLevel] = useState(false);
   /**
    * How far the tool searches downward for the copper on each probe point, as
    * a travel distance from the retract height. It has to clear the retract plus
@@ -135,6 +138,26 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       setSerialState(state);
     });
   }, []);
+
+  const handleSafeClose = () => {
+    const isJobActive = serialState.status === 'RUNNING' || serialState.status === 'PROBING' || busy !== '';
+    if (isJobActive) {
+      if (!window.confirm('A machine operation is currently in progress. Closing this dialog will leave the machine running. Are you sure you want to close?')) {
+        return;
+      }
+    }
+    onClose();
+  };
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleSafeClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [serialState.status, busy]);
 
   // Routing runs in a worker: a dense board takes seconds, and blocking the
   // main thread for that long makes the whole editor feel broken.
@@ -476,18 +499,29 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     setBusy('');
   };
 
-  const handleTriggerSparklesCopilot = () => {
-    const contextPrompt = `Analyze this PCB design for milling accuracy, trace isolation clearances, component footprint placements, or potential isolation issues:
-- Board Dimensions: ${options.boardWidthMm}mm x ${options.boardHeightMm}mm
-- Trace Width: ${options.traceWidthMm}mm | Clearance: ${options.clearanceMm}mm
-- Component Count: ${result.components.length} | Drill Hole Count: ${result.drills.length}
-- Isolation Depth: ${options.isolationDepthZ}mm | V-Bit Angle: ${options.vBitAngleDeg}°
-Please check if trace clearances are safe for a 30° V-bit and recommend any routing or CAM adjustments if something looks slightly off.`;
-
-    if (onOpenAICopilot) {
-      onOpenAICopilot(contextPrompt);
+  /** Rewinds to the start of the current operation and cuts it again. */
+  const handleRestartLayer = async () => {
+    if (busy) return;
+    setMachineError(null);
+    setBusy('milling');
+    try {
+      await webSerialManager.restartCurrentLayer();
+    } catch (e: any) {
+      setMachineError(e?.message || 'Could not restart this layer');
+    } finally {
+      setBusy('');
     }
   };
+
+  // Read during render rather than mirrored into state: it is derived purely
+  // from the queue position, which only changes alongside a status update the
+  // listener already re-renders on.
+  const currentLayer = isPaused ? webSerialManager.getCurrentLayer() : null;
+
+  // The machine drives the preview whenever a job is on the wire, paused
+  // included — freezing mid-job at the last streamed line is the useful view.
+  const liveProgress =
+    isRunning || isPaused ? (serialState.progressPercent ?? 0) / 100 : null;
 
   return (
     // z-[99999] is the modal layer every other full-screen dialog here uses.
@@ -519,16 +553,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
 
           <div className="flex items-center gap-2">
             <button
-              onClick={handleTriggerSparklesCopilot}
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
-              title="Open AI Copilot to analyze PCB design and fix layout issues"
-            >
-              <Sparkles className="w-4 h-4 text-indigo-700 dark:text-indigo-200" />
-              <span>Sparkles Copilot</span>
-            </button>
-
-            <button
-              onClick={onClose}
+              onClick={handleSafeClose}
               className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
@@ -547,6 +572,7 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                   heightmap={activeHeightmap}
                   isAirCut={isAirCutMode}
                   airCutZOffset={airCutZOffset}
+                  liveProgress={liveProgress}
                 />
               </div>
             ) : (
@@ -755,6 +781,52 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                       step="0.05"
                       value={options.clearanceMm}
                       onChange={e => setOptions({ ...options, clearanceMm: parseFloat(e.target.value) || 0.3 })}
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
+                      Pad Margin (mm)
+                      <InfoTip>
+                        Extra copper grown around every pad, per side. Footprint pads are sized for
+                        a factory process and come out small on a milled board; a bigger annulus is
+                        easier to solder by hand and tolerates a drill that wanders. The router
+                        keeps clear of the grown copper, so a large value on a dense board can
+                        leave nets unroutable.
+                      </InfoTip>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0"
+                      value={options.padMarginMm ?? 0}
+                      onChange={e =>
+                        setOptions({ ...options, padMarginMm: Math.max(0, parseFloat(e.target.value) || 0) })
+                      }
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
+                      Drill Bit Merge (mm)
+                      <InfoTip>
+                        Hole sizes within this span share one drill bit, sized to the largest hole
+                        in the group. Footprints carry the exact lead diameter of each part, so a
+                        board with four part types otherwise means four drill changes. Set to 0 to
+                        drill every nominal size with its own bit.
+                      </InfoTip>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={options.drillConsolidationMm ?? 0}
+                      onChange={e =>
+                        setOptions({
+                          ...options,
+                          drillConsolidationMm: Math.max(0, parseFloat(e.target.value) || 0),
+                        })
+                      }
                       className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
@@ -1038,61 +1110,9 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
                     </button>
                   )}
 
-                  {/* Tool changes pause banner */}
-                  {isPaused && (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded space-y-2">
-                      <div className="text-amber-700 dark:text-amber-200 font-semibold flex items-start gap-1.5">
-                        <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
-                        <span>{serialState.pauseMessage || 'Job paused'}</span>
-                      </div>
-                      {/* A new bit is a different length, so work Z0 is stale
-                          the moment it goes in. Without this the only choices
-                          were to resume at the wrong depth or throw the job
-                          away. Offered at any stream pause, since an M0 stop
-                          can also mean the tool came out. */}
-                      {isStreamPaused && (
-                        <div className="space-y-1.5 pb-1">
-                          <div className="text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
-                            A new bit changes the tool length — re-zero Z before resuming, or the
-                            job cuts at the wrong depth.
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={handleZeroZ}
-                              disabled={manualMoveBlocked}
-                              className="flex-1 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
-                            >
-                              {busy === 'zeroing' && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                              Re-zero Z on copper
-                            </button>
-                            <button
-                              onClick={handleZeroZOnPlate}
-                              disabled={manualMoveBlocked}
-                              className="flex-1 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] cursor-pointer"
-                            >
-                              Re-zero Z on plate
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleResume}
-                          disabled={!!busy}
-                          className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded font-semibold cursor-pointer"
-                        >
-                          Resume
-                        </button>
-                        <button
-                          onClick={handleCancel}
-                          className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-red-100 dark:hover:bg-red-900/60 text-slate-800 dark:text-slate-200 rounded font-semibold cursor-pointer"
-                        >
-                          Cancel job
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  {/* The pause itself is presented as a full-screen modal
+                      (JobPauseModal, rendered below) — a stopped machine with a
+                      bit half out is not something to leave behind a tab. */}
 
                   {/* Interactive Jog Keypad Controls */}
                   <div className="p-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2">
@@ -1388,6 +1408,21 @@ Please check if trace clearances are safe for a 30° V-bit and recommend any rou
           </div>
         </div>
       </div>
+
+      {isPaused && (
+        <JobPauseModal
+          message={serialState.pauseMessage || 'Job paused'}
+          isStreamPaused={isStreamPaused}
+          layerLabel={currentLayer?.label ?? null}
+          busy={busy}
+          error={machineError}
+          onResume={handleResume}
+          onCancel={handleCancel}
+          onZeroOnCopper={handleZeroZ}
+          onZeroOnPlate={handleZeroZOnPlate}
+          onRestartLayer={handleRestartLayer}
+        />
+      )}
     </div>
   );
 };

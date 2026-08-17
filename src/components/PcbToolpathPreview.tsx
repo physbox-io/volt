@@ -9,6 +9,12 @@ export interface PcbToolpathPreviewProps {
   heightmap?: ProbeGrid | null;
   isAirCut?: boolean;
   airCutZOffset?: number;
+  /**
+   * Fraction of the job the machine has actually streamed, 0..1, or null when
+   * no job is running. While it is set the preview follows the machine instead
+   * of the scrubber — the same view, driven live rather than by playback.
+   */
+  liveProgress?: number | null;
 }
 
 export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
@@ -17,9 +23,22 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
   heightmap,
   isAirCut = false,
   airCutZOffset = 20,
+  liveProgress = null,
 }) => {
-  const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(1.0); // 0.0 to 1.0
+  const [wantsPlayback, setWantsPlayback] = useState(false);
+  const [scrubProgress, setScrubProgress] = useState(1.0); // 0.0 to 1.0
+
+  const isLive = liveProgress !== null && Number.isFinite(liveProgress);
+  // The machine wins while a job is on the wire. Clamped because a job whose
+  // streamed line count drifts from the parsed move count could otherwise push
+  // the toolhead marker off the end of the path.
+  const progress = isLive ? Math.min(1, Math.max(0, liveProgress as number)) : scrubProgress;
+  // Derived rather than reset in an effect: a job starting has to suppress
+  // playback immediately, and an effect would let one frame of the animation
+  // fight the machine for the same view first.
+  const playing = wantsPlayback && !isLive;
+  const setPlaying = setWantsPlayback;
+  const setProgress = setScrubProgress;
   const [speed, setSpeed] = useState<1 | 2 | 5>(1);
 
   // Layer Visibility state
@@ -116,9 +135,9 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
         const delta = (now - lastTimeRef.current) / 1000; // seconds
         // Loop standard run over ~10 seconds
         const step = (delta / 10) * speed;
-        setProgress(prev => {
+        setScrubProgress(prev => {
           if (prev + step >= 1.0) {
-            setPlaying(false);
+            setWantsPlayback(false);
             return 1.0;
           }
           return prev + step;
@@ -151,8 +170,9 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => setPlaying(!playing)}
-            className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded cursor-pointer flex items-center gap-1 font-medium"
-            title={playing ? 'Pause Playback' : 'Play Toolpath Animation'}
+            disabled={isLive}
+            className="p-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded cursor-pointer flex items-center gap-1 font-medium"
+            title={isLive ? 'Following the running job' : playing ? 'Pause Playback' : 'Play Toolpath Animation'}
           >
             {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
             <span>{playing ? 'Pause' : 'Play'}</span>
@@ -162,7 +182,8 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
               setPlaying(false);
               setProgress(0);
             }}
-            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded cursor-pointer"
+            disabled={isLive}
+            className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-300 rounded cursor-pointer"
             title="Reset Timeline"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -365,15 +386,25 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
       {/* Scrubber Bar & Telemetry Footer */}
       <div className="p-2.5 bg-slate-900 border-t border-slate-800 space-y-2">
         <div className="flex items-center gap-2 text-slate-300 font-mono text-[10px]">
-          <span>0%</span>
+          {isLive ? (
+            <span className="flex items-center gap-1 text-red-400 font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              LIVE
+            </span>
+          ) : (
+            <span>0%</span>
+          )}
           <input
             type="range"
             min="0"
             max="1"
             step="0.001"
             value={progress}
+            disabled={isLive}
             onChange={e => setProgress(parseFloat(e.target.value))}
-            className="flex-1 accent-emerald-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+            className={`flex-1 h-1.5 bg-slate-800 rounded ${
+              isLive ? 'accent-red-500 cursor-not-allowed' : 'accent-emerald-500 cursor-pointer'
+            }`}
           />
           <span>{Math.round(progress * 100)}%</span>
         </div>

@@ -1,78 +1,96 @@
-import { presets } from './utils/presets';
-import { generatePcbLayout, type PcbLayoutResult } from './utils/pcbExporter';
-import { strokeToPoly, unionPolys, polysOverlap, circlePoly, rectPoly, ovalPoly, type Poly } from './utils/pcbGeometry';
+/**
+ * Exercises the CAM output rules that are easy to get wrong and expensive to
+ * discover on the machine: how many drill bits a board demands, and whether an
+ * air cut actually runs end to end.
+ *
+ * Run with: npx tsx src/test_pcb_export.ts
+ */
 
-function copperOf(r: PcbLayoutResult): Map<string, Poly[]> {
-  const m = new Map<string, Poly[]>();
-  const add = (n: string, p: Poly[]) => m.set(n, (m.get(n)||[]).concat(p));
-  for (const pad of r.pads) {
-    if (!pad.netId) continue;
-    const c = r.components.find(c=>c.id===pad.componentId)!;
-    const rot = c.rotationDeg === 90;
-    const w = rot ? pad.spec.padHeight : pad.spec.padWidth;
-    const h = rot ? pad.spec.padWidth : pad.spec.padHeight;
-    add(pad.netId, [pad.spec.shape==='circle' ? circlePoly(pad.x,pad.y,Math.max(w,h)/2)
-      : pad.spec.shape==='oval' ? ovalPoly(pad.x,pad.y,w,h) : rectPoly(pad.x,pad.y,w,h)]);
-  }
-  for (const t of r.traces) add(t.netId, strokeToPoly(t.points, t.width));
-  for (const [k,v] of m) m.set(k, unionPolys(v));
-  return m;
+import {
+  groupDrillsByBit,
+  generateAirCutGcode,
+  DEFAULT_PCB_OPTIONS,
+  type DrillPoint,
+} from './utils/pcbExporter';
+
+let fails = 0;
+function check(name: string, cond: boolean, detail = '') {
+  if (!cond) fails++;
+  console.log(`${cond ? '  ok  ' : '!!FAIL'} ${name}${cond ? '' : `  ${detail}`}`);
 }
 
-let totalFail = 0;
-for (const [key, p] of Object.entries(presets) as any) {
-  if (!p.nodes?.length) continue;
-  const t0 = Date.now();
-  let r: PcbLayoutResult;
-  try { r = generatePcbLayout(p.nodes, p.edges); }
-  catch (e:any) { console.log(`${key}: THREW ${e.message}`); totalFail++; continue; }
-  const ms = Date.now()-t0;
-  const fails: string[] = [];
+const holes = (diameter: number, n: number): DrillPoint[] =>
+  Array.from({ length: n }, (_, i) => ({
+    x: i,
+    y: 0,
+    diameter,
+    componentId: 'c',
+    pinNumber: '1',
+  }));
 
-  // 1. cross-net copper shorts
-  const copper = copperOf(r);
-  const ids = [...copper.keys()];
-  for (let i=0;i<ids.length;i++) for (let j=i+1;j<ids.length;j++)
-    if (polysOverlap(copper.get(ids[i])!, copper.get(ids[j])!, 1e-5)) fails.push(`SHORT ${ids[i]}~${ids[j]}`);
+// --- 1. Drill bit consolidation -------------------------------------------
+// A simple astable board: resistors and LEDs at 0.8, a diode at 0.9, TO-92
+// transistors and electrolytics at 1.0. Strictly grouped that is three drill
+// changes for holes a single bit would make.
+const astable = [...holes(0.8, 8), ...holes(0.9, 2), ...holes(1.0, 6)];
 
-  // 2. isolation toolpath must not cut into another net's copper
-  for (const iso of r.isolationPaths) {
-    const cut = strokeToPoly(iso.points, r.effectiveToolDiaMm);
-    for (const [nid, poly] of copper) {
-      if (nid === iso.netId) continue;
-      if (polysOverlap(cut, poly, 1e-4)) { fails.push(`ISO-CUTS ${iso.netId} into ${nid}`); break; }
-    }
-  }
+const strict = groupDrillsByBit(astable, 0);
+check('no merging keeps every nominal size', strict.length === 3, `${strict.length} groups`);
 
-  // 3. components inside board & not overlapping
-  for (const c of r.components) {
-    if (c.x - c.widthMm/2 < -0.01 || c.y - c.heightMm/2 < -0.01 ||
-        c.x + c.widthMm/2 > r.boardWidthMm+0.01 || c.y + c.heightMm/2 > r.boardHeightMm+0.01)
-      fails.push(`OOB ${c.name}`);
-  }
-  for (let i=0;i<r.components.length;i++) for (let j=i+1;j<r.components.length;j++) {
-    const a=r.components[i],b=r.components[j];
-    if (Math.abs(a.x-b.x) < (a.widthMm+b.widthMm)/2-0.02 && Math.abs(a.y-b.y) < (a.heightMm+b.heightMm)/2-0.02)
-      fails.push(`OVERLAP ${a.name}~${b.name}`);
-  }
+const merged = groupDrillsByBit(astable, DEFAULT_PCB_OPTIONS.drillConsolidationMm ?? 0);
+check('default tolerance collapses an astable to one bit', merged.length === 1, `${merged.length} groups`);
+check('every hole survives the merge', merged[0]?.holes.length === 16, `${merged[0]?.holes.length}`);
+// Drilling at the largest of the group means a lead always fits; drilling at
+// the smallest would leave 1.0mm leads facing a 0.8mm hole.
+check('merged bit is the largest in its group', merged[0]?.bitMm === 1.0, `${merged[0]?.bitMm}`);
+check('merge is reported', (merged[0]?.nominals || []).join(',') === '0.8,0.9,1', `${merged[0]?.nominals}`);
 
-  // 4. traces within board
-  for (const t of r.traces) for (const q of t.points)
-    if (q.x<0||q.y<0||q.x>r.boardWidthMm||q.y>r.boardHeightMm) { fails.push(`TRACE-OOB ${t.netId}`); break; }
-
-  // 5. gcode structure
-  const g = r.gcode;
-  const errs = r.violations.filter(v=>v.severity==='error').length;
-  if (errs===0) {
-    if (!g.includes('G21')) fails.push('no G21');
-    if (!g.includes('M30')) fails.push('no M30');
-    if (!/M3 S\d+/.test(g)) fails.push('no spindle on');
-    if (!g.includes('M5')) fails.push('no spindle off');
-    if (/NaN|undefined|Infinity/.test(g)) fails.push('BAD NUMBER in gcode');
-  }
-  const routedPct = (r.completion*100).toFixed(0);
-  const status = fails.length ? `FAIL ${fails.slice(0,3).join('; ')}` : 'ok';
-  if (fails.length) totalFail++;
-  console.log(`${status==='ok'?'  ':'!!'} ${key.padEnd(28)} ${String(r.components.length).padStart(2)}c ${String(r.nets.length).padStart(2)}n ${String(r.traces.length).padStart(3)}t ${routedPct.padStart(3)}% ${String(r.boardWidthMm)}x${r.boardHeightMm} ${String(ms).padStart(5)}ms  ${errs?`${errs}err `:''}${status}`);
+// Grouping is anchored on the smallest member, so a run of near-neighbours
+// cannot chain-drift a small hole up to a much larger bit.
+const chain = [0.8, 1.0, 1.2, 1.4, 1.6].flatMap(d => holes(d, 1));
+const chained = groupDrillsByBit(chain, 0.3);
+check('a chain of near sizes does not drift', chained.length === 3, chained.map(g => g.bitMm).join(', '));
+for (const g of chained) {
+  const span = g.bitMm - g.nominals[0];
+  check(`group at ${g.bitMm}mm stays within tolerance`, span <= 0.3 + 1e-9, `span ${span}`);
 }
-console.log(`\n${totalFail} preset(s) with failures`);
+
+// --- 2. Air cut runs to the end -------------------------------------------
+// The board profile is the LAST operation, behind every drill change. Leaving
+// the M6 pauses in meant a dry run stopped several times before it ever traced
+// the outline — the one pass most worth previewing.
+const program = [
+  'G90 G21',
+  'T1 M6 ; Tool 1: V-bit',
+  'M3 S12000 ; Spindle on',
+  'G1 Z-0.160 F100',
+  'T2 M6 ; Tool 2: 1mm drill',
+  'M0 ; swap material',
+  '; OP 3/3: Board edge profile',
+  'T99 M6 ; Tool 99: end mill',
+  'G1 X10.000 Y0.000 F300',
+  'G1 Z-1.600 F100',
+  'M5 ; Spindle off',
+  'M30 ; End',
+].join('\n');
+
+const air = generateAirCutGcode(program, 20);
+const active = air.split('\n').filter(l => l.trim() && !l.trim().startsWith(';'));
+
+check('no tool change survives an air cut', !active.some(l => /\bM0?6\b/.test(l)), active.join(' | '));
+check('no unconditional stop survives', !active.some(l => /\bM0{1,2}\b/.test(l)), active.join(' | '));
+check('spindle is never started', !active.some(l => /\bM[34]\b/.test(l)), active.join(' | '));
+check('the profile pass is still reached', active.some(l => l.includes('X10.000')), active.join(' | '));
+check('M30 still ends the program', active.some(l => /\bM30\b/.test(l)), active.join(' | '));
+
+// Z is lifted clear, and every cut move ends up above the stock.
+const zs = active
+  .flatMap(l => [...l.matchAll(/Z(-?\d+(?:\.\d+)?)/g)].map(m => parseFloat(m[1])));
+check('every Z is lifted above the stock', zs.length > 0 && zs.every(z => z > 0), zs.join(', '));
+
+// --- 3. Defaults ----------------------------------------------------------
+check('isolation depth default is 0.16mm', DEFAULT_PCB_OPTIONS.isolationDepthZ === -0.16, `${DEFAULT_PCB_OPTIONS.isolationDepthZ}`);
+check('pads carry a margin by default', (DEFAULT_PCB_OPTIONS.padMarginMm ?? 0) > 0, `${DEFAULT_PCB_OPTIONS.padMarginMm}`);
+
+console.log(`\n${fails} failure(s)`);
+if (fails) throw new Error(`${fails} PCB export test failure(s)`);

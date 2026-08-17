@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 import { presets, DEFAULT_PRESET_KEY } from '../utils/presets';
 import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey, type CircuitPreset } from '../utils/storage';
@@ -20,7 +20,10 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [saveDialogName, setSaveDialogName] = useState('');
 
-  const allPresets: Record<string, CircuitPreset> = { ...presets, ...userPresets };
+  const allPresets: Record<string, CircuitPreset> = useMemo(
+    () => ({ ...presets, ...userPresets }),
+    [userPresets]
+  );
 
   const loadPreset = useCallback((key: string) => {
     const preset = allPresets[key];

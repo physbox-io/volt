@@ -26,7 +26,7 @@ export function getHandlesForNode(node: Node): string[] {
   if (node.type === 'ground') {
     return ['in'];
   }
-  if (node.type === 'voltage' || node.type === 'acvoltage') {
+  if (node.type === 'voltage' || node.type === 'acvoltage' || node.type === 'currentsource') {
     return ['pos', 'neg'];
   }
   if (node.type === 'junction') {
@@ -47,6 +47,51 @@ export function getHandlesForNode(node: Node): string[] {
   }
   if (node.type === 'jumper') {
     return ['a', 'b'];
+  }
+  if (node.type === 'opamp') {
+    return ['in_inv', 'in_non', 'vcc', 'vee', 'out'];
+  }
+  if (node.type === 'npn' || node.type === 'pnp') {
+    return ['c', 'b', 'e'];
+  }
+  if (node.type === 'nmos' || node.type === 'pmos') {
+    return ['d', 'g', 's'];
+  }
+  if (node.type === 'potentiometer') {
+    return ['in', 'out', 'wiper'];
+  }
+  if (node.type === 'dff') {
+    return ['d', 'clk', 'q', 'qbar'];
+  }
+  if (node.type === 'transformer') {
+    return ['p1', 'p2', 's1', 's2'];
+  }
+  if (node.type === 'sevenseg') {
+    return ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'common'];
+  }
+  if (node.type === 'heltec_v4') {
+    return ['3V3', 'GND', 'GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41'];
+  }
+  if (['and', 'or', 'nand', 'nor', 'xor'].includes(node.type as string)) {
+    return ['in1', 'in2', 'out'];
+  }
+  if (node.type === 'not') {
+    return ['in1', 'out'];
+  }
+  if (node.type === 'led' || node.type === 'diode' || node.type === 'zener') {
+    return ['anode', 'cathode'];
+  }
+  if (node.type === 'scope') {
+    return ['ch1', 'ch2', 'gnd'];
+  }
+  if (node.type === 'multimeter') {
+    return ['pos', 'neg'];
+  }
+  if (node.type === 'signalgen' || node.type === 'microphone') {
+    return ['out', 'gnd'];
+  }
+  if (node.type === 'speaker') {
+    return ['in', 'gnd'];
   }
   return ['in', 'out'];
 }
@@ -123,6 +168,102 @@ export function getHandleCoord(node: any, handleId: string): { x: number; y: num
     }
   }
 
+  // OpAmp
+  if (node.type === 'opamp') {
+    if (handleId === 'in_inv') return { x, y: y + h * 0.3 };
+    if (handleId === 'in_non') return { x, y: y + h * 0.7 };
+    if (handleId === 'out') return { x: x + w, y: y + h * 0.5 };
+    if (handleId === 'vcc') return { x: x + w * 0.5, y };
+    if (handleId === 'vee') return { x: x + w * 0.5, y: y + h };
+  }
+
+  // BJTs (NPN, PNP)
+  if (node.type === 'npn' || node.type === 'pnp') {
+    if (handleId === 'c') return { x: x + w * 0.75, y };
+    if (handleId === 'b') return { x, y: y + h * 0.5 };
+    if (handleId === 'e') return { x: x + w * 0.75, y: y + h };
+  }
+
+  // MOSFETs (NMOS, PMOS)
+  if (node.type === 'nmos' || node.type === 'pmos') {
+    if (handleId === 'd') return { x: x + w * 0.75, y };
+    if (handleId === 'g') return { x, y: y + h * 0.5 };
+    if (handleId === 's') return { x: x + w * 0.75, y: y + h };
+  }
+
+  // Potentiometer
+  if (node.type === 'potentiometer') {
+    if (isVertical) {
+      if (handleId === 'in') return { x: x + w * 0.5, y };
+      if (handleId === 'out') return { x: x + w * 0.5, y: y + h };
+      if (handleId === 'wiper') return { x, y: y + h * 0.5 };
+    } else {
+      if (handleId === 'in') return { x, y: y + h * 0.5 };
+      if (handleId === 'out') return { x: x + w, y: y + h * 0.5 };
+      if (handleId === 'wiper') return { x: x + w * 0.5, y };
+    }
+  }
+
+  // Logic Gates (AND, OR, NAND, NOR, XOR)
+  if (['and', 'or', 'nand', 'nor', 'xor'].includes(node.type)) {
+    if (handleId === 'in1') return { x, y: y + h * 0.3 };
+    if (handleId === 'in2') return { x, y: y + h * 0.7 };
+    if (handleId === 'out') return { x: x + w, y: y + h * 0.5 };
+  }
+  if (node.type === 'not') {
+    if (handleId === 'in1') return { x, y: y + h * 0.5 };
+    if (handleId === 'out') return { x: x + w, y: y + h * 0.5 };
+  }
+
+  // D Flip-Flop
+  if (node.type === 'dff') {
+    if (handleId === 'd') return { x, y: y + h * 0.3 };
+    if (handleId === 'clk') return { x, y: y + h * 0.7 };
+    if (handleId === 'q') return { x: x + w, y: y + h * 0.3 };
+    if (handleId === 'qbar') return { x: x + w, y: y + h * 0.7 };
+  }
+
+  // Transformer
+  if (node.type === 'transformer') {
+    if (handleId === 'p1') return { x, y: y + h * 0.25 };
+    if (handleId === 'p2') return { x, y: y + h * 0.75 };
+    if (handleId === 's1') return { x: x + w, y: y + h * 0.25 };
+    if (handleId === 's2') return { x: x + w, y: y + h * 0.75 };
+  }
+
+  // 7-Segment Display
+  if (node.type === 'sevenseg') {
+    const segs = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+    const sIdx = segs.indexOf(handleId);
+    if (sIdx >= 0) return { x, y: y + h * (0.12 + sIdx * 0.12) };
+    if (handleId === 'common') return { x: x + w * 0.5, y: y + h };
+  }
+
+  // Oscilloscope
+  if (node.type === 'scope') {
+    if (handleId === 'ch1') return { x, y: y + h * 0.3 };
+    if (handleId === 'ch2') return { x, y: y + h * 0.6 };
+    if (handleId === 'gnd') return { x, y: y + h * 0.9 };
+  }
+
+  // Multimeter
+  if (node.type === 'multimeter') {
+    if (handleId === 'pos') return { x: x + w * 0.3, y: y + h };
+    if (handleId === 'neg') return { x: x + w * 0.7, y: y + h };
+  }
+
+  // Heltec V4
+  if (node.type === 'heltec_v4') {
+    if (handleId === '3V3') return { x, y: y + 36 };
+    if (handleId === 'GND') return { x, y: y + 54 };
+    if (handleId === 'GPIO_1') return { x, y: y + 74 };
+    if (handleId === 'GPIO_3') return { x, y: y + 96 };
+    if (handleId === 'GPIO_33') return { x: x + w, y: y + 36 };
+    if (handleId === 'GPIO_36') return { x: x + w, y: y + 54 };
+    if (handleId === 'GPIO_37') return { x: x + w, y: y + 74 };
+    if (handleId === 'GPIO_41') return { x: x + w, y: y + 96 };
+  }
+
   // Pins 1-4 run down the left, 8-5 down the right, on a fixed 16px pitch
   // starting 32px below the node origin. Timer555Node.tsx lays the rows out
   // with explicit heights so these constants stay true.
@@ -139,11 +280,11 @@ export function getHandleCoord(node: any, handleId: string): { x: number; y: num
   }
 
   if (node.type === 'ground') {
-    return { x: x + w / 2, y: y };
+    return { x: x + w / 2, y };
   }
 
-  if (node.type === 'voltage' || node.type === 'acvoltage') {
-    if (handleId === 'pos') return { x: x + w / 2, y: y };
+  if (node.type === 'voltage' || node.type === 'acvoltage' || node.type === 'currentsource') {
+    if (handleId === 'pos') return { x: x + w / 2, y };
     if (handleId === 'neg') return { x: x + w / 2, y: y + h };
   }
 
@@ -186,7 +327,49 @@ export const getHandlePosition = (node: any, handleId: string): string => {
     if (handleId === 'out') return 'right';
     return 'left';
   }
-  if (node.type === 'voltage' || node.type === 'acvoltage') {
+  if (node.type === 'npn' || node.type === 'pnp') {
+    if (handleId === 'c') return 'top';
+    if (handleId === 'b') return 'left';
+    if (handleId === 'e') return 'bottom';
+  }
+  if (node.type === 'nmos' || node.type === 'pmos') {
+    if (handleId === 'd') return 'top';
+    if (handleId === 'g') return 'left';
+    if (handleId === 's') return 'bottom';
+  }
+  if (node.type === 'potentiometer') {
+    const isVertical = node.data?.orientation === 'vertical';
+    if (isVertical) {
+      if (handleId === 'in') return 'top';
+      if (handleId === 'out') return 'bottom';
+      if (handleId === 'wiper') return 'left';
+    } else {
+      if (handleId === 'in') return 'left';
+      if (handleId === 'out') return 'right';
+      if (handleId === 'wiper') return 'top';
+    }
+  }
+  if (['and', 'or', 'nand', 'nor', 'xor', 'not'].includes(node.type)) {
+    if (handleId === 'out') return 'right';
+    return 'left';
+  }
+  if (node.type === 'dff') {
+    if (handleId === 'q' || handleId === 'qbar') return 'right';
+    return 'left';
+  }
+  if (node.type === 'transformer') {
+    if (handleId === 's1' || handleId === 's2') return 'right';
+    return 'left';
+  }
+  if (node.type === 'sevenseg') {
+    if (handleId === 'common') return 'bottom';
+    return 'left';
+  }
+  if (node.type === 'heltec_v4') {
+    if (['GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41'].includes(handleId)) return 'right';
+    return 'left';
+  }
+  if (node.type === 'voltage' || node.type === 'acvoltage' || node.type === 'currentsource') {
     const isHorizontal = node.data?.orientation === 'horizontal';
     if (handleId === 'pos') return isHorizontal ? 'left' : 'top';
     if (handleId === 'neg') return isHorizontal ? 'right' : 'bottom';

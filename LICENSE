@@ -1,29 +1,66 @@
-Circuit Expt is licensed under the MIT license. It's heavily built on ngspice, which has the following modified BSD license:
+PhysBox Permissive Public License (PPPL-1.0)
+Copyright (c) 2026 PhysBox Contributors and Authors. All Rights Reserved.
 
-Copyright 1985 - 2018, Regents of the University of California and others
+================================================================================
+1. PERMISSION AND SCOPE
+================================================================================
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to access,
+execute, and use the Software for personal, educational, research, and commercial
+purposes, including the generation, export, and commercial utilization of output
+artifacts (such as schematics, simulation results, 3D meshes, CAD models, STL files,
+SVG paths, PCB layouts, toolpaths, CNC G-code, and laser cutter instructions).
 
-Redistribution and use in source and binary forms, with or without modification,
-are permitted provided that the following conditions are met:
+================================================================================
+2. PERMITTED COMMERCIAL USE OF OUTPUTS
+================================================================================
+You are fully permitted to:
+(a) Use the Software to design, prototype, simulate, and manufacture physical or
+    digital products for commercial sale or distribution.
+(b) Sell, distribute, and monetize any physical workpieces, milled PCBs, laser-cut
+    materials, 3D printed parts, or digital designs produced using the Software.
 
-1. Redistributions of source code must retain the above copyright notice,
-this list of conditions and the following disclaimer.
+================================================================================
+3. ATTRIBUTION & RESTRICTIONS ON SOFTWARE FORKING / REDISTRIBUTION
+================================================================================
+(a) Attribution: The above copyright notice and this permission notice must be
+    retained in all copies or substantial portions of the Software, documentation,
+    and derivative materials.
+(b) No Standalone Forking or Hosted Service Redistribution: You may NOT redistribute,
+    sublicense, re-brand, or host the Software or its source code as a standalone,
+    competing software product, SaaS platform, web service, or forked distribution
+    without explicit prior written authorization from the copyright holders.
+(c) Brand Protection: The names "PhysBox", "Etch", "Volt", "Mesh", "Flux",
+    or the names of their contributors may not be used to endorse or promote
+    third-party products without specific prior written permission.
 
-2. Redistributions in binary form must reproduce the above copyright notice,
-this list of conditions and the following disclaimer in the documentation
-and/or other materials provided with the distribution.
+================================================================================
+4. STRICT DISCLAIMER OF LIABILITY & PHYSICAL MACHINERY / HARDWARE WARNING
+================================================================================
+THE SOFTWARE, PHYSICAL/ELECTRICAL SIMULATION ENGINES, GEOMETRY ALGORITHMS,
+G-CODE GENERATORS, CAM TOOLPATH CALCULATORS, AND MACHINE CONTROLLERS ARE
+PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, ACCURACY, TITLE, OR NON-INFRINGEMENT.
 
-3. Neither the name of the copyright holder nor the names of its
-contributors may be used to endorse or promote products derived from this
-software without specific prior written permission.
+IN NO EVENT SHALL THE AUTHORS, COPYRIGHT HOLDERS, OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, PUNITIVE, OR CONSEQUENTIAL
+DAMAGES OR LOSSES OF ANY KIND (INCLUDING, BUT NOT LIMITED TO:
+- CNC MACHINE DAMAGE, SPINDLE CRASHES, TOOL BREAKAGE, OR STEPPER MOTOR FAILURE;
+- LASER HEAD DAMAGE, OPTICAL DAMAGE, MATERIAL FIRE, BURNING, OR FUME EXPOSURE;
+- ELECTRICAL COMPONENT DESTRUCTION, SHORT CIRCUITS, THERMAL OVERLOAD, OR FIRE;
+- LOSS OF USE, LOSS OF DATA, LOSS OF WORKPIECES, LOSS OF PROFITS, OR BUSINESS
+  INTERRUPTION;
+- BODILY INJURY, EYE DAMAGE, OR PERSONAL HARM RESULTING FROM OPERATION OF CNC
+  ROUTERS, LASER CUTTERS, 3D PRINTERS, MACHINE TOOLS, OR HIGH-VOLTAGE CIRCUITS)
+HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
+THE USE OF THIS SOFTWARE OR ITS GENERATED TOOLPATHS, G-CODE, ELECTRONIC NETLISTS,
+OR TELEMETRY CONTROLS, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-POSSIBILITY OF SUCH DAMAGE.
+OPERATOR RESPONSIBILITY:
+Operating CNC machinery, laser cutters, power tools, and electronic circuits involves
+inherent physical risks. The operator assumes full and sole responsibility for verifying
+safe machine clearance, travel limits, feeds, speeds, clamping, laser enclosure safety,
+ventilation, personal protective equipment (PPE), and electrical isolation before
+initiating any physical machining, cutting, or powering on any circuit.

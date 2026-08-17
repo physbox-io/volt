@@ -245,8 +245,7 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       let totalR = parseFloat(totalRStr) || 10000;
       const suffix = totalRStr.replace(/[0-9.eE\-+]/g, '').toLowerCase();
       if (suffix === 'k') totalR *= 1000;
-      else if (suffix === 'meg' || suffix === 'm' && totalRStr.toLowerCase().endsWith('meg')) totalR *= 1e6;
-      else if (suffix === 'm') totalR /= 1000;
+      else if (suffix === 'meg' || suffix === 'm') totalR *= 1e6;
       else if (suffix === 'u') totalR /= 1e6;
       const pos = Math.max(0.001, Math.min(0.999, (Number(node.data.position) || 50) / 100));
       const nIn = getNet(node.id, 'in');

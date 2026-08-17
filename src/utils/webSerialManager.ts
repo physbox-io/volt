@@ -150,6 +150,12 @@ export interface ProbeMeshOptions {
 
 export type MachineStateListener = (state: MachineState) => void;
 
+/** One `; OP n/m:` operation of a job, and where it starts in the queue. */
+export interface JobLayer {
+  startIndex: number;
+  label: string;
+}
+
 interface PendingAck {
   bytes: number;
   /** The G-code that was sent, so an `error:` can name what the machine refused. */
@@ -170,6 +176,8 @@ class WebSerialManager {
   private statusPollTimer: any = null;
 
   private gcodeQueue: string[] = [];
+  /** Where each `; OP n/m:` operation starts in the streamed queue. */
+  private jobLayers: JobLayer[] = [];
   private currentQueueIndex = 0;
   private completedLines = 0;
   private isJobRunning = false;
@@ -321,6 +329,7 @@ class WebSerialManager {
           ? new WebSocketTransport(this.wifiIp, baudRate)
           : new WebSerialTransport(baudRate);
       transport.onData(chunk => this.handleData(chunk));
+      transport.onDisconnect?.(err => this.handleTransportDisconnect(err));
       await transport.connect();
       this.transport = transport;
 
@@ -352,6 +361,23 @@ class WebSerialManager {
     }
   }
 
+  /** Invoked when transport reports an unexpected connection drop. */
+  private handleTransportDisconnect(err?: Error) {
+    if (!this.state.connected && this.state.status === 'DISCONNECTED') return;
+    this.isJobRunning = false;
+    if (this.statusPollTimer) clearInterval(this.statusPollTimer);
+    this.failPending(err || new Error('Machine link disconnected unexpectedly'));
+    this.transport = null;
+    this.rxBuffer = '';
+    this.updateState({
+      status: 'DISCONNECTED',
+      connected: false,
+      lastError: err?.message || 'Machine disconnected',
+      progressPercent: 0,
+      probeProgress: undefined,
+    });
+  }
+
   /** Closes the machine link and tears down the transport. */
   public async disconnect() {
     this.isJobRunning = false;
@@ -360,7 +386,7 @@ class WebSerialManager {
 
     try {
       if (this.transport) await this.transport.disconnect();
-    } catch (e) {
+    } catch {
       // Ignore cleanup errors
     }
 
@@ -594,11 +620,25 @@ class WebSerialManager {
   public async startJob(gcode: string): Promise<void> {
     this.assertUnlocked();
 
-    const rawLines = gcode
-      .split('\n')
-      .map(l => l.trim())
-      .filter(l => l && !l.startsWith(';'));
+    // Layer boundaries are read from the `; OP n/m:` headers before the
+    // comments are dropped — restarting an operation needs to know where each
+    // one begins in the *stripped* queue, which is the only thing streamed.
+    const layers: JobLayer[] = [];
+    const rawLines: string[] = [];
+    for (const raw of gcode.split('\n')) {
+      const line = raw.trim();
+      if (!line) continue;
+      if (line.startsWith(';')) {
+        const header = /^;\s*OP\s+(\d+)\s*\/\s*(\d+)\s*:\s*(.+?)\s*$/i.exec(line);
+        if (header) {
+          layers.push({ startIndex: rawLines.length, label: header[3] });
+        }
+        continue;
+      }
+      rawLines.push(line);
+    }
 
+    this.jobLayers = layers;
     this.gcodeQueue = rawLines;
     this.currentQueueIndex = 0;
     this.completedLines = 0;
@@ -702,6 +742,57 @@ class WebSerialManager {
       status: 'PAUSED_OPERATOR',
       pauseMessage: 'Paused. The spindle is still running and Z has not moved.',
     });
+  }
+
+  /**
+   * The operation currently being streamed, or null outside a job. Used by the
+   * UI to name what "restart layer" would actually restart.
+   */
+  public getCurrentLayer(): (JobLayer & { index: number; total: number }) | null {
+    if (!this.gcodeQueue.length || !this.jobLayers.length) return null;
+    let found = -1;
+    for (let i = 0; i < this.jobLayers.length; i++) {
+      if (this.jobLayers[i].startIndex <= this.currentQueueIndex) found = i;
+      else break;
+    }
+    if (found < 0) return null;
+    return { ...this.jobLayers[found], index: found, total: this.jobLayers.length };
+  }
+
+  /**
+   * Rewinds to the start of the operation being streamed and runs it again.
+   *
+   * The case this exists for: a bit is changed, Z0 is not re-probed, and the
+   * layer cuts at the wrong depth. Without this the only option is to abandon
+   * the job and start the whole board over, re-cutting the operations that
+   * came out fine.
+   *
+   * Only valid at an M0 / M6 stream pause, where the buffer has drained and the
+   * machine is standing still — rewinding the index under a running stream
+   * would interleave the replayed lines with whatever is still in flight.
+   */
+  public async restartCurrentLayer(): Promise<void> {
+    if (!this.isJobRunning || !this.isPaused) {
+      throw new Error('The job must be paused at a tool change to restart a layer');
+    }
+    if (this.pauseKind !== 'stream') {
+      throw new Error('Release the feed hold before restarting a layer');
+    }
+
+    const layer = this.getCurrentLayer();
+    if (!layer) throw new Error('This job has no operation markers to restart from');
+
+    this.currentQueueIndex = layer.startIndex;
+    this.completedLines = layer.startIndex;
+    this.isPaused = false;
+    this.pauseKind = null;
+    this.updateState({
+      status: 'RUNNING',
+      pauseMessage: undefined,
+      currentLine: this.completedLines,
+      progressPercent: Math.round((this.completedLines / this.gcodeQueue.length) * 100),
+    });
+    return this.processQueue();
   }
 
   /** Resumes after either an operator feed hold or an M0 / M6 stream pause. */
