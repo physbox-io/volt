@@ -18,6 +18,7 @@
 import type { Node, Edge } from '@xyflow/react';
 import { resolveFootprint, type ComponentFootprint, type PadSpec } from './pcbFootprints';
 import { extractNets, isPhysical, resolveHandleToPin, type PcbNet } from './pcbNets';
+import { minPadGapMm } from './pcbTooling';
 import {
   circlePoly,
   differencePolys,
@@ -75,6 +76,11 @@ export interface PcbOptions {
    * sized for a factory process; on a milled board a bigger annulus is easier
    * to solder by hand and survives a drill that wanders a little. 0 keeps the
    * footprint's own size.
+   *
+   * It is a ceiling, not a fixed amount: on a fine-pitch part the margin is
+   * scaled back per-component so it never eats the gap the isolation tool has
+   * to fit through. Growing a 0.5mm-pitch QFN's pads by 0.1mm a side would
+   * short them together.
    */
   padMarginMm?: number;
   /**
@@ -117,7 +123,7 @@ export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   rampedPlunge: true,
   rubOutClearing: false,
   airCutZOffset: 20,
-  padMarginMm: 0.2,
+  padMarginMm: 0.1,
   drillConsolidationMm: 0.3,
 };
 
@@ -268,6 +274,28 @@ export function vBitWidthAtDepth(
 ): number {
   const halfAngle = ((includedAngleDeg / 2) * Math.PI) / 180;
   return tipMm + 2 * Math.abs(depthMm) * Math.tan(halfAngle);
+}
+
+const minPadGapCache = new WeakMap<ComponentFootprint, number>();
+
+/**
+ * The pad margin actually applied to one component.
+ *
+ * `padMarginMm` is a hand-soldering convenience sized for through-hole work. On
+ * a fine-pitch part the same figure closes the gap the isolation tool has to
+ * fit through — grow a 0.5mm-pitch QFN's pads by 0.1mm a side and the pads
+ * short together before the mill ever runs. So the request is capped at a fifth
+ * of the part's own tightest pad gap, leaving at least 60% of that gap intact.
+ */
+export function effectivePadMarginMm(footprint: ComponentFootprint, requestedMm: number): number {
+  if (requestedMm <= 0) return 0;
+  let gap = minPadGapCache.get(footprint);
+  if (gap === undefined) {
+    gap = minPadGapMm(footprint.pads);
+    minPadGapCache.set(footprint, gap);
+  }
+  if (!Number.isFinite(gap)) return requestedMm;
+  return Math.max(0, Math.min(requestedMm, gap * 0.2));
 }
 
 /** Applies a footprint's pad offset, honouring 90-degree rotation. */
@@ -632,7 +660,9 @@ export function generatePcbLayout(
   for (const pad of pads) {
     if (!pad.netId) continue;
     const comp = compById.get(pad.componentId)!;
-    addCopper(pad.netId, [padPolygon(pad, comp.rotationDeg, padMargin)]);
+    addCopper(pad.netId, [
+      padPolygon(pad, comp.rotationDeg, effectivePadMarginMm(comp.footprint, padMargin)),
+    ]);
   }
   for (const trace of traces) {
     addCopper(trace.netId, strokeToPoly(trace.points, trace.width));
@@ -670,6 +700,59 @@ export function generatePcbLayout(
         `wider than the ${options.clearanceMm}mm clearance. Reduce isolation depth ` +
         `or increase clearance.`,
     });
+  }
+
+  // A part's own pad-to-pad gap can be far tighter than the board-wide
+  // clearance setting — a 0.5mm-pitch QFN leaves about 0.25mm between pads.
+  // Checking only the global figure would pass a board the tool cannot cut.
+  const requestedPadMargin = Math.max(0, options.padMarginMm ?? 0);
+  for (const comp of placed) {
+    const padMarginForCheck = effectivePadMarginMm(comp.footprint, requestedPadMargin);
+    if (comp.footprint.isFallback) {
+      violations.push({
+        severity: 'error',
+        message:
+          `${comp.name}: package "${comp.footprint.requestedPackageId}" is not in the footprint ` +
+          `library. A ${comp.footprint.packageId} was substituted — its pads and drills are ` +
+          `almost certainly wrong. Pick a known package or define custom footprint parameters.`,
+      });
+    }
+
+    const checkPads = comp.footprint.pads.map(p => ({
+      x: p.x,
+      y: p.y,
+      // Isolation runs around the grown copper, not the nominal pad.
+      padWidth: p.padWidth + padMarginForCheck * 2,
+      padHeight: p.padHeight + padMarginForCheck * 2,
+      pinNumber: p.pinNumber,
+    }));
+    const gap = minPadGapMm(checkPads);
+    if (gap === Infinity) continue;
+
+    if (gap <= 0) {
+      violations.push({
+        severity: 'error',
+        message:
+          `${comp.name} (${comp.footprint.packageId}): pads on different pins overlap. ` +
+          `No tool can isolate them.`,
+      });
+    } else if (gap < effectiveToolDiaMm) {
+      violations.push({
+        severity: 'error',
+        message:
+          `${comp.name} (${comp.footprint.packageId}): pads are ${gap.toFixed(3)}mm apart but the ` +
+          `bit cuts ${effectiveToolDiaMm.toFixed(3)}mm wide at Z${options.isolationDepthZ}. ` +
+          `Use a sharper V-bit, cut shallower, or reduce the pad margin.`,
+      });
+    } else if (gap < effectiveToolDiaMm * 1.3) {
+      violations.push({
+        severity: 'warning',
+        message:
+          `${comp.name} (${comp.footprint.packageId}): only ${gap.toFixed(3)}mm between pads for a ` +
+          `${effectiveToolDiaMm.toFixed(3)}mm cut. This will work only on a well-levelled board — ` +
+          `run the height map first.`,
+      });
+    }
   }
 
   const isolationPaths: IsolationPath[] = [];
@@ -843,7 +926,8 @@ function placeAndRoute(
         componentId: pad.componentId,
         x: pad.x,
         y: pad.y,
-        padRadiusMm: Math.max(w, h) / 2 + padMargin,
+        padRadiusMm:
+          Math.max(w, h) / 2 + effectivePadMarginMm(comp.footprint, padMargin),
       });
     }
   }
@@ -853,10 +937,15 @@ function placeAndRoute(
   const obstacles: RouteObstacle[] = pads
     .filter(p => !p.netId)
     .map(p => {
-      const { w, h } = padOffset(p.spec, compById.get(p.componentId)!.rotationDeg);
+      const comp = compById.get(p.componentId)!;
+      const { w, h } = padOffset(p.spec, comp.rotationDeg);
       // Same margin the copper is grown by, or the router would happily run a
       // trace through the annulus this pad just gained.
-      return { x: p.x, y: p.y, radiusMm: Math.max(w, h) / 2 + padMargin };
+      return {
+        x: p.x,
+        y: p.y,
+        radiusMm: Math.max(w, h) / 2 + effectivePadMarginMm(comp.footprint, padMargin),
+      };
     });
 
   // Cutouts have no pads at all — they are pure keepout, and are milled by the

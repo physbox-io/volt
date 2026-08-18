@@ -45,6 +45,21 @@ const TELEMETRY_INTERVAL_MS = 1000;
 const DEFAULT_TOUCH_PLATE_MM = 12;
 /** How far the tool lifts off the surface after a probe touches, in mm. */
 const PROBE_RETRACT_MM = 5;
+/** Time given to a feed hold to decelerate before the planner is flushed. */
+const RESTART_HOLD_SETTLE_MS = 600;
+/** Time given to GRBL to reboot and report its banner after a soft reset. */
+const RESTART_RESET_SETTLE_MS = 1200;
+/**
+ * How far machine position may differ across a restart before the job is
+ * abandoned. A controlled reset from a standstill should cost nothing at all;
+ * this is slack for the last reported status lagging the final deceleration,
+ * not licence to drift.
+ */
+const RESTART_POSITION_TOLERANCE_MM = 0.05;
+/** Longest wait for a status report when one is asked for directly. */
+const STATUS_WAIT_TIMEOUT_MS = 2000;
+
+const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 /**
  * GRBL 1.1 `error:N` codes, in the operator's terms. Bare "error:9" says
@@ -178,6 +193,22 @@ class WebSerialManager {
   private gcodeQueue: string[] = [];
   /** Where each `; OP n/m:` operation starts in the streamed queue. */
   private jobLayers: JobLayer[] = [];
+  /**
+   * The job's spindle command, taken from its preamble. A restart soft-resets
+   * the controller, which stops the spindle — and the spindle-up line lives in
+   * the program header, far behind any layer we might rewind to, so it would
+   * never be replayed.
+   */
+  private jobSpindleLine: string | null = null;
+  /** Set by a restart; consumed by the next resume, once hands are clear. */
+  private spindleRestartPending = false;
+  /** Woken by each status report, so a caller can await a fresh position. */
+  private statusWaiters: (() => void)[] = [];
+  /**
+   * Whether a coded `ALARM:N` has arrived. Cleared before a deliberate reset so
+   * the bare homing lockout can be told apart from a genuine fault.
+   */
+  private alarmFaultSeen = false;
   private currentQueueIndex = 0;
   private completedLines = 0;
   private isJobRunning = false;
@@ -530,6 +561,13 @@ class WebSerialManager {
 
       let status: MachineStatus = this.state.status;
       if (grblState.startsWith('Alarm')) status = 'ALARM';
+      // ALARM is otherwise sticky: the branches below only ever set IDLE when
+      // no job is running, so an alarm cleared mid-job — by `$X` during a layer
+      // restart, say — would keep reporting itself long after the controller
+      // had gone back to work.
+      else if (this.state.status === 'ALARM') {
+        status = this.isJobRunning && !this.isPaused ? 'RUNNING' : 'IDLE';
+      }
       // A reported Hold only names the pause when we do not already know why we
       // are paused — otherwise the poll would relabel an operator feed hold or a
       // tool change as a material swap a fraction of a second after it started.
@@ -539,6 +577,10 @@ class WebSerialManager {
       else if (!this.isJobRunning && this.state.status !== 'PROBING') status = 'IDLE';
 
       this.updateState({ mpos, wpos, status });
+      // Anything waiting on a fresh position reading now has one.
+      const waiters = this.statusWaiters;
+      this.statusWaiters = [];
+      waiters.forEach(w => w());
       return;
     }
 
@@ -600,6 +642,10 @@ class WebSerialManager {
 
     if (line.startsWith('ALARM:')) {
       this.isJobRunning = false;
+      // A coded alarm is a real fault — a limit trip, a reset mid-motion, a
+      // failed probe. Distinct from the bare lockout GRBL boots into when
+      // homing is required, which reports Alarm state but no code.
+      this.alarmFaultSeen = true;
       const detail = describeGrblAlarm(line);
       this.updateState({ status: 'ALARM', lastError: detail });
       this.failPending(new Error(detail));
@@ -639,6 +685,8 @@ class WebSerialManager {
     }
 
     this.jobLayers = layers;
+    this.jobSpindleLine = rawLines.find(l => /\bM[34]\b/.test(l)) ?? null;
+    this.spindleRestartPending = false;
     this.gcodeQueue = rawLines;
     this.currentQueueIndex = 0;
     this.completedLines = 0;
@@ -745,42 +793,140 @@ class WebSerialManager {
   }
 
   /**
-   * The operation currently being streamed, or null outside a job. Used by the
-   * UI to name what "restart layer" would actually restart.
+   * Asks for a status report and waits for it, so a caller reads a position
+   * from now rather than from up to a poll interval ago. Resolves anyway on
+   * timeout: a stale reading is handled by the drift check that follows it,
+   * and hanging here would strand a half-restarted job.
    */
-  public getCurrentLayer(): (JobLayer & { index: number; total: number }) | null {
-    if (!this.gcodeQueue.length || !this.jobLayers.length) return null;
+  private async awaitStatus(): Promise<void> {
+    const fresh = new Promise<void>(resolve => {
+      this.statusWaiters.push(resolve);
+      setTimeout(resolve, STATUS_WAIT_TIMEOUT_MS);
+    });
+    await this.writeRealtime(RT_STATUS);
+    await fresh;
+  }
+
+  /** Index into jobLayers of the operation currently being streamed, or -1. */
+  private currentLayerIndex(): number {
+    if (!this.gcodeQueue.length || !this.jobLayers.length) return -1;
     let found = -1;
     for (let i = 0; i < this.jobLayers.length; i++) {
       if (this.jobLayers[i].startIndex <= this.currentQueueIndex) found = i;
       else break;
     }
-    if (found < 0) return null;
-    return { ...this.jobLayers[found], index: found, total: this.jobLayers.length };
+    return found;
+  }
+
+  /** The operation currently being streamed, or null outside a job. */
+  public getCurrentLayer(): (JobLayer & { index: number; total: number }) | null {
+    const i = this.currentLayerIndex();
+    if (i < 0) return null;
+    return { ...this.jobLayers[i], index: i, total: this.jobLayers.length };
   }
 
   /**
-   * Rewinds to the start of the operation being streamed and runs it again.
+   * Abandons the operation being cut and runs it again from its first line.
    *
-   * The case this exists for: a bit is changed, Z0 is not re-probed, and the
-   * layer cuts at the wrong depth. Without this the only option is to abandon
-   * the job and start the whole board over, re-cutting the operations that
-   * came out fine.
+   * The case this exists for: an operation is cutting at the wrong depth —
+   * work Z0 was never re-probed after the last bit change — and it is obvious
+   * while it is still going. Without this the only option is to cancel and cut
+   * the whole board again, including the operations that came out fine.
    *
-   * Only valid at an M0 / M6 stream pause, where the buffer has drained and the
-   * machine is standing still — rewinding the index under a running stream
-   * would interleave the replayed lines with whatever is still in flight.
+   * Every operation begins with its own `T<n> M6`, and the rewind deliberately
+   * includes it: the stream stops there exactly as it did the first time
+   * through, so the tool-change prompt comes back up with its re-zero controls
+   * before a single line is re-cut. That prompt is the whole point — it is the
+   * step that was skipped.
+   *
+   * Stopping mid-cut means clearing GRBL's planner, and a feed hold alone will
+   * not do that: the queued blocks survive it and would run on the next cycle
+   * start. Only a soft reset flushes them, so that is what this does. A soft
+   * reset from a standstill keeps machine position and work offsets — the
+   * latter live in EEPROM — but on a controller with homing required ($22=1)
+   * it comes back in Alarm, which is reported rather than papered over.
    */
   public async restartCurrentLayer(): Promise<void> {
-    if (!this.isJobRunning || !this.isPaused) {
-      throw new Error('The job must be paused at a tool change to restart a layer');
-    }
-    if (this.pauseKind !== 'stream') {
-      throw new Error('Release the feed hold before restarting a layer');
-    }
+    if (!this.isJobRunning) throw new Error('No job is running');
 
     const layer = this.getCurrentLayer();
     if (!layer) throw new Error('This job has no operation markers to restart from');
+
+    // Stop feeding the queue before anything else, so processQueue cannot push
+    // another line at the controller while it is being reset.
+    this.isPaused = true;
+    this.pauseKind = 'stream';
+    this.updateState({ status: 'PAUSED_OPERATOR', pauseMessage: 'Restarting layer…' });
+
+    // Decelerate under control first. Resetting a machine that is still moving
+    // is what loses position and raises ALARM:3.
+    await this.writeRealtime(RT_HOLD);
+    await delay(RESTART_HOLD_SETTLE_MS);
+
+    // Machine position is read *after* the hold has settled, so it reflects
+    // where the tool actually stopped. It is the reference for checking that
+    // the reset below cost us nothing.
+    await this.awaitStatus();
+    const posBefore = { ...this.state.mpos };
+
+    // Flush the planner. Anything already accepted is discarded, and every
+    // outstanding ack is failed by the `Grbl ` banner handler.
+    this.alarmFaultSeen = false;
+    await this.writeRealtime(RT_SOFT_RESET);
+    this.failPending(new Error('Layer restarted'));
+    await delay(RESTART_RESET_SETTLE_MS);
+
+    // With homing required ($22=1) GRBL always boots into a locked Alarm, even
+    // though this reset came from a standstill and cost it nothing. That lock
+    // is not a fault and there is no reason to make the operator start the
+    // board again over it — clear it and carry on. A *coded* alarm is the
+    // opposite: a limit trip or a reset mid-motion, where position really is
+    // suspect and continuing would cut in the wrong place.
+    if (this.state.status === 'ALARM') {
+      if (this.alarmFaultSeen) {
+        this.isJobRunning = false;
+        throw new Error(
+          `The machine faulted during the restart, so its position can no longer be trusted. ` +
+            `${this.state.lastError || ''} Home it ($H), re-zero, and run the job again.`
+        );
+      }
+      await this.sendLine('$X');
+      await this.awaitStatus();
+    }
+
+    // The work coordinate system survives a reset — G10 L20 offsets live in
+    // EEPROM — but only if the controller also kept its machine position. If it
+    // moved, every remaining coordinate in the job now points somewhere else,
+    // so this is checked rather than assumed.
+    const posAfter = this.state.mpos;
+    const drift = Math.max(
+      Math.abs(posAfter.x - posBefore.x),
+      Math.abs(posAfter.y - posBefore.y),
+      Math.abs(posAfter.z - posBefore.z)
+    );
+    if (drift > RESTART_POSITION_TOLERANCE_MM) {
+      this.isJobRunning = false;
+      throw new Error(
+        `The machine lost ${drift.toFixed(2)}mm of position during the restart, so the job ` +
+          'can no longer be trusted to cut in the right place. Home it ($H), re-zero, and ' +
+          'run the job again.'
+      );
+    }
+
+    if (this.state.status === 'ALARM') {
+      this.isJobRunning = false;
+      throw new Error(
+        `The controller would not come out of alarm. ${this.state.lastError || ''}`.trim()
+      );
+    }
+
+    // A reset drops modal state and stops the spindle. Units and distance mode
+    // are re-established now; the spindle deliberately is not, because the next
+    // thing that happens is a tool-change prompt with the operator's hands near
+    // the cutter. It is restarted on resume instead.
+    this.spindleRestartPending = !!this.jobSpindleLine;
+    await this.sendLine('G21');
+    await this.sendLine('G90');
 
     this.currentQueueIndex = layer.startIndex;
     this.completedLines = layer.startIndex;
@@ -806,6 +952,14 @@ class WebSerialManager {
     // already drained and is idle, and `~` there would be a no-op at best.
     if (kind === 'operator') {
       await this.writeRealtime(RT_RESUME);
+    }
+    // A restart soft-reset the controller, which stopped the spindle. It is
+    // spun back up here rather than before the tool-change prompt, so it is
+    // never turning while a bit is being changed.
+    if (this.spindleRestartPending && this.jobSpindleLine) {
+      this.spindleRestartPending = false;
+      await this.sendLine(this.jobSpindleLine);
+      await this.sendLine('G4 P2');
     }
     return this.processQueue();
   }

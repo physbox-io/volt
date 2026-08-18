@@ -28,6 +28,15 @@ import {
   PCB_TOOL_PRESETS,
   PCB_MATERIAL_PRESETS,
   calculatePcbFeeds,
+  loadCustomTools,
+  addCustomTool,
+  deleteCustomTool,
+  suggestedChiploadMm,
+  feedFromChipload,
+  minIsolationChannelMm,
+  type PcbToolPreset,
+  type ToolType,
+  type CustomToolInput,
 } from '../utils/pcbTooling';
 import { usePcbLayout } from '../hooks/usePcbLayout';
 import { webSerialManager } from '../utils/webSerialManager';
@@ -121,6 +130,16 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const [heightmap, setHeightmap] = useState<{ grid: ProbeGrid; boardTag: string } | null>(null);
 
   const [selectedToolId, setSelectedToolId] = useState<string>('t1_vbit_30');
+  const [customTools, setCustomTools] = useState<PcbToolPreset[]>(() => loadCustomTools());
+  const [showToolEditor, setShowToolEditor] = useState(false);
+  const [toolDraft, setToolDraft] = useState<CustomToolInput>({
+    name: '',
+    type: 'vbit',
+    tipDiameterMm: 0.1,
+    angleDeg: 30,
+    fluteCount: 1,
+    recommendedRpm: 12000,
+  });
   const [selectedMaterialId, setSelectedMaterialId] = useState<string>('fr4_1oz');
   const [airCutZOffset, setAirCutZOffset] = useState<number>(20);
   const [isAirCutMode, setIsAirCutMode] = useState<boolean>(false);
@@ -185,28 +204,61 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     [activeHeightmap, result.gcode]
   );
 
+  const availableTools = useMemo(
+    () => [...PCB_TOOL_PRESETS, ...customTools],
+    [customTools]
+  );
+  const selectedTool = availableTools.find(t => t.id === selectedToolId);
+
+  /**
+   * A straight-walled cutter has no included angle, so the V-bit width formula
+   * does not apply to it. Feeding the exporter an angle of 0 makes its
+   * effective-width calculation collapse to the tip diameter, which is exactly
+   * right for an engraver or endmill.
+   */
+  const toolAngleForExport = (tool: PcbToolPreset) =>
+    tool.type === 'vbit' || tool.type === 'ballnose' ? (tool.angleDeg ?? 30) : 0;
+
   const handleToolPresetChange = (toolId: string) => {
     setSelectedToolId(toolId);
-    const tool = PCB_TOOL_PRESETS.find(t => t.id === toolId);
+    const tool = availableTools.find(t => t.id === toolId);
     const material = PCB_MATERIAL_PRESETS.find(m => m.id === selectedMaterialId);
     if (tool && material) {
       const feeds = calculatePcbFeeds(tool, material);
       setOptions(prev => ({
         ...prev,
-        vBitAngleDeg: tool.angleDeg ?? prev.vBitAngleDeg,
+        vBitAngleDeg: toolAngleForExport(tool),
         vBitTipMm: tool.tipDiameterMm,
         cutFeedrate: feeds.cutFeedrate,
         plungeFeedrate: feeds.plungeFeedrate,
         spindleRpm: feeds.spindleRpm,
         isolationDepthZ: feeds.isolationDepthZ,
         zStepdown: feeds.zStepdown,
+        // A profile tool selection should move the profile diameter too,
+        // otherwise the outline is cut with whatever was set before.
+        profileToolDiaMm: tool.role === 'profile' ? tool.tipDiameterMm : prev.profileToolDiaMm,
       }));
     }
   };
 
+  const handleSaveCustomTool = () => {
+    if (!toolDraft.name.trim() || !(toolDraft.tipDiameterMm > 0)) return;
+    const next = addCustomTool(toolDraft);
+    setCustomTools(next);
+    const created = next[next.length - 1];
+    setShowToolEditor(false);
+    handleToolPresetChange(created.id);
+  };
+
+  const handleDeleteCustomTool = (id: string) => {
+    const next = deleteCustomTool(id);
+    setCustomTools(next);
+    if (selectedToolId === id) handleToolPresetChange('t1_vbit_30');
+  };
+
   const handleMaterialPresetChange = (matId: string) => {
     setSelectedMaterialId(matId);
-    const tool = PCB_TOOL_PRESETS.find(t => t.id === selectedToolId);
+    const tool = availableTools.find(t => t.id === selectedToolId);
     const material = PCB_MATERIAL_PRESETS.find(m => m.id === matId);
     if (tool && material) {
       const feeds = calculatePcbFeeds(tool, material);
@@ -499,7 +551,11 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     setBusy('');
   };
 
-  /** Rewinds to the start of the current operation and cuts it again. */
+  /**
+   * Abandons the operation being cut and runs it again from its first line —
+   * which stops at that layer's tool change, bringing the re-zero prompt back
+   * up before anything is re-cut.
+   */
   const handleRestartLayer = async () => {
     if (busy) return;
     setMachineError(null);
@@ -516,7 +572,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   // Read during render rather than mirrored into state: it is derived purely
   // from the queue position, which only changes alongside a status update the
   // listener already re-renders on.
-  const currentLayer = isPaused ? webSerialManager.getCurrentLayer() : null;
+  const liveLayer = isRunning || isPaused ? webSerialManager.getCurrentLayer() : null;
 
   // The machine drives the preview whenever a job is on the wire, paused
   // included — freezing mid-job at the last streamed line is the useful view.
@@ -573,6 +629,9 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                   isAirCut={isAirCutMode}
                   airCutZOffset={airCutZOffset}
                   liveProgress={liveProgress}
+                  liveLayerLabel={liveLayer?.label ?? null}
+                  onRestartLayer={isRunning || isPaused ? handleRestartLayer : undefined}
+                  machineBusy={!!busy}
                 />
               </div>
             ) : (
@@ -881,20 +940,172 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                   <div>
                     <label className="flex items-center justify-between text-slate-600 dark:text-slate-300 font-semibold mb-1">
                       <span>Tool Preset</span>
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400">T1-T6 Catalog</span>
+                      <button
+                        onClick={() => setShowToolEditor(v => !v)}
+                        className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline font-sans"
+                      >
+                        {showToolEditor ? 'Cancel' : '+ Add my own tool'}
+                      </button>
                     </label>
                     <select
                       value={selectedToolId}
                       onChange={e => handleToolPresetChange(e.target.value)}
                       className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-sans"
                     >
-                      {PCB_TOOL_PRESETS.map(tool => (
-                        <option key={tool.id} value={tool.id}>
-                          {tool.name}
-                        </option>
-                      ))}
+                      <optgroup label="Isolation">
+                        {availableTools.filter(t => t.role === 'isolation').map(tool => (
+                          <option key={tool.id} value={tool.id}>
+                            {tool.name}{tool.isCustom ? ' (mine)' : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Drilling">
+                        {availableTools.filter(t => t.role === 'drill').map(tool => (
+                          <option key={tool.id} value={tool.id}>
+                            {tool.name}{tool.isCustom ? ' (mine)' : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Profiling &amp; Pocketing">
+                        {availableTools.filter(t => t.role === 'profile').map(tool => (
+                          <option key={tool.id} value={tool.id}>
+                            {tool.name}{tool.isCustom ? ' (mine)' : ''}
+                          </option>
+                        ))}
+                      </optgroup>
                     </select>
+
+                    {selectedTool && (
+                      <div className="mt-1 flex items-start justify-between gap-2">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug flex-1">
+                          {selectedTool.description}
+                          {selectedTool.role === 'isolation' && (
+                            <>
+                              {' '}Cuts{' '}
+                              <span className="font-mono text-slate-700 dark:text-slate-200">
+                                {minIsolationChannelMm(selectedTool, options.isolationDepthZ).toFixed(3)}mm
+                              </span>{' '}
+                              wide at Z{options.isolationDepthZ}.
+                            </>
+                          )}
+                        </p>
+                        {selectedTool.isCustom && (
+                          <button
+                            onClick={() => handleDeleteCustomTool(selectedTool.id)}
+                            className="text-[10px] text-red-500 hover:underline shrink-0"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
+
+                  {showToolEditor && (
+                    <div className="p-2.5 rounded border border-emerald-500/40 bg-emerald-500/5 space-y-2">
+                      <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-snug">
+                        Describe the bit and the feeds are derived from its chipload
+                        (bite per tooth &times; teeth &times; RPM). Override any of them
+                        afterwards in the fields below.
+                      </p>
+
+                      <input
+                        value={toolDraft.name}
+                        onChange={e => setToolDraft({ ...toolDraft, name: e.target.value })}
+                        placeholder="Name, e.g. 10° 0.1mm V-bit (Chinese blue)"
+                        className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-sans"
+                      />
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="block">
+                          <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Type</span>
+                          <select
+                            value={toolDraft.type}
+                            onChange={e => setToolDraft({ ...toolDraft, type: e.target.value as ToolType })}
+                            className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-sans"
+                          >
+                            <option value="vbit">V-Bit (isolation)</option>
+                            <option value="engraver">Flat engraver (isolation)</option>
+                            <option value="drill">Drill</option>
+                            <option value="endmill">Flat endmill (profile)</option>
+                            <option value="ballnose">Ball-nose</option>
+                          </select>
+                        </label>
+
+                        <label className="block">
+                          <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">
+                            {toolDraft.type === 'vbit' ? 'Tip diameter (mm)' : 'Diameter (mm)'}
+                          </span>
+                          <input
+                            type="number" step={0.01} min={0.01}
+                            value={toolDraft.tipDiameterMm}
+                            onChange={e => setToolDraft({ ...toolDraft, tipDiameterMm: parseFloat(e.target.value) || 0 })}
+                            className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono"
+                          />
+                        </label>
+
+                        {(toolDraft.type === 'vbit' || toolDraft.type === 'ballnose') && (
+                          <label className="block">
+                            <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Included angle (°)</span>
+                            <input
+                              type="number" step={1} min={1} max={179}
+                              value={toolDraft.angleDeg ?? 30}
+                              onChange={e => setToolDraft({ ...toolDraft, angleDeg: parseFloat(e.target.value) || 30 })}
+                              className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono"
+                            />
+                          </label>
+                        )}
+
+                        <label className="block">
+                          <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Flutes</span>
+                          <input
+                            type="number" step={1} min={1} max={8}
+                            value={toolDraft.fluteCount ?? 1}
+                            onChange={e => setToolDraft({ ...toolDraft, fluteCount: parseInt(e.target.value, 10) || 1 })}
+                            className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono"
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Spindle RPM</span>
+                          <input
+                            type="number" step={500} min={1000}
+                            value={toolDraft.recommendedRpm ?? 12000}
+                            onChange={e => setToolDraft({ ...toolDraft, recommendedRpm: parseInt(e.target.value, 10) || 12000 })}
+                            className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono"
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Chipload (mm/tooth)</span>
+                          <input
+                            type="number" step={0.005} min={0.001}
+                            value={toolDraft.chiploadMm ?? suggestedChiploadMm(toolDraft.type, toolDraft.tipDiameterMm)}
+                            onChange={e => setToolDraft({ ...toolDraft, chiploadMm: parseFloat(e.target.value) || undefined })}
+                            className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono"
+                          />
+                        </label>
+                      </div>
+
+                      <p className="text-[10px] font-mono text-emerald-700 dark:text-emerald-300">
+                        Derived cut feed:{' '}
+                        {feedFromChipload(
+                          toolDraft.chiploadMm ?? suggestedChiploadMm(toolDraft.type, toolDraft.tipDiameterMm),
+                          toolDraft.fluteCount ?? 1,
+                          toolDraft.recommendedRpm ?? 12000
+                        )}{' '}
+                        mm/min
+                      </p>
+
+                      <button
+                        onClick={handleSaveCustomTool}
+                        disabled={!toolDraft.name.trim() || !(toolDraft.tipDiameterMm > 0)}
+                        className="w-full px-2 py-1.5 bg-emerald-600 disabled:bg-slate-400 disabled:cursor-not-allowed text-white rounded text-[11px] font-semibold font-sans hover:bg-emerald-700 transition"
+                      >
+                        Save tool
+                      </button>
+                    </div>
+                  )}
 
                   <div>
                     <label className="flex items-center justify-between text-slate-600 dark:text-slate-300 font-semibold mb-1">
@@ -1413,14 +1624,13 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
         <JobPauseModal
           message={serialState.pauseMessage || 'Job paused'}
           isStreamPaused={isStreamPaused}
-          layerLabel={currentLayer?.label ?? null}
+          touchPlateMm={touchPlateMm}
           busy={busy}
           error={machineError}
           onResume={handleResume}
           onCancel={handleCancel}
           onZeroOnCopper={handleZeroZ}
           onZeroOnPlate={handleZeroZOnPlate}
-          onRestartLayer={handleRestartLayer}
         />
       )}
     </div>

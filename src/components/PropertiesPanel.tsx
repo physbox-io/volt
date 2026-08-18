@@ -4,11 +4,68 @@ import { X, Trash2 } from 'lucide-react';
 import { ORIENTABLE_NODE_TYPES, ORIENTATION_HANDLE_REMAP } from '../utils/nodeGeometry';
 import { getNodeDefaultName } from '../utils/nodeNaming';
 import { datasheets } from '../utils/datasheets';
-import { defaultPackageForType } from '../utils/pcbFootprints';
+import {
+  defaultPackageForType,
+  footprintFromParams,
+  resolveFootprint,
+  type FootprintParams,
+} from '../utils/pcbFootprints';
+import { minPadGapMm } from '../utils/pcbTooling';
 import { nodeRegistry } from './nodes/registry';
 
 const ORIENTATION_SELECTABLE_TYPES = ['resistor', 'capacitor', 'inductor', 'diode', 'zener', 'led', 'switch', 'voltage', 'acvoltage', 'currentsource'];
 const PASSIVE_NAMED_TYPES = ['resistor', 'capacitor', 'inductor'];
+
+/** Sentinel package id that switches the node over to `data.footprintParams`. */
+const CUSTOM_PACKAGE_ID = 'CUSTOM-PARAMETRIC';
+
+const FOOTPRINT_INPUT_CLASS =
+  'w-full text-[11px] border border-gray-300 dark:border-slate-800 rounded px-1.5 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-indigo-500 focus:outline-none';
+
+function FootprintField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="col-span-2 block">
+      <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+/**
+ * A blank box means "use the family default", which is why the value is held as
+ * a string and only converted on a complete parse — typing "1." must not snap
+ * the field back to 1.
+ */
+function FootprintNumber({
+  label,
+  value,
+  step,
+  onChange,
+}: {
+  label: string;
+  value: number | undefined;
+  step: number;
+  onChange: (v: number | undefined) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">{label}</span>
+      <input
+        type="number"
+        step={step}
+        value={value ?? ''}
+        placeholder="auto"
+        onChange={e => {
+          const raw = e.target.value.trim();
+          if (raw === '') return onChange(undefined);
+          const n = parseFloat(raw);
+          onChange(Number.isFinite(n) ? n : undefined);
+        }}
+        className={FOOTPRINT_INPUT_CLASS}
+      />
+    </label>
+  );
+}
 
 export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSimulation, simLength, isOpen, onClose }: { selectedNode: any, setNodes: any, setEdges: any, isSimulating: boolean, runSimulation: () => void, simLength: number, /** Drawer state below `lg`; ignored at `lg`, where this is a column. */ isOpen?: boolean, onClose?: () => void }) {
   const simDebounceTimerRef = useRef<any>(null);
@@ -190,6 +247,38 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
   const meta = nodeRegistry[selectedNode.type || ''];
   const TypeProperties = meta?.Properties;
 
+  // --- PCB footprint ---------------------------------------------------
+  const fp: FootprintParams = (selectedNode.data?.footprintParams as FootprintParams) ?? {};
+  const showFootprintEditor =
+    !!selectedNode.data?.footprintParams || selectedNode.data?.packageId === CUSTOM_PACKAGE_ID;
+
+  const updateFootprintParam = (key: keyof FootprintParams, value: any) => {
+    const next: FootprintParams = { ...fp, [key]: value };
+    if (value === undefined) delete next[key];
+    updateData('footprintParams', next);
+  };
+
+  // Preview and the fine-pitch warning both come from the same resolver the
+  // exporter uses, so what the panel reports is what actually gets milled.
+  let previewFootprint = null;
+  try {
+    previewFootprint = showFootprintEditor
+      ? footprintFromParams(fp)
+      : resolveFootprint(
+          selectedNode.data?.packageId as string | undefined,
+          selectedNode.type,
+          (selectedNode.data?.pins as number) || 2,
+          selectedNode.data
+        );
+  } catch {
+    previewFootprint = null;
+  }
+
+  // 0.35mm is roughly what a 20-degree V-bit cuts at a workable depth; below
+  // that the part needs a sharper bit than most people own.
+  const isFineParametric =
+    !!previewFootprint && minPadGapMm(previewFootprint.pads) < 0.35;
+
   return (
     /*
       `absolute`, not `fixed`, for the overlay below `lg`: pinned to the
@@ -248,11 +337,33 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
         </label>
         <select
           value={
-            (selectedNode.data?.packageId as string) ||
-            defaultPackageForType(selectedNode.type) ||
-            '0805'
+            showFootprintEditor
+              ? CUSTOM_PACKAGE_ID
+              : (selectedNode.data?.packageId as string) ||
+                defaultPackageForType(selectedNode.type) ||
+                '0805'
           }
-          onChange={e => updateData('packageId', e.target.value)}
+          onChange={e => {
+            const next = e.target.value;
+            updateData('packageId', next);
+            if (next === CUSTOM_PACKAGE_ID) {
+              // Seed from whatever is currently resolved, so the editor opens
+              // on the part's real dimensions rather than on empty boxes.
+              if (!selectedNode.data?.footprintParams) {
+                const seedLeft = Math.ceil((previewFootprint?.pads.length || 8) / 2);
+                updateData('footprintParams', {
+                  family: 'dual',
+                  leftCount: seedLeft,
+                  rightCount: (previewFootprint?.pads.length || 8) - seedLeft,
+                  pitchMm: 2.54,
+                  rowSpacingMm: 15.24,
+                  drillDiaMm: 1.0,
+                } as FootprintParams);
+              }
+            } else {
+              updateData('footprintParams', undefined);
+            }
+          }}
           className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-indigo-500 focus:outline-none cursor-pointer"
         >
           {selectedNode.type === 'mcu' && (
@@ -289,15 +400,178 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
             <option value="HEADER-2x08">2x8 Pin Dupont Header (2.54mm pitch)</option>
             <option value="TERMINAL-2P">5.08mm Screw Terminal (2-Pin)</option>
             <option value="TERMINAL-3P">5.08mm Screw Terminal (3-Pin)</option>
+            <option value="DIP-18">DIP-18 IC Package</option>
+            <option value="DIP-20">DIP-20 IC Package</option>
+            <option value="DIP-24">DIP-24 (0.3" narrow)</option>
+            <option value="DIP-24-W">DIP-24 (0.6" wide)</option>
+            <option value="DIP-28">DIP-28 (0.3" narrow — ATmega328P)</option>
+            <option value="DIP-28-W">DIP-28 (0.6" wide)</option>
+            <option value="DIP-32-W">DIP-32 (0.6" wide)</option>
+            <option value="DIP-40-W">DIP-40 (0.6" wide)</option>
+            <option value="TO-247">TO-247 High Power Transistor</option>
           </optgroup>
-          <optgroup label="Surface Mount (SMD)">
+          <optgroup label="Surface Mount — Passives &amp; Diodes">
+            <option value="0402">SMD 0402 Passive (1.0 x 0.5mm)</option>
+            <option value="0603">SMD 0603 Passive (1.6 x 0.8mm)</option>
             <option value="0805">SMD 0805 Passive (2.0 x 1.25mm)</option>
             <option value="1206">SMD 1206 Passive (3.2 x 1.6mm)</option>
-            <option value="SOIC-8">SOIC-8 Surface Mount IC</option>
-            <option value="SOT-23">SOT-23 Surface Mount Transistor</option>
+            <option value="1210">SMD 1210 Passive (3.2 x 2.5mm)</option>
+            <option value="2512">SMD 2512 Power Resistor (6.3 x 3.2mm)</option>
+            <option value="SOD-123">SOD-123 Diode</option>
+            <option value="SOD-323">SOD-323 Diode</option>
+            <option value="SMA">SMA / DO-214AC Diode</option>
+            <option value="SMB">SMB / DO-214AA Diode</option>
+          </optgroup>
+          <optgroup label="Surface Mount — Discrete">
+            <option value="SOT-23">SOT-23 Transistor (3-Pin)</option>
+            <option value="SOT-23-5">SOT-23-5</option>
+            <option value="SOT-23-6">SOT-23-6</option>
+            <option value="SOT-323">SOT-323 / SC-70</option>
+            <option value="SOT-89">SOT-89 Power Transistor</option>
+            <option value="SOT-223">SOT-223 Regulator</option>
+            <option value="TO-252">TO-252 / DPAK</option>
+            <option value="TO-263">TO-263 / D2PAK</option>
+          </optgroup>
+          <optgroup label="Surface Mount — Small Outline ICs">
+            <option value="SOIC-8">SOIC-8 (1.27mm pitch)</option>
+            <option value="SOIC-14">SOIC-14 (1.27mm pitch)</option>
+            <option value="SOIC-16">SOIC-16 (1.27mm pitch)</option>
+            <option value="SOIC-16-W">SOIC-16 Wide (7.5mm body)</option>
+            <option value="SOIC-20-W">SOIC-20 Wide (7.5mm body)</option>
+            <option value="SSOP-16">SSOP-16 (0.65mm pitch)</option>
+            <option value="SSOP-20">SSOP-20 (0.65mm pitch)</option>
+            <option value="TSSOP-8">TSSOP-8 (0.65mm pitch)</option>
+            <option value="TSSOP-14">TSSOP-14 (0.65mm pitch)</option>
+            <option value="TSSOP-16">TSSOP-16 (0.65mm pitch)</option>
+            <option value="TSSOP-20">TSSOP-20 (0.65mm pitch)</option>
+            <option value="TSSOP-28">TSSOP-28 (0.65mm pitch)</option>
+            <option value="MSOP-8">MSOP-8 (0.65mm pitch)</option>
+            <option value="MSOP-10">MSOP-10 (0.65mm pitch)</option>
+            <option value="QSOP-16">QSOP-16 (0.635mm pitch)</option>
+          </optgroup>
+          <optgroup label="Surface Mount — Quad (fine pitch)">
+            <option value="QFN-16">QFN-16 (0.5mm pitch, 4mm body)</option>
+            <option value="QFN-20">QFN-20 (0.5mm pitch)</option>
+            <option value="QFN-24">QFN-24 (0.5mm pitch)</option>
+            <option value="QFN-28">QFN-28 (0.5mm pitch)</option>
+            <option value="QFN-32">QFN-32 (0.5mm pitch, 5mm body)</option>
+            <option value="QFN-32-P0.65">QFN-32 (0.65mm pitch, 7mm body)</option>
+            <option value="QFN-48">QFN-48 (0.5mm pitch, 7mm body)</option>
+            <option value="QFN-64">QFN-64 (0.5mm pitch, 9mm body)</option>
+            <option value="DFN-8">DFN-8 (0.5mm pitch)</option>
+            <option value="DFN-10">DFN-10 (0.5mm pitch)</option>
+            <option value="TQFP-32">TQFP-32 (0.8mm pitch, 7mm body)</option>
+            <option value="TQFP-44">TQFP-44 (0.8mm pitch, 10mm body)</option>
+            <option value="TQFP-64">TQFP-64 (0.5mm pitch, 10mm body)</option>
+            <option value="TQFP-100">TQFP-100 (0.5mm pitch, 14mm body)</option>
+            <option value="LQFP-48">LQFP-48 (0.5mm pitch)</option>
+            <option value="LQFP-64">LQFP-64 (0.5mm pitch)</option>
+          </optgroup>
+          <optgroup label="Custom">
+            <option value="CUSTOM-PARAMETRIC">Custom footprint (set dimensions below)</option>
           </optgroup>
         </select>
+        {isFineParametric && (
+          <p className="mt-1 text-[10px] text-amber-600 dark:text-amber-400 leading-snug">
+            Fine-pitch part. Check the DRC after export — isolation milling needs a very
+            sharp V-bit and a levelled board at this pad spacing.
+          </p>
+        )}
       </div>
+
+      {showFootprintEditor && (
+        <div className="mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 flex items-center justify-between">
+            <span>Custom Footprint Dimensions</span>
+            <span className="text-[10px] text-indigo-500 font-mono font-bold">mm</span>
+          </label>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 mb-2 leading-snug">
+            For breakout modules and parts that match no catalogue package. Row spacing
+            is the centre-to-centre distance between the two pin rows; the offsets shift
+            one row along its own axis when the two headers are staggered.
+          </p>
+
+          <div className="grid grid-cols-2 gap-2">
+            <FootprintField label="Layout" >
+              <select
+                value={fp.family ?? 'dual'}
+                onChange={e => updateFootprintParam('family', e.target.value)}
+                className={FOOTPRINT_INPUT_CLASS}
+              >
+                <option value="dual">Dual row (module / DIP-like)</option>
+                <option value="dip">Dual row, through-hole IC</option>
+                <option value="quad">Quad (4 sides, SMD)</option>
+                <option value="header">Single row header</option>
+              </select>
+            </FootprintField>
+
+            {fp.family === 'quad' || fp.family === 'header' ? (
+              <FootprintNumber label="Total pins" value={fp.pinCount} step={1}
+                onChange={v => updateFootprintParam('pinCount', v)} />
+            ) : (
+              <>
+                <FootprintNumber label="Pins, left row" value={fp.leftCount} step={1}
+                  onChange={v => updateFootprintParam('leftCount', v)} />
+                <FootprintNumber label="Pins, right row" value={fp.rightCount} step={1}
+                  onChange={v => updateFootprintParam('rightCount', v)} />
+              </>
+            )}
+
+            <FootprintNumber label="Pin pitch" value={fp.pitchMm} step={0.05}
+              onChange={v => updateFootprintParam('pitchMm', v)} />
+            {fp.family !== 'header' && (
+              <FootprintNumber
+                label={fp.family === 'quad' ? 'Pad span' : 'Row spacing'}
+                value={fp.rowSpacingMm}
+                step={0.01}
+                onChange={v => updateFootprintParam('rowSpacingMm', v)}
+              />
+            )}
+
+            <FootprintNumber label="Body width" value={fp.bodyWidthMm} step={0.1}
+              onChange={v => updateFootprintParam('bodyWidthMm', v)} />
+            <FootprintNumber label="Body height" value={fp.bodyHeightMm} step={0.1}
+              onChange={v => updateFootprintParam('bodyHeightMm', v)} />
+
+            <FootprintNumber label="Pad width" value={fp.padWidthMm} step={0.05}
+              onChange={v => updateFootprintParam('padWidthMm', v)} />
+            <FootprintNumber label="Pad height" value={fp.padHeightMm} step={0.05}
+              onChange={v => updateFootprintParam('padHeightMm', v)} />
+
+            {fp.family !== 'quad' && (
+              <FootprintNumber label="Drill (0 = SMD)" value={fp.drillDiaMm} step={0.05}
+                onChange={v => updateFootprintParam('drillDiaMm', v)} />
+            )}
+            {fp.family === 'quad' && (
+              <FootprintNumber label="Thermal pad (0 = none)" value={fp.thermalPadMm} step={0.1}
+                onChange={v => updateFootprintParam('thermalPadMm', v)} />
+            )}
+
+            {(fp.family === 'dual' || fp.family === 'dip') && (
+              <>
+                <FootprintNumber label="Left row offset" value={fp.leftOffsetMm} step={0.01}
+                  onChange={v => updateFootprintParam('leftOffsetMm', v)} />
+                <FootprintNumber label="Right row offset" value={fp.rightOffsetMm} step={0.01}
+                  onChange={v => updateFootprintParam('rightOffsetMm', v)} />
+              </>
+            )}
+          </div>
+
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 truncate">
+              {previewFootprint
+                ? `${previewFootprint.pads.length} pads · ${previewFootprint.widthMm.toFixed(1)} x ${previewFootprint.heightMm.toFixed(1)}mm`
+                : '—'}
+            </span>
+            <button
+              onClick={() => updateData('footprintParams', undefined)}
+              className="text-[10px] px-2 py-1 rounded border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Clear override
+            </button>
+          </div>
+        </div>
+      )}
 
       {ORIENTATION_SELECTABLE_TYPES.includes(selectedNode.type || '') && (
         <div className="mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">

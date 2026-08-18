@@ -15,6 +15,15 @@ export interface PcbToolpathPreviewProps {
    * of the scrubber — the same view, driven live rather than by playback.
    */
   liveProgress?: number | null;
+  /** Name of the operation being cut right now, shown on the restart button. */
+  liveLayerLabel?: string | null;
+  /**
+   * Abandons the operation being cut and runs it from the top. Omitted when
+   * there is no job, which is also when the button is not offered.
+   */
+  onRestartLayer?: () => void;
+  /** True while a machine action is in flight; the restart button locks. */
+  machineBusy?: boolean;
 }
 
 export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
@@ -24,9 +33,25 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
   isAirCut = false,
   airCutZOffset = 20,
   liveProgress = null,
+  liveLayerLabel = null,
+  onRestartLayer,
+  machineBusy = false,
 }) => {
+  /**
+   * Restarting throws away work the machine has already done, so the button
+   * arms itself first rather than acting on one press.
+   *
+   * The armed state records *which* layer it was armed for, rather than being a
+   * bare boolean reset by an effect. A confirmation left armed across a layer
+   * boundary — or past the end of the job — would otherwise apply to something
+   * the operator never meant to pick.
+   */
+  const [armedFor, setArmedFor] = useState<string | null>(null);
   const [wantsPlayback, setWantsPlayback] = useState(false);
-  const [scrubProgress, setScrubProgress] = useState(1.0); // 0.0 to 1.0
+  // Starts at 0 so Play has somewhere to go. Opening at 1.0 showed the finished
+  // toolpath — which is the right *picture* — but left Play as a dead button,
+  // since the animation was already at its end.
+  const [scrubProgress, setScrubProgress] = useState(0);
 
   const isLive = liveProgress !== null && Number.isFinite(liveProgress);
   // The machine wins while a job is on the wire. Clamped because a job whose
@@ -162,6 +187,9 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
   const visibleMoves = useMemo(() => {
     return parsedMoves.slice(0, currentMoveIdx + 1);
   }, [parsedMoves, currentMoveIdx]);
+
+  // Only armed for the layer that is still on the machine.
+  const restartArmed = isLive && armedFor !== null && armedFor === (liveLayerLabel ?? '');
 
   return (
     <div className="flex flex-col h-full bg-slate-950 border border-slate-800 rounded-lg overflow-hidden text-xs">
@@ -329,6 +357,30 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
             />
           ))}
 
+          {/* The rest of the program, drawn faintly underneath. Playback now
+              starts at 0 so Play has somewhere to go, and without this the
+              preview would open on an empty board — the toolpath is the whole
+              reason to look at it. Rapids are left out: at full length they are
+              a hairball that hides the cuts. */}
+          {parsedMoves.slice(currentMoveIdx + 1).map((m, idx) => {
+            if (m.type === 'G0') return null;
+            if (m.op === 'isolation' && !showIsolation) return null;
+            if (m.op === 'drill' && !showDrills) return null;
+            if (m.op === 'profile' && !showProfile) return null;
+            return (
+              <line
+                key={`ghost_${idx}`}
+                x1={m.x0}
+                y1={m.y0}
+                x2={m.x1}
+                y2={m.y1}
+                stroke="#64748b"
+                strokeWidth="0.15"
+                opacity="0.35"
+              />
+            );
+          })}
+
           {/* Animated Motion Moves */}
           {visibleMoves.map((m, idx) => {
             if (m.type === 'G0' && !showRapids) return null;
@@ -408,6 +460,51 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
           />
           <span>{Math.round(progress * 100)}%</span>
         </div>
+
+        {/* Restarting the layer belongs here, alongside the progress it undoes,
+            rather than in the tool-change prompt — by the time that prompt is
+            up the layer has already finished, and it disappears the moment you
+            resume. */}
+        {isLive && onRestartLayer && (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] text-slate-400 font-mono truncate">
+              {liveLayerLabel ? `Cutting: ${liveLayerLabel}` : 'Streaming job'}
+            </span>
+            {restartArmed ? (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="text-[10px] text-amber-400 font-semibold">
+                  Re-cut this layer from the start?
+                </span>
+                <button
+                  onClick={() => {
+                    setArmedFor(null);
+                    onRestartLayer();
+                  }}
+                  disabled={machineBusy}
+                  className="px-2 py-1 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-950 rounded text-[10px] font-bold cursor-pointer"
+                >
+                  Sure?
+                </button>
+                <button
+                  onClick={() => setArmedFor(null)}
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] font-semibold cursor-pointer"
+                >
+                  No
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setArmedFor(liveLayerLabel ?? '')}
+                disabled={machineBusy}
+                title="Stop, then run this operation again from its first line"
+                className="px-2 py-1 shrink-0 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-300 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Restart layer
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 font-mono">
           <div className="flex items-center gap-3">

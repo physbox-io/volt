@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react';
+import { AlertCircle, Play, RefreshCw } from 'lucide-react';
 
 export interface JobPauseModalProps {
   /** Text from the controller: which tool, or why the stream stopped. */
@@ -10,8 +10,8 @@ export interface JobPauseModalProps {
    * GRBL is in Hold and only Resume or Cancel are meaningful.
    */
   isStreamPaused: boolean;
-  /** Name of the operation that "restart layer" would re-run, if known. */
-  layerLabel?: string | null;
+  /** Thickness of the touch plate, so the button can name what it assumes. */
+  touchPlateMm: number;
   /** Non-empty while some machine action is in flight; buttons lock. */
   busy: string;
   error?: string | null;
@@ -19,110 +19,105 @@ export interface JobPauseModalProps {
   onCancel: () => void;
   onZeroOnCopper: () => void;
   onZeroOnPlate: () => void;
-  onRestartLayer: () => void;
 }
 
 /**
- * A tool change stops the machine mid-job and needs the operator's hands and
- * attention. As a panel inside one tab of the CAM dialog it was easy to miss —
- * and everything it offers (re-zero, restart the layer, resume) is only
- * reachable while the pause is live. So it takes over the screen instead.
+ * A tool change stops the machine mid-job and needs the operator's hands. As a
+ * panel inside one tab of the CAM dialog it was easy to miss — and everything
+ * it offers is only reachable while the pause is live. So it takes over the
+ * screen instead.
+ *
+ * The amber card, the "Action Required" framing and the pulsing alert are
+ * lifted from the relief-carve pause panel in the physics app, which sets the
+ * house style for "the machine is waiting on you".
  *
  * Deliberately not dismissable by clicking away: the job is stopped with the
- * spindle parked over the stock, and every exit from that state is a decision
- * the operator has to make explicitly.
+ * tool parked over the stock, and every way out of that is a decision the
+ * operator has to make on purpose.
  */
 export const JobPauseModal: React.FC<JobPauseModalProps> = ({
   message,
   isStreamPaused,
-  layerLabel,
+  touchPlateMm,
   busy,
   error,
   onResume,
   onCancel,
   onZeroOnCopper,
   onZeroOnPlate,
-  onRestartLayer,
 }) => {
   const locked = !!busy;
+  const secondary =
+    'px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 ' +
+    'disabled:opacity-40 disabled:cursor-not-allowed text-slate-800 dark:text-slate-100 ' +
+    'text-xs font-semibold rounded-lg cursor-pointer flex items-center justify-center gap-1.5';
 
   return (
     <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-amber-400 dark:border-amber-600/70 rounded-xl shadow-2xl overflow-hidden">
-        <div className="px-5 py-3.5 bg-amber-100 dark:bg-amber-950/50 border-b border-amber-300 dark:border-amber-700/60 flex items-start gap-2.5">
-          <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-700 dark:text-amber-300" />
+      <div className="w-full max-w-lg p-4 rounded-xl bg-amber-50 dark:bg-slate-900 border-2 border-amber-500 shadow-2xl flex flex-col space-y-3 text-amber-800 dark:text-amber-300">
+        <div className="flex items-center space-x-3">
+          {/* Only the icon pulses. Physics pulses the whole card, which reads
+              well as a small inline panel but makes a full-screen dialog hard
+              to actually read. */}
+          <AlertCircle className="w-6 h-6 text-amber-500 flex-shrink-0 animate-pulse" />
           <div>
-            <div className="font-bold text-amber-900 dark:text-amber-200">Job paused</div>
-            <div className="text-[12px] text-amber-800 dark:text-amber-300/90 leading-relaxed">
-              {message}
-            </div>
+            <h4 className="font-bold text-sm">Action Required: Machine Paused</h4>
+            <p className="text-xs leading-relaxed font-semibold">{message}</p>
           </div>
         </div>
 
-        <div className="p-5 space-y-4">
-          {isStreamPaused && (
-            <div className="space-y-2">
-              <div className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
-                A new bit is a different length, so work Z0 no longer matches the tool. Re-zero
-                before resuming, or this operation cuts at the wrong depth.
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={onZeroOnCopper}
-                  disabled={locked}
-                  className="flex-1 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  {busy === 'zeroing' && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                  Re-zero Z on copper
-                </button>
-                <button
-                  onClick={onZeroOnPlate}
-                  disabled={locked}
-                  className="flex-1 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] cursor-pointer"
-                >
-                  Re-zero Z on plate
-                </button>
-              </div>
+        {isStreamPaused && (
+          <div className="space-y-2 pt-2 border-t border-amber-500/30">
+            <p className="text-[11px] leading-relaxed">
+              A new bit is a different length, so work Z0 no longer matches the tool. Re-zero
+              before resuming, or this operation cuts at the wrong depth.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={onZeroOnCopper} disabled={locked} className={secondary}>
+                {busy === 'zeroing' && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                Auto-Zero Z (Copper)
+              </button>
+              <button onClick={onZeroOnPlate} disabled={locked} className={secondary}>
+                Auto-Zero Z ({touchPlateMm}mm Touch Plate)
+              </button>
             </div>
-          )}
 
-          {/* The recovery for a layer already cut at the wrong depth — a bit
-              swapped without re-zeroing is exactly when this is wanted, and by
-              then Resume would only carry the mistake forward. */}
-          {isStreamPaused && layerLabel && (
-            <button
-              onClick={onRestartLayer}
-              disabled={locked}
-              className="w-full py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer"
-              title="Rewind to the start of this operation and cut it again"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Restart layer — {layerLabel}
-            </button>
-          )}
+            {/* XY needs no such care: every operation opens with an absolute
+                `G0 X.. Y..` before it plunges, so jogging here is undone by
+                the job's own next move. Z is the one that does not fix itself,
+                because re-zeroing is what redefines it. */}
+            <p className="text-[11px] leading-relaxed opacity-90">
+              <span className="font-semibold">XY is safe to jog.</span> The job repositions itself
+              with an absolute move before it cuts again, so it returns to its own coordinates
+              without help. Just do not park the tool where it cannot travel back — the first move
+              is a rapid.
+            </p>
 
-          {error && (
-            <div className="text-[11px] text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-950/40 border border-red-300 dark:border-red-800 rounded p-2 leading-relaxed">
-              {error}
-            </div>
-          )}
-
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={onResume}
-              disabled={locked}
-              className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded font-semibold cursor-pointer"
-            >
-              Resume job
-            </button>
-            <button
-              onClick={onCancel}
-              disabled={locked}
-              className="px-4 py-2.5 bg-slate-200 dark:bg-slate-800 hover:bg-red-100 dark:hover:bg-red-900/60 disabled:opacity-40 disabled:cursor-not-allowed text-slate-800 dark:text-slate-200 rounded font-semibold cursor-pointer"
-            >
-              Cancel job
-            </button>
           </div>
+        )}
+
+        {error && (
+          <div className="text-[11px] text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-950/40 border border-red-300 dark:border-red-800 rounded-lg p-2 leading-relaxed">
+            {error}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end space-x-3 pt-2 border-t border-amber-500/30">
+          <button
+            onClick={onCancel}
+            disabled={locked}
+            className="px-3 py-1.5 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold rounded-lg cursor-pointer"
+          >
+            Cancel job
+          </button>
+          <button
+            onClick={onResume}
+            disabled={locked}
+            className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-bold text-xs rounded-lg flex items-center space-x-1.5 cursor-pointer"
+          >
+            <Play className="w-3.5 h-3.5 fill-current" />
+            <span>Resume Job (Cycle Start)</span>
+          </button>
         </div>
       </div>
     </div>

@@ -23,6 +23,15 @@ interface FakeGrblOptions {
   probeMisses?: boolean;
   /** Reject this command with error:1 when seen. */
   errorOn?: string;
+  /**
+   * Homing required ($22=1): the controller boots into a locked Alarm after
+   * every reset, with no ALARM code — it is a lockout, not a fault.
+   */
+  homingLockout?: boolean;
+  /** Fault on reset instead, as a limit trip or a reset mid-motion would. */
+  faultOnReset?: number;
+  /** Machine coordinates are lost across a reset by this much, in mm. */
+  driftOnReset?: number;
 }
 
 class FakeGrbl {
@@ -30,6 +39,10 @@ class FakeGrbl {
   public overflowed = false;
   public received: string[] = [];
   public statusPolls = 0;
+  public locked = false;
+  public softResets = 0;
+  public feedHolds = 0;
+  public cycleStarts = 0;
 
   private occupied = 0;
   private pending: string[] = [];
@@ -66,16 +79,31 @@ class FakeGrbl {
       // '?' is a realtime command: it bypasses the buffer entirely.
       if (ch === '?') {
         this.statusPolls++;
-        this.reply(`<Idle|MPos:${this.x.toFixed(3)},${this.y.toFixed(3)},5.000|WPos:${this.x.toFixed(3)},${this.y.toFixed(3)},5.000>`);
+        this.reply(`<${this.locked ? 'Alarm' : 'Idle'}|MPos:${this.x.toFixed(3)},${this.y.toFixed(3)},5.000|WPos:${this.x.toFixed(3)},${this.y.toFixed(3)},5.000>`);
         continue;
       }
+      // Ctrl-X soft reset: GRBL discards the planner and everything buffered,
+      // then reboots and announces itself.
       if (ch === '\x18') {
+        this.softResets++;
         this.occupied = 0;
         this.pending = [];
         this.partial = '';
         this.reply('Grbl 1.1f [\'$\' for help]');
+        if (this.opts.driftOnReset) this.x += this.opts.driftOnReset;
+        if (this.opts.faultOnReset) {
+          this.locked = true;
+          this.reply(`ALARM:${this.opts.faultOnReset}`);
+        } else if (this.opts.homingLockout) {
+          // No ALARM code: GRBL just refuses g-code until $X or $H.
+          this.locked = true;
+          this.reply("[MSG:'$H'|'$X' to unlock]");
+        }
         continue;
       }
+      // '!' feed hold and '~' cycle start are realtime too, and never buffered.
+      if (ch === '!') { this.feedHolds++; continue; }
+      if (ch === '~') { this.cycleStarts++; continue; }
 
       this.occupied++;
       this.maxBufferSeen = Math.max(this.maxBufferSeen, this.occupied);
@@ -106,6 +134,17 @@ class FakeGrbl {
       for (const m of line.matchAll(/([XY])(-?[\d.]+)/g)) {
         if (m[1] === 'X') this.x = parseFloat(m[2]);
         if (m[1] === 'Y') this.y = parseFloat(m[2]);
+      }
+
+      if (line === '$X') {
+        this.locked = false;
+        this.reply('ok');
+        continue;
+      }
+      if (this.locked) {
+        // A locked controller refuses g-code with error:9.
+        this.reply('error:9');
+        continue;
       }
 
       if (this.opts.errorOn && line.includes(this.opts.errorOn)) {
@@ -271,6 +310,119 @@ check(
   webSerialManager.getState().status
 );
 check('post-change line was sent', fake.received.includes('G1 X2.000'));
+
+// --- 2d. Restarting a layer rewinds to its tool change ------------------
+// Restart is offered from the live progress view, mid-cut. It abandons the
+// operation in flight and re-runs it from its first line — which is that
+// layer's own `T<n> M6`, so the tool-change prompt comes back up with its
+// re-zero controls before anything is re-cut. That prompt is the point: it is
+// the step that got skipped.
+await reconnect();
+const twoLayers = [
+  'M3 S12000',
+  '; OP 1/2: Isolation routing',
+  'T1 M6',
+  'G1 X1.000',
+  'G1 X2.000',
+  '; OP 2/2: Through-hole drilling',
+  'T2 M6',
+  'G1 X9.000',
+].join('\n');
+await webSerialManager.startJob(twoLayers);
+check('paused at the first tool change', webSerialManager.getState().status === 'PAUSED_TOOL', webSerialManager.getState().status);
+check('current layer is the one being entered', webSerialManager.getCurrentLayer()?.label === 'Isolation routing', `${webSerialManager.getCurrentLayer()?.label}`);
+
+// Resume into the first layer, then restart it while it is the live one.
+await webSerialManager.resumeJob();
+check('reached the second tool change', webSerialManager.getState().status === 'PAUSED_TOOL', webSerialManager.getState().status);
+check('now cutting the second layer', webSerialManager.getCurrentLayer()?.label === 'Through-hole drilling', `${webSerialManager.getCurrentLayer()?.label}`);
+
+const cutsBefore = fake.received.filter(l => l === 'G1 X1.000').length;
+await webSerialManager.resumeJob();
+check('job finished', webSerialManager.getState().status === 'IDLE', webSerialManager.getState().status);
+
+// Now run it again and restart the *live* layer part-way through.
+await reconnect();
+await webSerialManager.startJob(twoLayers);
+await webSerialManager.resumeJob(); // past T1, cuts layer 1, stops at T2
+const beforeRestart = fake.received.filter(l => l === 'G1 X9.000').length;
+await webSerialManager.restartCurrentLayer();
+
+check(
+  'a restart lands back on the layer tool change',
+  webSerialManager.getState().status === 'PAUSED_TOOL',
+  webSerialManager.getState().status
+);
+check(
+  'and it is THIS layer tool change, not the previous one',
+  (webSerialManager.getState().pauseMessage || '').includes('T2 M6'),
+  webSerialManager.getState().pauseMessage || '(none)'
+);
+// The planner has to be flushed, or the rest of the abandoned layer runs on
+// the next cycle start. Only a soft reset does that.
+check('the planner was flushed with a soft reset', fake.softResets > 0, `${fake.softResets}`);
+check('a feed hold preceded the reset', fake.feedHolds > 0, `${fake.feedHolds}`);
+check('nothing was re-cut before the prompt', fake.received.filter(l => l === 'G1 X9.000').length === beforeRestart, 'lines ran before the tool-change prompt');
+check('progress rewound to the layer start', (webSerialManager.getState().progressPercent ?? 100) < 100);
+
+// A reset stops the spindle, and the spindle-up line lives in the program
+// header far behind this layer — so it would never be replayed. It is re-sent
+// on resume, not before, so it is never turning during a bit change.
+const spindleBefore = fake.received.filter(l => l === 'M3 S12000').length;
+await webSerialManager.resumeJob();
+check('the spindle is restarted on resume', fake.received.filter(l => l === 'M3 S12000').length === spindleBefore + 1, `${spindleBefore}`);
+check('the layer is cut again', fake.received.filter(l => l === 'G1 X9.000').length > beforeRestart);
+check('job completes after a restart', webSerialManager.getState().status === 'IDLE', webSerialManager.getState().status);
+void cutsBefore;
+
+// --- 2e. A restart recovers the controller by itself -----------------------
+// With homing required ($22=1) GRBL boots into a locked Alarm after EVERY
+// reset, including the deliberate one a restart performs. That lock is not a
+// fault and must not cost the operator the whole board.
+await reconnect({ homingLockout: true });
+await webSerialManager.startJob(twoLayers);
+await webSerialManager.resumeJob(); // past T1, cut layer 1, stop at T2
+await webSerialManager.restartCurrentLayer();
+check(
+  'the homing lockout is cleared automatically',
+  fake.received.includes('$X'),
+  fake.received.slice(-6).join(' | ')
+);
+check(
+  'the job survives the lockout and reaches its tool change',
+  webSerialManager.getState().status === 'PAUSED_TOOL',
+  `${webSerialManager.getState().status} — ${webSerialManager.getState().lastError || ''}`
+);
+await webSerialManager.resumeJob();
+check('job completes after an auto-unlock', webSerialManager.getState().status === 'IDLE', webSerialManager.getState().status);
+
+// A *coded* alarm is the opposite case: a limit trip or a reset mid-motion,
+// where position is genuinely suspect. That must NOT be auto-unlocked.
+await reconnect({ faultOnReset: 1 });
+await webSerialManager.startJob(twoLayers);
+await webSerialManager.resumeJob();
+let restartErr = '';
+try {
+  await webSerialManager.restartCurrentLayer();
+} catch (e: any) {
+  restartErr = e.message;
+}
+check('a real fault is not silently unlocked', !fake.received.includes('$X'), fake.received.slice(-4).join(' | '));
+check('a real fault stops the job', restartErr.includes('position'), restartErr || '(no error)');
+check('and says how to recover', restartErr.includes('$H'), restartErr || '(no error)');
+
+// Lost position is caught even when the controller never says so.
+await reconnect({ driftOnReset: 5 });
+await webSerialManager.startJob(twoLayers);
+await webSerialManager.resumeJob();
+let driftErr = '';
+try {
+  await webSerialManager.restartCurrentLayer();
+} catch (e: any) {
+  driftErr = e.message;
+}
+check('silent position loss is caught', driftErr.includes('lost'), driftErr || '(no error)');
+check('and the job is not left running', webSerialManager.getState().status !== 'RUNNING', webSerialManager.getState().status);
 
 // --- 3. A missed probe fails loudly instead of returning a flat map --------
 await reconnect({ probeMisses: true });

@@ -3,6 +3,13 @@
 // Coordinates are in millimeters relative to component origin (0,0) at center.
 // ---------------------------------------------------------------------------
 
+/**
+ * What a pad is for. Only 'signal' pads carry a net; 'thermal' is a QFN/DFN
+ * exposed pad (usually ground, but it is the schematic that decides), and
+ * 'mechanical' is a tab or shield leg that is soldered but never routed.
+ */
+export type PadRole = 'signal' | 'thermal' | 'mechanical';
+
 export interface PadSpec {
   pinNumber: string | number;
   x: number;             // X offset relative to component center (mm)
@@ -11,6 +18,7 @@ export interface PadSpec {
   padHeight: number;     // Copper pad height in mm
   shape: 'circle' | 'rect' | 'oval';
   drillDiameter: number; // 0 for SMD, e.g. 0.8mm for THT
+  role?: PadRole;        // Defaults to 'signal' when absent
 }
 
 export interface ComponentFootprint {
@@ -19,6 +27,13 @@ export interface ComponentFootprint {
   widthMm: number;       // Courtyard physical width in mm
   heightMm: number;      // Courtyard physical height in mm
   pads: PadSpec[];
+  /**
+   * Set when the requested package could not be resolved and this footprint is
+   * a guess. The exporter turns it into a DRC warning — a silently substituted
+   * footprint drills the wrong holes in real copper.
+   */
+  isFallback?: boolean;
+  requestedPackageId?: string;
 }
 
 export const STANDARD_FOOTPRINTS: Record<string, ComponentFootprint> = {
@@ -291,49 +306,634 @@ export function generateHeaderFootprint(pinCount: number, pitch = 2.54): Compone
   };
 }
 
-export function generateDIPFootprint(pinCount: number): ComponentFootprint {
-  const count = Math.max(4, pinCount % 2 === 0 ? pinCount : pinCount + 1);
-  const pinsPerSide = count / 2;
-  const pinPitch = 2.54;
-  const rowSpacing = count >= 24 ? 15.24 : 7.62;
+// ---------------------------------------------------------------------------
+// Dual-row engine
+//
+// Every two-column part — DIP chips, SOIC/TSSOP, and breakout modules whose
+// board width, pin pitch, row spacing and per-side pin offsets are all
+// arbitrary — is the same layout problem. This one generator covers all of
+// them; the named wrappers below just supply the family's dimensions.
+// ---------------------------------------------------------------------------
 
-  const startY = ((pinsPerSide - 1) * pinPitch) / 2;
-  const leftX = -rowSpacing / 2;
-  const rightX = rowSpacing / 2;
+export interface DualRowSpec {
+  leftCount: number;
+  rightCount: number;
+  pitchMm: number;
+  /** Centre-to-centre distance between the two pad columns. */
+  rowSpacingMm: number;
+  padWidthMm: number;
+  padHeightMm: number;
+  /** 0 makes the part surface-mount. */
+  drillDiaMm: number;
+  bodyWidthMm?: number;
+  bodyHeightMm?: number;
+  /**
+   * Shifts a column along Y, positive towards pin 1. Modules routinely stagger
+   * their two headers, and a symmetric-only generator cannot express that.
+   */
+  leftOffsetMm?: number;
+  rightOffsetMm?: number;
+  /** Pin numbers, in order, defaulting to 1..N. */
+  pinLabels?: (string | number)[];
+  packageId?: string;
+  name?: string;
+}
+
+export function generateDualRowFootprint(spec: DualRowSpec): ComponentFootprint {
+  const leftCount = Math.max(0, Math.round(spec.leftCount));
+  const rightCount = Math.max(0, Math.round(spec.rightCount));
+  const total = leftCount + rightCount;
+  const pitch = Math.max(0.2, spec.pitchMm);
+  const rowSpacing = Math.max(0, spec.rowSpacingMm);
+  const isSmd = spec.drillDiaMm <= 0;
+  const padW = Math.max(0.1, spec.padWidthMm);
+  const padH = Math.max(0.1, spec.padHeightMm);
+  const shape: PadSpec['shape'] = isSmd ? 'rect' : 'circle';
+
+  const label = (i: number) => spec.pinLabels?.[i] ?? (i + 1).toString();
 
   const pads: PadSpec[] = [];
-  for (let i = 0; i < pinsPerSide; i++) {
+
+  // Left column runs top to bottom, right column bottom to top — the pin-1
+  // -is-top-left, counter-clockwise convention every dual-row part uses.
+  const leftSpan = ((leftCount - 1) * pitch) / 2;
+  for (let i = 0; i < leftCount; i++) {
     pads.push({
-      pinNumber: (i + 1).toString(),
-      x: leftX,
-      y: startY - i * pinPitch,
-      padWidth: 1.6,
-      padHeight: 1.6,
-      shape: i === 0 ? 'rect' : 'circle',
-      drillDiameter: 0.8,
+      pinNumber: label(i),
+      x: -rowSpacing / 2,
+      y: leftSpan - i * pitch + (spec.leftOffsetMm ?? 0),
+      padWidth: padW,
+      padHeight: padH,
+      shape: i === 0 ? 'rect' : shape,
+      drillDiameter: Math.max(0, spec.drillDiaMm),
     });
   }
 
-  for (let i = 0; i < pinsPerSide; i++) {
+  const rightSpan = ((rightCount - 1) * pitch) / 2;
+  for (let i = 0; i < rightCount; i++) {
     pads.push({
-      pinNumber: (pinsPerSide + i + 1).toString(),
-      x: rightX,
-      y: -startY + i * pinPitch,
-      padWidth: 1.6,
-      padHeight: 1.6,
-      shape: 'circle',
-      drillDiameter: 0.8,
+      pinNumber: label(leftCount + i),
+      x: rowSpacing / 2,
+      y: -rightSpan + i * pitch + (spec.rightOffsetMm ?? 0),
+      padWidth: padW,
+      padHeight: padH,
+      shape,
+      drillDiameter: Math.max(0, spec.drillDiaMm),
     });
   }
+
+  // The courtyard has to contain the copper even when the caller's body size
+  // does not, or the placer will happily overlap two parts that physically
+  // collide.
+  const padExtentX = rowSpacing + padW;
+  const maxRowPins = Math.max(leftCount, rightCount, 1);
+  const maxOffset = Math.max(Math.abs(spec.leftOffsetMm ?? 0), Math.abs(spec.rightOffsetMm ?? 0));
+  const padExtentY = (maxRowPins - 1) * pitch + padH + maxOffset * 2;
 
   return {
-    packageId: `DIP-${count}`,
-    name: `DIP-${count} Integrated Circuit`,
-    widthMm: rowSpacing + 2.5,
-    heightMm: pinsPerSide * pinPitch + 1.0,
+    packageId: spec.packageId ?? `DUAL-${total}`,
+    name: spec.name ?? `${total}-Pin Dual Row (${pitch}mm pitch, ${rowSpacing}mm rows)`,
+    widthMm: Math.max(spec.bodyWidthMm ?? 0, padExtentX),
+    heightMm: Math.max(spec.bodyHeightMm ?? 0, padExtentY),
     pads,
   };
 }
+
+/** Row spacing in mm for the two standard DIP body widths. */
+export const DIP_ROW_SPACING = { narrow: 7.62, wide: 15.24 } as const;
+
+export interface DipOptions {
+  /**
+   * Row spacing in mm, or 'narrow' (0.3") / 'wide' (0.6"). Defaults by pin
+   * count, which is a guess — an ATmega328P is a 28-pin *narrow* part and a
+   * 68HC11 is a 28-pin wide one, and only the datasheet knows which.
+   */
+  rowSpacing?: number | 'narrow' | 'wide';
+  pitchMm?: number;
+  padDiaMm?: number;
+  drillDiaMm?: number;
+  bodyWidthMm?: number;
+  bodyHeightMm?: number;
+}
+
+export function generateDIPFootprint(pinCount: number, opts: DipOptions = {}): ComponentFootprint {
+  const count = Math.max(4, pinCount % 2 === 0 ? pinCount : pinCount + 1);
+  const pinsPerSide = count / 2;
+  const pitch = opts.pitchMm ?? 2.54;
+
+  // 0.6" bodies start at DIP-32 in practice; 24- and 28-pin parts exist in both
+  // widths and default to narrow, which is the far more common modern part.
+  const defaultSpacing = count >= 32 ? DIP_ROW_SPACING.wide : DIP_ROW_SPACING.narrow;
+  const rowSpacing =
+    typeof opts.rowSpacing === 'number'
+      ? opts.rowSpacing
+      : opts.rowSpacing === 'wide'
+        ? DIP_ROW_SPACING.wide
+        : opts.rowSpacing === 'narrow'
+          ? DIP_ROW_SPACING.narrow
+          : defaultSpacing;
+
+  const pad = opts.padDiaMm ?? 1.6;
+  const widthLabel = rowSpacing === DIP_ROW_SPACING.wide ? ' Wide' : '';
+
+  return generateDualRowFootprint({
+    leftCount: pinsPerSide,
+    rightCount: pinsPerSide,
+    pitchMm: pitch,
+    rowSpacingMm: rowSpacing,
+    padWidthMm: pad,
+    padHeightMm: pad,
+    drillDiaMm: opts.drillDiaMm ?? 0.8,
+    bodyWidthMm: opts.bodyWidthMm ?? rowSpacing + 2.5,
+    bodyHeightMm: opts.bodyHeightMm ?? pinsPerSide * pitch + 1.0,
+    packageId: `DIP-${count}`,
+    name: `DIP-${count}${widthLabel} Integrated Circuit (${rowSpacing}mm rows)`,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Gull-wing / small-outline SMD families
+// ---------------------------------------------------------------------------
+
+interface DualSmdFamily {
+  pitchMm: number;
+  /** Centre-to-centre across the two pad columns. */
+  spanMm: number;
+  /** Pad extent along X, i.e. how far the toe reaches out from the body. */
+  padLengthMm: number;
+  /** Pad extent along Y. */
+  padWidthMm: number;
+  /** Body width across the plastic, used for the courtyard. */
+  bodyWidthMm: number;
+  label: string;
+}
+
+export const SMD_DUAL_FAMILIES: Record<string, DualSmdFamily> = {
+  SOIC: { pitchMm: 1.27, spanMm: 5.4, padLengthMm: 1.55, padWidthMm: 0.6, bodyWidthMm: 3.9, label: 'SOIC Narrow' },
+  'SOIC-W': { pitchMm: 1.27, spanMm: 9.4, padLengthMm: 1.95, padWidthMm: 0.6, bodyWidthMm: 7.5, label: 'SOIC Wide' },
+  SOP: { pitchMm: 1.27, spanMm: 5.4, padLengthMm: 1.55, padWidthMm: 0.6, bodyWidthMm: 3.9, label: 'SOP' },
+  SOJ: { pitchMm: 1.27, spanMm: 8.0, padLengthMm: 1.4, padWidthMm: 0.7, bodyWidthMm: 7.5, label: 'SOJ' },
+  QSOP: { pitchMm: 0.635, spanMm: 5.4, padLengthMm: 1.45, padWidthMm: 0.4, bodyWidthMm: 3.9, label: 'QSOP' },
+  SSOP: { pitchMm: 0.65, spanMm: 7.2, padLengthMm: 1.6, padWidthMm: 0.4, bodyWidthMm: 5.3, label: 'SSOP' },
+  TSSOP: { pitchMm: 0.65, spanMm: 6.4, padLengthMm: 1.45, padWidthMm: 0.45, bodyWidthMm: 4.4, label: 'TSSOP' },
+  TSOP: { pitchMm: 0.5, spanMm: 11.0, padLengthMm: 1.5, padWidthMm: 0.3, bodyWidthMm: 10.16, label: 'TSOP' },
+  MSOP: { pitchMm: 0.65, spanMm: 4.4, padLengthMm: 1.45, padWidthMm: 0.4, bodyWidthMm: 3.0, label: 'MSOP' },
+  VSSOP: { pitchMm: 0.5, spanMm: 4.4, padLengthMm: 1.4, padWidthMm: 0.3, bodyWidthMm: 3.0, label: 'VSSOP' },
+};
+
+export interface DualSmdOptions {
+  pitchMm?: number;
+  spanMm?: number;
+  padLengthMm?: number;
+  padWidthMm?: number;
+  bodyWidthMm?: number;
+  bodyHeightMm?: number;
+}
+
+/**
+ * SOIC / SSOP / TSSOP / MSOP and friends: two gull-wing rows, pin 1 top-left,
+ * numbering counter-clockwise.
+ */
+export function generateDualSmdFootprint(
+  family: string,
+  pinCount: number,
+  opts: DualSmdOptions = {}
+): ComponentFootprint {
+  const fam = SMD_DUAL_FAMILIES[family] ?? SMD_DUAL_FAMILIES.SOIC;
+  const count = Math.max(4, pinCount % 2 === 0 ? pinCount : pinCount + 1);
+  const perSide = count / 2;
+  const pitch = opts.pitchMm ?? fam.pitchMm;
+  const span = opts.spanMm ?? fam.spanMm;
+  const padLength = opts.padLengthMm ?? fam.padLengthMm;
+  const padWidth = opts.padWidthMm ?? fam.padWidthMm;
+
+  return generateDualRowFootprint({
+    leftCount: perSide,
+    rightCount: perSide,
+    pitchMm: pitch,
+    rowSpacingMm: span,
+    padWidthMm: padLength,
+    padHeightMm: padWidth,
+    drillDiaMm: 0,
+    bodyWidthMm: opts.bodyWidthMm ?? Math.max(fam.bodyWidthMm, span + padLength),
+    bodyHeightMm: opts.bodyHeightMm ?? perSide * pitch + 0.8,
+    packageId: `${family}-${count}`,
+    name: `${fam.label}-${count} (${pitch}mm pitch, ${span}mm span)`,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Quad packages: QFN / DFN / QFP / TQFP / LQFP
+// ---------------------------------------------------------------------------
+
+export interface QuadSpec {
+  /** Total signal pins. Distributed evenly over four sides unless overridden. */
+  pinCount: number;
+  pinsPerSide?: number;
+  pitchMm: number;
+  /** Pad extent pointing away from the die. */
+  padLengthMm: number;
+  /** Pad extent along its edge. */
+  padWidthMm: number;
+  /** Centre-to-centre between pads on opposite sides. */
+  padSpanMm: number;
+  bodyWidthMm?: number;
+  bodyHeightMm?: number;
+  /** Exposed thermal pad, centred. Omit for a package that has none. */
+  thermalPadWidthMm?: number;
+  thermalPadHeightMm?: number;
+  packageId?: string;
+  name?: string;
+}
+
+/**
+ * Pads run counter-clockwise from the top of the left edge: down the left side,
+ * left-to-right along the bottom, up the right side, then right-to-left across
+ * the top. That is the numbering every QFP and QFN datasheet uses.
+ */
+export function generateQuadFootprint(spec: QuadSpec): ComponentFootprint {
+  const total = Math.max(4, Math.round(spec.pinCount));
+  const perSide = Math.max(1, Math.round(spec.pinsPerSide ?? Math.ceil(total / 4)));
+  const pitch = Math.max(0.15, spec.pitchMm);
+  const half = Math.max(0.1, spec.padSpanMm) / 2;
+  const padLength = Math.max(0.1, spec.padLengthMm);
+  const padWidth = Math.max(0.1, spec.padWidthMm);
+
+  const pads: PadSpec[] = [];
+  let pin = 1;
+
+  const edgeStart = (n: number) => ((n - 1) * pitch) / 2;
+
+  const remaining = () => total - (pin - 1);
+  const sideCount = () => Math.min(perSide, remaining());
+
+  // Left: top to bottom.
+  {
+    const n = sideCount();
+    const start = edgeStart(n);
+    for (let i = 0; i < n; i++, pin++) {
+      pads.push({
+        pinNumber: pin.toString(), x: -half, y: start - i * pitch,
+        padWidth: padLength, padHeight: padWidth, shape: 'rect', drillDiameter: 0,
+      });
+    }
+  }
+  // Bottom: left to right.
+  {
+    const n = sideCount();
+    const start = -edgeStart(n);
+    for (let i = 0; i < n; i++, pin++) {
+      pads.push({
+        pinNumber: pin.toString(), x: start + i * pitch, y: -half,
+        padWidth: padWidth, padHeight: padLength, shape: 'rect', drillDiameter: 0,
+      });
+    }
+  }
+  // Right: bottom to top.
+  {
+    const n = sideCount();
+    const start = -edgeStart(n);
+    for (let i = 0; i < n; i++, pin++) {
+      pads.push({
+        pinNumber: pin.toString(), x: half, y: start + i * pitch,
+        padWidth: padLength, padHeight: padWidth, shape: 'rect', drillDiameter: 0,
+      });
+    }
+  }
+  // Top: right to left.
+  {
+    const n = sideCount();
+    const start = edgeStart(n);
+    for (let i = 0; i < n; i++, pin++) {
+      pads.push({
+        pinNumber: pin.toString(), x: start - i * pitch, y: half,
+        padWidth: padWidth, padHeight: padLength, shape: 'rect', drillDiameter: 0,
+      });
+    }
+  }
+
+  if (spec.thermalPadWidthMm && spec.thermalPadHeightMm) {
+    pads.push({
+      pinNumber: 'EP',
+      x: 0,
+      y: 0,
+      padWidth: spec.thermalPadWidthMm,
+      padHeight: spec.thermalPadHeightMm,
+      shape: 'rect',
+      drillDiameter: 0,
+      role: 'thermal',
+    });
+  }
+
+  const copperExtent = spec.padSpanMm + padLength;
+  return {
+    packageId: spec.packageId ?? `QUAD-${total}`,
+    name: spec.name ?? `${total}-Pin Quad (${pitch}mm pitch)`,
+    widthMm: Math.max(spec.bodyWidthMm ?? 0, copperExtent),
+    heightMm: Math.max(spec.bodyHeightMm ?? 0, copperExtent),
+    pads,
+  };
+}
+
+interface QuadFamily {
+  /** Leads are under the body (QFN/DFN) or gull-wing outside it (QFP). */
+  leadless: boolean;
+  defaultPitchMm: number;
+  label: string;
+}
+
+export const QUAD_FAMILIES: Record<string, QuadFamily> = {
+  QFN: { leadless: true, defaultPitchMm: 0.5, label: 'QFN' },
+  VQFN: { leadless: true, defaultPitchMm: 0.5, label: 'VQFN' },
+  WQFN: { leadless: true, defaultPitchMm: 0.4, label: 'WQFN' },
+  QFP: { leadless: false, defaultPitchMm: 0.8, label: 'QFP' },
+  TQFP: { leadless: false, defaultPitchMm: 0.8, label: 'TQFP' },
+  LQFP: { leadless: false, defaultPitchMm: 0.5, label: 'LQFP' },
+};
+
+/**
+ * DFN and SON are leadless like a QFN but carry pins on two sides only — the
+ * D is for Dual. Running them through the quad generator would spread eight
+ * pins over four edges and put the pads nowhere near the part.
+ */
+export const LEADLESS_DUAL_FAMILIES: Record<string, { defaultPitchMm: number; label: string }> = {
+  DFN: { defaultPitchMm: 0.5, label: 'DFN' },
+  VDFN: { defaultPitchMm: 0.5, label: 'VDFN' },
+  WDFN: { defaultPitchMm: 0.4, label: 'WDFN' },
+  SON: { defaultPitchMm: 0.5, label: 'SON' },
+};
+
+export function generateLeadlessDualFootprint(
+  family: string,
+  pinCount: number,
+  opts: QuadOptions = {}
+): ComponentFootprint {
+  const fam = LEADLESS_DUAL_FAMILIES[family] ?? LEADLESS_DUAL_FAMILIES.DFN;
+  const count = Math.max(2, pinCount % 2 === 0 ? pinCount : pinCount + 1);
+  const perSide = count / 2;
+  const pitch = opts.pitchMm ?? fam.defaultPitchMm;
+  const nominal = quadPadForPitch(pitch, true);
+  const padLength = opts.padLengthMm ?? nominal.length;
+  const padWidth = opts.padWidthMm ?? nominal.width;
+
+  const body = opts.bodyMm ?? Math.max(1.5, Math.ceil(((perSide - 1) * pitch + 1.5) * 2) / 2);
+  // Same 0.2mm solder toe as a QFN. There is no adjacent edge here, so the
+  // corner clamp the quad generator needs does not apply.
+  const span = opts.padSpanMm ?? body + 0.4 - padLength;
+
+  const thermal = opts.thermalPadMm ?? Math.max(0, body - 2 * padLength - 0.6);
+
+  const fp = generateDualRowFootprint({
+    leftCount: perSide,
+    rightCount: perSide,
+    pitchMm: pitch,
+    rowSpacingMm: span,
+    padWidthMm: padLength,
+    padHeightMm: padWidth,
+    drillDiaMm: 0,
+    bodyWidthMm: body,
+    bodyHeightMm: body,
+    packageId: `${family}-${count}`,
+    name: `${fam.label}-${count} (${pitch}mm pitch, ${body}mm body)`,
+  });
+
+  if (thermal > 0.2) {
+    fp.pads.push({
+      pinNumber: 'EP',
+      x: 0,
+      y: 0,
+      padWidth: thermal,
+      padHeight: Math.min(thermal, (perSide - 1) * pitch + padWidth),
+      shape: 'rect',
+      drillDiameter: 0,
+      role: 'thermal',
+    });
+  }
+  return fp;
+}
+
+/** Pad geometry scales with pitch; these are the usual IPC nominal-density values. */
+function quadPadForPitch(pitchMm: number, leadless: boolean): { length: number; width: number } {
+  if (leadless) {
+    if (pitchMm <= 0.4) return { length: 0.70, width: 0.20 };
+    if (pitchMm <= 0.5) return { length: 0.75, width: 0.28 };
+    if (pitchMm <= 0.65) return { length: 0.85, width: 0.35 };
+    return { length: 0.95, width: 0.45 };
+  }
+  if (pitchMm <= 0.4) return { length: 1.20, width: 0.22 };
+  if (pitchMm <= 0.5) return { length: 1.35, width: 0.28 };
+  if (pitchMm <= 0.65) return { length: 1.45, width: 0.38 };
+  if (pitchMm <= 0.8) return { length: 1.50, width: 0.50 };
+  return { length: 1.60, width: 0.60 };
+}
+
+export interface QuadOptions {
+  pitchMm?: number;
+  bodyMm?: number;
+  padLengthMm?: number;
+  padWidthMm?: number;
+  padSpanMm?: number;
+  /** Pass 0 to suppress the default exposed pad on a leadless package. */
+  thermalPadMm?: number;
+}
+
+export function generateQuadFamilyFootprint(
+  family: string,
+  pinCount: number,
+  opts: QuadOptions = {}
+): ComponentFootprint {
+  const fam = QUAD_FAMILIES[family] ?? QUAD_FAMILIES.QFN;
+  const total = Math.max(4, Math.round(pinCount));
+  const perSide = Math.ceil(total / 4);
+  const pitch = opts.pitchMm ?? fam.defaultPitchMm;
+  const nominal = quadPadForPitch(pitch, fam.leadless);
+  const padWidth = opts.padWidthMm ?? nominal.width;
+  let padLength = opts.padLengthMm ?? nominal.length;
+
+  // Body holds one row of pins plus the corner keep-out, rounded up to the
+  // 0.5mm steps real packages come in. For leadless parts this reproduces the
+  // standard sizes exactly (QFN-16 -> 3mm, -32 -> 5mm, -48 -> 7mm, -64 -> 9mm).
+  // The gull-wing estimate errs generous, since the courtyard only has to
+  // contain the part; pass `bodyMm` (or a `-B` token) for an exact datasheet
+  // figure.
+  const bodyRaw = (perSide - 1) * pitch + (fam.leadless ? 1.5 : 2.5);
+  const body = opts.bodyMm ?? Math.max(2, Math.ceil(bodyRaw * 2) / 2);
+
+  // Gull-wing leads reach well outside the body. Leadless lands sit almost
+  // flush, protruding 0.2mm past the body edge for a solder fillet.
+  const leadlessToeMm = 0.2;
+  const outerRadius = fam.leadless ? body / 2 + leadlessToeMm : body / 2 + 0.8 + padLength / 2;
+
+  // The corners are the binding constraint on a leadless package. The last pin
+  // of one edge sits right beside the inner end of the next edge's pads, and a
+  // factory land pattern leaves as little as 0.03mm there — photolithography
+  // does not care, but no milling bit fits. Shortening the land pushes its
+  // inner end outward until the corner is at least as open as the gap between
+  // two neighbouring pads on the same edge, which is the width the isolation
+  // tool has to fit through anyway. The cost is a slightly smaller solder
+  // fillet; the alternative is a package that cannot be milled at all.
+  if (fam.leadless && opts.padLengthMm === undefined && opts.padSpanMm === undefined) {
+    const sameEdgeGap = Math.max(0.05, pitch - padWidth);
+    const cornerLimit = outerRadius - ((perSide - 1) * pitch) / 2 - padWidth / 2 - sameEdgeGap;
+    padLength = Math.max(0.25, Math.min(padLength, cornerLimit));
+  }
+
+  const pad = { length: padLength, width: padWidth };
+  const padSpan = opts.padSpanMm ?? (fam.leadless ? 2 * outerRadius - pad.length : body + 1.6);
+
+  const thermal = opts.thermalPadMm ?? (fam.leadless ? Math.max(1.0, body - 2 * pad.length - 0.6) : 0);
+
+  return generateQuadFootprint({
+    pinCount: total,
+    pinsPerSide: perSide,
+    pitchMm: pitch,
+    padLengthMm: pad.length,
+    padWidthMm: pad.width,
+    padSpanMm: padSpan,
+    bodyWidthMm: body,
+    bodyHeightMm: body,
+    thermalPadWidthMm: thermal > 0 ? thermal : undefined,
+    thermalPadHeightMm: thermal > 0 ? thermal : undefined,
+    packageId: `${family}-${total}`,
+    name: `${fam.label}-${total} (${pitch}mm pitch, ${body}mm body)`,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Two-terminal SMD: chip passives, SOD diodes, SMA/SMB/SMC
+// ---------------------------------------------------------------------------
+
+interface TwoPadSmd {
+  bodyWidthMm: number;
+  bodyHeightMm: number;
+  padWidthMm: number;
+  padHeightMm: number;
+  /** Centre-to-centre between the two pads. */
+  padSpanMm: number;
+  label: string;
+}
+
+export const SMD_TWO_PAD_SIZES: Record<string, TwoPadSmd> = {
+  '0201': { bodyWidthMm: 0.6, bodyHeightMm: 0.3, padWidthMm: 0.4, padHeightMm: 0.4, padSpanMm: 0.66, label: '0201 Passive' },
+  '0402': { bodyWidthMm: 1.0, bodyHeightMm: 0.5, padWidthMm: 0.6, padHeightMm: 0.6, padSpanMm: 1.1, label: '0402 Passive' },
+  '0603': { bodyWidthMm: 1.6, bodyHeightMm: 0.8, padWidthMm: 0.9, padHeightMm: 0.9, padSpanMm: 1.7, label: '0603 Passive' },
+  // 0805 and 1206 mirror the hand-written STANDARD_FOOTPRINTS entries, which
+  // take priority in resolveFootprint. Keep the two in step if either changes.
+  '0805': { bodyWidthMm: 2.0, bodyHeightMm: 1.25, padWidthMm: 1.0, padHeightMm: 1.3, padSpanMm: 1.9, label: '0805 Passive' },
+  '1206': { bodyWidthMm: 3.2, bodyHeightMm: 1.6, padWidthMm: 1.2, padHeightMm: 1.7, padSpanMm: 3.0, label: '1206 Passive' },
+  '1210': { bodyWidthMm: 3.2, bodyHeightMm: 2.5, padWidthMm: 1.2, padHeightMm: 2.6, padSpanMm: 3.0, label: '1210 Passive' },
+  '1812': { bodyWidthMm: 4.6, bodyHeightMm: 3.2, padWidthMm: 1.4, padHeightMm: 3.4, padSpanMm: 4.2, label: '1812 Passive' },
+  '2010': { bodyWidthMm: 5.0, bodyHeightMm: 2.5, padWidthMm: 1.5, padHeightMm: 2.7, padSpanMm: 4.6, label: '2010 Passive' },
+  '2512': { bodyWidthMm: 6.3, bodyHeightMm: 3.2, padWidthMm: 1.6, padHeightMm: 3.4, padSpanMm: 5.9, label: '2512 Power Resistor' },
+  'SOD-123': { bodyWidthMm: 3.7, bodyHeightMm: 1.8, padWidthMm: 1.0, padHeightMm: 1.2, padSpanMm: 3.0, label: 'SOD-123 Diode' },
+  'SOD-323': { bodyWidthMm: 2.5, bodyHeightMm: 1.4, padWidthMm: 0.8, padHeightMm: 0.9, padSpanMm: 2.2, label: 'SOD-323 Diode' },
+  'SOD-523': { bodyWidthMm: 1.6, bodyHeightMm: 0.9, padWidthMm: 0.6, padHeightMm: 0.7, padSpanMm: 1.4, label: 'SOD-523 Diode' },
+  SMA: { bodyWidthMm: 5.5, bodyHeightMm: 2.8, padWidthMm: 1.6, padHeightMm: 1.8, padSpanMm: 4.4, label: 'SMA (DO-214AC) Diode' },
+  SMB: { bodyWidthMm: 6.0, bodyHeightMm: 3.7, padWidthMm: 2.0, padHeightMm: 2.3, padSpanMm: 4.6, label: 'SMB (DO-214AA) Diode' },
+  SMC: { bodyWidthMm: 8.0, bodyHeightMm: 6.2, padWidthMm: 2.4, padHeightMm: 3.3, padSpanMm: 6.2, label: 'SMC (DO-214AB) Diode' },
+  MELF: { bodyWidthMm: 5.8, bodyHeightMm: 2.2, padWidthMm: 1.6, padHeightMm: 2.4, padSpanMm: 4.4, label: 'MELF Passive' },
+  MINIMELF: { bodyWidthMm: 3.6, bodyHeightMm: 1.4, padWidthMm: 1.1, padHeightMm: 1.6, padSpanMm: 2.8, label: 'MiniMELF Passive' },
+};
+
+/** Polarised parts get pin 1 as a rectangle so the silkscreen keys correctly. */
+export function generateTwoPadSmdFootprint(sizeCode: string): ComponentFootprint | null {
+  const s = SMD_TWO_PAD_SIZES[sizeCode];
+  if (!s) return null;
+  return {
+    packageId: sizeCode,
+    name: `${s.label} (${s.bodyWidthMm} x ${s.bodyHeightMm}mm)`,
+    widthMm: Math.max(s.bodyWidthMm, s.padSpanMm + s.padWidthMm),
+    heightMm: Math.max(s.bodyHeightMm, s.padHeightMm),
+    pads: [
+      { pinNumber: '1', x: -s.padSpanMm / 2, y: 0, padWidth: s.padWidthMm, padHeight: s.padHeightMm, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '2', x: s.padSpanMm / 2, y: 0, padWidth: s.padWidthMm, padHeight: s.padHeightMm, shape: 'rect', drillDiameter: 0 },
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Discrete SMD transistor / regulator outlines
+// ---------------------------------------------------------------------------
+
+/**
+ * SOT and DPAK style parts. These are irregular enough — offset pins, a fat
+ * tab on one side — that a table of explicit pad positions beats a generator.
+ */
+export const DISCRETE_SMD_FOOTPRINTS: Record<string, ComponentFootprint> = {
+  'SOT-23-5': {
+    packageId: 'SOT-23-5', name: 'SOT-23-5 (0.95mm pitch)', widthMm: 3.0, heightMm: 3.0,
+    pads: [
+      { pinNumber: '1', x: -1.1, y: -0.95, padWidth: 1.0, padHeight: 0.6, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '2', x: -1.1, y: 0, padWidth: 1.0, padHeight: 0.6, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '3', x: -1.1, y: 0.95, padWidth: 1.0, padHeight: 0.6, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '4', x: 1.1, y: 0.95, padWidth: 1.0, padHeight: 0.6, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '5', x: 1.1, y: -0.95, padWidth: 1.0, padHeight: 0.6, shape: 'rect', drillDiameter: 0 },
+    ],
+  },
+  'SOT-23-6': {
+    packageId: 'SOT-23-6', name: 'SOT-23-6 (0.95mm pitch)', widthMm: 3.0, heightMm: 3.0,
+    pads: [
+      { pinNumber: '1', x: -1.1, y: -0.95, padWidth: 1.0, padHeight: 0.6, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '2', x: -1.1, y: 0, padWidth: 1.0, padHeight: 0.6, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '3', x: -1.1, y: 0.95, padWidth: 1.0, padHeight: 0.6, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '4', x: 1.1, y: 0.95, padWidth: 1.0, padHeight: 0.6, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '5', x: 1.1, y: 0, padWidth: 1.0, padHeight: 0.6, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '6', x: 1.1, y: -0.95, padWidth: 1.0, padHeight: 0.6, shape: 'rect', drillDiameter: 0 },
+    ],
+  },
+  'SOT-323': {
+    packageId: 'SOT-323', name: 'SOT-323 / SC-70 Transistor', widthMm: 2.2, heightMm: 2.2,
+    pads: [
+      { pinNumber: '1', x: -0.65, y: -0.65, padWidth: 0.7, padHeight: 0.5, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '2', x: -0.65, y: 0.65, padWidth: 0.7, padHeight: 0.5, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '3', x: 0.65, y: 0, padWidth: 0.7, padHeight: 0.5, shape: 'rect', drillDiameter: 0 },
+    ],
+  },
+  'SOT-89': {
+    packageId: 'SOT-89', name: 'SOT-89 Power Transistor / LDO', widthMm: 6.0, heightMm: 4.6,
+    pads: [
+      { pinNumber: '1', x: -1.5, y: -1.5, padWidth: 1.2, padHeight: 1.0, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '2', x: -1.5, y: 0, padWidth: 1.2, padHeight: 1.0, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '3', x: -1.5, y: 1.5, padWidth: 1.2, padHeight: 1.0, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '4', x: 1.5, y: 0, padWidth: 1.6, padHeight: 3.4, shape: 'rect', drillDiameter: 0, role: 'thermal' },
+    ],
+  },
+  'SOT-223': {
+    packageId: 'SOT-223', name: 'SOT-223 Regulator (2.3mm pitch)', widthMm: 9.0, heightMm: 7.0,
+    pads: [
+      { pinNumber: '1', x: -3.2, y: -2.3, padWidth: 2.0, padHeight: 1.5, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '2', x: -3.2, y: 0, padWidth: 2.0, padHeight: 1.5, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '3', x: -3.2, y: 2.3, padWidth: 2.0, padHeight: 1.5, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '4', x: 3.2, y: 0, padWidth: 2.0, padHeight: 6.3, shape: 'rect', drillDiameter: 0, role: 'thermal' },
+    ],
+  },
+  'TO-252': {
+    packageId: 'TO-252', name: 'TO-252 / DPAK Power Package', widthMm: 10.5, heightMm: 9.5,
+    pads: [
+      { pinNumber: '1', x: -3.0, y: -2.28, padWidth: 3.0, padHeight: 1.6, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '2', x: -3.0, y: 0, padWidth: 3.0, padHeight: 1.6, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '3', x: -3.0, y: 2.28, padWidth: 3.0, padHeight: 1.6, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '4', x: 2.6, y: 0, padWidth: 5.4, padHeight: 6.2, shape: 'rect', drillDiameter: 0, role: 'thermal' },
+    ],
+  },
+  'TO-263': {
+    packageId: 'TO-263', name: 'TO-263 / D2PAK Power Package', widthMm: 14.0, heightMm: 12.0,
+    pads: [
+      { pinNumber: '1', x: -4.4, y: -2.54, padWidth: 3.8, padHeight: 1.8, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '2', x: -4.4, y: 0, padWidth: 3.8, padHeight: 1.8, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '3', x: -4.4, y: 2.54, padWidth: 3.8, padHeight: 1.8, shape: 'rect', drillDiameter: 0 },
+      { pinNumber: '4', x: 3.6, y: 0, padWidth: 6.0, padHeight: 9.5, shape: 'rect', drillDiameter: 0, role: 'thermal' },
+    ],
+  },
+  'TO-247': {
+    packageId: 'TO-247', name: 'TO-247 High Power Transistor (THT)', widthMm: 16.0, heightMm: 8.0,
+    pads: [
+      { pinNumber: '1', x: -5.45, y: 0, padWidth: 2.6, padHeight: 3.2, shape: 'oval', drillDiameter: 1.3 },
+      { pinNumber: '2', x: 0, y: 0, padWidth: 2.6, padHeight: 3.2, shape: 'oval', drillDiameter: 1.3 },
+      { pinNumber: '3', x: 5.45, y: 0, padWidth: 2.6, padHeight: 3.2, shape: 'oval', drillDiameter: 1.3 },
+    ],
+  },
+};
 
 /**
  * Parametric footprint generator for Dual Header Breakout Modules (e.g. ESP32, Arduino Nano, Pico)
@@ -346,45 +946,33 @@ export function generateModule2xFootprint(
   rowSpacingMm = 15.24,
   drillDiaMm = 1.0,
   padWidthMm = 1.8,
-  padHeightMm = 1.8
+  padHeightMm = 1.8,
+  /**
+   * Real modules are not always symmetric: the two headers can carry different
+   * pin counts and can be staggered relative to each other.
+   */
+  extra: { leftCount?: number; rightCount?: number; leftOffsetMm?: number; rightOffsetMm?: number } = {}
 ): ComponentFootprint {
-  const count = pinsPerSide * 2;
-  const startY = ((pinsPerSide - 1) * pitchMm) / 2;
-  const leftX = -rowSpacingMm / 2;
-  const rightX = rowSpacingMm / 2;
+  const left = extra.leftCount ?? pinsPerSide;
+  const right = extra.rightCount ?? pinsPerSide;
+  const count = left + right;
 
-  const pads: PadSpec[] = [];
-  for (let i = 0; i < pinsPerSide; i++) {
-    pads.push({
-      pinNumber: (i + 1).toString(),
-      x: leftX,
-      y: startY - i * pitchMm,
-      padWidth: padWidthMm,
-      padHeight: padHeightMm,
-      shape: i === 0 ? 'rect' : 'circle',
-      drillDiameter: drillDiaMm,
-    });
-  }
-
-  for (let i = 0; i < pinsPerSide; i++) {
-    pads.push({
-      pinNumber: (pinsPerSide + i + 1).toString(),
-      x: rightX,
-      y: -startY + i * pitchMm,
-      padWidth: padWidthMm,
-      padHeight: padHeightMm,
-      shape: 'circle',
-      drillDiameter: drillDiaMm,
-    });
-  }
-
-  return {
+  const fp = generateDualRowFootprint({
+    leftCount: left,
+    rightCount: right,
+    pitchMm,
+    rowSpacingMm,
+    padWidthMm,
+    padHeightMm,
+    drillDiaMm,
+    bodyWidthMm: Math.max(widthMm, rowSpacingMm + padWidthMm + 1.0),
+    bodyHeightMm: Math.max(heightMm, Math.max(left, right) * pitchMm + 1.0),
+    leftOffsetMm: extra.leftOffsetMm,
+    rightOffsetMm: extra.rightOffsetMm,
     packageId: `MODULE-2x${pinsPerSide}`,
     name: `Dual Header Module (${count}-Pin, ${widthMm}x${heightMm}mm)`,
-    widthMm: Math.max(widthMm, rowSpacingMm + padWidthMm + 1.0),
-    heightMm: Math.max(heightMm, pinsPerSide * pitchMm + 1.0),
-    pads,
-  };
+  });
+  return fp;
 }
 
 /**
@@ -676,6 +1264,308 @@ export function generateCustomMcuFootprint(config: McuGeometryConfig): Component
   };
 }
 
+// ---------------------------------------------------------------------------
+// Package id parsing
+// ---------------------------------------------------------------------------
+
+/**
+ * Dimensional overrides carried in a package id's trailing tokens, so a part
+ * whose datasheet disagrees with the family default can still be named as a
+ * string (which is what the assistant and the preset files write).
+ *
+ *   DIP-28            narrow by default
+ *   DIP-28-W          0.6" rows
+ *   DIP-28-P2.54-R7.62-B10x36
+ *   QFN-32-P0.5-B5x5-T3.4
+ *   TSSOP-20-R6.4
+ *   MODULE-2x20-P2.54-R17.78-B21x51-OL1.27
+ *
+ * Numbers are millimetres. A leading `_` marks a negative value, since `-` is
+ * the token separator (`OL_1.27` is an offset of -1.27mm).
+ */
+export interface PackageModifiers {
+  pitchMm?: number;
+  spanMm?: number;          // row spacing (dual) or pad span (quad)
+  bodyWidthMm?: number;
+  bodyHeightMm?: number;
+  drillDiaMm?: number;
+  padWidthMm?: number;
+  padHeightMm?: number;
+  leftOffsetMm?: number;
+  rightOffsetMm?: number;
+  thermalPadMm?: number;
+  wide?: boolean;
+  narrow?: boolean;
+}
+
+function parseNum(raw: string): number | undefined {
+  const negated = raw.startsWith('_');
+  const n = parseFloat(negated ? raw.slice(1) : raw);
+  if (!Number.isFinite(n)) return undefined;
+  return negated ? -n : n;
+}
+
+export function parsePackageModifiers(tokens: string[]): PackageModifiers {
+  const mods: PackageModifiers = {};
+  for (const token of tokens) {
+    const t = token.toUpperCase();
+    if (t === 'W' || t === 'WIDE') { mods.wide = true; continue; }
+    if (t === 'N' || t === 'NARROW') { mods.narrow = true; continue; }
+
+    // A bare number is the family's primary dimension: row spacing / pad span.
+    const bare = parseNum(t);
+    if (bare !== undefined && /^[_\d.]+$/.test(t)) { mods.spanMm = bare; continue; }
+
+    const pair = /^([A-Z]+)([_\d.]+)X([_\d.]+)$/.exec(t);
+    if (pair) {
+      const a = parseNum(pair[2]);
+      const b = parseNum(pair[3]);
+      if (a === undefined || b === undefined) continue;
+      if (pair[1] === 'B') { mods.bodyWidthMm = a; mods.bodyHeightMm = b; }
+      else if (pair[1] === 'S') { mods.padWidthMm = a; mods.padHeightMm = b; }
+      continue;
+    }
+
+    const single = /^([A-Z]+)([_\d.]+)$/.exec(t);
+    if (!single) continue;
+    const value = parseNum(single[2]);
+    if (value === undefined) continue;
+    switch (single[1]) {
+      case 'P': mods.pitchMm = value; break;
+      case 'R': mods.spanMm = value; break;
+      case 'D': mods.drillDiaMm = value; break;
+      case 'T': mods.thermalPadMm = value; break;
+      case 'OL': mods.leftOffsetMm = value; break;
+      case 'OR': mods.rightOffsetMm = value; break;
+    }
+  }
+  return mods;
+}
+
+const DUAL_SMD_PATTERN = /^(SOIC|SOICW|SOP|SOJ|QSOP|SSOP|TSSOP|TSOP|MSOP|VSSOP)(\d+)?W?$/;
+const QUAD_PATTERN = /^(QFN|VQFN|WQFN|QFP|TQFP|LQFP)$/;
+const LEADLESS_DUAL_PATTERN = /^(DFN|VDFN|WDFN|SON)$/;
+
+/**
+ * Turns a package id into a footprint, or returns null when the id names
+ * nothing this library knows how to build. Callers must treat null as an
+ * error — guessing a footprint puts the wrong holes in real copper.
+ */
+export function parsePackageId(raw: string, pinCountHint = 0): ComponentFootprint | null {
+  const id = (raw || '').trim().toUpperCase();
+  if (!id) return null;
+
+  // Whole-id table lookups first: several of these contain the '-' that the
+  // token splitter would otherwise chop up (SOD-123, SOT-23-5).
+  if (STANDARD_FOOTPRINTS[id]) return STANDARD_FOOTPRINTS[id];
+  if (DISCRETE_SMD_FOOTPRINTS[id]) return DISCRETE_SMD_FOOTPRINTS[id];
+  const twoPad = generateTwoPadSmdFootprint(id);
+  if (twoPad) return twoPad;
+
+  const parts = id.split('-');
+  const family = parts[0];
+  const rest = parts.slice(1);
+
+  // Pin count is usually the first trailing token; anything after it modifies.
+  const countToken = rest.length > 0 && /^\d+$/.test(rest[0]) ? rest[0] : undefined;
+  const count = countToken ? parseInt(countToken, 10) : pinCountHint;
+  const mods = parsePackageModifiers(countToken ? rest.slice(1) : rest);
+
+  if (family === 'DIP' && count >= 4) {
+    return generateDIPFootprint(count, {
+      rowSpacing: mods.spanMm ?? (mods.wide ? 'wide' : mods.narrow ? 'narrow' : undefined),
+      pitchMm: mods.pitchMm,
+      padDiaMm: mods.padWidthMm,
+      drillDiaMm: mods.drillDiaMm,
+      bodyWidthMm: mods.bodyWidthMm,
+      bodyHeightMm: mods.bodyHeightMm,
+    });
+  }
+
+  // SOIC-16W and SOIC-16-W both mean the wide body.
+  const dualMatch = DUAL_SMD_PATTERN.exec(family);
+  if (dualMatch && count >= 4) {
+    const wide = mods.wide || family.endsWith('W') || dualMatch[1] === 'SOICW';
+    const base = dualMatch[1] === 'SOICW' ? 'SOIC' : dualMatch[1];
+    const key = wide && SMD_DUAL_FAMILIES[`${base}-W`] ? `${base}-W` : base;
+    return generateDualSmdFootprint(key, count, {
+      pitchMm: mods.pitchMm,
+      spanMm: mods.spanMm,
+      padLengthMm: mods.padWidthMm,
+      padWidthMm: mods.padHeightMm,
+      bodyWidthMm: mods.bodyWidthMm,
+      bodyHeightMm: mods.bodyHeightMm,
+    });
+  }
+
+  if (LEADLESS_DUAL_PATTERN.test(family) && count >= 2) {
+    return generateLeadlessDualFootprint(family, count, {
+      pitchMm: mods.pitchMm,
+      bodyMm: mods.bodyWidthMm,
+      padSpanMm: mods.spanMm,
+      padLengthMm: mods.padWidthMm,
+      padWidthMm: mods.padHeightMm,
+      thermalPadMm: mods.thermalPadMm,
+    });
+  }
+
+  if (QUAD_PATTERN.test(family) && count >= 4) {
+    return generateQuadFamilyFootprint(family, count, {
+      pitchMm: mods.pitchMm,
+      bodyMm: mods.bodyWidthMm,
+      padSpanMm: mods.spanMm,
+      padLengthMm: mods.padWidthMm,
+      padWidthMm: mods.padHeightMm,
+      thermalPadMm: mods.thermalPadMm,
+    });
+  }
+
+  // HEADER-1xN / HEADER-2x08 / DUPONT-2x04
+  const gridMatch = /^(\d+)X(\d+)$/.exec(rest[0] ?? '');
+  if ((family === 'HEADER' || family === 'DUPONT') && gridMatch) {
+    const rows = parseInt(gridMatch[1], 10);
+    const cols = parseInt(gridMatch[2], 10);
+    const gridMods = parsePackageModifiers(rest.slice(1));
+    if (rows === 1) {
+      return generateHeaderFootprint(cols, gridMods.pitchMm ?? 2.54);
+    }
+    return generateMatrixHeaderFootprint(
+      cols,
+      rows,
+      gridMods.pitchMm ?? 2.54,
+      gridMods.spanMm ?? gridMods.pitchMm ?? 2.54,
+      gridMods.drillDiaMm ?? 1.0,
+      gridMods.padWidthMm ?? 1.8,
+      gridMods.padHeightMm ?? 1.8
+    );
+  }
+
+  // MODULE-2x20 (symmetric) or MODULE-18+12 (different pins per side).
+  if (family === 'MODULE') {
+    const head = rest[0] ?? '';
+    const symmetric = /^2X(\d+)$/.exec(head);
+    const asymmetric = /^(\d+)\+(\d+)$/.exec(head);
+    if (symmetric || asymmetric) {
+      const left = symmetric ? parseInt(symmetric[1], 10) : parseInt(asymmetric![1], 10);
+      const right = symmetric ? left : parseInt(asymmetric![2], 10);
+      const m = parsePackageModifiers(rest.slice(1));
+      const pitch = m.pitchMm ?? 2.54;
+      const rowSpacing = m.spanMm ?? 15.24;
+      return generateDualRowFootprint({
+        leftCount: left,
+        rightCount: right,
+        pitchMm: pitch,
+        rowSpacingMm: rowSpacing,
+        padWidthMm: m.padWidthMm ?? 1.8,
+        padHeightMm: m.padHeightMm ?? 1.8,
+        drillDiaMm: m.drillDiaMm ?? 1.0,
+        bodyWidthMm: m.bodyWidthMm ?? rowSpacing + 3.0,
+        bodyHeightMm: m.bodyHeightMm ?? Math.max(left, right) * pitch + 2.0,
+        leftOffsetMm: m.leftOffsetMm,
+        rightOffsetMm: m.rightOffsetMm,
+        packageId: id,
+        name: `Breakout Module (${left}+${right} pins, ${rowSpacing}mm rows)`,
+      });
+    }
+  }
+
+  if (family === 'VIA') return generateViaFootprint(mods.spanMm ?? parseNum(rest[0] ?? ''));
+  if (family === 'CUTOUT') return generateCutoutFootprint(mods.bodyWidthMm, mods.bodyHeightMm);
+
+  return null;
+}
+
+/**
+ * Free-form footprint parameters attached to a node as `data.footprintParams`.
+ * This is how the properties panel expresses a module whose width, pitch, row
+ * spacing and per-header offsets are all arbitrary, without inventing a package
+ * id for it.
+ */
+export interface FootprintParams {
+  family?: 'dual' | 'quad' | 'dip' | 'header';
+  leftCount?: number;
+  rightCount?: number;
+  pinCount?: number;
+  pitchMm?: number;
+  rowSpacingMm?: number;
+  padWidthMm?: number;
+  padHeightMm?: number;
+  drillDiaMm?: number;
+  bodyWidthMm?: number;
+  bodyHeightMm?: number;
+  leftOffsetMm?: number;
+  rightOffsetMm?: number;
+  thermalPadMm?: number;
+}
+
+export function footprintFromParams(p: FootprintParams): ComponentFootprint {
+  const family = p.family ?? 'dual';
+
+  if (family === 'quad') {
+    const total = Math.max(4, p.pinCount ?? 16);
+    const pitch = p.pitchMm ?? 0.5;
+    const perSide = Math.ceil(total / 4);
+    const padLength = p.padWidthMm ?? quadPadForPitch(pitch, true).length;
+    const padWidth = p.padHeightMm ?? quadPadForPitch(pitch, true).width;
+    const body = p.bodyWidthMm ?? Math.max(2, perSide * pitch + 1.0);
+    return generateQuadFootprint({
+      pinCount: total,
+      pinsPerSide: perSide,
+      pitchMm: pitch,
+      padLengthMm: padLength,
+      padWidthMm: padWidth,
+      padSpanMm: p.rowSpacingMm ?? body - padLength,
+      bodyWidthMm: body,
+      bodyHeightMm: p.bodyHeightMm ?? body,
+      thermalPadWidthMm: p.thermalPadMm,
+      thermalPadHeightMm: p.thermalPadMm,
+      packageId: `CUSTOM-QUAD-${total}`,
+      name: `Custom Quad (${total} pins, ${pitch}mm pitch)`,
+    });
+  }
+
+  if (family === 'header') {
+    const total = Math.max(1, p.pinCount ?? p.leftCount ?? 8);
+    return generateHeaderFootprint(total, p.pitchMm ?? 2.54);
+  }
+
+  const total = p.pinCount ?? (((p.leftCount ?? 0) + (p.rightCount ?? 0)) || 8);
+  const left = p.leftCount ?? Math.ceil(total / 2);
+  const right = p.rightCount ?? total - left;
+  const pitch = p.pitchMm ?? 2.54;
+  const rowSpacing = p.rowSpacingMm ?? (family === 'dip' ? 7.62 : 15.24);
+  const drill = p.drillDiaMm ?? (family === 'dip' ? 0.8 : 1.0);
+
+  return generateDualRowFootprint({
+    leftCount: left,
+    rightCount: right,
+    pitchMm: pitch,
+    rowSpacingMm: rowSpacing,
+    padWidthMm: p.padWidthMm ?? (drill > 0 ? drill + 0.8 : 1.5),
+    padHeightMm: p.padHeightMm ?? (drill > 0 ? drill + 0.8 : 0.6),
+    drillDiaMm: drill,
+    bodyWidthMm: p.bodyWidthMm,
+    bodyHeightMm: p.bodyHeightMm,
+    leftOffsetMm: p.leftOffsetMm,
+    rightOffsetMm: p.rightOffsetMm,
+    packageId: `CUSTOM-${left}+${right}`,
+    name: `Custom Dual Row (${left}+${right} pins, ${pitch}mm pitch, ${rowSpacing}mm rows)`,
+  });
+}
+
+/** Package ids that were asked for but could not be built, for diagnostics. */
+export const UNRESOLVED_PACKAGE_IDS = new Set<string>();
+
+function fallbackFootprint(requested: string, base: ComponentFootprint): ComponentFootprint {
+  UNRESOLVED_PACKAGE_IDS.add(requested);
+  return {
+    ...base,
+    isFallback: true,
+    requestedPackageId: requested,
+    name: `${base.name} (substituted for unknown package "${requested}")`,
+  };
+}
+
 export function resolveFootprint(
   packageId?: string,
   componentType?: string,
@@ -683,6 +1573,13 @@ export function resolveFootprint(
   customData?: any
 ): ComponentFootprint {
   const type = (componentType || '').toLowerCase();
+
+  // An explicit parametric override wins over everything. This is the escape
+  // hatch for modules whose body size, pitch, row spacing and per-header
+  // offsets are all arbitrary and match no catalogue part.
+  if (customData?.footprintParams) {
+    return footprintFromParams(customData.footprintParams as FootprintParams);
+  }
 
   // Mechanical and connector-only parts are fully described by their own data,
   // so they resolve before any packageId or mcuConfig handling.
@@ -733,22 +1630,9 @@ export function resolveFootprint(
     if (packageId === 'CC1101') {
       return generateMatrixHeaderFootprint(4, 2, 2.54, 2.54);
     }
-    if (packageId.startsWith('DIP-')) {
-      const pins = parseInt(packageId.replace('DIP-', ''), 10) || pinCount || 8;
-      return generateDIPFootprint(pins);
-    }
-    if (packageId.startsWith('HEADER-1x')) {
-      const pins = parseInt(packageId.replace('HEADER-1x', ''), 10) || pinCount || 4;
-      return generateHeaderFootprint(pins);
-    }
-    if (packageId.startsWith('HEADER-2x') || packageId.startsWith('DUPONT-2x')) {
-      const cols = parseInt(packageId.replace(/^(HEADER|DUPONT)-2x/, ''), 10) || Math.ceil(pinCount / 2);
-      return generateMatrixHeaderFootprint(cols, 2);
-    }
-    if (packageId.startsWith('MODULE-2x')) {
-      const pinsPerSide = parseInt(packageId.replace(/^MODULE-2x/, ''), 10) || Math.ceil(pinCount / 2);
-      return generateModule2xFootprint(pinsPerSide);
-    }
+
+    const parsed = parsePackageId(packageId, pinCount);
+    if (parsed) return parsed;
   }
 
   // Exact node-type lookup first — this is the path that matters, since node
@@ -756,12 +1640,23 @@ export function resolveFootprint(
   const mapped = DEFAULT_PACKAGE_BY_TYPE[type];
   if (mapped) {
     if (STANDARD_FOOTPRINTS[mapped]) return STANDARD_FOOTPRINTS[mapped];
-    if (mapped.startsWith('DIP-')) {
-      return generateDIPFootprint(parseInt(mapped.slice(4), 10));
+    const mappedFp = parsePackageId(mapped, pinCount);
+    if (mappedFp) return mappedFp;
+  }
+
+  // A package the user named explicitly but that nothing above could build is
+  // an error, not an invitation to guess from the component type. Guessing here
+  // is what silently milled an 0805 where a QFN was meant to go.
+  if (packageId) {
+    if (!UNRESOLVED_PACKAGE_IDS.has(packageId)) {
+      console.warn(
+        `[pcbFootprints] Unknown package "${packageId}" — substituting a generic footprint. ` +
+          `Use a known package, a parametric id such as "DIP-28-W", "TSSOP-20", ` +
+          `"QFN-32-P0.5-B5x5" or "MODULE-2x20-P2.54-R17.78", or set footprintParams on the node.`
+      );
     }
-    if (mapped.startsWith('HEADER-1x')) {
-      return generateHeaderFootprint(parseInt(mapped.slice(9), 10));
-    }
+    const base = pinCount > 2 ? generateDIPFootprint(pinCount) : STANDARD_FOOTPRINTS['0805'];
+    return fallbackFootprint(packageId, base);
   }
 
   // Substring fallbacks for anything not in the registry map.
