@@ -1,7 +1,7 @@
 import { Handle, Position } from '@xyflow/react';
 import { useEffect, useRef } from 'react';
 import type { NodePropertiesProps } from './registry';
-import { DEVICE_CARD } from './schematic';
+import { DEVICE_CARD, resolveOrientation } from './schematic';
 
 
 export function SpeakerProperties({ node, updateData }: NodePropertiesProps) {
@@ -36,6 +36,7 @@ export function SpeakerProperties({ node, updateData }: NodePropertiesProps) {
 }
 
 export function SpeakerNode({ data }: any) {
+  const { isVertical } = resolveOrientation(data.orientation);
   const audioCtx = useRef<AudioContext | null>(null);
 
   useEffect(() => {
@@ -125,8 +126,11 @@ export function SpeakerNode({ data }: any) {
 
   return (
     <div className={`${DEVICE_CARD} ${isCyd ? '!border-blue-500' : ''} p-1 w-12 h-12 flex flex-col items-center justify-center relative`}>
-      <Handle type="target" position={Position.Left} id="in" className="w-3 h-3 bg-blue-500" />
-      <Handle type="source" position={Position.Left} id="in" className="w-3 h-3 bg-blue-500" />
+      {/* The signal lead leaves sideways and ground drops down, which is how
+          these read on a horizontal rail. Vertical puts the signal on top and
+          ground at the bottom, for a part drawn on end. */}
+      <Handle type="target" position={isVertical ? Position.Top : Position.Left} id="in" className="w-3 h-3 bg-blue-500" />
+      <Handle type="source" position={isVertical ? Position.Top : Position.Left} id="in" className="w-3 h-3 bg-blue-500" />
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isCyd ? '#3b82f6' : 'currentColor'} strokeWidth="1.4" className="text-slate-700 dark:text-slate-200">
         <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
         <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
@@ -135,8 +139,8 @@ export function SpeakerNode({ data }: any) {
       {isCyd && (
         <span className="text-[8px] font-bold text-blue-600 mt-0.5 uppercase tracking-wider select-none">CYD</span>
       )}
-      <Handle type="source" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" />
-      <Handle type="target" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" />
+      <Handle type="source" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
+      <Handle type="target" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
     </div>
   );
 }

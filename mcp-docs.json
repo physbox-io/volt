@@ -59,7 +59,8 @@
         "current_array": "number[] \u2014 transient current through component in Amperes over time",
         "time_points": "number[] \u2014 transient timestamps in milliseconds",
         "voltageData": "{t: number, v: number}[] \u2014 transient voltage readings (e.g., for Oscilloscope, Speaker)",
-        "segmentVoltageArrays": "Record<string, number[]> \u2014 per-segment voltage readings for 7-Segment displays"
+        "segmentVoltageArrays": "Record<string, number[]> \u2014 per-segment voltage readings for 7-Segment displays",
+        "orientation": "string \u2014 'horizontal' or 'vertical', standing the part on end so its leads come off the top and bottom edges instead of left and right. Worth using: a divider drawn with its series elements vertical against a horizontal rail reads far better than an all-horizontal chain. Every two-lead component honours it, plus the potentiometer; see schema.orientation for the list and for which way each type defaults."
       }
     },
     "componentTerminals": {
@@ -269,10 +270,11 @@
       "potentiometer": {
         "description": "Modelled as a two-resistor voltage divider to capture 3-terminal behaviour.",
         "parameters": {
-          "totalResistance": "number \u2014 total end-to-end resistance in ohms",
-          "wiperPos": "number \u2014 wiper position from 0.0 (0%) to 1.0 (100%)",
-          "R_top": "TotalResistance * (1 - WiperPos) ohms",
-          "R_bottom": "TotalResistance * WiperPos ohms"
+          "label": "string \u2014 total end-to-end resistance, SI suffix allowed (e.g. '10k'). This is where the resistance comes from; there is no separate numeric field.",
+          "position": "number \u2014 wiper position in PERCENT, 0 to 100 (default 50). Note the unit: this is 0-100, not 0.0-1.0. A value of 0.5 means half a percent, and puts the wiper almost at the 'out' end.",
+          "R_top": "totalResistance * (1 - position/100) ohms, between 'in' and 'wiper'",
+          "R_bottom": "totalResistance * (position/100) ohms, between 'wiper' and 'out'",
+          "wiperVoltage": "With 'in' at Vin and 'out' at ground, V(wiper) = Vin * position/100 \u2014 so a larger position means a higher wiper voltage."
         }
       },
       "sevenseg": {
@@ -312,6 +314,28 @@
           "hilExecutionMode": "'native' | 'memoized'",
           "pins": "Record<string, 'digital_in' | 'digital_out' | 'analog_in' | 'analog_out'> \u2014 pin direction configuration"
         }
+      },
+      "opamp": {
+        "description": "Idealised 5-terminal op-amp macro model (IN+ IN- VCC VEE OUT): 100M input impedance, open-loop gain of 100k, output hard-clamped to the VCC and VEE rail voltages.",
+        "comparatorUse": "Open-loop it behaves as a comparator: OUT sits at VCC when in_non > in_inv and at VEE otherwise. Both vcc and vee MUST be wired \u2014 they set the clamp, so an unconnected vee leaves the output swinging to whatever the shunt resistor allows.",
+        "outputDrive": "OUT is an ideal voltage source with no series output resistance and no current limit, so a load drawing amps from it will simulate happily. Size series resistors as you would for the real part."
+      },
+      "multimeter": {
+        "description": "A meter reads either the voltage across its two terminals or the current through them, and which one changes the netlist, not just the display.",
+        "parameters": {
+          "mode": "string \u2014 'voltage' (default) or 'current'. In voltage mode the meter is a 1G shunt across pos/neg and is wired in PARALLEL with what it measures. In current mode it becomes a 0V source acting as an ammeter, and must be wired in SERIES, in the loop it is reading.",
+          "isRms": "boolean \u2014 report RMS over the whole run instead of the value at the playhead. Default false."
+        },
+        "wiringWarning": "Getting these the wrong way round is the usual mistake: a current-mode meter placed in parallel shorts the thing it is measuring, and a voltage-mode meter placed in series is a 1G resistor blocking the branch."
+      },
+      "pinheader": {
+        "description": "A through-hole header. It emits no SPICE device, but edges to its pads still join nets.",
+        "parameters": {
+          "rows": "number \u2014 1 to 8 (default 1)",
+          "cols": "number \u2014 1 to 40 (default 8)",
+          "pitchMm": "number \u2014 pad spacing on the board in mm (default 2.54)"
+        },
+        "terminals": "Pad numbers as strings, row-major from '1': in a 2x5 header pad 6 starts the second row, directly under pad 1. Resizing renumbers the pads, so an edge pointing at a pad that no longer exists stops connecting."
       }
     },
     "probeMode": {
@@ -327,7 +351,35 @@
       ],
       "note": "Placed, drilled and routed on the board but emitting no SPICE device. Edges to a pin header or via still join nets \u2014 the part itself just contributes no component. 'jumper' is the exception: the router draws no copper for it, but electrically it is a wire (a 1 milliohm resistor between its 'a' and 'b' terminals) and it does simulate."
     },
-    "pinHeaderTerminals": "Pad numbers as strings, numbered row-major from '1' \u2014 a 2x5 header has terminals '1' through '10'."
+    "pinHeaderTerminals": "Pad numbers as strings, numbered row-major from '1' \u2014 a 2x5 header has terminals '1' through '10'.",
+    "orientation": {
+      "description": "Every component with exactly two leads can be drawn either way round, as can the potentiometer. Set data.orientation to 'vertical' to stand a part on end; 'horizontal' or an absent field lays it flat. Terminal NAMES never change with orientation - only which edge they sit on.",
+      "inlineTypes": [
+        "resistor",
+        "capacitor",
+        "inductor",
+        "diode",
+        "zener",
+        "led",
+        "switch",
+        "ldr",
+        "voltage",
+        "acvoltage",
+        "currentsource",
+        "jumper",
+        "potentiometer"
+      ],
+      "inlinePortPlacement": "For these the whole symbol turns. Horizontal: first lead on the left edge, second on the right. Vertical: first on the top edge, second on the bottom. So a vertical resistor has 'in' at the top and 'out' at the bottom, a vertical diode has 'anode' top and 'cathode' bottom, and a vertical source has 'pos' top and 'neg' bottom. The potentiometer's two ends follow the same rule and its 'wiper' takes the side they leave free - the top edge when horizontal, the left edge when vertical.",
+      "instrumentTypes": [
+        "multimeter",
+        "speaker",
+        "microphone",
+        "signalgen"
+      ],
+      "instrumentPortPlacement": "These carry a readout, so the body stays upright whichever orientation is set and only the leads move: vertical puts the signal lead ('out', or 'in' on a speaker, or 'pos' on a multimeter) on the top edge, while the return lead ('gnd', or 'neg') keeps its place on the bottom edge. Their box does not change shape.",
+      "sourceDefault": "One default to know about: the sources - voltage, acvoltage, currentsource - treat an ABSENT orientation as VERTICAL, where every other type treats it as horizontal. That is deliberate; a supply is normally drawn upright. Set the field explicitly if you want one laid flat.",
+      "unsupportedTypes": "Every other type - op-amps, transistors, logic gates, the 555, transformers, MCUs, the scope, the seven-segment display, ground - ignores data.orientation and always renders horizontally. Setting it on them is harmless but has no effect, so do not lay a schematic out assuming a vertical op-amp or transistor."
+    }
   },
   "examples": [
     {

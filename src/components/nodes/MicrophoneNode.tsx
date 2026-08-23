@@ -2,7 +2,7 @@ import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { useState, useRef, useCallback } from 'react';
 import { Mic, Square } from 'lucide-react';
 import type { NodePropertiesProps } from './registry';
-import { DEVICE_CARD, DEVICE_TITLE } from './schematic';
+import { DEVICE_CARD, DEVICE_TITLE, resolveOrientation } from './schematic';
 
 export function MicrophoneProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -15,6 +15,7 @@ export function MicrophoneProperties({ node, updateData }: NodePropertiesProps) 
 }
 
 export function MicrophoneNode({ id, data }: any) {
+  const { isVertical } = resolveOrientation(data.orientation);
   const [isRecording, setIsRecording] = useState(false);
   const [hasData, setHasData] = useState(!!data.pwlData);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
@@ -108,10 +109,13 @@ export function MicrophoneNode({ id, data }: any) {
         Mic{hasData && <span className="text-emerald-600 dark:text-emerald-400"> ●</span>}
       </div>
       <div className="text-[7px] font-mono leading-none text-slate-400 dark:text-slate-500">{gain}×</div>
-      <Handle type="source" position={Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
-      <Handle type="target" position={Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
-      <Handle type="source" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" />
-      <Handle type="target" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" />
+      {/* The signal lead leaves sideways and ground drops down, which is how
+          these read on a horizontal rail. Vertical puts the signal on top and
+          ground at the bottom, for a part drawn on end. */}
+      <Handle type="target" position={isVertical ? Position.Top : Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
+      <Handle type="source" position={isVertical ? Position.Top : Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
+      <Handle type="source" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
+      <Handle type="target" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
     </div>
   );
 }

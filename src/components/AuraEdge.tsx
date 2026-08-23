@@ -106,7 +106,9 @@ export function getNodeDimensions(type: string, data: any) {
     case 'mountinghole':
       return { width: 22, height: 22 };
     case 'jumper':
-      return { width: 44, height: 24 };
+      return isHorizontal ? { width: 44, height: 24 } : { width: 24, height: 44 };
+    case 'ldr':
+      return { width: 48, height: 48 };
     case 'cutout':
       return getCutoutSize(data);
     default:

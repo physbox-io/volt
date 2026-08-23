@@ -1,5 +1,5 @@
-import { Handle, Position } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
+import { LeadHandles, RotatedSymbol, leadBoxStyle, resolveOrientation } from './schematic';
 
 /**
  * A wire jumper: two pads bridged by a hand-fitted wire after milling.
@@ -66,37 +66,18 @@ export function JumperProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function JumperNode() {
+export function JumperNode({ data }: any) {
+  const orientation = resolveOrientation(data?.orientation);
+
   return (
-    <div className="schematic-node relative w-[44px] h-[24px]">
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="a"
+    <div className="schematic-node relative" style={leadBoxStyle(orientation, 44, 24)}>
+      <LeadHandles
+        first="a"
+        second="b"
+        orientation={orientation}
         className="w-3 h-3 bg-green-500"
-        style={{ left: 0, top: '50%' }}
       />
-      <Handle
-        type="source"
-        position={Position.Left}
-        id="a"
-        className="w-3 h-3 bg-green-500"
-        style={{ left: 0, top: '50%' }}
-      />
-      <Handle
-        type="target"
-        position={Position.Right}
-        id="b"
-        className="w-3 h-3 bg-green-500"
-        style={{ left: 44, top: '50%' }}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="b"
-        className="w-3 h-3 bg-green-500"
-        style={{ left: 44, top: '50%' }}
-      />
+      <RotatedSymbol orientation={orientation} width={44} height={24}>
       <svg width="44" height="24" viewBox="0 0 44 24" style={{ overflow: 'visible' }}>
         {/* An arched wire between two pads — the shape it actually takes. */}
         <path
@@ -109,6 +90,7 @@ export function JumperNode() {
         <circle cx="6" cy="14" r="3.2" className="fill-amber-400 stroke-slate-600" strokeWidth="1.2" />
         <circle cx="38" cy="14" r="3.2" className="fill-amber-400 stroke-slate-600" strokeWidth="1.2" />
       </svg>
+      </RotatedSymbol>
     </div>
   );
 }

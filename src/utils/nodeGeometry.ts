@@ -3,14 +3,52 @@ import { getNodeDimensions, getSchematicPath } from '../components/AuraEdge';
 
 // Two-terminal component types whose orientation can be flipped, and whose
 // handle ids get remapped (anode<->cathode, in<->out) when that happens.
-export const ORIENTABLE_NODE_TYPES = ['diode', 'zener', 'led', 'resistor', 'capacitor', 'inductor', 'switch'];
+// Every part with exactly two leads, plus the potentiometer. The list gates
+// the orientation control in the properties panel, so a type missing from it
+// could not be rotated from the UI however well its symbol supported it -
+// which is why the potentiometer, the sources and the instruments all drew
+// themselves correctly when rotated and yet offered no way to do so.
+export const ORIENTABLE_NODE_TYPES = [
+  // Two-terminal passives and semiconductors.
+  'resistor', 'capacitor', 'inductor', 'diode', 'zener', 'led', 'switch', 'ldr',
+  // Sources. These default to upright, unlike everything else here.
+  'voltage', 'acvoltage', 'currentsource',
+  // Instruments: the body stays upright, the leads move.
+  'multimeter', 'speaker', 'microphone', 'signalgen',
+  // Board-only, but still a two-lead part on the canvas.
+  'jumper',
+  // Three terminals, but the wiper is the odd one out and rides along.
+  'potentiometer',
+];
 
 export const ORIENTATION_HANDLE_REMAP: Record<string, string> = {
   anode: 'cathode',
   cathode: 'anode',
   in: 'out',
   out: 'in',
+  pos: 'neg',
+  neg: 'pos',
+  a: 'b',
+  b: 'a',
 };
+
+/**
+ * Types whose two leads are NOT a mirrorable pair, so flipping must leave
+ * their edges alone.
+ *
+ * The instruments have one signal lead and a ground that stays on the bottom
+ * edge whichever way the part faces, and the potentiometer's wiper has no
+ * opposite number. Remapping by handle id alone would rewrite a speaker's
+ * 'in' to an 'out' it does not have, silently disconnecting it.
+ */
+const FLIP_EXEMPT_TYPES = ['speaker', 'microphone', 'signalgen', 'multimeter', 'potentiometer'];
+
+/** The handle an edge should move to when `nodeType` is mirrored, if any. */
+export function remapHandleForFlip(nodeType: string, handleId: string): string | null {
+  if (FLIP_EXEMPT_TYPES.includes(nodeType)) return null;
+  const next = ORIENTATION_HANDLE_REMAP[handleId];
+  return next && next !== handleId ? next : null;
+}
 
 import { getEffectiveMcuConfig } from './mcuConfig';
 import {
@@ -136,7 +174,11 @@ export function getHandleCoord(node: any, handleId: string): { x: number; y: num
     return { x: x + w / 2, y: y + h / 2 };
   }
   if (node.type === 'jumper') {
-    return { x: handleId === 'a' ? x : x + w, y: y + h / 2 };
+    const atStart = handleId === 'a';
+    if (isVertical) {
+      return { x: x + w / 2, y: (atStart !== isUp) ? y : y + h };
+    }
+    return { x: (atStart !== isLeft) ? x : x + w, y: y + h / 2 };
   }
 
   if (node.type === 'mcu') {
@@ -246,10 +288,16 @@ export function getHandleCoord(node: any, handleId: string): { x: number; y: num
     if (handleId === 'gnd') return { x, y: y + h * 0.9 };
   }
 
-  // Multimeter
+  // Multimeter. Both probes hang off the bottom by default, like real leads;
+  // vertical stacks them so the meter can read across a part drawn on end.
   if (node.type === 'multimeter') {
-    if (handleId === 'pos') return { x: x + w * 0.3, y: y + h };
-    if (handleId === 'neg') return { x: x + w * 0.7, y: y + h };
+    if (isVertical) {
+      if (handleId === 'pos') return { x: x + w * 0.5, y };
+      if (handleId === 'neg') return { x: x + w * 0.5, y: y + h };
+    } else {
+      if (handleId === 'pos') return { x: x + w * 0.3, y: y + h };
+      if (handleId === 'neg') return { x: x + w * 0.7, y: y + h };
+    }
   }
 
   // Heltec V4
@@ -284,8 +332,22 @@ export function getHandleCoord(node: any, handleId: string): { x: number; y: num
   }
 
   if (node.type === 'voltage' || node.type === 'acvoltage' || node.type === 'currentsource') {
-    if (handleId === 'pos') return { x: x + w / 2, y };
-    if (handleId === 'neg') return { x: x + w / 2, y: y + h };
+    // These default to standing upright - VoltageNode treats only an explicit
+    // 'horizontal' as horizontal - so the test is deliberately the other way
+    // round from every other part. The coordinates used to be pinned to the
+    // top and bottom edges regardless, so a source that was switched to
+    // horizontal drew its wires off its top and bottom while its terminals
+    // were rendered left and right.
+    const laidFlat = node.data?.orientation === 'horizontal' || node.data?.orientation === 'left';
+    const swapped = node.data?.orientation === 'left' || node.data?.orientation === 'up';
+    if (handleId === 'pos') {
+      if (laidFlat) return { x: swapped ? x + w : x, y: y + h / 2 };
+      return { x: x + w / 2, y: swapped ? y + h : y };
+    }
+    if (handleId === 'neg') {
+      if (laidFlat) return { x: swapped ? x : x + w, y: y + h / 2 };
+      return { x: x + w / 2, y: swapped ? y : y + h };
+    }
   }
 
   if (node.type === 'junction') {
@@ -397,6 +459,31 @@ export const getHandlePosition = (node: any, handleId: string): string => {
   }
   if (node.type === 'multimeter') {
     return 'bottom';
+  }
+  if (node.type === 'multimeter') {
+    const meterVertical = node.data?.orientation === 'vertical' || node.data?.orientation === 'up';
+    if (handleId === 'pos') return meterVertical ? 'top' : 'bottom';
+    if (handleId === 'neg') return 'bottom';
+  }
+  if (node.type === 'voltage' || node.type === 'acvoltage' || node.type === 'currentsource') {
+    // Inverted default, as in getHandleCoord: absent means upright.
+    const laidFlat = node.data?.orientation === 'horizontal' || node.data?.orientation === 'left';
+    const swapped = node.data?.orientation === 'left' || node.data?.orientation === 'up';
+    if (handleId === 'pos') {
+      if (laidFlat) return swapped ? 'right' : 'left';
+      return swapped ? 'bottom' : 'top';
+    }
+    if (handleId === 'neg') {
+      if (laidFlat) return swapped ? 'left' : 'right';
+      return swapped ? 'top' : 'bottom';
+    }
+  }
+  if (node.type === 'jumper') {
+    const jVertical = node.data?.orientation === 'vertical' || node.data?.orientation === 'up';
+    const jSwapped = node.data?.orientation === 'left' || node.data?.orientation === 'up';
+    const atStart = handleId === 'a';
+    if (jVertical) return (atStart !== jSwapped) ? 'top' : 'bottom';
+    return (atStart !== jSwapped) ? 'left' : 'right';
   }
   if (handleId === 'gnd') {
     return 'bottom';

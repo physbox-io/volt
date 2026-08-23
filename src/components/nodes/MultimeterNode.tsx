@@ -2,7 +2,7 @@ import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { useEffect, useRef, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
 import type { NodePropertiesProps } from './registry';
-import { DEVICE_CARD_DARK } from './schematic';
+import { DEVICE_CARD_DARK, resolveOrientation } from './schematic';
 
 export function MultimeterProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -85,6 +85,7 @@ function formatReading(val: number, mode?: 'voltage' | 'current'): string {
 }
 
 export const MultimeterNode = memo(function MultimeterNode({ id, data }: any) {
+  const { isVertical } = resolveOrientation(data.orientation);
   const isSimulating = !!data.isSimulating;
   const displayRef = useRef<HTMLDivElement>(null);
   const { setNodes } = useReactFlow();
@@ -190,10 +191,24 @@ export const MultimeterNode = memo(function MultimeterNode({ id, data }: any) {
         <div className="text-red-500 font-bold text-[10px]">+</div>
         <div className="text-gray-400 font-bold text-[10px]">-</div>
       </div>
-      <Handle type="target" position={Position.Bottom} id="pos" className="w-2.5 h-2.5 bg-red-500" style={{ left: '30%' }} />
-      <Handle type="source" position={Position.Bottom} id="pos" className="w-2.5 h-2.5 bg-red-500" style={{ left: '30%' }} />
-      <Handle type="target" position={Position.Bottom} id="neg" className="w-2.5 h-2.5 bg-black" style={{ left: '70%' }} />
-      <Handle type="source" position={Position.Bottom} id="neg" className="w-2.5 h-2.5 bg-black" style={{ left: '70%' }} />
+      {/* Both probes hang off the bottom edge, the way a real meter's leads do.
+          Vertical stacks them instead - pos on top, neg below - so the meter
+          can sit alongside a part drawn on end and read across it. */}
+      {isVertical ? (
+        <>
+          <Handle type="target" position={Position.Top} id="pos" className="w-2.5 h-2.5 bg-red-500" style={{ left: '50%' }} />
+          <Handle type="source" position={Position.Top} id="pos" className="w-2.5 h-2.5 bg-red-500" style={{ left: '50%' }} />
+          <Handle type="target" position={Position.Bottom} id="neg" className="w-2.5 h-2.5 bg-black" style={{ left: '50%' }} />
+          <Handle type="source" position={Position.Bottom} id="neg" className="w-2.5 h-2.5 bg-black" style={{ left: '50%' }} />
+        </>
+      ) : (
+        <>
+          <Handle type="target" position={Position.Bottom} id="pos" className="w-2.5 h-2.5 bg-red-500" style={{ left: '30%' }} />
+          <Handle type="source" position={Position.Bottom} id="pos" className="w-2.5 h-2.5 bg-red-500" style={{ left: '30%' }} />
+          <Handle type="target" position={Position.Bottom} id="neg" className="w-2.5 h-2.5 bg-black" style={{ left: '70%' }} />
+          <Handle type="source" position={Position.Bottom} id="neg" className="w-2.5 h-2.5 bg-black" style={{ left: '70%' }} />
+        </>
+      )}
     </div>
   );
 });

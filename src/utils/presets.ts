@@ -969,10 +969,47 @@ export const ldrWebcamDemo: CircuitPreset = {
   ]
 };
 
+export const voltageComparator: CircuitPreset = {
+  name: '2.1V Comparator',
+  recommendedSimLength: 1.0,
+  nodes: [
+    { id: 'v1', type: 'voltage', position: { x: 250, y: 210 }, data: {'label': '5V', 'voltage': 5, 'orientation': 'vertical'} },
+    { id: 'pot1', type: 'potentiometer', position: { x: 400, y: 210 }, data: {'label': '10k', 'position': 60, 'orientation': 'vertical'} },
+    { id: 'mm1', type: 'multimeter', position: { x: 330, y: 400 }, data: {'label': 'Vin', 'orientation': 'horizontal'} },
+    { id: 'rtop', type: 'resistor', position: { x: 560, y: 140 }, data: {'label': '2.9k', 'orientation': 'vertical'} },
+    { id: 'rbot', type: 'resistor', position: { x: 560, y: 290 }, data: {'label': '2.1k', 'orientation': 'vertical'} },
+    { id: 'op1', type: 'opamp', position: { x: 700, y: 200 }, data: {'label': 'Comparator', 'orientation': 'horizontal'} },
+    { id: 'r3', type: 'resistor', position: { x: 860, y: 220 }, data: {'label': '330', 'orientation': 'horizontal'} },
+    { id: 'led1', type: 'led', position: { x: 980, y: 220 }, data: {'label': 'Red LED', 'color': 'red', 'v_drop': 2, 'max_current': 20, 'orientation': 'horizontal'} },
+    { id: 'gnd1', type: 'ground', position: { x: 570, y: 470 }, data: {'label': 'GND', 'orientation': 'horizontal'} },
+  ],
+  edges: [
+    { id: 'e-v1-pot', source: 'v1', target: 'pot1', sourceHandle: 'pos', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-v1-rtop', source: 'v1', target: 'rtop', sourceHandle: 'pos', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-v1-vcc', source: 'v1', target: 'op1', sourceHandle: 'pos', targetHandle: 'vcc', type: 'smoothstep' },
+    { id: 'e-v1-gnd', source: 'v1', target: 'gnd1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-pot-gnd', source: 'pot1', target: 'gnd1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-pot-in', source: 'pot1', target: 'op1', sourceHandle: 'wiper', targetHandle: 'in_non', type: 'smoothstep' },
+    { id: 'e-pot-mm', source: 'pot1', target: 'mm1', sourceHandle: 'wiper', targetHandle: 'pos', type: 'smoothstep' },
+    { id: 'e-mm-gnd', source: 'mm1', target: 'gnd1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-rtop-rbot', source: 'rtop', target: 'rbot', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-ref-inv', source: 'rtop', target: 'op1', sourceHandle: 'out', targetHandle: 'in_inv', type: 'smoothstep' },
+    { id: 'e-rbot-gnd', source: 'rbot', target: 'gnd1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-op-vee', source: 'op1', target: 'gnd1', sourceHandle: 'vee', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-op-r3', source: 'op1', target: 'r3', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-r3-led', source: 'r3', target: 'led1', sourceHandle: 'out', targetHandle: 'anode', type: 'smoothstep' },
+    { id: 'e-led-gnd', source: 'led1', target: 'gnd1', sourceHandle: 'cathode', targetHandle: 'in', type: 'smoothstep' },
+  ]
+};
+
 export const presets: Record<string, CircuitPreset> = {
   empty: {
     ...empty,
     noteCard: `# Empty Canvas ⬜\n\nDrag and drop components from the left sidebar to start building your own custom circuits!\n\n- Click and drag components to move them.\n- Hover over handles and drag to make wire connections.\n- Click components to edit their properties in the sidebar.\n- Click **Run** in the toolbar to start simulating.`
+  },
+  voltageComparator: {
+    ...voltageComparator,
+    noteCard: `# 2.1V Comparator \ud83d\udd0d\n\nAn op-amp comparator that lights an LED whenever the input rises above **2.1V**, running from a single 5V rail.\n\n### How it works:\n- **Divider (2.9k / 2.1k)**: Splits the 5V rail down to exactly 2.1V and feeds the inverting input - the threshold.\n- **Potentiometer (10k)**: Stands in for the sensed voltage. Its wiper drives the non-inverting input; drag the **Wiper Position** slider to sweep it from 0V to 5V.\n- **Op-amp**: Run open-loop, so its output slams to the rail it is on the right side of - 5V above the threshold, 0V below it.\n- **330\u03a9 + LED**: About 11mA when lit, well inside the 20mA rating.\n\nThe threshold is sharp: at a wiper of 42% the LED is dark, at 44% it is on.`
   },
   basicBlink: {
     ...basicBlink,

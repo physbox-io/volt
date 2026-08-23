@@ -1,7 +1,12 @@
-import { Handle, Position } from '@xyflow/react';
 import { sanitizeSpiceValue } from '../../utils/spice';
 import type { NodePropertiesProps } from './registry';
-import { SchematicLabel } from './schematic';
+import {
+  LeadHandles,
+  RotatedSymbol,
+  SchematicLabel,
+  leadBoxStyle,
+  resolveOrientation,
+} from './schematic';
 
 export function ldrDefaultData() {
   return { label: 'LDR', r_dark: 100000, r_dark_label: '100k', lightLevel: 0.5 };
@@ -96,25 +101,17 @@ export function LDRNode({ data, selected }: any) {
   const lightLevel = data.lightLevel ?? 0;
   const isWebcamActive = !!data.isWebcamActive;
 
+  const orientation = resolveOrientation(data.orientation);
+
   return (
-    <div className="schematic-node flex items-center justify-center relative select-none w-[48px] h-[48px]">
-      {/* Bidirectional Left Handle */}
-      <Handle 
-        type="target" 
-        position={Position.Left} 
-        id="in" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
-        style={{ top: '50%', left: '0%' }}
-      />
-      <Handle 
-        type="source" 
-        position={Position.Left} 
-        id="in" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
-        style={{ top: '50%', left: '0%' }}
-      />
+    <div
+      className="schematic-node flex items-center justify-center relative select-none"
+      style={leadBoxStyle(orientation, 48, 48)}
+    >
+      <LeadHandles first="in" second="out" orientation={orientation} />
 
       {/* Symbol SVG */}
+      <RotatedSymbol orientation={orientation} width={48} height={48}>
       <svg 
         width="48" 
         height="48" 
@@ -144,27 +141,12 @@ export function LDRNode({ data, selected }: any) {
         <path d="M 17 6 L 23 12" strokeWidth="1" />
         <path d="M 20 12 H 23 V 9" strokeWidth="1" />
       </svg>
+      </RotatedSymbol>
 
       {/* Label and light level status */}
-      <SchematicLabel placement="below">
+      <SchematicLabel placement={orientation.labelPlacement}>
         LDR • {isWebcamActive ? '📹 ' : ''}{Math.round(lightLevel * 100)}%
       </SchematicLabel>
-
-      {/* Bidirectional Right Handle */}
-      <Handle 
-        type="source" 
-        position={Position.Right} 
-        id="out" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
-        style={{ top: '50%', left: '100%' }}
-      />
-      <Handle 
-        type="target" 
-        position={Position.Right} 
-        id="out" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
-        style={{ top: '50%', left: '100%' }}
-      />
     </div>
   );
 }

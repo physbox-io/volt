@@ -2,7 +2,7 @@ import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { AlertCircle } from 'lucide-react';
 import type { NodePropertiesProps } from './registry';
 import { useCallback } from 'react';
-import { DEVICE_CARD, DEVICE_TITLE, DEVICE_SCREEN, DeviceField, STROKE } from './schematic';
+import { DEVICE_CARD, DEVICE_SCREEN, DEVICE_TITLE, DeviceField, STROKE, resolveOrientation } from './schematic';
 
 export function SignalGeneratorProperties({ node, updateData, simLength }: NodePropertiesProps) {
   return (
@@ -56,6 +56,7 @@ function WaveformPath({ type }: { type: string }) {
 }
 
 export function SignalGeneratorNode({ id, data }: any) {
+  const { isVertical } = resolveOrientation(data.orientation);
   const { setNodes } = useReactFlow();
   const type = data.waveform || 'sine';
   const freq = data.frequency || 1;
@@ -100,10 +101,13 @@ export function SignalGeneratorNode({ id, data }: any) {
         />
       </div>
 
-      <Handle type="source" position={Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
-      <Handle type="target" position={Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
-      <Handle type="source" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" />
-      <Handle type="target" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" />
+      {/* The signal lead leaves sideways and ground drops down, which is how
+          these read on a horizontal rail. Vertical puts the signal on top and
+          ground at the bottom, for a part drawn on end. */}
+      <Handle type="target" position={isVertical ? Position.Top : Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
+      <Handle type="source" position={isVertical ? Position.Top : Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
+      <Handle type="source" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
+      <Handle type="target" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
     </div>
   );
 }

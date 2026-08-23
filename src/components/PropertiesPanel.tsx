@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 import { X, Trash2 } from 'lucide-react';
-import { ORIENTABLE_NODE_TYPES, ORIENTATION_HANDLE_REMAP } from '../utils/nodeGeometry';
+import { ORIENTABLE_NODE_TYPES, remapHandleForFlip } from '../utils/nodeGeometry';
 import { getNodeDefaultName } from '../utils/nodeNaming';
 import { datasheets } from '../utils/datasheets';
 import {
@@ -111,13 +111,14 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
         setEdges((eds: Edge[]) => eds.map(e => {
           let updated = { ...e };
           let changed = false;
-          if (e.source === selectedNode.id) {
-            const sh = e.sourceHandle;
-            if (sh && sh in ORIENTATION_HANDLE_REMAP) { updated.sourceHandle = ORIENTATION_HANDLE_REMAP[sh]; changed = true; }
+          const type = selectedNode.type || '';
+          if (e.source === selectedNode.id && e.sourceHandle) {
+            const next = remapHandleForFlip(type, e.sourceHandle);
+            if (next) { updated.sourceHandle = next; changed = true; }
           }
-          if (e.target === selectedNode.id) {
-            const th = e.targetHandle;
-            if (th && th in ORIENTATION_HANDLE_REMAP) { updated.targetHandle = ORIENTATION_HANDLE_REMAP[th]; changed = true; }
+          if (e.target === selectedNode.id && e.targetHandle) {
+            const next = remapHandleForFlip(type, e.targetHandle);
+            if (next) { updated.targetHandle = next; changed = true; }
           }
           return changed ? updated : e;
         }));

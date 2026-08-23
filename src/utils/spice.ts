@@ -247,7 +247,11 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       if (suffix === 'k') totalR *= 1000;
       else if (suffix === 'meg' || suffix === 'm') totalR *= 1e6;
       else if (suffix === 'u') totalR /= 1e6;
-      const pos = Math.max(0.001, Math.min(0.999, (Number(node.data.position) || 50) / 100));
+      // position is a percentage, 0-100. `|| 50` here would turn a wiper deliberately
+      // set to 0 into a half-turn, so fall back only when it is genuinely absent.
+      const rawPos = Number(node.data.position);
+      const posPct = Number.isFinite(rawPos) ? rawPos : 50;
+      const pos = Math.max(0.001, Math.min(0.999, posPct / 100));
       const nIn = getNet(node.id, 'in');
       const nOut = getNet(node.id, 'out');
       const nWiper = getNet(node.id, 'wiper');

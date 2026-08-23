@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
+import { Handle, Position } from '@xyflow/react';
 
 /**
  * Shared visual language for the schematic canvas.
@@ -172,3 +173,141 @@ export function SchematicLabel({
 /** Placement for a two-terminal part given its `data.orientation`. */
 export const labelPlacementFor = (orientation: string | undefined): Placement =>
   orientation === 'vertical' || orientation === 'up' ? 'right' : 'below';
+
+
+/**
+ * `data.orientation`, resolved once.
+ *
+ * Every two-lead part reads the same four values off it, and they used to be
+ * recomputed inline in each symbol — which is why only a handful of parts
+ * honoured the field at all, and why the ones that did disagreed about whether
+ * 'up' counted as vertical.
+ *
+ * 'vertical' and 'up' both stand the part on end; 'left' and 'up' additionally
+ * mirror it, so its first lead comes out of the far side.
+ */
+export function resolveOrientation(orientation: unknown) {
+  const value = typeof orientation === 'string' ? orientation : 'horizontal';
+  const isUp = value === 'up';
+  return {
+    orientation: value,
+    isVertical: value === 'vertical' || isUp,
+    isLeft: value === 'left',
+    isUp,
+    labelPlacement: labelPlacementFor(value),
+  };
+}
+
+export type LeadOrientation = ReturnType<typeof resolveOrientation>;
+
+/** Where a two-lead part's box sits, in px, for a given orientation. */
+export function leadBoxStyle(
+  { isVertical }: LeadOrientation,
+  width: number,
+  height: number,
+): CSSProperties {
+  return {
+    width: isVertical ? height : width,
+    height: isVertical ? width : height,
+  };
+}
+
+/**
+ * The four React Flow handles a two-lead part needs: a source and a target on
+ * each lead, so a wire can be drawn from either end.
+ *
+ * Horizontal: first lead left, second right. Vertical: first top, second
+ * bottom. 'left'/'up' swap the two ends over.
+ */
+export function LeadHandles({
+  first,
+  second,
+  orientation,
+  className = 'w-2 h-2 bg-blue-500 !border-0',
+}: {
+  /** Handle id of the first lead — `in`, `anode`, `pos`, `a`. */
+  first: string;
+  /** Handle id of the second lead — `out`, `cathode`, `neg`, `b`. */
+  second: string;
+  orientation: LeadOrientation;
+  className?: string;
+}) {
+  const { isVertical, isLeft, isUp } = orientation;
+
+  const at = (atEnd: boolean) => {
+    // atEnd is the far lead: right when horizontal, bottom when vertical,
+    // before any mirroring.
+    const flipped = isVertical ? isUp : isLeft;
+    const far = atEnd !== flipped;
+    const position = isVertical
+      ? (far ? Position.Bottom : Position.Top)
+      : (far ? Position.Right : Position.Left);
+    const style: CSSProperties = isVertical
+      ? { left: '50%', top: far ? '100%' : '0%' }
+      : { top: '50%', left: far ? '100%' : '0%' };
+    return { position, style };
+  };
+
+  const lead = (id: string, atEnd: boolean) => {
+    const { position, style } = at(atEnd);
+    return (
+      <>
+        <Handle type="target" position={position} id={id} className={className} style={style} />
+        <Handle type="source" position={position} id={id} className={className} style={style} />
+      </>
+    );
+  };
+
+  return (
+    <>
+      {lead(first, false)}
+      {lead(second, true)}
+    </>
+  );
+}
+
+/**
+ * Stands a symbol on end without redrawing it.
+ *
+ * The parts that already had vertical support carry a second, hand-authored
+ * path for it. That does not scale to every two-lead component, and hand
+ * copies drift, so everything else keeps its one horizontal drawing and gets
+ * rotated a quarter turn inside a box whose sides have been swapped. Only the
+ * artwork turns — captions and any interactive chrome stay upright, since they
+ * are rendered outside this wrapper.
+ */
+export function RotatedSymbol({
+  orientation,
+  width,
+  height,
+  children,
+}: {
+  orientation: LeadOrientation;
+  width: number;
+  height: number;
+  children: ReactNode;
+}) {
+  const { isVertical, isLeft, isUp } = orientation;
+  const mirror = isVertical ? isUp : isLeft;
+
+  const transforms = [
+    'translate(-50%, -50%)',
+    isVertical ? 'rotate(90deg)' : '',
+    mirror ? 'scaleX(-1)' : '',
+  ].filter(Boolean);
+
+  return (
+    <div
+      className="absolute"
+      style={{
+        left: '50%',
+        top: '50%',
+        width,
+        height,
+        transform: transforms.join(' '),
+      }}
+    >
+      {children}
+    </div>
+  );
+}
