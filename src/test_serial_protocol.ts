@@ -50,6 +50,14 @@ class FakeGrbl {
   private controller!: ReadableStreamDefaultController<Uint8Array>;
   private x = 0;
   private y = 0;
+  private z = 5;
+  // Work offsets, as set by `G10 L20 P1`. Reported WPos is MPos minus these,
+  // which is what makes a zeroing command observable at all - the fake used to
+  // report WPos as a copy of MPos, so nothing could tell whether a zero took.
+  private offX = 0;
+  private offY = 0;
+  private offZ = 0;
+  private relative = false;
   private draining = false;
 
   public readable: ReadableStream<Uint8Array>;
@@ -79,7 +87,12 @@ class FakeGrbl {
       // '?' is a realtime command: it bypasses the buffer entirely.
       if (ch === '?') {
         this.statusPolls++;
-        this.reply(`<${this.locked ? 'Alarm' : 'Idle'}|MPos:${this.x.toFixed(3)},${this.y.toFixed(3)},5.000|WPos:${this.x.toFixed(3)},${this.y.toFixed(3)},5.000>`);
+        this.reply(
+          `<${this.locked ? 'Alarm' : 'Idle'}` +
+          `|MPos:${this.x.toFixed(3)},${this.y.toFixed(3)},${this.z.toFixed(3)}` +
+          `|WPos:${(this.x - this.offX).toFixed(3)},${(this.y - this.offY).toFixed(3)},` +
+          `${(this.z - this.offZ).toFixed(3)}>`
+        );
         continue;
       }
       // Ctrl-X soft reset: GRBL discards the planner and everything buffered,
@@ -131,9 +144,32 @@ class FakeGrbl {
       this.received.push(line);
       this.occupied -= line.length + 1;
 
-      for (const m of line.matchAll(/([XY])(-?[\d.]+)/g)) {
-        if (m[1] === 'X') this.x = parseFloat(m[2]);
-        if (m[1] === 'Y') this.y = parseFloat(m[2]);
+      // `G10 L20 P1 X0 Y0` declares "the current position is this coordinate",
+      // so the offset is whatever makes that true. It must be handled before
+      // the motion parsing below, or the coordinates on the line would be read
+      // as a move.
+      if (/^G10\s+L20\s+P1/.test(line)) {
+        for (const m of line.matchAll(/([XYZ])(-?[\d.]+)/g)) {
+          const want = parseFloat(m[2]);
+          if (m[1] === 'X') this.offX = this.x - want;
+          if (m[1] === 'Y') this.offY = this.y - want;
+          if (m[1] === 'Z') this.offZ = this.z - want;
+        }
+        this.reply('ok');
+        continue;
+      }
+
+      // G90/G91 are modal, and a retract is issued as a relative lift - reading
+      // one as an absolute coordinate puts the simulated tool somewhere the real
+      // machine would never be.
+      if (/(^|\s)G90(\s|$)/.test(line)) this.relative = false;
+      if (/(^|\s)G91(\s|$)/.test(line)) this.relative = true;
+
+      for (const m of line.matchAll(/([XYZ])(-?[\d.]+)/g)) {
+        const v = parseFloat(m[2]);
+        if (m[1] === 'X') this.x = this.relative ? this.x + v : v;
+        if (m[1] === 'Y') this.y = this.relative ? this.y + v : v;
+        if (m[1] === 'Z') this.z = this.relative ? this.z + v : v;
       }
 
       if (line === '$X') {
@@ -161,6 +197,9 @@ class FakeGrbl {
           continue;
         }
         const z = (this.opts.surface ?? (() => 0))(this.x, this.y);
+        // The tool ends up at the contact point, which is where the G10 that
+        // follows measures its offset from.
+        this.z = z - 40;
         // Machine coordinates, offset from work space — as real GRBL reports.
         this.reply(`[PRB:${this.x.toFixed(3)},${this.y.toFixed(3)},${(z - 40).toFixed(3)}:1]`);
       }
@@ -283,6 +322,45 @@ check(
   afterOffset.join(' | ')
 );
 check('absolute mode restored after zeroing', afterOffset.some(l => /(^|\s)G90(\s|$)/.test(l)));
+
+// --- 2b-ii. Zeroing reports back that it actually took -------------------
+// GRBL acknowledges `G10 L20` by return, which only says the line arrived.
+// Zeroing was otherwise invisible: the button did something and the only
+// evidence was the DRO changing, so an offset that never applied looked
+// exactly like one that did.
+await reconnect();
+await webSerialManager.jog({ x: 12, y: 7 });
+await webSerialManager.zeroXY();
+check(
+  'XY zeroing is pending before the machine reports back',
+  webSerialManager.getState().zeroXYPending === true
+);
+
+// The next status poll carries the new work position.
+await new Promise(r => setTimeout(r, 400));
+check(
+  'XY zeroing is confirmed once WPos reads the origin',
+  webSerialManager.getState().zeroXYConfirmed === true,
+  JSON.stringify(webSerialManager.getState().wpos)
+);
+
+// Plate probing sets Z to the plate thickness, not to nothing - waiting for a
+// reported zero would never confirm it.
+await webSerialManager.zeroZ(12);
+await new Promise(r => setTimeout(r, 400));
+check(
+  'Z zeroing on a plate confirms against the plate thickness',
+  webSerialManager.getState().zeroZConfirmed === true,
+  `wpos.z=${webSerialManager.getState().wpos.z} target=${webSerialManager.getState().zeroZTargetMm}`
+);
+
+// Moving invalidates the confirmation: it described where the machine was.
+await webSerialManager.jog({ x: 5 });
+check(
+  'jogging clears the standing confirmation',
+  webSerialManager.getState().zeroXYConfirmed === false &&
+  webSerialManager.getState().zeroZConfirmed === false
+);
 
 // --- 2c. Re-zeroing at a tool change keeps the job paused, not idle -------
 // Changing a bit invalidates work Z0, so re-zeroing has to be possible without

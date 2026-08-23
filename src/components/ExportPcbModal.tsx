@@ -3,7 +3,6 @@ import type { Node, Edge } from '@xyflow/react';
 import {
   X,
   Cpu,
-  Download,
   Play,
   Layers,
   Check,
@@ -18,9 +17,9 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import {
-  generateExcellon,
   generateAirCutGcode,
   calculateSuggestedBoardSize,
+  groupDrillsByBit,
   DEFAULT_PCB_OPTIONS,
   type PcbOptions,
 } from '../utils/pcbExporter';
@@ -90,11 +89,14 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   edges = [],
 }) => {
   const [options, setOptions] = useState<PcbOptions>(() => {
-    const suggested = calculateSuggestedBoardSize(nodes, DEFAULT_PCB_OPTIONS);
     return {
       ...DEFAULT_PCB_OPTIONS,
-      boardWidthMm: suggested.widthMm,
-      boardHeightMm: suggested.heightMm,
+      // Deliberately NOT seeded from calculateSuggestedBoardSize: with auto-size
+      // on (the default) these two are a floor, and seeding them with a padded
+      // estimate stopped the board ever cropping down to the copper. The
+      // estimate is still what "Fit to circuit" offers in fixed-size mode.
+      boardWidthMm: DEFAULT_PCB_OPTIONS.boardWidthMm,
+      boardHeightMm: DEFAULT_PCB_OPTIONS.boardHeightMm,
       // Retract height is a property of the bench, not of this board, so the
       // saved one wins over the built-in default.
       safeZ: readNumericSetting('grblSafeZMm', DEFAULT_PCB_OPTIONS.safeZ),
@@ -130,6 +132,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const [heightmap, setHeightmap] = useState<{ grid: ProbeGrid; boardTag: string } | null>(null);
 
   const [selectedToolId, setSelectedToolId] = useState<string>('t1_vbit_30');
+  const [profileToolId, setProfileToolId] = useState<string>('t6b_endmill_15');
   const [customTools, setCustomTools] = useState<PcbToolPreset[]>(() => loadCustomTools());
   const [showToolEditor, setShowToolEditor] = useState(false);
   const [toolDraft, setToolDraft] = useState<CustomToolInput>({
@@ -234,11 +237,56 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
         spindleRpm: feeds.spindleRpm,
         isolationDepthZ: feeds.isolationDepthZ,
         zStepdown: feeds.zStepdown,
-        // A profile tool selection should move the profile diameter too,
-        // otherwise the outline is cut with whatever was set before.
-        profileToolDiaMm: tool.role === 'profile' ? tool.tipDiameterMm : prev.profileToolDiaMm,
       }));
     }
+  };
+
+  /**
+   * The profile bit only decides the outline kerf and how deep each pass may
+   * go. Isolation feeds come from the isolation bit, so they are deliberately
+   * left alone here — picking a bigger endmill should not slow the engraving.
+   */
+  const handleProfileToolChange = (toolId: string) => {
+    setProfileToolId(toolId);
+    const tool = availableTools.find(t => t.id === toolId);
+    if (!tool) return;
+    setOptions(prev => ({
+      ...prev,
+      profileToolDiaMm: tool.tipDiameterMm,
+      zStepdown: tool.maxStepdownMm ?? prev.zStepdown,
+    }));
+  };
+
+  /**
+   * Bits this board actually needs, in the order the job runs them. The drill
+   * rows come from the holes the layout produced, so they change with the
+   * circuit rather than being a fixed list.
+   */
+  const requiredBits = useMemo(() => {
+    const groups = groupDrillsByBit(
+      result.drills ?? [],
+      options.drillConsolidationMm ?? 0
+    );
+    return groups.map(g => ({
+      requiredMm: g.bitMm,
+      nominals: g.nominals,
+      holeCount: g.holes.length,
+      loadedMm: options.drillBitOverridesMm?.[String(g.bitMm)] ?? g.bitMm,
+    }));
+  }, [result.drills, options.drillConsolidationMm, options.drillBitOverridesMm]);
+
+  const drillPresets = useMemo(
+    () => availableTools.filter(t => t.role === 'drill').sort((a, b) => a.tipDiameterMm - b.tipDiameterMm),
+    [availableTools]
+  );
+
+  const setDrillOverride = (requiredMm: number, loadedMm: number) => {
+    setOptions(prev => {
+      const next = { ...(prev.drillBitOverridesMm ?? {}) };
+      if (loadedMm === requiredMm) delete next[String(requiredMm)];
+      else next[String(requiredMm)] = loadedMm;
+      return { ...prev, drillBitOverridesMm: Object.keys(next).length ? next : undefined };
+    });
   };
 
   const handleSaveCustomTool = () => {
@@ -247,13 +295,17 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     setCustomTools(next);
     const created = next[next.length - 1];
     setShowToolEditor(false);
-    handleToolPresetChange(created.id);
+    // Select the new bit into the slot it belongs to; a drill has no slot of
+    // its own, it just becomes an option on every drill row.
+    if (created.role === 'profile') handleProfileToolChange(created.id);
+    else if (created.role === 'isolation') handleToolPresetChange(created.id);
   };
 
   const handleDeleteCustomTool = (id: string) => {
     const next = deleteCustomTool(id);
     setCustomTools(next);
     if (selectedToolId === id) handleToolPresetChange('t1_vbit_30');
+    if (profileToolId === id) handleProfileToolChange('t6b_endmill_15');
   };
 
   const handleMaterialPresetChange = (matId: string) => {
@@ -288,10 +340,13 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     setMachineError(null);
     try {
       const grid = await webSerialManager.probeSurfaceMesh({
-        minX: 0,
-        minY: 0,
-        maxX: result.boardWidthMm,
-        maxY: result.boardHeightMm,
+        // The board is inset from work zero by the profile tool radius, so the
+        // mesh has to be too — probing from 0 would sample the stock outside
+        // the finished edge and miss a strip of the board itself.
+        minX: result.boardOriginMm,
+        minY: result.boardOriginMm,
+        maxX: result.boardOriginMm + result.boardWidthMm,
+        maxY: result.boardOriginMm + result.boardHeightMm,
         cols: suggestedGrid.cols,
         rows: suggestedGrid.rows,
         probeDepthMm,
@@ -353,24 +408,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       );
     }
     return connected;
-  };
-
-  const downloadFile = (content: string, filename: string, mime: string) => {
-    const blob = new Blob([content], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleDownloadDrill = () => {
-    downloadFile(generateExcellon(result), `pcb_drills_${boardTag}.drl`, 'text/plain;charset=utf-8');
-  };
-
-  const handleDownloadSvg = () => {
-    downloadFile(result.svg, `pcb_layout_${boardTag}.svg`, 'image/svg+xml;charset=utf-8');
   };
 
   const handleMillBoard = async () => {
@@ -468,6 +505,22 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   };
 
   /**
+   * Rapids back to the work origin, lifting Z first. This is the move you want
+   * after framing or a tool change, and doing it by jogging is both slow and
+   * imprecise.
+   */
+  const handleGoToZero = async () => {
+    if (machineBusy) return;
+    if (!(await ensureConnected())) return;
+    setMachineError(null);
+    try {
+      await webSerialManager.gotoWorkOrigin();
+    } catch (e: any) {
+      setMachineError(e?.message || 'Go to zero failed');
+    }
+  };
+
+  /**
    * Clears a GRBL alarm lockout ($X). Until this runs the controller answers
    * every G-code line with error:9, so nothing else on this tab can work.
    */
@@ -526,8 +579,14 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     setMachineError(null);
     setBusy('milling');
     try {
+      // Frame the stock the job actually sweeps, outline pass included.
       await webSerialManager.frameJob(
-        { minX: 0, minY: 0, maxX: result.boardWidthMm, maxY: result.boardHeightMm },
+        {
+          minX: 0,
+          minY: 0,
+          maxX: result.boardWidthMm + result.boardOriginMm * 2,
+          maxY: result.boardHeightMm + result.boardOriginMm * 2,
+        },
         { safeZMm: options.safeZ }
       );
     } catch (e: any) {
@@ -600,8 +659,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 Automated trace routing, isolation toolpaths, through-hole drilling, air cuts, and surface heightmaps.
                 <InfoTip>
-                  Generates a single-sided copper board from your schematic. Download the G-code and drill
-                  files, or drive a GRBL machine directly over WebSerial.
+                  Generates a single-sided copper board from your schematic, then drives a GRBL
+                  machine directly over WebSerial.
                 </InfoTip>
               </p>
             </div>
@@ -781,15 +840,20 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       </InfoTip>
                     </label>
 
-                    <button
-                      type="button"
-                      onClick={handleFitToCircuit}
-                      className="text-[11px] text-cyan-700 dark:text-cyan-400 hover:text-cyan-600 dark:hover:text-cyan-300 hover:underline cursor-pointer flex items-center gap-1 font-semibold"
-                      title="Recalculate dimensions to comfortably fit all components in the circuit"
-                    >
-                      <RefreshCw className="w-3 h-3" />
-                      Fit to circuit
-                    </button>
+                    {/* Redundant while auto-sizing: that already fits the board to
+                        the circuit, and setting the floor to a padded estimate
+                        would only stop it cropping. */}
+                    {!options.autoGrowBoard && (
+                      <button
+                        type="button"
+                        onClick={handleFitToCircuit}
+                        className="text-[11px] text-cyan-700 dark:text-cyan-400 hover:text-cyan-600 dark:hover:text-cyan-300 hover:underline cursor-pointer flex items-center gap-1 font-semibold"
+                        title="Recalculate dimensions to comfortably fit all components in the circuit"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Fit to circuit
+                      </button>
+                    )}
                   </div>
 
                   <div>
@@ -815,13 +879,39 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     />
                   </div>
                   {options.autoGrowBoard && (
-                    <p className="text-[11px] text-slate-500">
-                      Auto-sized to{' '}
-                      <span className="text-slate-600 dark:text-slate-300 font-semibold">
-                        {result.boardWidthMm} x {result.boardHeightMm} mm
-                      </span>
-                      . Untick to force an exact size.
-                    </p>
+                    <>
+                      <p className="text-[11px] text-slate-500">
+                        Auto-sized to{' '}
+                        <span className="text-slate-600 dark:text-slate-300 font-semibold">
+                          {result.boardWidthMm} x {result.boardHeightMm} mm
+                        </span>
+                        . Untick to force an exact size.
+                      </p>
+                      <div>
+                        <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
+                          Edge Margin (mm)
+                          <InfoTip>
+                            Blank laminate left around the outermost copper, per side. The board
+                            is cropped to the traces once routing is done, so this is what is
+                            left to hold and clamp. The isolation ring and the profile kerf are
+                            allowed for separately, so a small value here cannot cut into them.
+                          </InfoTip>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          value={options.boardMarginMm ?? 1.5}
+                          onChange={e =>
+                            setOptions({
+                              ...options,
+                              boardMarginMm: Math.max(0, parseFloat(e.target.value) || 0),
+                            })
+                          }
+                          className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                        />
+                      </div>
+                    </>
                   )}
                   <div>
                     <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">Trace Width (mm)</label>
@@ -937,68 +1027,152 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
               {activeTab === 'cam' && (
                 <div className="space-y-3">
-                  <div>
-                    <label className="flex items-center justify-between text-slate-600 dark:text-slate-300 font-semibold mb-1">
-                      <span>Tool Preset</span>
+                  <div className="p-2.5 rounded border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-600 dark:text-slate-300 font-semibold">
+                        Bits this job needs
+                      </span>
                       <button
                         onClick={() => setShowToolEditor(v => !v)}
                         className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline font-sans"
                       >
                         {showToolEditor ? 'Cancel' : '+ Add my own tool'}
                       </button>
-                    </label>
-                    <select
-                      value={selectedToolId}
-                      onChange={e => handleToolPresetChange(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-sans"
-                    >
-                      <optgroup label="Isolation">
-                        {availableTools.filter(t => t.role === 'isolation').map(tool => (
-                          <option key={tool.id} value={tool.id}>
-                            {tool.name}{tool.isCustom ? ' (mine)' : ''}
-                          </option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="Drilling">
-                        {availableTools.filter(t => t.role === 'drill').map(tool => (
-                          <option key={tool.id} value={tool.id}>
-                            {tool.name}{tool.isCustom ? ' (mine)' : ''}
-                          </option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="Profiling &amp; Pocketing">
-                        {availableTools.filter(t => t.role === 'profile').map(tool => (
-                          <option key={tool.id} value={tool.id}>
-                            {tool.name}{tool.isCustom ? ' (mine)' : ''}
-                          </option>
-                        ))}
-                      </optgroup>
-                    </select>
+                    </div>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+                      Loaded in this order, one pause per change. Swap any row for a bit you
+                      actually have: a bigger drill just leaves the hole oversize, and a smaller
+                      one gets spiralled out to the right size instead.
+                    </p>
 
-                    {selectedTool && (
-                      <div className="mt-1 flex items-start justify-between gap-2">
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug flex-1">
-                          {selectedTool.description}
-                          {selectedTool.role === 'isolation' && (
-                            <>
-                              {' '}Cuts{' '}
-                              <span className="font-mono text-slate-700 dark:text-slate-200">
-                                {minIsolationChannelMm(selectedTool, options.isolationDepthZ).toFixed(3)}mm
-                              </span>{' '}
-                              wide at Z{options.isolationDepthZ}.
-                            </>
+                    {/* --- 1. Isolation --- */}
+                    <div className="flex items-start gap-2">
+                      <span className="mt-1.5 w-4 shrink-0 text-center font-mono text-[10px] text-slate-400">1</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">
+                            Isolation
+                          </span>
+                          {selectedTool && (
+                            <span className="font-mono text-[10px] text-emerald-700 dark:text-emerald-300 shrink-0">
+                              {minIsolationChannelMm(selectedTool, options.isolationDepthZ).toFixed(3)}mm channel
+                            </span>
                           )}
-                        </p>
-                        {selectedTool.isCustom && (
-                          <button
-                            onClick={() => handleDeleteCustomTool(selectedTool.id)}
-                            className="text-[10px] text-red-500 hover:underline shrink-0"
-                          >
-                            Delete
-                          </button>
+                        </div>
+                        <select
+                          value={selectedToolId}
+                          onChange={e => handleToolPresetChange(e.target.value)}
+                          className="mt-0.5 w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] text-slate-800 dark:text-slate-200 font-sans"
+                        >
+                          {availableTools.filter(t => t.role === 'isolation').map(tool => (
+                            <option key={tool.id} value={tool.id}>
+                              {tool.name}{tool.isCustom ? ' (mine)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        {selectedTool && (
+                          <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+                            {selectedTool.description}
+                            {selectedTool.isCustom && (
+                              <button
+                                onClick={() => handleDeleteCustomTool(selectedTool.id)}
+                                className="ml-1 text-red-500 hover:underline"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </p>
                         )}
                       </div>
-                    )}
+                    </div>
+
+                    {/* --- 2..n. Drills, one row per bit the holes call for --- */}
+                    {requiredBits.map((bit, i) => (
+                      <div key={bit.requiredMm} className="flex items-start gap-2">
+                        <span className="mt-1.5 w-4 shrink-0 text-center font-mono text-[10px] text-slate-400">
+                          {i + 2}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">
+                              Drill &empty;{bit.requiredMm}mm
+                            </span>
+                            <span className="font-mono text-[10px] text-slate-500 shrink-0">
+                              {bit.holeCount} hole{bit.holeCount === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                          <select
+                            value={bit.loadedMm}
+                            onChange={e => setDrillOverride(bit.requiredMm, parseFloat(e.target.value))}
+                            className="mt-0.5 w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] text-slate-800 dark:text-slate-200 font-sans"
+                          >
+                            <option value={bit.requiredMm}>Exact &mdash; {bit.requiredMm}mm</option>
+                            {drillPresets
+                              .filter(t => t.tipDiameterMm > bit.requiredMm)
+                              .map(tool => (
+                                <option key={tool.id} value={tool.tipDiameterMm}>
+                                  {tool.name}{tool.isCustom ? ' (mine)' : ''}
+                                </option>
+                              ))}
+                          </select>
+                          {bit.nominals.length > 1 && (
+                            <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+                              Covers {bit.nominals.map(n => `${n}mm`).join(', ')} &mdash; merged by the
+                              drill-bit merge setting on the Layout tab.
+                            </p>
+                          )}
+                          {bit.loadedMm > bit.requiredMm && (
+                            <p className="mt-0.5 text-[10px] text-amber-600 dark:text-amber-400 leading-snug">
+                              Holes come out {(bit.loadedMm - bit.requiredMm).toFixed(2)}mm oversize.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* --- last. Profile --- */}
+                    <div className="flex items-start gap-2">
+                      <span className="mt-1.5 w-4 shrink-0 text-center font-mono text-[10px] text-slate-400">
+                        {requiredBits.length + 2}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">
+                            Board outline
+                          </span>
+                          <span className="font-mono text-[10px] text-slate-500 shrink-0">
+                            {options.profileToolDiaMm}mm kerf
+                          </span>
+                        </div>
+                        <select
+                          value={profileToolId}
+                          onChange={e => handleProfileToolChange(e.target.value)}
+                          className="mt-0.5 w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] text-slate-800 dark:text-slate-200 font-sans"
+                        >
+                          {availableTools.filter(t => t.role === 'profile').map(tool => (
+                            <option key={tool.id} value={tool.id}>
+                              {tool.name}{tool.isCustom ? ' (mine)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="pt-1.5 border-t border-slate-200 dark:border-slate-800 flex items-baseline justify-between gap-2">
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                        Board{' '}
+                        <span className="font-mono text-slate-700 dark:text-slate-200">
+                          {result.boardWidthMm} &times; {result.boardHeightMm} mm
+                        </span>
+                        {options.autoGrowBoard ? ' (auto-sized)' : ' (fixed)'}
+                      </span>
+                      <button
+                        onClick={() => setActiveTab('layout')}
+                        className="text-[10px] text-cyan-700 dark:text-cyan-400 hover:underline shrink-0"
+                      >
+                        Change size
+                      </button>
+                    </div>
                   </div>
 
                   {showToolEditor && (
@@ -1430,6 +1604,47 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       </button>
                     </div>
 
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleGoToZero}
+                        disabled={manualMoveBlocked}
+                        title="Lift Z to clearance, then rapid back to the work origin (X0 Y0)"
+                        className="flex-1 py-1 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Crosshair className="w-3.5 h-3.5" />
+                        Go to Zero
+                      </button>
+                    </div>
+
+                    {/* Setting the work origin is otherwise silent: the button
+                        sends a line, GRBL says nothing a human sees, and the
+                        only evidence is the DRO changing. */}
+                    {(serialState.zeroXYPending || serialState.zeroXYConfirmed ||
+                      serialState.zeroZPending || serialState.zeroZConfirmed) && (
+                      <div className="space-y-0.5 text-[10px] font-semibold">
+                        {serialState.zeroXYConfirmed && (
+                          <div className="text-emerald-600 dark:text-emerald-400">
+                            XY zeroed - work origin set here
+                          </div>
+                        )}
+                        {serialState.zeroXYPending && (
+                          <div className="text-amber-600 dark:text-amber-400">
+                            XY zeroing - waiting for the machine to confirm...
+                          </div>
+                        )}
+                        {serialState.zeroZConfirmed && (
+                          <div className="text-emerald-600 dark:text-emerald-400">
+                            Z zeroed at {(serialState.zeroZTargetMm ?? 0).toFixed(2)}mm
+                          </div>
+                        )}
+                        {serialState.zeroZPending && (
+                          <div className="text-amber-600 dark:text-amber-400">
+                            Z zeroing - waiting for the machine to confirm...
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* The plate thickness is what makes plate-probing land on
                         the right Z — a wrong number here is a wrong cut depth
                         on every path, so it is edited right next to the button
@@ -1574,25 +1789,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
             {/* Bottom Action Footer */}
             <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-950/60 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleDownloadSvg}
-                  className="px-3.5 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold rounded flex items-center gap-1.5 cursor-pointer text-xs transition-colors"
-                  title="Download SVG vector layout for fabrication or etching"
-                >
-                  <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  Download SVG
-                </button>
-                <button
-                  onClick={handleDownloadDrill}
-                  disabled={result.drills.length === 0}
-                  className="px-3.5 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 font-semibold rounded flex items-center gap-1.5 cursor-pointer text-xs transition-colors"
-                  title="Download Excellon drill file (.drl)"
-                >
-                  <Download className="w-3.5 h-3.5 text-cyan-700 dark:text-cyan-400" />
-                  Download Drill (.drl)
-                </button>
-              </div>
+              <div className="flex items-center gap-2" />
 
               <div className="flex items-center gap-2">
                 <button

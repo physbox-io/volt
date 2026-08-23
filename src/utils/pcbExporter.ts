@@ -90,6 +90,20 @@ export interface PcbOptions {
    * practical gain on a prototype. 0 keeps every nominal size separate.
    */
   drillConsolidationMm?: number;
+  /**
+   * Blank border left around the outermost copper when auto-sizing, per side,
+   * in mm. This is handling and clamping room only — the isolation ring and
+   * the profile kerf get their own space on top of it, so a small value here
+   * cannot cut into the toolpaths.
+   */
+  boardMarginMm?: number;
+  /**
+   * Drill bits the user actually owns, keyed by the diameter the layout asks
+   * for (as a string, e.g. "0.9") and mapped to the bit loaded instead. A hole
+   * may only be drilled at or above its nominal size, so an override smaller
+   * than the requested diameter is ignored.
+   */
+  drillBitOverridesMm?: Record<string, number>;
 }
 
 export const DEFAULT_PCB_OPTIONS: PcbOptions = {
@@ -125,6 +139,7 @@ export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   airCutZOffset: 20,
   padMarginMm: 0.1,
   drillConsolidationMm: 0.3,
+  boardMarginMm: 1.5,
 };
 
 /**
@@ -241,6 +256,14 @@ export interface PcbLayoutResult {
   success: boolean;
   boardWidthMm: number;
   boardHeightMm: number;
+  /**
+   * Offset from the program origin to the board's lower-left corner, in mm.
+   * Every coordinate in this result already includes it; it is published so
+   * renderers can draw the board rectangle in the right place and so the
+   * profile pass knows where the finished edge is. See
+   * {@link boardOriginOffsetMm}.
+   */
+  boardOriginMm: number;
   components: PlacedComponent[];
   pads: PlacedPad[];
   nets: PcbNet[];
@@ -529,6 +552,132 @@ function placeComponents(
   return { placed, boardWidthMm: boardW, boardHeightMm: boardH };
 }
 
+/**
+ * Crops the board to the copper that actually got laid down, and shifts
+ * everything into the cropped rectangle.
+ *
+ * Placement has to reserve routing channels it may not end up using: it sizes
+ * the board from component courtyards plus a generous perimeter, before the
+ * router has decided where a single trace goes. Once routing is done the real
+ * extent of the board is known, and on a simple circuit that is far smaller
+ * than what placement reserved — cutting the reserved size out of the stock
+ * wastes both material and profiling time on blank laminate.
+ *
+ * Everything is mutated in board coordinates, so the caller's pads, traces,
+ * cutouts and components all stay consistent with the returned size.
+ *
+ * The margin is not free space: the isolation ring runs outside the outermost
+ * copper, and the profile kerf runs outside the board edge, so both get their
+ * own allowance before `boardMarginMm` is added on top.
+ */
+function translateLayout(
+  placed: PlacedComponent[],
+  pads: PlacedPad[],
+  traces: RoutedTrace[],
+  cutouts: BoardCutout[],
+  dx: number,
+  dy: number
+): void {
+  for (const c of placed) { c.x += dx; c.y += dy; }
+  for (const pad of pads) { pad.x += dx; pad.y += dy; }
+  for (const co of cutouts) { co.x += dx; co.y += dy; }
+  // Trace points may be shared with the router's own grid nodes, so replace
+  // them rather than shifting in place.
+  for (const t of traces) {
+    t.points = t.points.map(pt => ({ ...pt, x: pt.x + dx, y: pt.y + dy }));
+  }
+}
+
+/**
+ * Distance from the program origin to the board's lower-left corner.
+ *
+ * The profile cut runs a tool radius *outside* the finished edge, so with the
+ * board corner on X0Y0 the outline pass would be commanded to negative
+ * coordinates — off the stock, into the clamps, and refused outright by a
+ * machine with soft limits on. Insetting the board by exactly that radius puts
+ * the outermost cut of the whole job on X0Y0, so work zero can be set to the
+ * corner of the stock.
+ */
+export function boardOriginOffsetMm(opts: PcbOptions): number {
+  return opts.profileToolDiaMm / 2;
+}
+
+function cropBoardToContent(
+  placed: PlacedComponent[],
+  pads: PlacedPad[],
+  traces: RoutedTrace[],
+  cutouts: BoardCutout[],
+  opts: PcbOptions
+): { boardWidthMm: number; boardHeightMm: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const grow = (x: number, y: number) => {
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  };
+
+  const padMargin = Math.max(0, opts.padMarginMm ?? 0);
+  const compById = new Map(placed.map(c => [c.id, c]));
+  for (const pad of pads) {
+    const comp = compById.get(pad.componentId);
+    if (!comp) continue;
+    for (const pt of padPolygon(pad, comp.rotationDeg, effectivePadMarginMm(comp.footprint, padMargin))) {
+      grow(pt.x, pt.y);
+    }
+  }
+
+  // The part body can overhang its own pads — a TO-220 tab, a relay case — and
+  // it still has to sit on laminate.
+  for (const c of placed) {
+    grow(c.x - c.widthMm / 2, c.y - c.heightMm / 2);
+    grow(c.x + c.widthMm / 2, c.y + c.heightMm / 2);
+  }
+
+  for (const t of traces) {
+    const half = t.widthMm / 2;
+    for (const pt of t.points) {
+      grow(pt.x - half, pt.y - half);
+      grow(pt.x + half, pt.y + half);
+    }
+  }
+
+  for (const co of cutouts) {
+    grow(co.x - co.widthMm / 2, co.y - co.heightMm / 2);
+    grow(co.x + co.widthMm / 2, co.y + co.heightMm / 2);
+  }
+
+  if (!isFinite(minX)) return { boardWidthMm: opts.boardWidthMm, boardHeightMm: opts.boardHeightMm };
+
+
+  // Room the toolpaths need outside the last piece of copper: the outermost
+  // isolation pass is offset by a tool radius plus the stepovers, and that pass
+  // is itself a tool-width wide.
+  const isoDia = vBitWidthAtDepth(opts.vBitTipMm, opts.vBitAngleDeg, opts.isolationDepthZ);
+  const passes = Math.max(1, Math.min(3, opts.isolationPasses));
+  const isolationReach = isoDia + (passes - 1) * isoDia * 0.8;
+  const margin = isolationReach + 0.3 + Math.max(0, opts.boardMarginMm ?? 1.5);
+
+  const origin = boardOriginOffsetMm(opts);
+  let boardW = Math.ceil((maxX - minX + margin * 2) * 10) / 10;
+  let boardH = Math.ceil((maxY - minY + margin * 2) * 10) / 10;
+  let shiftX = origin + margin - minX;
+  let shiftY = origin + margin - minY;
+
+  // The requested size stays a floor; when it wins, the content is centred in
+  // it rather than pinned to a corner.
+  if (opts.boardWidthMm > boardW) {
+    shiftX += (opts.boardWidthMm - boardW) / 2;
+    boardW = opts.boardWidthMm;
+  }
+  if (opts.boardHeightMm > boardH) {
+    shiftY += (opts.boardHeightMm - boardH) / 2;
+    boardH = opts.boardHeightMm;
+  }
+
+  translateLayout(placed, pads, traces, cutouts, shiftX, shiftY);
+
+  return { boardWidthMm: boardW, boardHeightMm: boardH };
+}
+
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
@@ -621,10 +770,23 @@ export function generatePcbLayout(
     if (best.routing.completion >= 1) break;
   }
 
-  const { placed, boardWidthMm, boardHeightMm, pads, cutouts, routing } = best!;
+  const { placed, pads, cutouts, routing } = best!;
+  let { boardWidthMm, boardHeightMm } = best!;
   const compById = new Map(placed.map(c => [c.id, c]));
   violations.push(...best!.violations);
   warnings.push(...best!.warnings);
+
+  // Placement had to reserve routing space before the router ran. Now that the
+  // traces exist, crop the blank laminate back off the outside.
+  const boardOriginMm = boardOriginOffsetMm(options);
+  if (options.autoGrowBoard) {
+    ({ boardWidthMm, boardHeightMm } =
+      cropBoardToContent(placed, pads, routing.traces, cutouts, options));
+  } else {
+    // Fixed size: nothing to crop, but the board still has to sit clear of the
+    // origin so the profile pass does not run negative.
+    translateLayout(placed, pads, routing.traces, cutouts, boardOriginMm, boardOriginMm);
+  }
 
   if (
     options.autoGrowBoard &&
@@ -798,6 +960,7 @@ export function generatePcbLayout(
     success: violations.filter(v => v.severity === 'error').length === 0,
     boardWidthMm,
     boardHeightMm,
+    boardOriginMm,
     components: placed,
     pads,
     nets,
@@ -998,6 +1161,7 @@ function emptyResult(options: PcbOptions, error: string): PcbLayoutResult {
     success: false,
     boardWidthMm: options.boardWidthMm,
     boardHeightMm: options.boardHeightMm,
+    boardOriginMm: boardOriginOffsetMm(options),
     components: [],
     pads: [],
     nets: [],
@@ -1043,8 +1207,12 @@ export function renderPcbSvg(
     return NET_COLORS[(idx < 0 ? 0 : idx) % NET_COLORS.length];
   };
 
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="100%" height="100%">\n`;
-  svg += `  <rect x="0" y="0" width="${w}" height="${h}" fill="#1b4d2e" stroke="#2e7d42" stroke-width="0.4" rx="1.5" />\n`;
+  // Everything in the result is in program coordinates, where the board is
+  // inset from the origin so the profile pass starts on X0Y0. The view has to
+  // start at the origin too, or the outline falls outside it.
+  const o = result.boardOriginMm;
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w + o * 2} ${h + o * 2}" width="100%" height="100%">\n`;
+  svg += `  <rect x="${o}" y="${o}" width="${w}" height="${h}" fill="#1b4d2e" stroke="#2e7d42" stroke-width="0.4" rx="1.5" />\n`;
 
   // Copper, per net, with holes honoured.
   for (const [netId, polys] of copperByNet) {
@@ -1087,7 +1255,7 @@ export function renderPcbSvg(
 
   // Profile cut path (tool centreline).
   const profR = options.profileToolDiaMm / 2;
-  svg += `  <rect x="${-profR}" y="${-profR}" width="${w + options.profileToolDiaMm}" height="${h + options.profileToolDiaMm}" fill="none" stroke="#64b5f6" stroke-width="0.1" stroke-dasharray="1,0.6" opacity="0.7" />\n`;
+  svg += `  <rect x="${o - profR}" y="${o - profR}" width="${w + options.profileToolDiaMm}" height="${h + options.profileToolDiaMm}" fill="none" stroke="#64b5f6" stroke-width="0.1" stroke-dasharray="1,0.6" opacity="0.7" />\n`;
 
   svg += `</svg>`;
   return svg;
@@ -1296,16 +1464,19 @@ function profileToolpath(
   options: PcbOptions
 ): { corners: Pt[]; tabs: { start: number; end: number }[] } {
   const r = options.profileToolDiaMm / 2;
+  const o = result.boardOriginMm;
   const w = result.boardWidthMm;
   const h = result.boardHeightMm;
   // Tool centre runs a radius outside the finished board edge, so the board
   // comes out at its nominal size instead of undersize by a tool diameter.
+  // The board is inset from the origin by exactly that radius, so this pass —
+  // the outermost cut in the job — starts on X0Y0 rather than negative.
   const corners: Pt[] = [
-    { x: -r, y: -r },
-    { x: w + r, y: -r },
-    { x: w + r, y: h + r },
-    { x: -r, y: h + r },
-    { x: -r, y: -r },
+    { x: o - r, y: o - r },
+    { x: o + w + r, y: o - r },
+    { x: o + w + r, y: o + h + r },
+    { x: o - r, y: o + h + r },
+    { x: o - r, y: o - r },
   ];
 
   const tabs: { start: number; end: number }[] = [];
@@ -1406,24 +1577,54 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
     g.push(`; OP 2/3: Through-hole drilling (${result.drills.length} holes)`);
     g.push(`; ==================================================`);
 
-    const groups = groupDrillsByBit(result.drills, options.drillConsolidationMm ?? 0);
+    const groups = groupDrillsByBit(
+      result.drills,
+      options.drillConsolidationMm ?? 0,
+      options.drillBitOverridesMm
+    );
 
     let toolNum = 2;
-    for (const { bitMm, nominals, holes } of groups) {
+    // Groups arrive ordered by bit, so a bit serving several hole sizes is
+    // loaded once rather than swapped out and back in between them.
+    let loadedBitMm: number | null = null;
+    for (const { bitMm, holeMm, nominals, holes } of groups) {
       const merged =
-        nominals.length > 1 ? ` (${nominals.map(n => `${n}mm`).join(', ')} drilled at size)` : '';
-      g.push(`; --- ${holes.length} hole(s) at ${bitMm}mm${merged} ---`);
-      const dia = bitMm;
-      if (options.pauseOnToolChange) {
-        g.push(`T${toolNum} M6 ; Tool ${toolNum}: ${dia}mm drill`);
+        nominals.length > 1 ? ` (covers ${nominals.map(n => `${n}mm`).join(', ')})` : '';
+      const interpolated = bitMm < holeMm - 0.01;
+      g.push(
+        `; --- ${holes.length} hole(s) at ${holeMm}mm${merged}, ` +
+        `${interpolated ? `interpolated with a ${bitMm}mm bit` : `drilled with a ${bitMm}mm bit`} ---`
+      );
+      if (options.pauseOnToolChange && bitMm !== loadedBitMm) {
+        g.push(`T${toolNum} M6 ; Tool ${toolNum}: ${bitMm}mm drill`);
         g.push(`G4 P1`);
+        toolNum++;
       }
-      toolNum++;
+      loadedBitMm = bitMm;
+
+      const depth = options.drillDepthZ;
+
+      if (interpolated) {
+        const path = helicalHoleToolpath(holeMm, bitMm, depth, options.zStepdown);
+        for (const hole of holes) {
+          g.push(`; ${hole.componentId} pin ${hole.pinNumber}`);
+          g.push(`G0 X${f3(hole.x + path[0].x)} Y${f3(hole.y + path[0].y)}`);
+          g.push(`G1 Z0 F${options.plungeFeedrate}`);
+          for (const pt of path) {
+            g.push(
+              `G1 X${f3(hole.x + pt.x)} Y${f3(hole.y + pt.y)} Z${f3(pt.z)} ` +
+              `F${options.cutFeedrate}`
+            );
+          }
+          g.push(`G0 Z${f3(options.safeZ)}`);
+        }
+        continue;
+      }
+
       for (const hole of holes) {
         g.push(`; ${hole.componentId} pin ${hole.pinNumber}`);
         g.push(`G0 X${f3(hole.x)} Y${f3(hole.y)}`);
         // Peck drill so swarf clears instead of binding the bit.
-        const depth = options.drillDepthZ;
         const peck = Math.max(0.4, Math.abs(depth) / 3);
         let z = 0;
         while (z > depth) {
@@ -1537,8 +1738,15 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
 
 /** One drill bit and every hole it makes. */
 export interface DrillBitGroup {
-  /** Bit diameter to load, in mm — the largest hole in the group. */
+  /** Bit diameter to load, in mm. */
   bitMm: number;
+  /**
+   * Diameter the finished hole has to be — the largest nominal in the group.
+   * Equal to `bitMm` for a plain drilled hole; smaller than it when the loaded
+   * bit is oversize, and larger when a smaller bit is helically interpolated
+   * out to size.
+   */
+  holeMm: number;
   /** The nominal footprint diameters this bit covers, ascending. */
   nominals: number[];
   holes: DrillPoint[];
@@ -1559,7 +1767,11 @@ export interface DrillBitGroup {
  * so a group can never span more than `toleranceMm` end to end — a chain of
  * near-neighbours cannot drift a 0.8mm hole up to 2mm.
  */
-export function groupDrillsByBit(drills: DrillPoint[], toleranceMm: number): DrillBitGroup[] {
+export function groupDrillsByBit(
+  drills: DrillPoint[],
+  toleranceMm: number,
+  bitOverridesMm?: Record<string, number>
+): DrillBitGroup[] {
   const byNominal = new Map<number, DrillPoint[]>();
   for (const d of drills) {
     const key = Math.round(d.diameter * 100) / 100;
@@ -1576,38 +1788,105 @@ export function groupDrillsByBit(drills: DrillPoint[], toleranceMm: number): Dri
     // Anchored on the group's smallest size, not its last, so the span is bounded.
     if (open && size - open.nominals[0] <= tol) {
       open.nominals.push(size);
-      open.bitMm = size; // sizes ascend, so this is the largest so far
+      // Sizes ascend, so this is the largest so far.
+      open.holeMm = size;
+      open.bitMm = size;
       open.holes.push(...byNominal.get(size)!);
     } else {
-      groups.push({ bitMm: size, nominals: [size], holes: [...byNominal.get(size)!] });
+      groups.push({
+        bitMm: size,
+        holeMm: size,
+        nominals: [size],
+        holes: [...byNominal.get(size)!],
+      });
     }
   }
 
-  return groups;
+  if (!bitOverridesMm) return groups;
+
+  // Swap in the bit the user actually owns. A bigger bit just drills the hole
+  // oversize; a smaller one is interpolated out to size, so either direction is
+  // machinable and `holeMm` stays the diameter that has to come out.
+  for (const g of groups) {
+    const chosen = bitOverridesMm[String(g.holeMm)];
+    if (typeof chosen === 'number' && chosen > 0) g.bitMm = chosen;
+  }
+
+  // Ordered so every group sharing a bit is adjacent: the G-code emits a tool
+  // change only when the bit actually changes, so one small bit can interpolate
+  // several different hole sizes back to back without swapping out and in.
+  groups.sort((a, b) => a.bitMm - b.bitMm || a.holeMm - b.holeMm);
+
+  const merged: DrillBitGroup[] = [];
+  for (const g of groups) {
+    const open = merged[merged.length - 1];
+    // Only same bit AND same finished size may share a group: a different hole
+    // size needs a different interpolation radius.
+    if (open && open.bitMm === g.bitMm && open.holeMm === g.holeMm) {
+      open.nominals.push(...g.nominals);
+      open.holes.push(...g.holes);
+    } else {
+      merged.push(g);
+    }
+  }
+  for (const g of merged) g.nominals.sort((a, b) => a - b);
+  return merged;
 }
 
 /**
- * Excellon drill file, for drilling on a different machine.
+ * Tool-centre path that opens a hole larger than the bit loaded, as a stack of
+ * concentric helices cut with linear moves.
  *
- * Deliberately NOT consolidated: this file goes to a fab or a dedicated drill,
- * where the tool library is real and the nominal sizes are what should be cut.
- * Bit merging exists to save tool changes on *this* machine.
+ * A bit only has to be *small enough*: anything under the finished diameter can
+ * be spiralled out to size, so a drawer with one 1.1mm bit still cuts 1.5mm and
+ * 2.0mm holes. Arcs are deliberately not used — G2/G3 cannot be height-map
+ * compensated, so a milled hole would be the one feature on the board ignoring
+ * the mesh.
+ *
+ * Rings run inside-out. The innermost is placed so the cutter overlaps the
+ * centre, otherwise a slug is left standing in the middle of the hole.
  */
-export function generateExcellon(result: PcbLayoutResult): string {
-  const lines: string[] = ['M48', 'METRIC,TZ'];
-  const byDia = new Map<number, DrillPoint[]>();
-  for (const d of result.drills) {
-    const key = Math.round(d.diameter * 100) / 100;
-    if (!byDia.has(key)) byDia.set(key, []);
-    byDia.get(key)!.push(d);
+function helicalHoleToolpath(
+  holeMm: number,
+  bitMm: number,
+  depthZ: number,
+  stepdownMm: number
+): { x: number; y: number; z: number }[] {
+  const maxR = (holeMm - bitMm) / 2;
+  if (maxR <= 0.01) return [];
+
+  const radii: number[] = [];
+  // First ring: no further in than the cutter's own radius, or the centre slug
+  // survives.
+  const stepover = Math.max(0.05, bitMm * 0.6);
+  for (let r = Math.min(maxR, bitMm / 2); r < maxR - 1e-6; r += stepover) radii.push(r);
+  radii.push(maxR);
+
+  const perRev = Math.max(0.1, Math.min(stepdownMm, bitMm * 0.5));
+  const path: { x: number; y: number; z: number }[] = [];
+
+  for (const r of radii) {
+    // ~0.15mm chords: fine enough that the flat-sided polygon is inside the
+    // tolerance of a hand-soldered through-hole.
+    const steps = Math.max(16, Math.ceil((2 * Math.PI * r) / 0.15));
+    const revs = Math.max(1, Math.ceil(Math.abs(depthZ) / perRev));
+    const total = steps * revs;
+    for (let i = 0; i <= total; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      path.push({
+        x: r * Math.cos(a),
+        y: r * Math.sin(a),
+        z: (depthZ * i) / total,
+      });
+    }
+    // A finishing lap at depth: the helix leaves the last revolution cut on a
+    // slope, so the bottom of the wall is otherwise undersize.
+    for (let i = 0; i <= steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      path.push({ x: r * Math.cos(a), y: r * Math.sin(a), z: depthZ });
+    }
   }
-  const sorted = [...byDia.entries()].sort((a, b) => a[0] - b[0]);
-  sorted.forEach(([dia], i) => lines.push(`T${i + 1}C${dia.toFixed(3)}`));
-  lines.push('%');
-  sorted.forEach(([, holes], i) => {
-    lines.push(`T${i + 1}`);
-    for (const h of holes) lines.push(`X${h.x.toFixed(3)}Y${h.y.toFixed(3)}`);
-  });
-  lines.push('T0', 'M30');
-  return lines.join('\n');
+
+  return path;
 }
+

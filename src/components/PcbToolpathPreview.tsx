@@ -293,13 +293,16 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
         )}
 
         <svg
-          viewBox={`-5 -5 ${result.boardWidthMm + 10} ${result.boardHeightMm + 10}`}
+          viewBox={`-5 -5 ${result.boardWidthMm + result.boardOriginMm * 2 + 10} ${
+            result.boardHeightMm + result.boardOriginMm * 2 + 10
+          }`}
           className="w-full h-full max-h-[300px] select-none"
         >
-          {/* Grid background */}
+          {/* Board outline. Inset from the program origin by the profile tool
+              radius, so the outline pass itself starts on X0Y0. */}
           <rect
-            x="0"
-            y="0"
+            x={result.boardOriginMm}
+            y={result.boardOriginMm}
             width={result.boardWidthMm}
             height={result.boardHeightMm}
             fill="#0f172a"

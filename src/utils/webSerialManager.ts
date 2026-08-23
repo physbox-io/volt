@@ -145,7 +145,33 @@ export interface MachineState {
   lastError?: string;
   /** Populated while a mesh probe is running. */
   probeProgress?: { done: number; total: number };
+  /**
+   * Whether the machine has since reported a work position at the origin on
+   * those axes, i.e. whether the zeroing actually took.
+   *
+   * GRBL acknowledges `G10 L20` by return, which only says the line was
+   * received. Zeroing was otherwise completely invisible from the UI: the
+   * button did something and the only evidence was the DRO changing. The
+   * `Pending` flags cover the gap between sending and the next status report.
+   */
+  zeroXYConfirmed?: boolean;
+  zeroZConfirmed?: boolean;
+  zeroXYPending?: boolean;
+  zeroZPending?: boolean;
+  /**
+   * Where work Z is expected to land once a pending Z zero takes. Plate
+   * probing sets Z to the plate thickness rather than to nothing, so waiting
+   * for a reported zero would never confirm it.
+   */
+  zeroZTargetMm?: number;
 }
+
+/**
+ * How close to the origin a reported work position has to be to count as
+ * zeroed. Well inside what any of these machines resolve, so it reads as "at
+ * the origin" without demanding an exact zero the DRO may never print.
+ */
+const ZERO_CONFIRM_TOLERANCE_MM = 0.1;
 
 export interface ProbeMeshOptions {
   minX: number;
@@ -576,7 +602,22 @@ class WebSerialManager {
       }
       else if (!this.isJobRunning && this.state.status !== 'PROBING') status = 'IDLE';
 
-      this.updateState({ mpos, wpos, status });
+      // Resolve a pending zero as soon as the machine reports the work origin
+      // where it was asked to be.
+      const zeroPatch: Partial<MachineState> = {};
+      if (this.state.zeroXYPending &&
+          Math.abs(wpos.x) < ZERO_CONFIRM_TOLERANCE_MM &&
+          Math.abs(wpos.y) < ZERO_CONFIRM_TOLERANCE_MM) {
+        zeroPatch.zeroXYPending = false;
+        zeroPatch.zeroXYConfirmed = true;
+      }
+      if (this.state.zeroZPending &&
+          Math.abs(wpos.z - (this.state.zeroZTargetMm ?? 0)) < ZERO_CONFIRM_TOLERANCE_MM) {
+        zeroPatch.zeroZPending = false;
+        zeroPatch.zeroZConfirmed = true;
+      }
+
+      this.updateState({ mpos, wpos, status, ...zeroPatch });
       // Anything waiting on a fresh position reading now has one.
       const waiters = this.statusWaiters;
       this.statusWaiters = [];
@@ -997,6 +1038,7 @@ class WebSerialManager {
       .join(' ');
     if (!axes) return;
     this.assertUnlocked();
+    this.clearZeroConfirmation();
     await this.sendLine(`$J=G91 G21 ${axes} F${Math.round(feedRate)}`);
   }
 
@@ -1007,8 +1049,23 @@ class WebSerialManager {
 
   /** Triggers hardware homing cycle ($H). */
   public async homeMachine(): Promise<void> {
+    this.clearZeroConfirmation();
     await this.sendLine('$H');
     this.updateState({ status: 'IDLE', lastError: undefined });
+  }
+
+  /**
+   * Drops any standing "zeroed here" confirmation. Called whenever the machine
+   * moves under its own steam, because the confirmation described where it was
+   * rather than where the origin is.
+   */
+  private clearZeroConfirmation(): void {
+    this.updateState({
+      zeroXYPending: false,
+      zeroXYConfirmed: false,
+      zeroZPending: false,
+      zeroZConfirmed: false,
+    });
   }
 
   /** Kills GRBL Alarm state ($X). */
@@ -1034,6 +1091,7 @@ class WebSerialManager {
 
   /** Sets current XY position as G54 Work Origin (0,0). */
   public async zeroXY(): Promise<void> {
+    this.updateState({ zeroXYPending: true, zeroXYConfirmed: false });
     await this.sendLine('G10 L20 P1 X0 Y0');
   }
 
@@ -1112,12 +1170,18 @@ class WebSerialManager {
     // clobbering a PAUSED_TOOL would take the resume banner off screen while
     // the job was still sitting there half-streamed.
     const resumeStatus = this.state.status;
-    this.updateState({ status: 'PROBING' });
+    this.updateState({
+      status: 'PROBING',
+      zeroZPending: true,
+      zeroZConfirmed: false,
+      zeroZTargetMm: touchPlateThicknessMm,
+    });
     try {
       await this.sendLine('G21');
       await this.sendLine('G90');
       await this.probeDown(30, 50);
       await this.sendLine(`G10 L20 P1 Z${touchPlateThicknessMm.toFixed(3)}`);
+      await this.awaitStatus();
       await this.retract(PROBE_RETRACT_MM);
       await this.drain();
     } finally {
@@ -1136,12 +1200,18 @@ class WebSerialManager {
     this.assertUnlocked();
     // See zeroZ: an in-job re-zero must give the pause back when it finishes.
     const resumeStatus = this.state.status;
-    this.updateState({ status: 'PROBING' });
+    this.updateState({
+      status: 'PROBING',
+      zeroZPending: true,
+      zeroZConfirmed: false,
+      zeroZTargetMm: 0,
+    });
     try {
       await this.sendLine('G21');
       await this.sendLine('G90');
       await this.probeDown(25, 50);
       await this.sendLine('G10 L20 P1 Z0');
+      await this.awaitStatus();
       await this.retract(PROBE_RETRACT_MM);
       await this.drain();
     } finally {

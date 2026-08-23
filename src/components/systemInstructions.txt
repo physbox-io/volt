@@ -174,8 +174,8 @@ PCB MILLING & AUTO-LEVELLING (Export → PCB Milling)
 
 The app can turn a schematic into a single-sided milled PCB: it places
 footprints, routes traces, and emits isolation, drilling and profile
-toolpaths. Output can be downloaded (G-code, Excellon .drl, SVG) or streamed
-to a GRBL machine over WebSerial (Chromium-based browsers only).
+toolpaths. The G-code can be downloaded, or streamed to a GRBL machine over
+WebSerial (Chromium-based browsers only).
 
 Auto-levelling: isolation cuts are only ~0.05-0.1mm deep, about the thickness
 of the copper foil. A 0.2mm bow across the blank is enough to leave traces
