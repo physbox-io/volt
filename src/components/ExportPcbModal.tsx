@@ -33,6 +33,8 @@ import {
   suggestedChiploadMm,
   feedFromChipload,
   minIsolationChannelMm,
+  autoIsolationDepthMm,
+  isolationFlatnessAllowanceMm,
   type PcbToolPreset,
   type ToolType,
   type CustomToolInput,
@@ -144,6 +146,14 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     recommendedRpm: 12000,
   });
   const [selectedMaterialId, setSelectedMaterialId] = useState<string>('fr4_1oz');
+  /**
+   * When on, the isolation depth is derived from the copper thickness and the
+   * board's measured flatness instead of the tool catalogue's blanket figure.
+   * Shallower means a narrower channel from a V-bit, which is copper kept.
+   */
+  const [autoIsolationDepth, setAutoIsolationDepth] = useState<boolean>(
+    () => localStorage.getItem('pcbAutoIsolationDepth') !== '0'
+  );
   const [airCutZOffset, setAirCutZOffset] = useState<number>(20);
   const [isAirCutMode, setIsAirCutMode] = useState<boolean>(false);
   const [jogStep, setJogStep] = useState<number>(1.0);
@@ -212,6 +222,42 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     [customTools]
   );
   const selectedTool = availableTools.find(t => t.id === selectedToolId);
+
+  /**
+   * Flatness taken from the last probe, whether or not it still matches this
+   * board's size. The span is a property of the stock and the spoilboard, not
+   * of the layout, so a stale map is still the best estimate available — and
+   * reading it from the raw map keeps the depth from oscillating: the depth
+   * changes the channel width, which changes the auto-sized board, which would
+   * otherwise invalidate the map that set the depth in the first place.
+   */
+  const probedSpanZ = useMemo(
+    () => (heightmap ? getGridStats(heightmap.grid).spanZ : undefined),
+    [heightmap]
+  );
+
+  /**
+   * Depth derived from what is actually being cut rather than the catalogue's
+   * blanket figure: copper thickness plus the room the board's own flatness
+   * demands. Written back into the options rather than applied at export time,
+   * so the preview, the DRC and the G-code all agree on one number.
+   */
+  const autoDepthZ = useMemo(() => {
+    const material = PCB_MATERIAL_PRESETS.find(m => m.id === selectedMaterialId);
+    if (!selectedTool || !material) return null;
+    return autoIsolationDepthMm(
+      selectedTool,
+      material,
+      isolationFlatnessAllowanceMm(probedSpanZ)
+    );
+  }, [selectedTool, selectedMaterialId, probedSpanZ]);
+
+  React.useEffect(() => {
+    if (!autoIsolationDepth || autoDepthZ === null) return;
+    setOptions(prev =>
+      prev.isolationDepthZ === autoDepthZ ? prev : { ...prev, isolationDepthZ: autoDepthZ }
+    );
+  }, [autoIsolationDepth, autoDepthZ, setOptions]);
 
   /**
    * A straight-walled cutter has no included angle, so the V-bit width formula
@@ -914,7 +960,14 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     </>
                   )}
                   <div>
-                    <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">Trace Width (mm)</label>
+                    <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
+                      Trace Width (mm)
+                      <InfoTip>
+                        What the router routes with — the width it reserves when deciding where a
+                        track may go. It is the <em>minimum</em> copper, not the finished copper:
+                        with flooding on, every track that has room ends up wider than this.
+                      </InfoTip>
+                    </label>
                     <input
                       type="number"
                       step="0.05"
@@ -922,6 +975,41 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       onChange={e => setOptions({ ...options, traceWidthMm: parseFloat(e.target.value) || 0.4 })}
                       className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
+                      Copper Flood (mm)
+                      <InfoTip>
+                        How far copper is allowed to spread outward past the routed trace, per
+                        side. Everything the bit does not cut stays copper anyway, so a gap wider
+                        than the bit's own channel is copper thrown away for nothing: flooding
+                        grows each net back out until it is one channel width from its neighbour.
+                        Traces in open laminate take the whole figure; traces squeezed between
+                        pads keep only what the channel leaves. Fat copper couples more strongly
+                        to its neighbours, so keep this small on RF or oscillator boards. 0 mills
+                        the nominal trace width and nothing more.
+                      </InfoTip>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={options.copperFloodMm ?? 0}
+                      onChange={e =>
+                        setOptions({
+                          ...options,
+                          copperFloodMm: Math.max(0, parseFloat(e.target.value) || 0),
+                        })
+                      }
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                    />
+                    <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+                      {result.copperFloodMm > 0
+                        ? `${options.traceWidthMm}mm minimum, up to ` +
+                          `${(options.traceWidthMm + result.copperFloodMm * 2).toFixed(2)}mm where there is room, ` +
+                          `isolated by a ${result.effectiveToolDiaMm.toFixed(3)}mm channel.`
+                        : `Every trace is milled to ${options.traceWidthMm}mm and the rest of the gap is cut away.`}
+                    </p>
                   </div>
                   <div>
                     <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">Trace Clearance (mm)</label>
@@ -1356,14 +1444,40 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 block">Isolation Depth (mm)</label>
+                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
+                        Isolation Depth (mm)
+                        <InfoTip>
+                          A V-bit gets wider the deeper it goes, so this number decides the
+                          channel width and therefore how much copper is left either side of it.
+                          Auto cuts just past the copper: foil thickness from the material
+                          preset, plus the room the board's flatness demands. Probe a height map
+                          and that allowance drops, the channel narrows, and the traces come out
+                          fatter.
+                        </InfoTip>
+                      </label>
                       <input
                         type="number"
                         step="0.01"
                         value={options.isolationDepthZ}
+                        disabled={autoIsolationDepth}
                         onChange={e => setOptions({ ...options, isolationDepthZ: parseFloat(e.target.value) || -0.08 })}
-                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 disabled:opacity-60"
                       />
+                      <label className="flex items-center gap-1.5 mt-1 cursor-pointer text-[10px] text-slate-500 dark:text-slate-400">
+                        <input
+                          type="checkbox"
+                          checked={autoIsolationDepth}
+                          onChange={e => {
+                            setAutoIsolationDepth(e.target.checked);
+                            localStorage.setItem('pcbAutoIsolationDepth', e.target.checked ? '1' : '0');
+                          }}
+                          className="accent-emerald-500"
+                        />
+                        <span>
+                          Auto — shallowest cut that clears the copper
+                          {autoIsolationDepth && probedSpanZ === undefined && ' (probe to go shallower)'}
+                        </span>
+                      </label>
                     </div>
                   </div>
 

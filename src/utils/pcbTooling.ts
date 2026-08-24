@@ -450,6 +450,45 @@ export function calculatePcbFeeds(
   };
 }
 
+/**
+ * How much deeper than the copper the isolation pass has to cut to be sure it
+ * gets through everywhere, in mm.
+ *
+ * Copper is 35um thick; the reason the recommended depths are several times
+ * that is the board, not the foil. Laminate is never flat, it is never clamped
+ * flat, and the spoilboard under it is never true — so the cut has to be deep
+ * enough that the high spots still clear. A probed height map removes most of
+ * that error, leaving only what the interpolation misses between probe points,
+ * which is a fraction of the measured span.
+ */
+export function isolationFlatnessAllowanceMm(heightmapSpanZmm?: number): number {
+  if (heightmapSpanZmm === undefined) return 0.08;
+  return Math.max(0.02, Math.min(0.08, heightmapSpanZmm * 0.15));
+}
+
+/**
+ * The shallowest isolation depth that still clears the copper.
+ *
+ * A V-bit's cut widens with depth, so depth is the single biggest lever on how
+ * much copper a job removes: every micron cut past the foil is a wider channel
+ * and two narrower traces. The catalogue depth is a safe figure for an
+ * unlevelled board with unknown copper; once the material and the board's
+ * flatness are known, the same job usually runs a good deal shallower.
+ *
+ * Never returns anything deeper than the tool's own recommendation — this is a
+ * lever for cutting less, not for cutting more.
+ */
+export function autoIsolationDepthMm(
+  tool: PcbToolPreset,
+  material: PcbMaterialPreset,
+  flatnessMm = isolationFlatnessAllowanceMm()
+): number {
+  const copperMm = material.copperThicknessUm / 1000;
+  const recommended = Math.abs(tool.recommendedDepthMm * material.depthMultiplier);
+  const needed = copperMm + Math.max(0.02, flatnessMm);
+  return -parseFloat(Math.min(recommended, needed).toFixed(3));
+}
+
 // ---------------------------------------------------------------------------
 // Custom tools
 //

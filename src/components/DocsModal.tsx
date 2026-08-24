@@ -272,9 +272,32 @@ export function DocsModal({ onClose }: DocsModalProps) {
                 <p className="mb-4">
                   <strong>Export &rarr; PCB Milling</strong> turns your schematic into a single-sided copper board:
                   it places footprints, routes traces, and generates isolation, drilling, and profile toolpaths.
-                  You can download the G-code and drill files for another sender, or drive a GRBL machine
-                  directly from the browser over WebSerial.
+                  The board is carved straight from the browser: the toolpaths are streamed to a GRBL machine
+                  over WebSerial rather than saved out for another sender. The only file this app writes is the
+                  circuit itself, in Physbox JSON.
                 </p>
+
+                <h4 className="text-xl font-semibold mb-2 mt-6">How much copper you keep</h4>
+                <p className="mb-4">
+                  <strong>Trace Width</strong> is a routing figure &mdash; the width the router reserves when
+                  it decides where a track may go &mdash; and it sets the <em>minimum</em> copper, not the
+                  finished copper. Two settings decide the rest, and both are on by default:
+                </p>
+                <ul className="list-disc pl-6 mb-4 space-y-1">
+                  <li>
+                    <strong>Copper Flood</strong> grows every net outward until it is one channel width from
+                    its neighbour. Everything the bit does not cut stays copper anyway, so any gap wider than
+                    the bit's own channel is copper thrown away for nothing. A track in open laminate takes the
+                    whole flood budget; one squeezed between pads keeps only what the channel leaves. Turn it
+                    down on RF or oscillator boards, where fat adjacent copper means more coupling.
+                  </li>
+                  <li>
+                    <strong>Auto isolation depth</strong> picks the shallowest cut that still clears the foil:
+                    copper thickness from the material preset, plus an allowance for how flat the board is. A
+                    V-bit widens as it descends, so a shallower cut is a narrower channel and two fatter traces
+                    &mdash; probe a height map and the allowance drops, taking the channel with it.
+                  </li>
+                </ul>
 
                 <h4 className="text-xl font-semibold mb-2 mt-6">Why auto-levelling matters</h4>
                 <p className="mb-4">

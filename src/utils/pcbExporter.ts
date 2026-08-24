@@ -22,12 +22,15 @@ import { minPadGapMm } from './pcbTooling';
 import {
   circlePoly,
   differencePolys,
+  intersectPolys,
   offsetPolys,
   ovalPoly,
+  polysBounds,
   polysOverlap,
   polysToSvgPath,
   rectPoly,
   strokeToPoly,
+  totalArea,
   unionPolys,
   type Poly,
   type Pt,
@@ -104,6 +107,32 @@ export interface PcbOptions {
    * than the requested diameter is ignored.
    */
   drillBitOverridesMm?: Record<string, number>;
+  /**
+   * How far each net's copper may flood outward from its nominal geometry, per
+   * side, in mm. 0 mills the nominal trace width and throws the rest away.
+   *
+   * Trace width is a *routing* figure — it decides where the router is willing
+   * to put a track. On an isolation job it is a poor milling figure: every
+   * micron of gap wider than the tool's own channel is copper that gets cut
+   * away for nothing, and copper is what carries current and survives a
+   * soldering iron. Flooding grows each net back out until it is one channel
+   * width (plus {@link channelMarginMm}) from its neighbours, so the gaps end
+   * up as narrow as the bit can cut and everything else stays copper.
+   *
+   * It is a ceiling, not a fixed amount: a net in open laminate takes the whole
+   * figure, a net running beside another stops where the channel demands. Fat
+   * copper means more coupling between adjacent nets, so keep it modest on
+   * anything RF or oscillator-shaped.
+   */
+  copperFloodMm?: number;
+  /**
+   * Extra clearance kept on *each* side of the isolation channel when copper is
+   * flooded, in mm. This is the flood's safety margin against an unlevelled
+   * board and against Clipper's own rounding: at 0 the pass-0 ring would touch
+   * the neighbouring copper's keepout and get truncated, which leaves the two
+   * nets shorted.
+   */
+  channelMarginMm?: number;
 }
 
 export const DEFAULT_PCB_OPTIONS: PcbOptions = {
@@ -140,6 +169,8 @@ export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   padMarginMm: 0.1,
   drillConsolidationMm: 0.3,
   boardMarginMm: 1.5,
+  copperFloodMm: 0.6,
+  channelMarginMm: 0.05,
 };
 
 /**
@@ -278,6 +309,12 @@ export interface PcbLayoutResult {
   completion: number;
   /** Effective cutting width of the V-bit at the configured depth. */
   effectiveToolDiaMm: number;
+  /**
+   * How far copper was actually flooded past its nominal geometry, per side,
+   * in mm. Below {@link PcbOptions.copperFloodMm} when the board ran out of
+   * room before the budget did.
+   */
+  copperFloodMm: number;
   cycleTimeSec: number;
   travelDistanceMm: number;
   cutDistanceMm: number;
@@ -654,7 +691,11 @@ function cropBoardToContent(
   const isoDia = vBitWidthAtDepth(opts.vBitTipMm, opts.vBitAngleDeg, opts.isolationDepthZ);
   const passes = Math.max(1, Math.min(3, opts.isolationPasses));
   const isolationReach = isoDia + (passes - 1) * isoDia * 0.8;
-  const margin = isolationReach + 0.3 + Math.max(0, opts.boardMarginMm ?? 1.5);
+  const margin =
+    isolationReach +
+    0.3 +
+    Math.max(0, opts.copperFloodMm ?? 0) +
+    Math.max(0, opts.boardMarginMm ?? 1.5);
 
   const origin = boardOriginOffsetMm(opts);
   let boardW = Math.ceil((maxX - minX + margin * 2) * 10) / 10;
@@ -676,6 +717,146 @@ function cropBoardToContent(
   translateLayout(placed, pads, traces, cutouts, shiftX, shiftY);
 
   return { boardWidthMm: boardW, boardHeightMm: boardH };
+}
+
+/**
+ * Grows every net's copper outward until it is one isolation channel away from
+ * its neighbours, and no further than `maxFloodMm`.
+ *
+ * Why this is not one big offset per net: the gap between two nets belongs to
+ * both of them. Offsetting net A first would let A take the whole gap and leave
+ * B pinned at its nominal width, and which net won would depend on map order.
+ * So the flood advances in equal steps with every net moving at once, each step
+ * clipped against where the *other* nets stood when the step began — the two
+ * sides of a gap therefore meet in the middle, wherever that middle happens to
+ * be. It is a discrete distance transform, done in polygons.
+ *
+ * The keepout allows for a step of the neighbour's own growth on top of the
+ * channel: within a step both sides move, so blocking at exactly the channel
+ * width would let them close to a channel *minus* a step apart.
+ *
+ * Copper present on entry is never removed — a board whose nominal geometry is
+ * already tighter than the tool can cut is a design-rule error to report, not
+ * something to quietly shave.
+ */
+export function floodCopperByNet(
+  copperByNet: Map<string, Poly[]>,
+  opts: {
+    /** Ceiling on outward growth, per side, in mm. */
+    maxFloodMm: number;
+    /** Width the isolation tool actually cuts, in mm. */
+    channelMm: number;
+    /** Extra clearance kept each side of that channel, in mm. */
+    channelMarginMm?: number;
+    /** Copper that must be kept clear but never grows: unassigned pads, cutouts. */
+    blockers?: Poly[];
+    /** Region copper is allowed to occupy, typically the board minus toolpath room. */
+    bounds?: Poly[];
+  }
+): { copper: Map<string, Poly[]>; appliedMm: number } {
+  const maxFlood = Math.max(0, opts.maxFloodMm);
+  const netIds = [...copperByNet.keys()];
+  if (maxFlood <= 0 || netIds.length === 0) {
+    return { copper: copperByNet, appliedMm: 0 };
+  }
+
+  // Step count is a Clipper budget: every step offsets, clips and unions once
+  // per net. A dense board gets coarser steps rather than a layout that takes
+  // a minute to redraw — the step size is only the resolution at which the two
+  // sides of a gap meet, so a coarse one costs a little copper, not safety.
+  const budget = netIds.length > 40 ? 4 : netIds.length > 20 ? 6 : 8;
+  const steps = Math.max(1, Math.min(budget, Math.round(maxFlood / 0.05)));
+  const stepMm = maxFlood / steps;
+  const keepClear =
+    opts.channelMm + 2 * Math.max(0, opts.channelMarginMm ?? 0) + stepMm;
+
+  // Blockers never move, so their keepout is offset once for the whole flood.
+  const blockerKeepout =
+    opts.blockers && opts.blockers.length > 0
+      ? offsetPolys(unionPolys(opts.blockers), keepClear)
+      : [];
+  const bounds = opts.bounds && opts.bounds.length > 0 ? opts.bounds : null;
+  const boundsBox = bounds ? polysBounds(bounds) : null;
+
+  let cur = copperByNet;
+  let applied = 0;
+  // Growth is monotone — a neighbour's keepout only ever expands and the bounds
+  // never move — so a net that failed to grow this step can never grow again.
+  // Dropping it keeps the tail of a dense flood cheap.
+  const live = new Set(netIds);
+
+  for (let s = 0; s < steps && live.size > 0; s++) {
+    // One keepout per net, rather than one union-of-everything-else per net:
+    // offsetting each net's own copper once and letting the difference below
+    // take all the pieces at once is the same geometry for a fraction of the
+    // work.
+    const keepout = new Map<string, Poly[]>();
+    const keepoutBox = new Map<string, ReturnType<typeof polysBounds>>();
+    for (const netId of netIds) {
+      const ko = offsetPolys(cur.get(netId)!, keepClear);
+      keepout.set(netId, ko);
+      keepoutBox.set(netId, polysBounds(ko));
+    }
+
+    const next = new Map<string, Poly[]>(cur);
+    let grewAny = false;
+    for (const netId of netIds) {
+      const own = cur.get(netId)!;
+      if (!live.has(netId)) continue;
+
+      let grown = offsetPolys(own, stepMm);
+      const grownBox = polysBounds(grown);
+      if (bounds && boundsBox) {
+        // Clipping against the board is only needed once the net is close
+        // enough to reach it.
+        const box = grownBox;
+        if (
+          box.minX < boundsBox.minX ||
+          box.minY < boundsBox.minY ||
+          box.maxX > boundsBox.maxX ||
+          box.maxY > boundsBox.maxY
+        ) {
+          grown = intersectPolys(grown, bounds);
+        }
+      }
+
+      // Only the neighbours this net could actually reach this step matter, and
+      // on any board bigger than a stamp that is a handful of them. Skipping
+      // the rest keeps the clip small, which is where Clipper spends its time.
+      const clip: Poly[] = [...blockerKeepout];
+      for (const otherId of netIds) {
+        if (otherId === netId) continue;
+        const box = keepoutBox.get(otherId)!;
+        if (
+          box.minX > grownBox.maxX ||
+          box.maxX < grownBox.minX ||
+          box.minY > grownBox.maxY ||
+          box.maxY < grownBox.minY
+        ) {
+          continue;
+        }
+        clip.push(...keepout.get(otherId)!);
+      }
+      if (clip.length > 0) grown = differencePolys(grown, clip);
+
+      // Clipping can bite into copper that was already there on a board whose
+      // nominal geometry is tighter than the channel. Never remove copper the
+      // layout asked for; the DRC is what reports that case.
+      grown = unionPolys([...grown, ...own]);
+
+      if (totalArea(grown) > totalArea(own) + 1e-4) {
+        grewAny = true;
+        next.set(netId, grown);
+      } else {
+        live.delete(netId);
+      }
+    }
+    cur = next;
+    if (!grewAny) break;
+    applied += stepMm;
+  }
+
+  return { copper: cur, appliedMm: parseFloat(applied.toFixed(3)) };
 }
 
 // ---------------------------------------------------------------------------
@@ -814,7 +995,14 @@ export function generatePcbLayout(
   }
 
   // 5. Copper geometry per net -----------------------------------------
-  const copperByNet = new Map<string, Poly[]>();
+  // The channel the bit cuts is needed before the copper is final: it is what
+  // the flood below leaves between nets.
+  const effectiveToolDiaMm = vBitWidthAtDepth(
+    options.vBitTipMm,
+    options.vBitAngleDeg,
+    options.isolationDepthZ
+  );
+  let copperByNet = new Map<string, Poly[]>();
   const addCopper = (netId: string, polys: Poly[]) => {
     copperByNet.set(netId, (copperByNet.get(netId) || []).concat(polys));
   };
@@ -833,6 +1021,57 @@ export function generatePcbLayout(
     copperByNet.set(netId, unionPolys(polys));
   }
 
+  // 5b. Copper flood ----------------------------------------------------
+  // Everything outside the nominal trace is about to be milled away, so any gap
+  // wider than the bit's channel is copper thrown out for nothing. Grow it back.
+  const floodBudgetMm = Math.max(0, options.copperFloodMm ?? 0);
+  let appliedFloodMm = 0;
+  if (floodBudgetMm > 0 && copperByNet.size > 0) {
+    // A pad with no net is never isolated, so it is not copper to grow — but
+    // flooding across one would bury a hole that still has to be soldered.
+    const blockers: Poly[] = [];
+    for (const pad of pads) {
+      if (pad.netId) continue;
+      const comp = compById.get(pad.componentId);
+      if (!comp) continue;
+      blockers.push(
+        padPolygon(pad, comp.rotationDeg, effectivePadMarginMm(comp.footprint, padMargin))
+      );
+    }
+    // Copper over a cutout would be milled off with the slug it sits on.
+    for (const co of cutouts) {
+      blockers.push(
+        co.shape === 'circle'
+          ? circlePoly(co.x, co.y, Math.max(co.widthMm, co.heightMm) / 2)
+          : rectPoly(co.x, co.y, co.widthMm, co.heightMm)
+      );
+    }
+
+    // Copper may not run out past the room the isolation passes need inside the
+    // board edge, or the outermost ring would be commanded off the stock.
+    const floodPasses = Math.max(1, Math.min(3, options.isolationPasses));
+    const edgeKeepout =
+      effectiveToolDiaMm + (floodPasses - 1) * effectiveToolDiaMm * 0.8 + 0.2;
+    const bounds = [
+      rectPoly(
+        boardOriginMm + boardWidthMm / 2,
+        boardOriginMm + boardHeightMm / 2,
+        Math.max(0.1, boardWidthMm - edgeKeepout * 2),
+        Math.max(0.1, boardHeightMm - edgeKeepout * 2)
+      ),
+    ];
+
+    const flooded = floodCopperByNet(copperByNet, {
+      maxFloodMm: floodBudgetMm,
+      channelMm: effectiveToolDiaMm,
+      channelMarginMm: Math.max(0, options.channelMarginMm ?? 0.05),
+      blockers,
+      bounds,
+    });
+    copperByNet = flooded.copper;
+    appliedFloodMm = flooded.appliedMm;
+  }
+
   // 6. Design rule check: no two nets' copper may touch.
   const netIdList = [...copperByNet.keys()];
   for (let i = 0; i < netIdList.length; i++) {
@@ -847,11 +1086,6 @@ export function generatePcbLayout(
   }
 
   // 7. Isolation toolpaths ---------------------------------------------
-  const effectiveToolDiaMm = vBitWidthAtDepth(
-    options.vBitTipMm,
-    options.vBitAngleDeg,
-    options.isolationDepthZ
-  );
   const toolRadius = effectiveToolDiaMm / 2;
 
   if (effectiveToolDiaMm >= options.clearanceMm) {
@@ -973,6 +1207,7 @@ export function generatePcbLayout(
     warnings,
     completion: routing.completion,
     effectiveToolDiaMm,
+    copperFloodMm: appliedFloodMm,
     cycleTimeSec: 0,
     travelDistanceMm: 0,
     cutDistanceMm: 0,
@@ -1174,6 +1409,7 @@ function emptyResult(options: PcbOptions, error: string): PcbLayoutResult {
     warnings: [],
     completion: 0,
     effectiveToolDiaMm: 0,
+    copperFloodMm: 0,
     cycleTimeSec: 0,
     travelDistanceMm: 0,
     cutDistanceMm: 0,
@@ -1511,6 +1747,13 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   }
   g.push(`; Trace/clr:  ${options.traceWidthMm}mm / ${options.clearanceMm}mm`);
   g.push(`; V-bit cuts: ${result.effectiveToolDiaMm.toFixed(3)}mm wide at Z${options.isolationDepthZ}`);
+  if (result.copperFloodMm > 0) {
+    g.push(
+      `; Copper:     flooded up to ${result.copperFloodMm.toFixed(2)}mm per side past nominal ` +
+      `(a ${options.traceWidthMm}mm trace in open laminate ends up ` +
+      `${(options.traceWidthMm + result.copperFloodMm * 2).toFixed(2)}mm wide)`
+    );
+  }
   g.push(`; Routed:     ${(result.completion * 100).toFixed(1)}%`);
   for (const v of result.violations) {
     g.push(`; ${v.severity.toUpperCase()}: ${v.message}`);
