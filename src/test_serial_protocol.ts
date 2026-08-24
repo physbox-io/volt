@@ -148,6 +148,19 @@ class FakeGrbl {
       // so the offset is whatever makes that true. It must be handled before
       // the motion parsing below, or the coordinates on the line would be read
       // as a move.
+      // `G10 L2 P1` writes the offset itself, in machine coordinates — how a
+      // remembered origin is put back after the controller lost its own.
+      if (/^G10\s+L2\s+P1/.test(line)) {
+        for (const m of line.matchAll(/([XYZ])(-?[\d.]+)/g)) {
+          const v = parseFloat(m[2]);
+          if (m[1] === 'X') this.offX = v;
+          if (m[1] === 'Y') this.offY = v;
+          if (m[1] === 'Z') this.offZ = v;
+        }
+        this.reply('ok');
+        continue;
+      }
+
       if (/^G10\s+L20\s+P1/.test(line)) {
         for (const m of line.matchAll(/([XYZ])(-?[\d.]+)/g)) {
           const want = parseFloat(m[2]);
@@ -229,6 +242,16 @@ function installFake(opts: FakeGrblOptions = {}) {
 }
 
 installFake();
+
+// The work origin is remembered in localStorage, which node does not have.
+// The shim is also what lets a "reopened tab" be simulated below: what survives
+// the reload is exactly what is left in here.
+const store = new Map<string, string>();
+(globalThis as any).localStorage = {
+  getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
+  setItem: (k: string, v: string) => void store.set(k, String(v)),
+  removeItem: (k: string) => void store.delete(k),
+};
 
 const { webSerialManager } = await import('./utils/webSerialManager');
 const { getGridStats } = await import('./utils/meshLeveler');
@@ -361,6 +384,86 @@ check(
   webSerialManager.getState().zeroXYConfirmed === false &&
   webSerialManager.getState().zeroZConfirmed === false
 );
+
+// --- 2b-iii. The zeros outlive the tab ----------------------------------
+// A tab closed mid-job used to take the only record of the work origin with
+// it: the machine still held its offsets, but nothing on screen said where
+// zero was, and re-zeroing by eye does not land back on the same spot.
+await reconnect();
+await webSerialManager.jog({ x: 12, y: 7 });
+await webSerialManager.zeroXY();
+await new Promise(r => setTimeout(r, 400));
+await webSerialManager.zeroZ(12);
+await new Promise(r => setTimeout(r, 400));
+
+const remembered = JSON.parse(store.get('grblWorkOrigin') || '{}');
+check(
+  'the work origin is written down, in machine coordinates',
+  Math.abs(remembered.x - 12) < 1e-6 && Math.abs(remembered.y - 7) < 1e-6,
+  JSON.stringify(remembered)
+);
+check(
+  'the Z origin is remembered alongside XY, not instead of it',
+  typeof remembered.z === 'number' && remembered.zTargetMm === 12,
+  JSON.stringify(remembered)
+);
+
+// Zeroing one axis pair must not wipe the other: they are set by separate
+// steps, and losing Z0 to an XY re-zero is a plunge to the wrong depth.
+await webSerialManager.zeroXY();
+await new Promise(r => setTimeout(r, 400));
+check(
+  'a later XY zero keeps the remembered Z',
+  typeof JSON.parse(store.get('grblWorkOrigin')!).z === 'number',
+  store.get('grblWorkOrigin')!
+);
+
+// A controller that came back up without its offsets — a power cycle between
+// sessions — is handed them back on connect, without being asked. That is the
+// whole point: the zeros stay where they were until someone sets them again.
+const savedBefore = webSerialManager.getState().savedZero!;
+await reconnect();
+await new Promise(r => setTimeout(r, 400));
+check(
+  'a lost work origin is written back on connect',
+  fake.received.some(l => /^G10 L2 P1 X12\.000 Y7\.000/.test(l)),
+  fake.received.filter(l => l.startsWith('G10')).join(' | ')
+);
+check('and it is reported as restored', webSerialManager.getState().zeroRestored === true);
+await new Promise(r => setTimeout(r, 400));
+check(
+  'the machine works to the remembered origin again',
+  Math.abs(webSerialManager.getState().workOffset!.x - 12) < 1e-6,
+  JSON.stringify(webSerialManager.getState().workOffset)
+);
+check(
+  'restoring did not move the origin',
+  Math.abs(webSerialManager.getState().savedZero!.x! - savedBefore.x!) < 1e-6
+);
+
+// A machine that already agrees is left alone — writing offsets it already has
+// is a chance to get them wrong for nothing.
+const beforeIdle = fake.received.filter(l => /^G10 L2/.test(l)).length;
+await new Promise(r => setTimeout(r, 400));
+check(
+  'a machine that already agrees is not written to',
+  fake.received.filter(l => /^G10 L2/.test(l)).length === beforeIdle,
+  `${beforeIdle} -> ${fake.received.filter(l => /^G10 L2/.test(l)).length}`
+);
+
+// Re-zeroing by hand is the operator's answer and is never written over.
+await webSerialManager.jog({ x: 3 });
+await webSerialManager.zeroXY();
+await new Promise(r => setTimeout(r, 400));
+check(
+  'a manual re-zero replaces the remembered origin',
+  Math.abs(JSON.parse(store.get('grblWorkOrigin')!).x - 3) < 1e-6,
+  store.get('grblWorkOrigin')!
+);
+
+webSerialManager.forgetSavedZero();
+check('forgetting clears it for good', !store.has('grblWorkOrigin') &&
+  webSerialManager.getState().savedZero === undefined);
 
 // --- 2c. Re-zeroing at a tool change keeps the job paused, not idle -------
 // Changing a bit invalidates work Z0, so re-zeroing has to be possible without

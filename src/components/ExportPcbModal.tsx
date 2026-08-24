@@ -1769,6 +1769,20 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       </div>
                     )}
 
+                    {/* The zeros outlive the tab. Closing it mid-job used to lose
+                        the only record of where the origin was, and a re-zero by
+                        eye does not land back on the same spot. */}
+                    {serialState.savedZero && !serialState.zeroXYConfirmed && !serialState.zeroZConfirmed && (
+                      <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                        Work origin kept from last session
+                        {serialState.zeroRestored && ' - restored onto the machine'}
+                        {' '}({(['x', 'y', 'z'] as const)
+                          .filter(a => serialState.savedZero![a] !== undefined)
+                          .map(a => `${a.toUpperCase()} ${serialState.savedZero![a]!.toFixed(2)}`)
+                          .join(' ')})
+                      </div>
+                    )}
+
                     {/* The plate thickness is what makes plate-probing land on
                         the right Z — a wrong number here is a wrong cut depth
                         on every path, so it is edited right next to the button

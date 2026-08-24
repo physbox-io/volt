@@ -339,6 +339,13 @@ export function DocsModal({ onClose }: DocsModalProps) {
                   <li><strong>5. Start the spindle and press <strong>Level &amp; Mill PCB</strong>.</strong> It probes the 4&times;4 mesh (a minute or two), warps the toolpaths, then streams the job.</li>
                 </ul>
                 <p className="mb-4">
+                  <strong>The zeros are remembered.</strong> Both origins are stored in machine
+                  coordinates and survive a page reload, a closed tab or a power-cycled
+                  controller: on reconnect they are put back automatically, so a job interrupted
+                  half-way can be picked up where it left off. They change only when you zero
+                  again.
+                </p>
+                <p className="mb-4">
                   The job pauses at each tool change. Swap the bit, <strong>re-zero Z on the copper</strong>
                   &mdash; a new tool is a different length, so the old Z0 no longer means anything &mdash; and
                   press <strong>Resume</strong>. The heightmap itself stays valid across tool changes, because

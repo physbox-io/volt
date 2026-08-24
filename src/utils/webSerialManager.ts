@@ -164,6 +164,83 @@ export interface MachineState {
    * for a reported zero would never confirm it.
    */
   zeroZTargetMm?: number;
+  /**
+   * Where the work origin sits in machine coordinates, remembered across page
+   * reloads. Zeroing is the one piece of setup that cannot be redone from the
+   * chair: closing the tab mid-job used to take the only record of it away with
+   * it, leaving a half-cut board and nothing to line the bit back up against.
+   */
+  savedZero?: SavedWorkOrigin;
+  /**
+   * The work offset the controller is currently applying, i.e. MPos - WPos, as
+   * of the last status report. Undefined until one arrives.
+   */
+  workOffset?: { x: number; y: number; z: number };
+  /**
+   * Set when the remembered origin had to be written back onto the controller
+   * because its own offsets had been lost. Purely informational — the restore
+   * has already happened by the time this is true.
+   */
+  zeroRestored?: boolean;
+}
+
+/**
+ * The work origin in machine coordinates, as remembered between sessions. The
+ * axes are independent because XY and Z are zeroed by separate steps, and
+ * re-zeroing one must not discard the other.
+ */
+export interface SavedWorkOrigin {
+  x?: number;
+  y?: number;
+  z?: number;
+  /** Work Z the last Z zero aimed at: plate thickness, or 0 when on copper. */
+  zTargetMm?: number;
+  /** Epoch ms of the most recent zeroing, so a stale setup is visible as one. */
+  savedAt: number;
+}
+
+const SAVED_ZERO_KEY = 'grblWorkOrigin';
+
+/**
+ * How far the controller's offset may sit from the remembered origin and still
+ * count as the same zero. Comfortably under one step of any of these machines,
+ * and above the 0.001mm rounding of GRBL's own reports.
+ */
+const ZERO_MATCH_TOLERANCE_MM = 0.02;
+
+/** Reads back the remembered work origin. Absent, unparseable or empty -> none. */
+function loadSavedZero(): SavedWorkOrigin | undefined {
+  if (typeof localStorage === 'undefined') return undefined;
+  try {
+    const raw = localStorage.getItem(SAVED_ZERO_KEY);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return undefined;
+    const num = (v: unknown) =>
+      typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+    const saved: SavedWorkOrigin = {
+      x: num(parsed.x),
+      y: num(parsed.y),
+      z: num(parsed.z),
+      zTargetMm: num(parsed.zTargetMm),
+      savedAt: num(parsed.savedAt) ?? 0,
+    };
+    const empty = saved.x === undefined && saved.y === undefined && saved.z === undefined;
+    return empty ? undefined : saved;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeSavedZero(saved: SavedWorkOrigin | undefined): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    if (saved) localStorage.setItem(SAVED_ZERO_KEY, JSON.stringify(saved));
+    else localStorage.removeItem(SAVED_ZERO_KEY);
+  } catch {
+    // Private mode or a full quota. The zero is still live on the controller;
+    // only the memory of it across a reload is lost.
+  }
 }
 
 /**
@@ -172,6 +249,27 @@ export interface MachineState {
  * the origin" without demanding an exact zero the DRO may never print.
  */
 const ZERO_CONFIRM_TOLERANCE_MM = 0.1;
+
+/** GRBL reports to 3 decimals; keeping that precision avoids phantom drift. */
+function round3(v: number): number {
+  return Math.round(v * 1000) / 1000;
+}
+
+/**
+ * Whether the controller's live offset has moved away from the remembered
+ * origin on any axis that was remembered — i.e. whether the controller has
+ * lost the zero. Axes never zeroed are not compared: an unset Z is not a
+ * mismatched one.
+ */
+function driftsFrom(
+  saved: SavedWorkOrigin | undefined,
+  offset: { x: number; y: number; z: number }
+): boolean {
+  if (!saved) return false;
+  return (['x', 'y', 'z'] as const).some(
+    a => saved[a] !== undefined && Math.abs(saved[a]! - offset[a]) > ZERO_MATCH_TOLERANCE_MM
+  );
+}
 
 export interface ProbeMeshOptions {
   minX: number;
@@ -247,6 +345,13 @@ class WebSerialManager {
    */
   private pauseKind: 'stream' | 'operator' | null = null;
 
+  /**
+   * Whether this connection has already settled the remembered work origin —
+   * restored it, found it already in place, or had it overridden by a manual
+   * re-zero. Reset on connect; see restoreSavedZeroIfLost.
+   */
+  private zeroRestoreDone = false;
+
   /** GRBL's `$$` settings, populated on connect. Empty until they arrive. */
   private grblSettings = new Map<number, number>();
 
@@ -269,6 +374,7 @@ class WebSerialManager {
     currentLine: 0,
     totalLines: 0,
     progressPercent: 0,
+    savedZero: loadSavedZero(),
   };
 
   private listeners: Set<MachineStateListener> = new Set();
@@ -409,6 +515,11 @@ class WebSerialManager {
       // answer `$$` just leaves the map empty.
       this.grblSettings.clear();
       this.sendLine('$$').catch(() => {});
+
+      // A fresh link is a fresh chance for the controller to have come up
+      // without the work origin it had last time.
+      this.zeroRestoreDone = false;
+      this.updateState({ zeroRestored: false });
 
       return true;
     } catch (e: any) {
@@ -617,7 +728,33 @@ class WebSerialManager {
         zeroPatch.zeroZConfirmed = true;
       }
 
-      this.updateState({ mpos, wpos, status, ...zeroPatch });
+      // The work offset the controller is applying is exactly the machine
+      // position of the work origin, so it is read straight off every status
+      // report rather than asked for separately.
+      const workOffset = {
+        x: round3(mpos.x - wpos.x),
+        y: round3(mpos.y - wpos.y),
+        z: round3(mpos.z - wpos.z),
+      };
+
+      // A zero that has just taken is the moment worth remembering: the origin
+      // is where the machine says it is, not where the command asked for it.
+      if (zeroPatch.zeroXYConfirmed) {
+        Object.assign(zeroPatch, this.rememberZero({ x: workOffset.x, y: workOffset.y }));
+      }
+      if (zeroPatch.zeroZConfirmed) {
+        Object.assign(zeroPatch, this.rememberZero({
+          z: workOffset.z,
+          zTargetMm: this.state.zeroZTargetMm ?? 0,
+        }));
+      }
+
+      this.updateState({ mpos, wpos, status, workOffset, ...zeroPatch });
+
+      // With a position reading in hand, a controller that came back up without
+      // its offsets can be handed them back. Only ever done once per
+      // connection, and never over a zero the operator has just set.
+      void this.restoreSavedZeroIfLost(workOffset);
       // Anything waiting on a fresh position reading now has one.
       const waiters = this.statusWaiters;
       this.statusWaiters = [];
@@ -1087,6 +1224,70 @@ class WebSerialManager {
         'The machine is in alarm and will refuse every command. Unlock ($X) or home ($H) it first.'
       );
     }
+  }
+
+  /**
+   * Folds a freshly taken zero into the remembered origin and writes it out.
+   * Returns the state patch rather than applying it, so the caller can send it
+   * in the same update as the status it was derived from.
+   */
+  private rememberZero(patch: Partial<SavedWorkOrigin>): Partial<MachineState> {
+    const savedZero: SavedWorkOrigin = {
+      ...(this.state.savedZero ?? {}),
+      ...patch,
+      savedAt: Date.now(),
+    };
+    writeSavedZero(savedZero);
+    // A zero set by hand is the operator's answer, so nothing is ever written
+    // back over it for the rest of this connection.
+    this.zeroRestoreDone = true;
+    return { savedZero, zeroRestored: false };
+  }
+
+  /**
+   * Puts the remembered origin back onto the controller when the controller no
+   * longer has it — a firmware reset, or a tab reopened onto a machine that was
+   * power-cycled in between. This is the whole point of remembering it: the
+   * zeros stay where they were until the operator sets them again.
+   *
+   * `G10 L2` writes the offset in machine coordinates directly. `L20`, the one
+   * the zeroing buttons use, would instead re-zero on wherever the tool is
+   * parked right now — which is exactly the mistake being avoided.
+   *
+   * Runs at most once per connection, and never while the machine is locked
+   * out (it would answer error:9) or mid-job.
+   */
+  private async restoreSavedZeroIfLost(offset: { x: number; y: number; z: number }): Promise<void> {
+    if (this.zeroRestoreDone || !this.state.connected) return;
+    if (this.state.status === 'ALARM' || this.isJobRunning) return;
+
+    const saved = this.state.savedZero;
+    if (!driftsFrom(saved, offset)) {
+      // Either nothing is remembered or the machine already agrees. Either way
+      // there is nothing to restore, now or later on this connection.
+      this.zeroRestoreDone = true;
+      return;
+    }
+
+    this.zeroRestoreDone = true;
+    const words = (['x', 'y', 'z'] as const)
+      .filter(a => saved![a] !== undefined)
+      .map(a => `${a.toUpperCase()}${saved![a]!.toFixed(3)}`)
+      .join(' ');
+    try {
+      await this.sendLine(`G10 L2 P1 ${words}`);
+      this.updateState({ zeroRestored: true });
+    } catch {
+      // A controller that refuses the offset leaves the operator to re-zero;
+      // saying so is the UI's job, and the flag simply stays clear.
+      this.zeroRestoreDone = false;
+    }
+  }
+
+  /** Forgets the remembered origin. The controller's own offsets are left alone. */
+  public forgetSavedZero(): void {
+    writeSavedZero(undefined);
+    this.updateState({ savedZero: undefined, zeroRestored: false });
   }
 
   /** Sets current XY position as G54 Work Origin (0,0). */
