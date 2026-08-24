@@ -90,7 +90,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   nodes = [],
   edges = [],
 }) => {
-  const [options, setOptions] = useState<PcbOptions>(() => {
+  const [rawOptions, setOptions] = useState<PcbOptions>(() => {
     return {
       ...DEFAULT_PCB_OPTIONS,
       // Deliberately NOT seeded from calculateSuggestedBoardSize: with auto-size
@@ -191,6 +191,56 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [serialState.status, busy]);
 
+  const availableTools = useMemo(
+    () => [...PCB_TOOL_PRESETS, ...customTools],
+    [customTools]
+  );
+  const selectedTool = availableTools.find(t => t.id === selectedToolId);
+
+  /**
+   * Flatness taken from the last probe, whether or not it still matches this
+   * board's size. The span is a property of the stock and the spoilboard, not
+   * of the layout, so a stale map is still the best estimate available — and
+   * reading it from the raw map keeps the depth from oscillating: the depth
+   * changes the channel width, which changes the auto-sized board, which would
+   * otherwise invalidate the map that set the depth in the first place.
+   */
+  const probedSpanZ = useMemo(
+    () => (heightmap ? getGridStats(heightmap.grid).spanZ : undefined),
+    [heightmap]
+  );
+
+  /**
+   * Depth taken from what is actually being cut rather than the catalogue's
+   * blanket figure: copper thickness plus the room the board's own flatness
+   * demands.
+   */
+  const autoDepthZ = useMemo(() => {
+    const material = PCB_MATERIAL_PRESETS.find(m => m.id === selectedMaterialId);
+    if (!selectedTool || !material) return null;
+    return autoIsolationDepthMm(
+      selectedTool,
+      material,
+      isolationFlatnessAllowanceMm(probedSpanZ)
+    );
+  }, [selectedTool, selectedMaterialId, probedSpanZ]);
+
+  /**
+   * What everything downstream sees. The auto depth is layered on here instead
+   * of being written back into state by an effect: state that syncs itself to
+   * other state costs a second render every time either side moves, and leaves
+   * two places that both believe they own the number. Editing any other field
+   * spreads this object, so switching Auto off simply leaves the depth where
+   * Auto had it — which is where a hand edit wants to start from.
+   */
+  const options: PcbOptions = useMemo(
+    () =>
+      autoIsolationDepth && autoDepthZ !== null
+        ? { ...rawOptions, isolationDepthZ: autoDepthZ }
+        : rawOptions,
+    [rawOptions, autoIsolationDepth, autoDepthZ]
+  );
+
   // Routing runs in a worker: a dense board takes seconds, and blocking the
   // main thread for that long makes the whole editor feel broken.
   const { result, isRouting, progress, hasResult } = usePcbLayout(nodes, edges, options);
@@ -216,48 +266,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     () => (activeHeightmap ? findUnwarpableCommands(result.gcode) : []),
     [activeHeightmap, result.gcode]
   );
-
-  const availableTools = useMemo(
-    () => [...PCB_TOOL_PRESETS, ...customTools],
-    [customTools]
-  );
-  const selectedTool = availableTools.find(t => t.id === selectedToolId);
-
-  /**
-   * Flatness taken from the last probe, whether or not it still matches this
-   * board's size. The span is a property of the stock and the spoilboard, not
-   * of the layout, so a stale map is still the best estimate available — and
-   * reading it from the raw map keeps the depth from oscillating: the depth
-   * changes the channel width, which changes the auto-sized board, which would
-   * otherwise invalidate the map that set the depth in the first place.
-   */
-  const probedSpanZ = useMemo(
-    () => (heightmap ? getGridStats(heightmap.grid).spanZ : undefined),
-    [heightmap]
-  );
-
-  /**
-   * Depth derived from what is actually being cut rather than the catalogue's
-   * blanket figure: copper thickness plus the room the board's own flatness
-   * demands. Written back into the options rather than applied at export time,
-   * so the preview, the DRC and the G-code all agree on one number.
-   */
-  const autoDepthZ = useMemo(() => {
-    const material = PCB_MATERIAL_PRESETS.find(m => m.id === selectedMaterialId);
-    if (!selectedTool || !material) return null;
-    return autoIsolationDepthMm(
-      selectedTool,
-      material,
-      isolationFlatnessAllowanceMm(probedSpanZ)
-    );
-  }, [selectedTool, selectedMaterialId, probedSpanZ]);
-
-  React.useEffect(() => {
-    if (!autoIsolationDepth || autoDepthZ === null) return;
-    setOptions(prev =>
-      prev.isolationDepthZ === autoDepthZ ? prev : { ...prev, isolationDepthZ: autoDepthZ }
-    );
-  }, [autoIsolationDepth, autoDepthZ, setOptions]);
 
   /**
    * A straight-walled cutter has no included angle, so the V-bit width formula
@@ -689,7 +697,12 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     // At z-50 this sat *below* the note card's z-[100], so a preset's card
     // floated over the dialog the user had just opened.
     <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[92vh]">
+      {/* A fixed height, not a maximum: at max-h the dialog shrink-wrapped its
+          content, so anything that changed the length of the settings column —
+          switching tabs, a warning appearing, a checkbox label wrapping onto a
+          second line — resized the whole modal under the pointer. Both columns
+          scroll internally, so a fixed height costs nothing. */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col h-[92vh]">
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-100/70 dark:bg-slate-950/60">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-600 dark:text-emerald-400">
@@ -1005,9 +1018,9 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     />
                     <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
                       {result.copperFloodMm > 0
-                        ? `${options.traceWidthMm}mm minimum, up to ` +
-                          `${(options.traceWidthMm + result.copperFloodMm * 2).toFixed(2)}mm where there is room, ` +
-                          `isolated by a ${result.effectiveToolDiaMm.toFixed(3)}mm channel.`
+                        ? `Traces widen to ${(options.traceWidthMm + result.copperFloodMm * 2).toFixed(2)}mm ` +
+                          `where there is room, stopping ${result.effectiveToolDiaMm.toFixed(3)}mm ` +
+                          `short of the next net.`
                         : `Every trace is milled to ${options.traceWidthMm}mm and the rest of the gap is cut away.`}
                     </p>
                   </div>
@@ -1473,10 +1486,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                           }}
                           className="accent-emerald-500"
                         />
-                        <span>
-                          Auto — shallowest cut that clears the copper
-                          {autoIsolationDepth && probedSpanZ === undefined && ' (probe to go shallower)'}
-                        </span>
+                        <span>Auto — shallowest cut that clears the copper</span>
                       </label>
                     </div>
                   </div>

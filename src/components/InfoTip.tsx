@@ -15,7 +15,8 @@ interface InfoTipProps {
  *
  * The tooltip is portalled to <body> and positioned in viewport coordinates:
  * most of the places these appear are inside scrolling, overflow-hidden panels
- * that would otherwise clip it.
+ * that would otherwise clip it. Portalling alone is not enough — <body> is also
+ * where the modals live, so the tooltip has to outrank the modal layer too.
  */
 export function InfoTip({ children, size = 13, className = '' }: InfoTipProps) {
   const ref = useRef<HTMLButtonElement>(null);
@@ -63,7 +64,10 @@ export function InfoTip({ children, size = 13, className = '' }: InfoTipProps) {
               top: pos.top,
               transform: `translate(-50%, ${pos.below ? '0' : '-100%'})`,
             }}
-            className="fixed z-[300] max-w-[260px] px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-[11px] leading-relaxed text-slate-300 shadow-xl pointer-events-none"
+            // Above z-[100000], the top of the modal stack: these live inside
+            // full-screen dialogs at z-[99999], and a tooltip that renders
+            // behind the panel that owns it is worse than no tooltip.
+            className="fixed z-[100001] max-w-[260px] px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-[11px] leading-relaxed text-slate-300 shadow-xl pointer-events-none"
           >
             {children}
           </div>,
