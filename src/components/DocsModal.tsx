@@ -335,7 +335,7 @@ export function DocsModal({ onClose }: DocsModalProps) {
                   <li><strong>1. Fix the board down</strong> and scuff the copper with a scotch pad. Oxide and finger grease are surprisingly good insulators, and a probe that skims without triggering is the failure mode that ends badly.</li>
                   <li><strong>2. Clip both probe leads on</strong> as described above.</li>
                   <li><strong>3. Jog to the board's bottom-left corner</strong> and press <strong>Zero XY here</strong>. That corner is the origin of every coordinate in the generated G-code.</li>
-                  <li><strong>4. Press <strong>Zero Z on copper</strong></strong>. The bit descends slowly, stops on contact, and sets Z0 there. This corner is also the reference the heightmap is measured against.</li>
+                  <li><strong>4. Press <strong>Zero Z on copper</strong></strong>. The bit descends slowly, stops on contact, and sets Z0 there. That plane — not any particular probe point — is what the heightmap is measured against, so it has to be set on this board with the bit you are about to cut with.</li>
                   <li><strong>5. Start the spindle and press <strong>Level &amp; Mill PCB</strong>.</strong> It probes the 4&times;4 mesh (a minute or two), warps the toolpaths, then streams the job.</li>
                 </ul>
                 <p className="mb-4">

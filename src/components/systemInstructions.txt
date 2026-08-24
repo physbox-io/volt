@@ -195,8 +195,10 @@ Workflow to recommend:
   1. Fix the board down; scuff the copper (oxide and grease block contact).
   2. Clip both probe leads on.
   3. Jog to the board's bottom-left corner → "Zero XY here".
-  4. "Zero Z on copper" (probes down, sets Z0 at contact). That corner is the
-     reference the heightmap is measured against.
+  4. "Zero Z on copper" (probes down, sets Z0 at contact). The Z0 *plane* is
+     what the heightmap is measured against — every probed point is stored as
+     its height above or below it — so Z0 must be set on this board, with the
+     bit about to cut, before probing.
   5. Start the spindle → "Level & Mill PCB" (probes, warps, streams).
   6. At each tool-change pause: swap the bit, RE-ZERO Z on the copper (a new
      tool is a different length), then Resume. The heightmap stays valid.
@@ -210,6 +212,10 @@ Common problems and the correct answers:
     islands, most points have no continuity. Always probe before cutting.
   - Resizing the board discards the heightmap, by design — a map is only valid
     for the board it was probed on.
+  - "The probed surface sits Nmm from work Z0": Z0 is not on this copper — it
+    is left over from another setup, another tool, or was never set. Re-zero Z
+    on the copper and probe again. Probing does not set Z0; it measures
+    against it.
   - Levelling does not compensate arcs (G2/G3), canned cycles, or relative
     (G91) moves. Generated toolpaths contain none of these; hand-edited files
     are flagged in the WebSerial panel.

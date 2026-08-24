@@ -16,9 +16,18 @@ function check(name: string, cond: boolean, detail = '') {
 
 const GRBL_BUFFER = 128;
 
+/** Reports between WCO lines, matching GRBL's own 10-30 report cadence. */
+const WCO_EVERY = 8;
+
 interface FakeGrblOptions {
   /** Height of the simulated (warped) copper surface at a given XY, in mm. */
   surface?: (x: number, y: number) => number;
+  /**
+   * How status reports are worded. 'both' reports MPos and WPos on every line;
+   * 'mpos' is what a factory-default GRBL 1.1 ($10=1) actually sends — MPos
+   * only, with a WCO every few reports and never a WPos.
+   */
+  reportMode?: 'both' | 'mpos';
   /** Make probes miss the surface entirely. */
   probeMisses?: boolean;
   /** Reject this command with error:1 when seen. */
@@ -57,6 +66,8 @@ class FakeGrbl {
   private offX = 0;
   private offY = 0;
   private offZ = 0;
+  /** Set when an offset changed, so the next report carries a fresh WCO. */
+  private wcoDue = false;
   private relative = false;
   private draining = false;
 
@@ -87,12 +98,31 @@ class FakeGrbl {
       // '?' is a realtime command: it bypasses the buffer entirely.
       if (ch === '?') {
         this.statusPolls++;
-        this.reply(
+        const head =
           `<${this.locked ? 'Alarm' : 'Idle'}` +
-          `|MPos:${this.x.toFixed(3)},${this.y.toFixed(3)},${this.z.toFixed(3)}` +
-          `|WPos:${(this.x - this.offX).toFixed(3)},${(this.y - this.offY).toFixed(3)},` +
-          `${(this.z - this.offZ).toFixed(3)}>`
-        );
+          `|MPos:${this.x.toFixed(3)},${this.y.toFixed(3)},${this.z.toFixed(3)}`;
+        if ((this.opts.reportMode ?? 'both') === 'mpos') {
+          // Real GRBL withholds WCO from most reports and never sends WPos in
+          // this mode. A reader that assumes both frames are always on the line
+          // ends up subtracting a stale one from a live one.
+          // GRBL forces a WCO onto the very next report after any offset
+          // change, so a client is never left deriving from a stale one.
+          const withWco = this.wcoDue || this.statusPolls % WCO_EVERY === 1;
+          this.wcoDue = false;
+          this.reply(
+            head +
+              (withWco
+                ? `|WCO:${this.offX.toFixed(3)},${this.offY.toFixed(3)},${this.offZ.toFixed(3)}`
+                : '') +
+              '>'
+          );
+        } else {
+          this.reply(
+            head +
+              `|WPos:${(this.x - this.offX).toFixed(3)},${(this.y - this.offY).toFixed(3)},` +
+              `${(this.z - this.offZ).toFixed(3)}>`
+          );
+        }
         continue;
       }
       // Ctrl-X soft reset: GRBL discards the planner and everything buffered,
@@ -157,6 +187,7 @@ class FakeGrbl {
           if (m[1] === 'Y') this.offY = v;
           if (m[1] === 'Z') this.offZ = v;
         }
+        this.wcoDue = true;
         this.reply('ok');
         continue;
       }
@@ -168,6 +199,7 @@ class FakeGrbl {
           if (m[1] === 'Y') this.offY = this.y - want;
           if (m[1] === 'Z') this.offZ = this.z - want;
         }
+        this.wcoDue = true;
         this.reply('ok');
         continue;
       }
@@ -279,19 +311,31 @@ check('every line arrived', fake.received.filter(l => l.startsWith('G1')).length
 // A board tilted 0.01mm/mm in X and dished 0.05mm in the middle of Y.
 await reconnect({ surface: (x, y) => 0.01 * x - (y > 5 && y < 35 ? 0.05 : 0) });
 
+// Z0 goes on the copper first, exactly as the operator is told to do it. The
+// mesh is meaningless without it: [PRB:] is in machine coordinates, so a map
+// is only "how far the copper sits from Z0" once there is a Z0 to measure it
+// against.
+await webSerialManager.jog({ x: 0, y: 0 });
+await webSerialManager.zeroZOnSurface();
+await new Promise(r => setTimeout(r, 400));
+
+// Everything the mesh probe itself sends, with the zeroing above excluded so
+// the per-point counts below stay exact.
+const meshStart = fake.received.length;
 const grid = await webSerialManager.probeSurfaceMesh({
   minX: 0, minY: 0, maxX: 60, maxY: 40, cols: 4, rows: 4,
 });
+const meshSent = fake.received.slice(meshStart);
 
 const zs = grid.points.flat().map(p => p.z);
 check('probed 16 points', zs.length === 16);
 check('probe values are distinct', new Set(zs.map(z => z.toFixed(3))).size > 1, `${new Set(zs.map(z => z.toFixed(3))).size} distinct`);
-check('origin corner is the reference', Math.abs(grid.points[0][0].z) < 1e-9, `${grid.points[0][0].z}`);
+check('the zeroed corner reads zero', Math.abs(grid.points[0][0].z) < 1e-9, `${grid.points[0][0].z}`);
 check('machine-coord offset cancelled', Math.abs(getGridStats(grid).spanZ - 0.65) < 1e-6, `span ${getGridStats(grid).spanZ}`);
 check('far corner picks up the tilt', Math.abs(grid.points[0][3].z - 0.6) < 1e-6, `${grid.points[0][3].z}`);
 check('probe never overflowed', !fake.overflowed);
 
-const probeLines = fake.received.filter(l => l.includes('G38.2'));
+const probeLines = meshSent.filter(l => l.includes('G38.2'));
 check('one probe per point', probeLines.length === 16, `${probeLines.length}`);
 
 // The probe depth is a search *distance*, so it has to go out in relative mode.
@@ -304,21 +348,59 @@ check(
   probeLines[0]
 );
 // ...and absolute mode is restored, or every following move is a relative one.
-for (const [i, line] of fake.received.entries()) {
+for (const [i, line] of meshSent.entries()) {
   if (!line.includes('G38.2')) continue;
-  const restored = fake.received.slice(i + 1, i + 3).some(l => /(^|\s)G90(\s|$)/.test(l));
-  check(`G90 restored after probe ${i}`, restored, fake.received.slice(i, i + 3).join(' | '));
+  const restored = meshSent.slice(i + 1, i + 3).some(l => /(^|\s)G90(\s|$)/.test(l));
+  check(`G90 restored after probe ${i}`, restored, meshSent.slice(i, i + 3).join(' | '));
   break;
 }
-const retracts = fake.received.filter(l => /^G0 Z/.test(l));
+const retracts = meshSent.filter(l => /^G0 Z/.test(l));
 check('retracts between points', retracts.length >= 16, `${retracts.length}`);
 
 // Every probe must be preceded by a retract, or the bit drags across copper.
 let dragged = false;
-for (let i = 1; i < fake.received.length; i++) {
-  if (/^G0 X/.test(fake.received[i]) && !/^G0 Z/.test(fake.received[i - 1])) dragged = true;
+for (let i = 1; i < meshSent.length; i++) {
+  if (/^G0 X/.test(meshSent[i]) && !/^G0 Z/.test(meshSent[i - 1])) dragged = true;
 }
 check('never travels without retracting first', !dragged);
+
+// --- 2-i. The map is referenced to Z0, not to its own first probe ----------
+// Zeroing Z somewhere other than the mesh corner is normal - the operator
+// zeroes where the bit happens to be parked. Re-referencing the map to its own
+// origin corner instead of to the Z0 plane biases every cut by the height
+// difference between the two, which is a whole job cutting shallow (or into
+// the board) on a warp of only a few tenths.
+webSerialManager.forgetSavedZero();
+await reconnect({ surface: x => 0.01 * x });
+await webSerialManager.jog({ x: 60, y: 0 });
+await webSerialManager.zeroZOnSurface();
+await new Promise(r => setTimeout(r, 400));
+
+const offCorner = await webSerialManager.probeSurfaceMesh({
+  minX: 0, minY: 0, maxX: 60, maxY: 40, cols: 3, rows: 3,
+});
+check(
+  'the point Z0 was set on reads zero',
+  Math.abs(offCorner.points[0][2].z) < 1e-6,
+  `${offCorner.points[0][2].z}`
+);
+check(
+  'the low corner reads below Z0, not at it',
+  Math.abs(offCorner.points[0][0].z + 0.6) < 1e-6,
+  `${offCorner.points[0][0].z}`
+);
+
+// --- 2-ii. A map that is nowhere near Z0 is a wrong zero, not a warp -------
+// No zeroing at all here: the readings come back ~40mm off the work plane.
+webSerialManager.forgetSavedZero();
+await reconnect({ surface: x => 0.01 * x });
+let biasError = '';
+try {
+  await webSerialManager.probeSurfaceMesh({ minX: 0, minY: 0, maxX: 60, maxY: 40, cols: 3, rows: 3 });
+} catch (e: any) {
+  biasError = e?.message ?? '';
+}
+check('a map far off Z0 is refused', /work Z0/i.test(biasError), biasError || 'no error thrown');
 
 // --- 2b. Zeroing on a touch plate retracts UP, not into the plate ---------
 // `G10 L20 P1 Z12` makes the contact point work Z 12, so an absolute retract
@@ -464,6 +546,73 @@ check(
 webSerialManager.forgetSavedZero();
 check('forgetting clears it for good', !store.has('grblWorkOrigin') &&
   webSerialManager.getState().savedZero === undefined);
+
+// --- 2b-iv. A stock GRBL reports MPos and WCO, never WPos -----------------
+// $10=1 is the factory default, and in that mode a status report carries MPos
+// plus a WCO every dozen-or-so reports. Reading the work offset as
+// `MPos - WPos` off such a report subtracts a value that never updates, so the
+// "offset" tracks the tool instead of the origin. Every consequence of that is
+// destructive: a pending Z zero confirms against a WPos of 0 before the probe
+// has even touched, the bogus offset gets written down as the remembered
+// origin, and on the next connect it is handed back to the controller with a
+// `G10 L2` that moves work zero to somewhere the tool once happened to be.
+await reconnect({ reportMode: 'mpos', surface: () => 0 });
+await new Promise(r => setTimeout(r, 400));
+check(
+  'the work offset is read from WCO',
+  webSerialManager.getState().workOffset !== undefined,
+  JSON.stringify(webSerialManager.getState().workOffset)
+);
+
+await webSerialManager.jog({ x: 12, y: 7 });
+await webSerialManager.zeroXY();
+await new Promise(r => setTimeout(r, 400));
+check(
+  'XY zeroing confirms without a WPos on the wire',
+  webSerialManager.getState().zeroXYConfirmed === true,
+  JSON.stringify(webSerialManager.getState())
+);
+check(
+  'and the remembered origin is the real one',
+  Math.abs(JSON.parse(store.get('grblWorkOrigin')!).x - 12) < 1e-6,
+  store.get('grblWorkOrigin')!
+);
+
+// The tool is nowhere near the origin, which is exactly the state the old
+// `MPos - WPos` read would have mistaken for a lost zero.
+await webSerialManager.jog({ x: 40, y: 30 });
+const l2Before = fake.received.filter(l => /^G10 L2 /.test(l)).length;
+await new Promise(r => setTimeout(r, 600));
+check(
+  'a machine that still holds its zero is not rewritten',
+  fake.received.filter(l => /^G10 L2 /.test(l)).length === l2Before,
+  fake.received.filter(l => l.startsWith('G10')).join(' | ')
+);
+check(
+  'and the origin has not moved',
+  Math.abs(webSerialManager.getState().workOffset!.x - 12) < 1e-6,
+  JSON.stringify(webSerialManager.getState().workOffset)
+);
+
+// Zeroing Z on the copper, then mapping the board, in MPos-only mode.
+await webSerialManager.zeroZOnSurface();
+await new Promise(r => setTimeout(r, 400));
+check(
+  'Z zeroing confirms against a derived WPos',
+  webSerialManager.getState().zeroZConfirmed === true,
+  `wpos.z=${webSerialManager.getState().wpos.z}`
+);
+
+const mposGrid = await webSerialManager.probeSurfaceMesh({
+  minX: 0, minY: 0, maxX: 60, maxY: 40, cols: 3, rows: 3,
+});
+check(
+  'the heightmap is still referenced to Z0',
+  mposGrid.points.flat().every(pt => Math.abs(pt.z) < 1e-6),
+  JSON.stringify(mposGrid.points.flat().map(pt => pt.z))
+);
+
+webSerialManager.forgetSavedZero();
 
 // --- 2c. Re-zeroing at a tool change keeps the job paused, not idle -------
 // Changing a bit invalidates work Z0, so re-zeroing has to be possible without

@@ -13,6 +13,7 @@ import { postMachineTelemetry } from './apiClient';
 import {
   warpGcode,
   gridFromPoints,
+  getGridStats,
   normalizeGrid,
   type ProbeGrid,
   type ProbePoint,
@@ -45,6 +46,16 @@ const TELEMETRY_INTERVAL_MS = 1000;
 const DEFAULT_TOUCH_PLATE_MM = 12;
 /** How far the tool lifts off the surface after a probe touches, in mm. */
 const PROBE_RETRACT_MM = 5;
+
+/** Status polls to spend waiting for a `WCO:` before giving up on work space. */
+const WCO_POLL_ATTEMPTS = 40;
+
+/**
+ * How far a probed point may sit from work Z0 and still be believable as board
+ * warp. Copper-clad FR4 of any size warps well under a millimetre; anything
+ * beyond this is a wrong or missing Z zero, not a bent board.
+ */
+const MAX_SURFACE_OFFSET_MM = 1.5;
 /** Time given to a feed hold to decelerate before the planner is flushed. */
 const RESTART_HOLD_SETTLE_MS = 600;
 /** Time given to GRBL to reboot and report its banner after a soft reset. */
@@ -255,6 +266,12 @@ function round3(v: number): number {
   return Math.round(v * 1000) / 1000;
 }
 
+/** Parses a `x,y,z` field out of a status report. Missing axes read as 0. */
+function triple(body: string): { x: number; y: number; z: number } {
+  const c = body.split(',').map(Number);
+  return { x: c[0] || 0, y: c[1] || 0, z: c[2] || 0 };
+}
+
 /**
  * Whether the controller's live offset has moved away from the remembered
  * origin on any axis that was remembered — i.e. whether the controller has
@@ -351,6 +368,14 @@ class WebSerialManager {
    * re-zero. Reset on connect; see restoreSavedZeroIfLost.
    */
   private zeroRestoreDone = false;
+
+  /**
+   * The most recent `WCO:` from a status report. GRBL sends it only every
+   * 10-30 reports, so it is remembered rather than re-derived; undefined until
+   * the first one arrives, which is what "the work frame is not known yet"
+   * looks like.
+   */
+  private lastWco: { x: number; y: number; z: number } | undefined;
 
   /** GRBL's `$$` settings, populated on connect. Empty until they arrive. */
   private grblSettings = new Map<number, number>();
@@ -519,7 +544,8 @@ class WebSerialManager {
       // A fresh link is a fresh chance for the controller to have come up
       // without the work origin it had last time.
       this.zeroRestoreDone = false;
-      this.updateState({ zeroRestored: false });
+      this.lastWco = undefined;
+      this.updateState({ zeroRestored: false, workOffset: undefined });
 
       return true;
     } catch (e: any) {
@@ -637,6 +663,12 @@ class WebSerialManager {
   public async sendLine(line: string): Promise<void> {
     const trimmed = line.trim();
     if (!trimmed) return;
+    // Any G10 moves the work origin, which makes the last WCO a description of
+    // where zero used to be. Deriving a work position from it after that point
+    // would report the old frame as though it were the new one — long enough
+    // for a pending zero to "confirm" against a stale reading. Dropping it here
+    // rather than in each caller means a new command cannot forget to.
+    if (/^G10(\s|$)/i.test(trimmed)) this.lastWco = undefined;
     const { ack } = await this.enqueueLine(trimmed);
     await ack;
   }
@@ -684,17 +716,47 @@ class WebSerialManager {
 
       let mpos = { ...this.state.mpos };
       let wpos = { ...this.state.wpos };
+      // GRBL 1.1 sends WCO only once every few reports, so the last one seen
+      // has to carry over to the reports that omit it.
+      let wco = this.lastWco;
+      let sawMPos = false;
+      let sawWPos = false;
 
       for (let i = 1; i < parts.length; i++) {
         const p = parts[i];
         if (p.startsWith('MPos:')) {
-          const coords = p.replace('MPos:', '').split(',').map(Number);
-          mpos = { x: coords[0] || 0, y: coords[1] || 0, z: coords[2] || 0 };
+          mpos = triple(p.slice(5));
+          sawMPos = true;
         } else if (p.startsWith('WPos:')) {
-          const coords = p.replace('WPos:', '').split(',').map(Number);
-          wpos = { x: coords[0] || 0, y: coords[1] || 0, z: coords[2] || 0 };
+          wpos = triple(p.slice(5));
+          sawWPos = true;
+        } else if (p.startsWith('WCO:')) {
+          wco = triple(p.slice(4));
         }
       }
+
+      // A report carries MPos *or* WPos — which one is the `$10` mask, and its
+      // factory default is MPos — plus a WCO every few reports. Only the frame
+      // actually reported is fresh, so the other has to be derived from WCO
+      // rather than read out of the previous report. Subtracting a stale WPos
+      // from a live MPos, as this used to, makes the work offset track the tool
+      // instead of the origin: it reads as drift, and the saved-zero restore
+      // then writes that bogus offset onto the controller with `G10 L2`.
+      if (sawMPos && sawWPos) {
+        wco = {
+          x: round3(mpos.x - wpos.x),
+          y: round3(mpos.y - wpos.y),
+          z: round3(mpos.z - wpos.z),
+        };
+      } else if (sawMPos && wco) {
+        wpos = { x: round3(mpos.x - wco.x), y: round3(mpos.y - wco.y), z: round3(mpos.z - wco.z) };
+      } else if (sawWPos && wco) {
+        mpos = { x: round3(wpos.x + wco.x), y: round3(wpos.y + wco.y), z: round3(wpos.z + wco.z) };
+      }
+      this.lastWco = wco;
+
+      /** Both frames are pinned down, so wpos and the offset mean something. */
+      const framesKnown = !!wco && (sawMPos || sawWPos);
 
       let status: MachineStatus = this.state.status;
       if (grblState.startsWith('Alarm')) status = 'ALARM';
@@ -716,45 +778,42 @@ class WebSerialManager {
       // Resolve a pending zero as soon as the machine reports the work origin
       // where it was asked to be.
       const zeroPatch: Partial<MachineState> = {};
-      if (this.state.zeroXYPending &&
+      if (framesKnown && this.state.zeroXYPending &&
           Math.abs(wpos.x) < ZERO_CONFIRM_TOLERANCE_MM &&
           Math.abs(wpos.y) < ZERO_CONFIRM_TOLERANCE_MM) {
         zeroPatch.zeroXYPending = false;
         zeroPatch.zeroXYConfirmed = true;
       }
-      if (this.state.zeroZPending &&
+      if (framesKnown && this.state.zeroZPending &&
           Math.abs(wpos.z - (this.state.zeroZTargetMm ?? 0)) < ZERO_CONFIRM_TOLERANCE_MM) {
         zeroPatch.zeroZPending = false;
         zeroPatch.zeroZConfirmed = true;
       }
 
       // The work offset the controller is applying is exactly the machine
-      // position of the work origin, so it is read straight off every status
-      // report rather than asked for separately.
-      const workOffset = {
-        x: round3(mpos.x - wpos.x),
-        y: round3(mpos.y - wpos.y),
-        z: round3(mpos.z - wpos.z),
-      };
+      // position of the work origin.
+      const workOffset = wco;
 
       // A zero that has just taken is the moment worth remembering: the origin
       // is where the machine says it is, not where the command asked for it.
-      if (zeroPatch.zeroXYConfirmed) {
+      if (zeroPatch.zeroXYConfirmed && workOffset) {
         Object.assign(zeroPatch, this.rememberZero({ x: workOffset.x, y: workOffset.y }));
       }
-      if (zeroPatch.zeroZConfirmed) {
+      if (zeroPatch.zeroZConfirmed && workOffset) {
         Object.assign(zeroPatch, this.rememberZero({
           z: workOffset.z,
           zTargetMm: this.state.zeroZTargetMm ?? 0,
         }));
       }
 
-      this.updateState({ mpos, wpos, status, workOffset, ...zeroPatch });
+      this.updateState({ mpos, wpos, status, ...(workOffset ? { workOffset } : {}), ...zeroPatch });
 
-      // With a position reading in hand, a controller that came back up without
-      // its offsets can be handed them back. Only ever done once per
-      // connection, and never over a zero the operator has just set.
-      void this.restoreSavedZeroIfLost(workOffset);
+      // With a *real* offset reading in hand, a controller that came back up
+      // without its offsets can be handed them back. Only ever done once per
+      // connection, and never over a zero the operator has just set. Until a
+      // WCO has arrived the offset is unknown rather than zero, and restoring
+      // against a guess would move the origin instead of preserving it.
+      if (framesKnown) void this.restoreSavedZeroIfLost(workOffset!);
       // Anything waiting on a fresh position reading now has one.
       const waiters = this.statusWaiters;
       this.statusWaiters = [];
@@ -1485,6 +1544,19 @@ class WebSerialManager {
   }
 
   /**
+   * Polls until the controller has told us where the work origin is, so that a
+   * machine-coordinate reading can be converted into work space. GRBL only
+   * volunteers `WCO:` every 10-30 status reports, hence the repeated asks.
+   * Resolves with undefined if it never turns up.
+   */
+  private async awaitWorkOffset(): Promise<{ x: number; y: number; z: number } | undefined> {
+    for (let i = 0; i < WCO_POLL_ATTEMPTS && !this.lastWco; i++) {
+      await this.awaitStatus();
+    }
+    return this.lastWco;
+  }
+
+  /**
    * Runs the Z-surface mesh probe across the board and returns a grid of
    * offsets relative to the work Z0 plane, ready to hand to warpGcode.
    *
@@ -1520,6 +1592,13 @@ class WebSerialManager {
     try {
       await this.sendLine('G21');
       await this.sendLine('G90');
+
+      // [PRB:] is reported in machine coordinates, so the work origin is what
+      // turns a contact height into "how far the copper sits above or below
+      // the Z0 plane" — which is exactly the number warpGcode adds. Read once,
+      // up front: nothing in the loop below changes a work offset.
+      const workOffset = await this.awaitWorkOffset();
+
       await this.sendLine(`G0 Z${clearance.toFixed(3)}`);
 
       const points: ProbePoint[][] = [];
@@ -1539,7 +1618,11 @@ class WebSerialManager {
           const contact = await this.probeDown(probeDepth, probeFeed);
           await this.sendLine(`G0 Z${clearance.toFixed(3)} F${travelFeed}`);
 
-          rowPoints[colIdx] = { x, y, z: contact.z };
+          rowPoints[colIdx] = {
+            x,
+            y,
+            z: workOffset ? round3(contact.z - workOffset.z) : contact.z,
+          };
 
           done++;
           this.updateState({ probeProgress: { done, total } });
@@ -1555,8 +1638,30 @@ class WebSerialManager {
       const grid = gridFromPoints(points);
       if (!grid) throw new Error('Probe produced too few points to interpolate');
 
-      // Re-reference to the origin corner, where the operator set Z0.
-      return normalizeGrid(grid);
+      if (!workOffset) {
+        // No WCO ever arrived, so work space is unknown and the readings are
+        // raw machine heights. Falling back to the origin corner keeps the
+        // *shape* of the board, but pins the map to whatever that one probe
+        // read rather than to the plane the operator zeroed on.
+        return normalizeGrid(grid);
+      }
+
+      // A heightmap describes a board's warp — tenths of a millimetre. A whole
+      // map sitting well off the Z0 plane means Z0 is not on this copper: a
+      // zero left over from another setup, a tool changed since, or a probe
+      // that was never done. Cutting with it would offset the entire job by
+      // that amount, so it is refused rather than streamed.
+      const stats = getGridStats(grid);
+      const bias = Math.max(Math.abs(stats.minZ), Math.abs(stats.maxZ));
+      if (bias > MAX_SURFACE_OFFSET_MM) {
+        throw new Error(
+          `The probed surface sits ${bias.toFixed(2)}mm from work Z0, which is far more than a ` +
+            'board warps. Work Z0 is not on this copper — zero Z on the surface with the bit ' +
+            'you are about to cut with, then probe again.'
+        );
+      }
+
+      return grid;
     } finally {
       this.updateState({
         probeProgress: undefined,
