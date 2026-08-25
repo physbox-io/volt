@@ -169,6 +169,29 @@ export function normalizeGrid(
 }
 
 /**
+ * How far the whole probed surface sits clear of the work Z0 plane, beyond the
+ * board's own measured warp. Zero for a map that is properly referenced.
+ *
+ * Zeroing on the copper puts Z0 *inside* the surface the map spans, so a good
+ * map's range straddles zero. A map that is the right shape but sits bodily
+ * above or below zero is referenced to a different plane than the one the job
+ * will be cut against — and since warpGcode adds the map to every commanded Z,
+ * that body offset lifts or drops the entire job while the map still looks
+ * perfectly reasonable. It is the difference between a trace that isolates and
+ * one the bit never reaches.
+ *
+ * A map is allowed to clear zero by its own span — Z0 may have been set just
+ * outside the mesh, on a corner that really is the high or low point — so what
+ * is returned is the excess beyond that, which callers compare against probe
+ * repeatability rather than against warp.
+ */
+export function gridOffPlaneMm(grid: ProbeGrid): number {
+  const { minZ, maxZ, spanZ } = getGridStats(grid);
+  const clearance = Math.max(0, minZ, -maxZ);
+  return Math.max(0, clearance - spanZ);
+}
+
+/**
  * Evaluates bilinear heightmap Z-offset at coordinates (x, y).
  * Clamps to grid boundaries if (x,y) lies outside grid bounds.
  */

@@ -2,6 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 import { X, Sparkles, Brain, Wand2, Loader2, AlertCircle, HelpCircle } from 'lucide-react';
 import SYSTEM_INSTRUCTIONS from './systemInstructions.txt?raw';
+import { LLMError, callLLM } from '../utils/llmClient';
+import {
+  isClaudeModel,
+  modelDisplayName,
+  readAnthropicKey,
+  readGeminiKey,
+  readModel,
+  writeAnthropicKey,
+  writeGeminiKey,
+} from '../utils/llmSettings';
 
 interface AICopilotPanelProps {
   nodes: Node[];
@@ -58,7 +68,10 @@ const parseAIJSON = (text: string): any => {
 };
 
 export default function AICopilotPanel({ nodes, edges, setNodes, setEdges, onClose }: AICopilotPanelProps) {
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
+  const [model, setModel] = useState(readModel);
+  // The key for whichever provider the selected model belongs to — the copilot
+  // is blocked on that one alone, not on having both.
+  const [apiKey, setApiKey] = useState(() => (isClaudeModel(readModel()) ? readAnthropicKey() : readGeminiKey()));
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -75,44 +88,49 @@ export default function AICopilotPanel({ nodes, edges, setNodes, setEdges, onClo
     }
   }, [aiResponse]);
 
+  // Settings owns these; re-read whenever it says they changed (it dispatches
+  // 'storage' for the same-tab writes the browser does not report).
+  useEffect(() => {
+    const sync = () => {
+      const next = readModel();
+      setModel(next);
+      setApiKey(isClaudeModel(next) ? readAnthropicKey() : readGeminiKey());
+    };
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
+  }, []);
+
+  const usesClaude = isClaudeModel(model);
+
   const saveApiKey = (key: string) => {
     setApiKey(key);
-    localStorage.setItem('gemini_api_key', key);
+    if (usesClaude) writeAnthropicKey(key);
+    else writeGeminiKey(key);
   };
 
-  const callGemini = async (systemInstructions: string, userQuery: string) => {
-    const effectiveKey = apiKey.trim() || localStorage.getItem('gemini_api_key')?.trim() || '';
-    if (!effectiveKey) {
-      setError('Please configure your Gemini API Key in Settings or the panel input below.');
-      return null;
-    }
-    if (effectiveKey !== apiKey) setApiKey(effectiveKey);
+  /**
+   * One copilot request against the configured model, Claude or Gemini.
+   *
+   * Returns null on failure so every caller can bail without repeating the
+   * error handling; a truncated reply is a failure here too, because the JSON
+   * the generate/mutate paths need is the last thing in the response and is
+   * therefore exactly what a token ceiling eats.
+   */
+  const callModel = async (systemInstructions: string, userQuery: string): Promise<string | null> => {
     setError('');
     setLoading(true);
-
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${effectiveKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: `${systemInstructions}\n\nUser Request: ${userQuery}` }]
-            }
-          ]
-        })
-      });
-
-      const json = await response.json();
-      if (json.error) {
-        throw new Error(json.error.message);
+      const { text, truncated } = await callLLM(systemInstructions, userQuery, model);
+      if (truncated) {
+        setError(
+          'The reply hit the token ceiling and was cut off. Raise "Max Response Tokens" in Settings, or ask for a smaller circuit.'
+        );
+        setAiResponse(text);
+        return null;
       }
-
-      const text = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
       return text;
-    } catch (e: any) {
-      setError(`API Error: ${e.message}`);
+    } catch (e: unknown) {
+      setError(e instanceof LLMError ? e.message : `API Error: ${e instanceof Error ? e.message : String(e)}`);
       return null;
     } finally {
       setLoading(false);
@@ -153,7 +171,7 @@ export default function AICopilotPanel({ nodes, edges, setNodes, setEdges, onClo
       targetHandle: e.targetHandle,
     }));
 
-    const systemInstructions = `You are "Circuit Expert Copilot", an expert AI systems engineer and electrical circuit analyst.
+    const systemInstructions = `You are "Volt Copilot", an expert AI systems engineer and electrical circuit analyst.
 Analyze the active visual circuit canvas schematic and produce a comprehensive professional diagnostic report in Markdown.
 
 The app is an interactive visual electronic circuit builder running on the client side using ngspice-wasm.
@@ -185,7 +203,7 @@ Current canvas topology:
 Nodes (${nodesSummary.length}): ${JSON.stringify(nodesSummary)}
 Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
 
-    const response = await callGemini(systemInstructions, 'Perform a full system diagnostic of the active canvas.');
+    const response = await callModel(systemInstructions, 'Perform a full system diagnostic of the active canvas.');
     if (response) setAiResponse(response);
   };
 
@@ -197,7 +215,7 @@ Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
     }
     setMode('generate');
 
-    const response = await callGemini(SYSTEM_INSTRUCTIONS, prompt);
+    const response = await callModel(SYSTEM_INSTRUCTIONS, prompt);
     if (response) {
       try {
         const parsed = parseAIJSON(response);
@@ -281,7 +299,7 @@ Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
 
     const promptWithContext = `The user wants to modify the active circuit canvas.\n\nActive Canvas Nodes:\n${JSON.stringify(serializedNodes)}\nActive Canvas Edges:\n${JSON.stringify(serializedEdges)}\n\nUser Request: ${prompt}`;
 
-    const response = await callGemini(SYSTEM_INSTRUCTIONS, promptWithContext);
+    const response = await callModel(SYSTEM_INSTRUCTIONS, promptWithContext);
     if (response) {
       try {
         const parsed = parseAIJSON(response);
@@ -372,7 +390,7 @@ Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
           </div>
           <div>
             <h2 className="font-extrabold text-slate-800 dark:text-slate-100 text-sm">AI Copilot Expert</h2>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Gemini 3.5 Flash</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">{modelDisplayName(model)}</p>
           </div>
         </div>
         <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-650 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer"><X className="w-5 h-5" /></button>
@@ -441,12 +459,15 @@ Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
               <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
               <div className="flex flex-col">
                 <span className="text-xs font-bold text-amber-800 dark:text-amber-300 leading-normal">API Key Required</span>
-                <p className="text-[10px] text-amber-600 dark:text-amber-500 leading-normal">AI Copilot needs a Gemini API Key to run. Configure it below:</p>
+                <p className="text-[10px] text-amber-600 dark:text-amber-500 leading-normal">
+                  {modelDisplayName(model)} needs {usesClaude ? 'an Anthropic' : 'a Gemini'} API key to run.
+                  Configure it below, or pick a different model in Settings:
+                </p>
               </div>
             </div>
             <input 
               type="password" 
-              placeholder="Paste AIzaSy... here" 
+              placeholder={usesClaude ? 'Paste sk-ant-... here' : 'Paste AIzaSy... here'} 
               onChange={(e) => saveApiKey(e.target.value)}
               className="w-full px-2.5 py-1.5 text-xs border border-amber-200 dark:border-amber-900/50 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
             />
@@ -476,7 +497,9 @@ Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
             <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400 select-none py-8 text-center">
               <HelpCircle className="w-8 h-8 text-slate-350" />
               <p className="text-[11px] leading-normal px-4">
-                {apiKey ? 'Click an action above to analyze or mutate your canvas.' : 'Configure your Gemini API key below, then click an action above.'}
+                {apiKey
+                  ? 'Click an action above to analyze or mutate your canvas.'
+                  : `Configure your ${usesClaude ? 'Anthropic' : 'Gemini'} API key below, then click an action above.`}
               </p>
             </div>
           )}

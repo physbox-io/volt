@@ -492,8 +492,30 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     return connected;
   };
 
+  /**
+   * Refuses a job whose depth was calculated against a height map that will not
+   * be applied to it.
+   *
+   * The isolation depth is shaved down on the strength of a probed map — the
+   * levelling is what buys back the margin. If the map no longer covers the
+   * board (`heightmapStale`) it is dropped from the warp, and unless auto-level
+   * is going to re-probe, the job would stream at the shallower depth with no
+   * compensation at all: the two halves of the same decision disagreeing, which
+   * cuts traces too faint to isolate and misses the copper entirely on the high
+   * spots.
+   */
+  const heightmapWontBeApplied = heightmapStale && !autoLevel;
+
   const handleMillBoard = async () => {
     if (!result.success || machineBusy) return;
+    if (heightmapWontBeApplied) {
+      setMachineError(
+        'The probed height map no longer covers this board, so it will not be applied — but the ' +
+          'isolation depth was calculated assuming it would be. Re-probe the surface, or turn ' +
+          'auto-level on so the job probes before it cuts.'
+      );
+      return;
+    }
     if (!(await ensureConnected())) return;
 
     let grid = activeHeightmap;
@@ -514,6 +536,14 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
   const handleAirCutBoard = async () => {
     if (!result.success || machineBusy) return;
+    if (heightmapWontBeApplied) {
+      setMachineError(
+        'The probed height map no longer covers this board, so it will not be applied. Re-probe ' +
+          'the surface, or turn auto-level on — an air cut that does not model the levelling is ' +
+          'not a rehearsal of the job that would run.'
+      );
+      return;
+    }
     if (!(await ensureConnected())) return;
 
     let grid = activeHeightmap;

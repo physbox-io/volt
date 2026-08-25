@@ -1,5 +1,5 @@
 /**
- * MCP bridge for Circuit Expert.
+ * MCP bridge for Volt.
  */
 
 import { useEffect, useRef } from 'react';

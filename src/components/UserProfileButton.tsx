@@ -5,6 +5,7 @@ import { getStoredUser, clearStoredAuth, loginWithGoogle, fetchCurrentUser } fro
 import type { PhysBoxUser } from '../utils/apiClient';
 import { RemoteMachiningModal } from './RemoteMachiningModal';
 import { GuestListModal } from './GuestListModal';
+import { restoreLlmSettingsFromCloud } from '../utils/llmSettings';
 
 export const UserProfileButton: React.FC = () => {
   const [user, setUser] = useState<PhysBoxUser | null>(getStoredUser());
@@ -20,7 +21,11 @@ export const UserProfileButton: React.FC = () => {
 
   useEffect(() => {
     fetchCurrentUser().then((u) => {
-      if (u) setUser(u);
+      if (!u) return;
+      setUser(u);
+      // Copilot keys live under the account's `global` namespace, shared with
+      // the other Physbox apps; pull down anything this browser is missing.
+      void restoreLlmSettingsFromCloud();
     });
   }, []);
 
@@ -43,6 +48,7 @@ export const UserProfileButton: React.FC = () => {
     try {
       const res = await loginWithGoogle({ email: targetEmail });
       setUser(res.user);
+      void restoreLlmSettingsFromCloud();
       setShowLoginModal(false);
       setDropdownOpen(false);
       if (!res.is_admin) {

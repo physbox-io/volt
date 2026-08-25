@@ -1,6 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Settings, Trash2, Key } from 'lucide-react';
 import type { CircuitPreset } from '../utils/storage';
+import { listClaudeModels, listGeminiModels } from '../utils/llmClient';
+import {
+  FALLBACK_MODELS,
+  MAX_MAX_TOKENS,
+  MIN_MAX_TOKENS,
+  isClaudeModel,
+  readAnthropicKey,
+  readGeminiKey,
+  readMaxTokens,
+  readModel,
+  writeAnthropicKey,
+  writeGeminiKey,
+  writeMaxTokens,
+  writeModel,
+} from '../utils/llmSettings';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -12,8 +27,43 @@ interface SettingsModalProps {
 
 export function SettingsModal({ onClose, showAura, setShowAura, userPresets, onDeleteUserPreset }: SettingsModalProps) {
   const [tab, setTab] = useState<'general' | 'presets'>('general');
-  const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
+  const [geminiApiKey, setGeminiApiKey] = useState(readGeminiKey);
+  const [anthropicApiKey, setAnthropicApiKey] = useState(readAnthropicKey);
+  const [model, setModel] = useState(readModel);
+  const [maxTokens, setMaxTokens] = useState(readMaxTokens);
+  const [claudeModels, setClaudeModels] = useState<{ id: string; name: string }[]>([]);
+  const [geminiModels, setGeminiModels] = useState<{ id: string; name: string }[]>([]);
   const userPresetKeys = Object.keys(userPresets);
+
+  // The copilot panel reads these from localStorage, so it has to be told when
+  // they change; a same-tab write does not fire 'storage' on its own.
+  const announce = () => window.dispatchEvent(new Event('storage'));
+
+  // The picker lists what the configured keys can actually reach, refetched
+  // whenever a key changes, so a newly released model shows up without a
+  // release of this app. Without a key each group falls back to the built-in
+  // list rather than showing nothing.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [claude, gemini] = await Promise.all([listClaudeModels(), listGeminiModels()]);
+      if (cancelled) return;
+      setClaudeModels(claude);
+      setGeminiModels(gemini);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [anthropicApiKey, geminiApiKey]);
+
+  const claudeOptions = claudeModels.length ? claudeModels : FALLBACK_MODELS.filter((m) => isClaudeModel(m.id));
+  const geminiOptions = geminiModels.length ? geminiModels : FALLBACK_MODELS.filter((m) => !isClaudeModel(m.id));
+  const isKnownModel = [...claudeOptions, ...geminiOptions].some((m) => m.id === model);
+
+  const fieldClass =
+    'w-full px-2 py-1.5 text-xs border border-slate-200 dark:border-slate-800 rounded bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200 shadow-inner focus:outline-none focus:ring-1 focus:ring-blue-500';
+  const labelClass =
+    'block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1';
 
   return (
     <div className="absolute top-4 right-6 w-64 md:w-72 glass-panel rounded-lg p-4 z-30 shadow-lg text-slate-800 dark:text-slate-100 flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-200 pointer-events-auto">
@@ -77,24 +127,105 @@ export function SettingsModal({ onClose, showAura, setShowAura, userPresets, onD
               </label>
             </div>
 
-            <div className="pt-3.5 border-t border-slate-100 dark:border-slate-800/60">
-              <label htmlFor="geminiApiKey" className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                <Key size={12} className="text-slate-500 dark:text-slate-400" />
-                Gemini API Key
-              </label>
-              <input
-                type="password"
-                id="geminiApiKey"
-                value={geminiApiKey}
-                onChange={(e) => {
-                  setGeminiApiKey(e.target.value);
-                  localStorage.setItem('gemini_api_key', e.target.value);
-                }}
-                placeholder="Paste API key here"
-                className="w-full px-2 py-1.5 text-xs border border-slate-200 dark:border-slate-800 rounded bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200 shadow-inner focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-              />
-              <p className="mt-1 text-[9px] text-slate-400 dark:text-slate-500 leading-normal">
-                Saved locally. Direct communication with Gemini endpoint.
+            <div className="pt-3.5 border-t border-slate-100 dark:border-slate-800/60 flex flex-col gap-3">
+              <div>
+                <label htmlFor="anthropicApiKey" className={labelClass}>
+                  <Key size={12} className="text-slate-500 dark:text-slate-400" />
+                  Anthropic API Key
+                </label>
+                <input
+                  type="password"
+                  id="anthropicApiKey"
+                  value={anthropicApiKey}
+                  onChange={(e) => {
+                    setAnthropicApiKey(e.target.value);
+                    writeAnthropicKey(e.target.value);
+                    announce();
+                  }}
+                  placeholder="Paste sk-ant-... here"
+                  className={`${fieldClass} font-mono`}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="geminiApiKey" className={labelClass}>
+                  <Key size={12} className="text-slate-500 dark:text-slate-400" />
+                  Gemini API Key
+                </label>
+                <input
+                  type="password"
+                  id="geminiApiKey"
+                  value={geminiApiKey}
+                  onChange={(e) => {
+                    setGeminiApiKey(e.target.value);
+                    writeGeminiKey(e.target.value);
+                    announce();
+                  }}
+                  placeholder="Paste AIzaSy... here"
+                  className={`${fieldClass} font-mono`}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="copilotModel" className={labelClass}>
+                  Copilot Model
+                </label>
+                <select
+                  id="copilotModel"
+                  value={model}
+                  onChange={(e) => {
+                    setModel(e.target.value);
+                    writeModel(e.target.value);
+                    announce();
+                  }}
+                  className={`${fieldClass} cursor-pointer`}
+                >
+                  {/* A model saved before the key that lists it still shows,
+                      rather than the select silently snapping to its first entry. */}
+                  {isKnownModel ? null : <option value={model}>{model}</option>}
+                  <optgroup label="Anthropic Claude">
+                    {claudeOptions.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Google Gemini">
+                    {geminiOptions.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="copilotMaxTokens" className={`${labelClass} justify-between`}>
+                  <span>Max Response Tokens</span>
+                  <span className="font-mono normal-case tracking-normal text-slate-600 dark:text-slate-300">
+                    {maxTokens.toLocaleString()}
+                  </span>
+                </label>
+                <input
+                  type="range"
+                  id="copilotMaxTokens"
+                  min={MIN_MAX_TOKENS}
+                  max={MAX_MAX_TOKENS}
+                  step={1000}
+                  value={maxTokens}
+                  onChange={(e) => {
+                    setMaxTokens(writeMaxTokens(parseInt(e.target.value, 10)));
+                    announce();
+                  }}
+                  className="w-full accent-blue-500 cursor-pointer"
+                />
+                <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-normal">
+                  Output budget for one copilot reply. Raise it if a generated schematic comes back
+                  cut off; lower it to cut cost and latency.
+                </p>
+              </div>
+
+              <p className="text-[9px] text-amber-700 dark:text-amber-400 leading-normal">
+                Keys are stored in this browser and sent straight to the provider. When you are
+                signed in they also sync to your PhysBox account, so the other Physbox apps can use
+                them — clear them on a shared machine.
               </p>
             </div>
 

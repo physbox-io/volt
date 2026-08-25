@@ -1,5 +1,6 @@
 import {
   gridFromPoints,
+  gridOffPlaneMm,
   normalizeGrid,
   interpolateGridZ,
   getGridStats,
@@ -81,6 +82,72 @@ check('clean gcode reports nothing', findUnwarpableCommands('G1 X10 Y10 Z-0.08')
 // --- 4. Degenerate input ---------------------------------------------------
 check('rejects a 1-row mesh', gridFromPoints([[{ x: 0, y: 0, z: 0 }]]) === null);
 check('warp with no grid is a no-op', warpGcode('G1 X10', null as any) === 'G1 X10');
+
+// --- 5. A map has to be referenced to the plane the job is cut against -----
+//
+// warpGcode adds the map to every commanded Z, so a map that is the right
+// *shape* but sits bodily off the Z0 plane lifts or drops the entire job while
+// still looking perfectly reasonable by its span. Zeroing on the copper puts Z0
+// inside the surface the map spans, so a properly referenced map straddles zero.
+
+/** True copper height above the machine's own Z datum, in mm. */
+const copperMz = (x: number, y: number) => 0.06 * Math.sin(x / 20) + 0.04 * Math.cos(y / 15);
+
+/** Probes the board against a given work Z0 plane, as probeSurfaceMesh does. */
+const probeAgainst = (zeroPlaneMz: number) =>
+  gridFromPoints(
+    [0, 20, 40].map(y => [0, 30, 60].map(x => ({ x, y, z: copperMz(x, y) - zeroPlaneMz })))
+  )!;
+
+const onPlane = probeAgainst(copperMz(0, 0));
+check('a map probed against its own zero straddles Z0', gridOffPlaneMm(onPlane) === 0, `${gridOffPlaneMm(onPlane)}`);
+
+// Re-zeroing onto the map's own plane mid-job is idempotent — this is the case
+// the surface-offset argument to zeroZOnSurface exists for, and it must stay
+// free of drift, or every tool change would walk the job off the copper.
+const park = { x: 60, y: 40 };
+const reZeroed = probeAgainst(copperMz(park.x, park.y) - interpolateGridZ(onPlane, park.x, park.y));
+check(
+  're-zeroing onto the map plane does not move the plane',
+  Math.abs(gridOffPlaneMm(reZeroed)) < 1e-9 &&
+    Math.abs(interpolateGridZ(reZeroed, 30, 20) - interpolateGridZ(onPlane, 30, 20)) < 1e-9,
+  `off-plane ${gridOffPlaneMm(reZeroed).toFixed(6)}`
+);
+
+// A map referenced to a different plane than the job will be cut against — a
+// zero left on a touch plate, a map carried over from another setup — reads as
+// an ordinary board by span alone. Only its position relative to zero shows it.
+// The slack allowed is the board's own warp, so what this catches is a map
+// referenced to a plainly different plane, not a small bias inside the span.
+// That limit is deliberate — Z0 may legitimately have been set outside the
+// mesh, on a corner that really is the high point — and it is why the depth
+// budget in pcbTooling has to carry its own irreducible-error floor rather
+// than trusting a map to be perfectly referenced.
+const displaced = probeAgainst(copperMz(0, 0) + 0.25);
+check(
+  'a displaced map is indistinguishable by span',
+  Math.abs(getGridStats(displaced).spanZ - getGridStats(onPlane).spanZ) < 1e-9
+);
+check(
+  'a displaced map is caught as off-plane',
+  gridOffPlaneMm(displaced) > 0.05,
+  `off-plane by only ${gridOffPlaneMm(displaced).toFixed(4)}mm`
+);
+
+// A genuinely bowed board zeroed just outside the mesh is allowed to clear zero
+// by its own warp — that is a real setup, not a mis-reference.
+const bowedButHonest = gridFromPoints(
+  [0, 20, 40].map(y => [0, 30, 60].map(x => ({ x, y, z: 0.02 + copperMz(x, y) - copperMz(0, 0) })))
+)!;
+check(
+  'a bias smaller than the board\'s own warp is below this guard',
+  gridOffPlaneMm(probeAgainst(copperMz(0, 0) + 0.05)) === 0
+);
+check(
+  'a bowed board zeroed off its mesh is not flagged',
+  gridOffPlaneMm(bowedButHonest) === 0,
+  `${gridOffPlaneMm(bowedButHonest).toFixed(4)}mm`
+);
 
 console.log(`\n${fails} failure(s)`);
 if (fails) throw new Error(`${fails} mesh leveler test failure(s)`);

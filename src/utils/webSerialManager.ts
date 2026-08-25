@@ -15,6 +15,7 @@ import {
   gridFromPoints,
   getGridStats,
   normalizeGrid,
+  gridOffPlaneMm,
   type ProbeGrid,
   type ProbePoint,
 } from './meshLeveler';
@@ -56,6 +57,13 @@ const WCO_POLL_ATTEMPTS = 40;
  * beyond this is a wrong or missing Z zero, not a bent board.
  */
 const MAX_SURFACE_OFFSET_MM = 1.5;
+/**
+ * How far the probed surface may sit clear of work Z0 *beyond* the board's own
+ * measured warp before the map is treated as referenced to the wrong plane.
+ * Sized for probe repeatability, not for warp — the warp is already allowed for
+ * separately.
+ */
+const SURFACE_PLANE_TOLERANCE_MM = 0.05;
 /** Time given to a feed hold to decelerate before the planner is flushed. */
 const RESTART_HOLD_SETTLE_MS = 600;
 /** Time given to GRBL to reboot and report its banner after a soft reset. */
@@ -1675,6 +1683,31 @@ class WebSerialManager {
           `The probed surface sits ${bias.toFixed(2)}mm from work Z0, which is far more than a ` +
             'board warps. Work Z0 is not on this copper — zero Z on the surface with the bit ' +
             'you are about to cut with, then probe again.'
+        );
+      }
+
+      // The gross check above only catches a Z0 left over from another setup.
+      // The quiet failure is smaller and worse: a map that is the right *shape*
+      // but sits bodily off the Z0 plane, because Z0 was set against a stale
+      // map's offset rather than on the copper. warpGcode adds this map to
+      // every commanded Z, so that body offset lifts the entire job — the
+      // isolation pass stops severing the foil while the map still looks
+      // perfectly reasonable.
+      //
+      // Zeroing on the copper puts Z0 *inside* the surface the map spans, so
+      // the map's range should straddle zero. It is allowed to clear it by the
+      // board's own warp — Z0 may have been set just outside the mesh, on a
+      // corner that really is the high or low point — plus a little for probe
+      // repeatability, and no further.
+      const offPlane = gridOffPlaneMm(grid);
+      if (offPlane > SURFACE_PLANE_TOLERANCE_MM) {
+        throw new Error(
+          `The whole probed surface sits ${offPlane.toFixed(3)}mm ${stats.minZ > 0 ? 'above' : 'below'} ` +
+            `work Z0, but the board only varies by ${stats.spanZ.toFixed(3)}mm across the map. ` +
+            'That is a displaced Z0 rather than a warped board — it usually means Z was re-zeroed ' +
+            'while an older height map was loaded, which offsets the new zero by that map\'s ' +
+            'reading. Clear the height map, zero Z on the copper with the bit you are cutting ' +
+            'with, then probe again.'
         );
       }
 

@@ -451,19 +451,38 @@ export function calculatePcbFeeds(
 }
 
 /**
+ * The error a levelling setup cannot remove, in mm, no matter how flat the
+ * board reads. Probe repeatability with a continuity clip, tool runout, and
+ * gantry deflection under load all land here, and none of them shrink when the
+ * board turns out to be flat.
+ *
+ * This is the floor that was missing: the allowance used to be a pure fraction
+ * of the measured span, so the *flatter* a board probed, the *thinner* the
+ * margin it was cut with — 0.02mm over 0.035mm of foil, which is inside the
+ * noise of the probe that measured it. Traces came out faint or uncut.
+ */
+const IRREDUCIBLE_Z_ERROR_MM = 0.03;
+
+/**
  * How much deeper than the copper the isolation pass has to cut to be sure it
  * gets through everywhere, in mm.
  *
  * Copper is 35um thick; the reason the recommended depths are several times
  * that is the board, not the foil. Laminate is never flat, it is never clamped
  * flat, and the spoilboard under it is never true — so the cut has to be deep
- * enough that the high spots still clear. A probed height map removes most of
- * that error, leaving only what the interpolation misses between probe points,
- * which is a fraction of the measured span.
+ * enough that the high spots still clear.
+ *
+ * A probed height map removes most of that, but not all of it, and what is left
+ * is two things added together rather than one: what the bilinear interpolation
+ * misses *between* probe points, which does scale with the measured span, and
+ * the irreducible error above, which does not. Treating the second as though it
+ * were a fraction of the first is what let a well-behaved board be cut too
+ * shallow to isolate.
  */
 export function isolationFlatnessAllowanceMm(heightmapSpanZmm?: number): number {
   if (heightmapSpanZmm === undefined) return 0.08;
-  return Math.max(0.02, Math.min(0.08, heightmapSpanZmm * 0.15));
+  const interpolationResidual = heightmapSpanZmm * 0.15;
+  return Math.min(0.08, IRREDUCIBLE_Z_ERROR_MM + interpolationResidual);
 }
 
 /**
