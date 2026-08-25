@@ -1422,8 +1422,14 @@ class WebSerialManager {
    * Sets work Z0 using a conductive touch plate. The tool stops on *top* of the
    * plate, so Z0 sits `touchPlateThicknessMm` below the contact point — pass
    * the real thickness or every cut is off by the difference.
+   *
+   * `surfaceOffsetMm` is how far the copper under the plate stands above the
+   * height map's own reference plane — see {@link zeroZOnSurface}.
    */
-  public async zeroZ(touchPlateThicknessMm = DEFAULT_TOUCH_PLATE_MM): Promise<void> {
+  public async zeroZ(
+    touchPlateThicknessMm = DEFAULT_TOUCH_PLATE_MM,
+    surfaceOffsetMm = 0
+  ): Promise<void> {
     this.assertUnlocked();
     // Re-zeroing is the main reason to stop for a tool change, so this has to
     // be callable mid-job. The status is restored rather than forced to IDLE:
@@ -1434,13 +1440,15 @@ class WebSerialManager {
       status: 'PROBING',
       zeroZPending: true,
       zeroZConfirmed: false,
-      zeroZTargetMm: touchPlateThicknessMm,
+      zeroZTargetMm: round3(touchPlateThicknessMm + surfaceOffsetMm),
     });
     try {
       await this.sendLine('G21');
       await this.sendLine('G90');
       await this.probeDown(30, 50);
-      await this.sendLine(`G10 L20 P1 Z${touchPlateThicknessMm.toFixed(3)}`);
+      await this.sendLine(
+        `G10 L20 P1 Z${(touchPlateThicknessMm + surfaceOffsetMm).toFixed(3)}`
+      );
       await this.awaitStatus();
       await this.retract(PROBE_RETRACT_MM);
       await this.drain();
@@ -1455,8 +1463,17 @@ class WebSerialManager {
    * Sets work Z0 on the copper surface directly under the bit, using the
    * continuity clip rather than a touch plate. This is the zero the mesh
    * probe references, so it is the one to set before auto-levelling.
+   *
+   * `surfaceOffsetMm` is how far the copper *here* stands above the plane the
+   * height map is referenced to. Zero for the first zeroing of a job, when
+   * that plane is being defined; afterwards it is the map's own reading at
+   * this XY. Without it, re-zeroing at a tool change anywhere other than the
+   * exact point the map was referenced from shifts every remaining cut by the
+   * height difference between the two spots — which is the whole warp on a
+   * bowed board. With it, the operator can re-zero wherever the bit happens to
+   * be parked and the job carries on cutting to the same plane.
    */
-  public async zeroZOnSurface(): Promise<void> {
+  public async zeroZOnSurface(surfaceOffsetMm = 0): Promise<void> {
     this.assertUnlocked();
     // See zeroZ: an in-job re-zero must give the pause back when it finishes.
     const resumeStatus = this.state.status;
@@ -1464,13 +1481,13 @@ class WebSerialManager {
       status: 'PROBING',
       zeroZPending: true,
       zeroZConfirmed: false,
-      zeroZTargetMm: 0,
+      zeroZTargetMm: round3(surfaceOffsetMm),
     });
     try {
       await this.sendLine('G21');
       await this.sendLine('G90');
       await this.probeDown(25, 50);
-      await this.sendLine('G10 L20 P1 Z0');
+      await this.sendLine(`G10 L20 P1 Z${surfaceOffsetMm.toFixed(3)}`);
       await this.awaitStatus();
       await this.retract(PROBE_RETRACT_MM);
       await this.drain();

@@ -70,7 +70,9 @@ export const JobPauseModal: React.FC<JobPauseModalProps> = ({
           <div className="space-y-2 pt-2 border-t border-amber-500/30">
             <p className="text-[11px] leading-relaxed">
               A new bit is a different length, so work Z0 no longer matches the tool. Re-zero
-              before resuming, or this operation cuts at the wrong depth.
+              before resuming, or this operation cuts at the wrong depth. The tool is parked
+              clear of the board and the spindle is stopped, so it is safe to change the bit
+              now.
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <button onClick={onZeroOnCopper} disabled={locked} className={secondary}>
@@ -84,13 +86,16 @@ export const JobPauseModal: React.FC<JobPauseModalProps> = ({
 
             {/* XY needs no such care: every operation opens with an absolute
                 `G0 X.. Y..` before it plunges, so jogging here is undone by
-                the job's own next move. Z is the one that does not fix itself,
-                because re-zeroing is what redefines it. */}
+                the job's own next move. Z used to be the one that did not fix
+                itself — re-zeroing redefines it, and on a warped board it
+                redefined it to whatever the copper does under wherever the bit
+                was parked. The height map now supplies that difference, so the
+                zero lands back on the job's own plane from any spot. */}
             <p className="text-[11px] leading-relaxed opacity-90">
-              <span className="font-semibold">XY is safe to jog.</span> The job repositions itself
-              with an absolute move before it cuts again, so it returns to its own coordinates
-              without help. Just do not park the tool where it cannot travel back — the first move
-              is a rapid.
+              <span className="font-semibold">Jog anywhere you like.</span> The job repositions
+              itself with an absolute move before it cuts again, and with a surface map probed the
+              re-zero is corrected for the board's warp at whatever spot you stop over. Just do not
+              park the tool where it cannot travel back — the first move is a rapid.
             </p>
 
           </div>

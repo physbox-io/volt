@@ -41,7 +41,13 @@ import {
 } from '../utils/pcbTooling';
 import { usePcbLayout } from '../hooks/usePcbLayout';
 import { webSerialManager } from '../utils/webSerialManager';
-import { getGridStats, findUnwarpableCommands, suggestProbeGrid, type ProbeGrid } from '../utils/meshLeveler';
+import {
+  getGridStats,
+  findUnwarpableCommands,
+  suggestProbeGrid,
+  interpolateGridZ,
+  type ProbeGrid,
+} from '../utils/meshLeveler';
 import { PcbToolpathPreview } from './PcbToolpathPreview';
 import { InfoTip } from './InfoTip';
 import { JobPauseModal } from './JobPauseModal';
@@ -534,14 +540,32 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     await runProbe();
   };
 
+  /**
+   * What the height map says the copper does at the tool's current XY, in mm
+   * relative to the plane the map is referenced to.
+   *
+   * This is what lets a re-zero happen anywhere. Probing redefines work Z0 as
+   * "the surface under the bit", and on a warped board that surface is not the
+   * plane the rest of the job is cut to — park somewhere 0.1mm high, re-zero,
+   * and every remaining cut is 0.1mm shallow. Declaring the contact point as
+   * Z = <the map's reading here> instead puts Z0 back on the map's own plane,
+   * whichever spot the operator happened to stop over.
+   */
+  const surfaceOffsetHere = () => {
+    if (!activeHeightmap) return 0;
+    const { x, y } = serialState.wpos;
+    return interpolateGridZ(activeHeightmap, x, y);
+  };
+
   const handleZeroZ = async () => {
     if (manualMoveBlocked) return;
     if (!(await ensureConnected())) return;
     setBusy('zeroing');
     setMachineError(null);
     try {
-      await webSerialManager.zeroZOnSurface();
-      setHeightmap(null);
+      // The map survives: it still describes this board against the same
+      // plane, which is exactly what the offset above re-establishes.
+      await webSerialManager.zeroZOnSurface(surfaceOffsetHere());
     } catch (e: any) {
       setMachineError(e?.message || 'Zeroing Z failed');
     } finally {
@@ -560,8 +584,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     setBusy('zeroing');
     setMachineError(null);
     try {
-      await webSerialManager.zeroZ(touchPlateMm);
-      setHeightmap(null);
+      await webSerialManager.zeroZ(touchPlateMm, surfaceOffsetHere());
     } catch (e: any) {
       setMachineError(e?.message || 'Zeroing Z on the touch plate failed');
     } finally {

@@ -64,6 +64,31 @@ export interface PcbOptions {
   isolationDepthZ: number;     // Depth for isolation milling in mm (negative)
   drillDepthZ: number;         // Depth for drilling through-holes in mm
   profileDepthZ: number;       // Depth for board edge profiling in mm
+  /**
+   * Height above work Z0 the tool is parked at for a bit change, in mm.
+   *
+   * Safe Z is a travel height — a couple of millimetres, enough to clear the
+   * copper between cuts. It is nowhere near enough to change a bit: the next
+   * one may protrude several millimetres further than the last, which puts its
+   * tip *inside the board* the moment the collet is tightened. Everything the
+   * operator does next then happens from there — jogging drags the bit through
+   * the copper, and probing for a new Z0 cannot find a surface it is already
+   * below, so it drills its whole search depth instead.
+   */
+  toolChangeZ: number;
+  /**
+   * Stock thickness in mm. Through-cuts are referenced to the bottom face:
+   * a drill or a profile pass has to reach it and then some, and a holding tab
+   * is however much material is deliberately left above it.
+   */
+  boardThicknessMm: number;
+  /**
+   * How far a through-cut goes past the bottom face, into the spoilboard, in
+   * mm. Stopping level with the bottom leaves the last few microns joined by
+   * whatever the levelling residual and the Z0 error add up to — holes that
+   * still have a skin in them and a profile that will not release.
+   */
+  breakThroughMm: number;
   zStepdown: number;           // Depth per pass for profiling in mm
   profileToolDiaMm: number;    // End mill diameter for the profile cut
   tabCount: number;            // Holding tabs around the profile (0 disables)
@@ -153,9 +178,14 @@ export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   drillFeedrate: 150,
   spindleRpm: 12000,
   safeZ: 2.0,
+  toolChangeZ: 15.0,
+  boardThicknessMm: 1.6,
+  breakThroughMm: 0.3,
   isolationDepthZ: -0.16,
-  drillDepthZ: -1.8,
-  profileDepthZ: -1.6,
+  // Through the 1.6mm blank and 0.3mm into the spoilboard. Kept as explicit
+  // depths rather than derived, so a job can still be given its own.
+  drillDepthZ: -1.9,
+  profileDepthZ: -1.9,
   zStepdown: 0.8,
   profileToolDiaMm: 1.5,
   tabCount: 4,
@@ -1771,15 +1801,38 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   g.push(`G90 G21 ; Absolute positioning, millimetres`);
   g.push(`G17 ; XY plane`);
   g.push(`G0 Z${f3(options.safeZ)}`);
-  g.push(`M3 S${options.spindleRpm} ; Spindle on`);
-  g.push(`G4 P2 ; Dwell for spin-up`);
+  if (!options.pauseOnToolChange) {
+    // Nothing below will stop for a bit change, so the spindle is started here
+    // and left running for the whole program.
+    g.push(`M3 S${options.spindleRpm} ; Spindle on`);
+    g.push(`G4 P2 ; Dwell for spin-up`);
+  }
+
+  /**
+   * Stops the machine for a bit change and picks the job back up.
+   *
+   * The order is the whole point. Park high enough that a longer bit still
+   * clears the stock, stop the spindle before hands go near the collet, then
+   * pause. On the way out, spin back up, wait for it, and only then come down
+   * to travel height — the operation that follows opens with an XY rapid, and
+   * at the parking height that rapid is over the board, not through it.
+   */
+  const toolChange = (line: string) => {
+    if (!options.pauseOnToolChange) return;
+    g.push(`G0 Z${f3(options.toolChangeZ)} ; Park clear for the bit change`);
+    g.push(`M5 ; Spindle off before hands go near the collet`);
+    g.push(line);
+    g.push(`M3 S${options.spindleRpm} ; Spindle back on`);
+    g.push(`G4 P2 ; Dwell for spin-up`);
+    g.push(`G0 Z${f3(options.safeZ)} ; Back down to travel height`);
+  };
 
   // --- Operation 1: isolation ---
   g.push(``);
   g.push(`; ==================================================`);
   g.push(`; OP 1/3: Isolation routing (${options.vBitAngleDeg}deg V-bit, ${options.vBitTipMm}mm tip)`);
   g.push(`; ==================================================`);
-  if (options.pauseOnToolChange) g.push(`T1 M6 ; Tool 1: V-bit`);
+  toolChange(`T1 M6 ; Tool 1: V-bit`);
 
   let lastNet = '';
   for (const path of result.isolationPaths) {
@@ -1839,8 +1892,7 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
         `${interpolated ? `interpolated with a ${bitMm}mm bit` : `drilled with a ${bitMm}mm bit`} ---`
       );
       if (options.pauseOnToolChange && bitMm !== loadedBitMm) {
-        g.push(`T${toolNum} M6 ; Tool ${toolNum}: ${bitMm}mm drill`);
-        g.push(`G4 P1`);
+        toolChange(`T${toolNum} M6 ; Tool ${toolNum}: ${bitMm}mm drill`);
         toolNum++;
       }
       loadedBitMm = bitMm;
@@ -1887,10 +1939,7 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   g.push(`; Tool centre runs ${(options.profileToolDiaMm / 2).toFixed(3)}mm outside the`);
   g.push(`; finished edge. ${options.tabCount} holding tab(s) keep the board captive.`);
   g.push(`; ==================================================`);
-  if (options.pauseOnToolChange) {
-    g.push(`T99 M6 ; Tool 99: ${options.profileToolDiaMm}mm end mill`);
-    g.push(`G4 P1`);
-  }
+  toolChange(`T99 M6 ; Tool 99: ${options.profileToolDiaMm}mm end mill`);
 
   // Internal features first: the board is still fully captive, so the cutout
   // slugs come free while the outside edge is still uncut.
@@ -1929,8 +1978,14 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   let currentZ = 0;
   const targetZ = options.profileDepthZ;
   const step = Math.abs(options.zStepdown) || 0.8;
-  // Tabs only matter once the cut is deeper than the tab height.
-  const tabZ = Math.min(0, targetZ + Math.abs(options.tabHeightMm));
+  // Tabs only matter once the cut is deeper than the tab height. The height is
+  // material left standing above the *bottom face*, so it is measured from
+  // there rather than from the cut depth — which now runs past the bottom into
+  // the spoilboard and would otherwise shave every tab down by that overshoot.
+  const tabZ = Math.min(
+    0,
+    -Math.abs(options.boardThicknessMm) + Math.abs(options.tabHeightMm)
+  );
 
   g.push(`G0 X${f3(corners[0].x)} Y${f3(corners[0].y)}`);
   while (currentZ > targetZ) {
