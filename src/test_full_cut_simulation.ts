@@ -39,6 +39,7 @@ const failures: string[] = [];
  * browser logs that; node kills the process. Collected rather than ignored.
  */
 const unhandled: string[] = [];
+declare const process: { on(ev: string, cb: (e: any) => void): void };
 process.on('unhandledRejection', (e: any) => unhandled.push(e?.message ?? String(e)));
 /**
  * Something worth knowing that is not a defect: a margin thinner than it looks,
@@ -143,7 +144,10 @@ class FakeCnc {
   public readable: ReadableStream<Uint8Array>;
   public writable: WritableStream<Uint8Array>;
 
-  constructor(private opts: FakeCncOptions = {}) {
+  private opts: FakeCncOptions;
+
+  constructor(opts: FakeCncOptions = {}) {
+    this.opts = opts;
     this.readable = new ReadableStream<Uint8Array>({ start: c => (this.controller = c) });
     this.writable = new WritableStream<Uint8Array>({
       write: chunk => this.onBytes(new TextDecoder().decode(chunk)),
