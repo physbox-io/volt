@@ -302,6 +302,37 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
   const gridStats = activeHeightmap ? getGridStats(activeHeightmap) : null;
 
+  /**
+   * What the machine measured about itself, in the units the depth budget is
+   * spent in.
+   *
+   * `verifyDeviationMm` is the mesh re-probing the point it started on;
+   * `zeroZScatterMm` is the gap between the fast and slow stabs of the last Z
+   * zeroing. Both are error the height map cannot remove — it compensates the
+   * board's shape, not the probe's aim — so they eat directly into the margin
+   * between the isolation depth and the copper.
+   */
+  const machineAccuracy = [
+    activeHeightmap?.verifyDeviationMm !== undefined
+      ? `${activeHeightmap.verifyDeviationMm.toFixed(3)}mm re-probe`
+      : null,
+    serialState.zeroZScatterMm !== undefined
+      ? `${serialState.zeroZScatterMm.toFixed(3)}mm zero`
+      : null,
+  ].filter(Boolean) as string[];
+
+  /**
+   * Poor against the margin this job actually has, not against a fixed figure:
+   * a deep cut in thin foil can absorb scatter that a shallow one cannot.
+   */
+  const copperMm =
+    (PCB_MATERIAL_PRESETS.find(m => m.id === selectedMaterialId)?.copperThicknessUm ?? 35) / 1000;
+  const depthMargin = Math.abs(options.isolationDepthZ) - copperMm;
+  const accuracyIsPoor = [
+    activeHeightmap?.verifyDeviationMm,
+    serialState.zeroZScatterMm,
+  ].some(v => v !== undefined && v > depthMargin * 0.5);
+
   const unwarpable = useMemo(
     () => (activeHeightmap ? findUnwarpableCommands(result.gcode) : []),
     [activeHeightmap, result.gcode]
@@ -731,10 +762,10 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     }
   };
 
-  const handleResume = async (opts: { toolLengthUnchanged: boolean }) => {
+  const handleResume = async () => {
     setMachineError(null);
     try {
-      await webSerialManager.resumeJob(opts);
+      await webSerialManager.resumeJob();
     } catch (e: any) {
       setMachineError(e?.message || 'Could not resume the job');
     }
@@ -867,6 +898,28 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                   {gridStats && (
                     <span className="text-cyan-700 dark:text-cyan-400 font-bold flex items-center gap-1">
                       <Check className="w-3 h-3" /> Levelled — {activeHeightmap!.gridX}×{activeHeightmap!.gridY} mesh ({gridStats.spanZ.toFixed(3)}mm warp)
+                    </span>
+                  )}
+                  {/* The two numbers that say whether this machine can hold the
+                      depth the job is about to cut at. Warp is what levelling
+                      removes; these are what it cannot, and they are spent out
+                      of the same margin over the foil. Shown next to the warp
+                      rather than buried, because a repeatability figure the
+                      operator never sees is one nobody can act on. */}
+                  {machineAccuracy.length > 0 && (
+                    <span
+                      className={`font-bold flex items-center gap-1 ${
+                        accuracyIsPoor
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-slate-500 dark:text-slate-400'
+                      }`}
+                      title={
+                        'Measured on this setup: how far a second reading of the same spot landed ' +
+                        'from the first. It comes out of the same margin over the copper as the warp does.'
+                      }
+                    >
+                      {accuracyIsPoor && <AlertTriangle className="w-3 h-3" />}
+                      Machine repeatability — {machineAccuracy.join(', ')}
                     </span>
                   )}
                   {heightmapStale && (
@@ -2042,6 +2095,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
           isStreamPaused={isStreamPaused}
           touchPlateMm={touchPlateMm}
           spindleRpm={options.spindleRpm}
+          zeroScatterMm={serialState.zeroZScatterMm}
           busy={busy}
           needsZero={!!serialState.needsZeroBeforeResume}
           error={machineError}

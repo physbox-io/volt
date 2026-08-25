@@ -679,8 +679,9 @@ check('now cutting the second layer', webSerialManager.getCurrentLayer()?.label 
 const cutsBefore = fake.received.filter(l => l === 'G1 X1.000').length;
 
 // The second tool change is a real bit change, and the bit that goes in is a
-// different length — so resuming on the old work Z0 is refused. Nothing below
-// is about that policy, so it is asserted once here and then overridden.
+// different length — so resuming on the old work Z0 is refused, with no way
+// past it but the re-zero. Asserted once here; every later resume in this file
+// does the re-zero first, which is what the operator does.
 let refused = '';
 try {
   await webSerialManager.resumeJob();
@@ -690,7 +691,8 @@ try {
 check('resuming a bit change without re-zeroing is refused', refused.includes('re-zeroed'), refused || '(allowed)');
 check('and the job is still sitting at the pause', webSerialManager.getState().status === 'PAUSED_TOOL', webSerialManager.getState().status);
 
-await webSerialManager.resumeJob({ toolLengthUnchanged: true });
+await webSerialManager.zeroZ(12);
+await webSerialManager.resumeJob();
 check('job finished', webSerialManager.getState().status === 'IDLE', webSerialManager.getState().status);
 
 // Now run it again and restart the *live* layer part-way through.
@@ -721,7 +723,8 @@ check('progress rewound to the layer start', (webSerialManager.getState().progre
 // header far behind this layer — so it would never be replayed. It is re-sent
 // on resume, not before, so it is never turning during a bit change.
 const spindleBefore = fake.received.filter(l => l === 'M3 S12000').length;
-await webSerialManager.resumeJob({ toolLengthUnchanged: true });
+await webSerialManager.zeroZ(12);
+await webSerialManager.resumeJob();
 check('the spindle is restarted on resume', fake.received.filter(l => l === 'M3 S12000').length === spindleBefore + 1, `${spindleBefore}`);
 check('the layer is cut again', fake.received.filter(l => l === 'G1 X9.000').length > beforeRestart);
 check('job completes after a restart', webSerialManager.getState().status === 'IDLE', webSerialManager.getState().status);
@@ -745,7 +748,8 @@ check(
   webSerialManager.getState().status === 'PAUSED_TOOL',
   `${webSerialManager.getState().status} — ${webSerialManager.getState().lastError || ''}`
 );
-await webSerialManager.resumeJob({ toolLengthUnchanged: true });
+await webSerialManager.zeroZ(12);
+await webSerialManager.resumeJob();
 check('job completes after an auto-unlock', webSerialManager.getState().status === 'IDLE', webSerialManager.getState().status);
 
 // A *coded* alarm is the opposite case: a limit trip or a reset mid-motion,

@@ -1289,26 +1289,26 @@ class WebSerialManager {
   /**
    * Resumes after either an operator feed hold or an M0 / M6 stream pause.
    *
-   * A tool-change pause is refused unless work Z0 has been re-established since
-   * the machine stopped, or the caller states outright that the bit length has
-   * not changed. This used to be advice printed on a dialog next to an always-
-   * enabled Resume button, and advice is not a safeguard: the tool length is
-   * the one thing a bit change always alters, and resuming without it drives
-   * the next operation as deep as the two bits differ. The full-cut simulation
-   * measures 6.1mm for a 4.2mm length difference — through the board, through
-   * the spoilboard, at drill feed.
+   * A tool-change pause is refused until work Z0 has been re-established. This
+   * used to be advice printed on a dialog next to an always-enabled Resume
+   * button, and advice is not a safeguard: the tool length is the one thing a
+   * bit change always alters, and resuming without it drives the next operation
+   * as deep as the two bits differ. The full-cut simulation measures 6.1mm for
+   * a 4.2mm length difference — through the board, through the spoilboard, at
+   * drill feed.
    *
-   * `toolLengthUnchanged` is the deliberate way past it, for the operator who
-   * re-seated the same bit or zeroed by some means this class did not run. It
-   * has to be passed on purpose; there is no default that skips the check.
+   * There is deliberately no way past it. An override would be reached for
+   * exactly when the operator is sure and in a hurry, which is the state the
+   * gouge happens in, and a re-zero costs seconds. The first tool of a job does
+   * not count as a change — see the tool-change pause.
    */
-  public async resumeJob(opts: { toolLengthUnchanged?: boolean } = {}) {
+  public async resumeJob() {
     if (!this.isPaused) return;
-    if (this.state.status === 'PAUSED_TOOL' && this.state.needsZeroBeforeResume && !opts.toolLengthUnchanged) {
+    if (this.state.status === 'PAUSED_TOOL' && this.state.needsZeroBeforeResume) {
       if (this.zeroZOps === this.zeroZOpsAtPause) {
         throw new Error(
           'Work Z0 has not been re-zeroed since the bit change, so it still describes the ' +
-            'previous tool. Re-zero Z, or confirm the bit length is unchanged, before resuming.'
+            'previous tool. Re-zero Z before resuming.'
         );
       }
     }

@@ -578,10 +578,12 @@ async function runJob(
     try {
       await webSerialManager.resumeJob();
       if (!reZero) resumeAllowed.push(t ?? '?');
-    } catch (e: any) {
-      if (reZero) throw e;
+    } catch {
+      // There is no override any more, so a run that skips the re-zero simply
+      // stops here. That is the scenario: the job cannot continue on a work Z0
+      // that describes the bit which just came out.
       resumeRefused.push(t ?? '?');
-      await webSerialManager.resumeJob({ toolLengthUnchanged: true });
+      return webSerialManager.getState();
     }
   }
   return webSerialManager.getState();
@@ -816,27 +818,30 @@ console.log('\nCutting (levelled, re-zeroed back at the mapped corner)…');
 await runJob(warped, true, { x: layout.boardOriginMm, y: layout.boardOriginMm });
 analyse('corner re-zero', cnc.samples, { strict: true, levelled: true });
 
-// --- 6. Resume without re-zeroing, which the dialog permits ----------------
+// --- 6. A bit change with no re-zero cannot proceed ------------------------
+// This scenario used to run to completion and gouge 6.099mm — through the
+// 1.6mm board, through the spoilboard, at drill feed — because the bit that
+// went in was 4.2mm longer than the one that came out and work Z0 still
+// described the old one. The dialog advised a re-zero; nothing required it.
+//
+// Now the job stops at the pause instead, and there is no override to get past
+// it, so the deep cut is simply unreachable. What is checked is that: the
+// stream holds, and nothing beyond the tool change is cut.
+
 await freshMachine();
 console.log('\nCutting (tool changed, Resume pressed without re-zeroing)…');
-await runJob(warped, false);
+const heldState = await runJob(warped, false);
 const noZero = analyse('no re-zero', cnc.samples, { strict: false, levelled: true });
-const worst = [...noZero.drill, ...noZero.profile].reduce(
-  (m, s) => Math.max(m, s.depth),
-  0
-);
-console.log(
-  `  deepest cut after an un-rezeroed tool change: ${worst.toFixed(3)}mm ` +
-    `(bit length difference was ${Math.max(...Object.values(TOOL_LENGTHS)).toFixed(1)}mm)`
-);
+const worst = [...noZero.drill, ...noZero.profile].reduce((m, s) => Math.max(m, s.depth), 0);
 
-// The gouge above is what the override buys, and it is why the override has to
-// be asked for. This used to be a warning printed beside a Resume button that
-// was never disabled — the run below only reaches that depth because the test
-// explicitly claims the bit length is unchanged.
+check(
+  'a bit change with no re-zero holds the job at the pause',
+  heldState.status === 'PAUSED_TOOL',
+  `${heldState.status}`
+);
 check(
   'every bit change after the first is refused until Z is re-zeroed',
-  resumeRefused.length > 0 && resumeAllowed.every(t => t === 'T1'),
+  resumeRefused.length > 0,
   `refused ${resumeRefused.join(',') || 'nothing'}; allowed ${resumeAllowed.join(',') || 'nothing'}`
 );
 // The first T1 is the bit the operator loaded and zeroed during setup, not a
@@ -848,6 +853,12 @@ check(
   resumeAllowed.includes('T1'),
   `allowed ${resumeAllowed.join(',') || 'nothing'}`
 );
+check(
+  'nothing is cut past the refused bit change',
+  worst < FR4_MM,
+  `something reached ${worst.toFixed(3)}mm — deeper than the ${FR4_MM}mm laminate`
+);
+console.log(`  deepest cut before the job was held: ${worst.toFixed(3)}mm`);
 
 // --- 7. An air cut must never touch the stock ------------------------------
 await freshMachine();
