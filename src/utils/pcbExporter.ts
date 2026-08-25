@@ -1544,6 +1544,50 @@ const f3 = (n: number) => n.toFixed(3);
  * pass most worth previewing was the one nobody ever saw. Nothing is being cut,
  * so there is no bit to change and no reason to spin the spindle up either.
  */
+/**
+ * A dry run of the board's outline, lifted clear of the stock.
+ *
+ * What an air cut is actually for is registration: is the blank where the job
+ * thinks it is, do the clamps foul the travel, does the machine reach all four
+ * corners. Replaying every isolation move to answer that takes as long as the
+ * real job and proves nothing extra — every cut in the program lies inside this
+ * rectangle, because the profile pass *is* the outermost path in the job, so
+ * one lap of it bounds all the rest.
+ *
+ * Deliberately no spindle, no tool change and no plunges: nothing here should
+ * be able to cut, and a program with no `M3` in it cannot start a spindle by
+ * accident. Two laps — the first to watch, the second to confirm what you saw.
+ */
+export function generateAirCutPerimeterGcode(
+  result: PcbLayoutResult,
+  options: PcbOptions,
+  zOffsetMm = 20
+): string {
+  const { corners } = profileToolpath(result, options);
+  const z = f3(options.safeZ + Math.abs(zOffsetMm));
+  const g: string[] = [];
+
+  g.push(`; --- AIR CUT: board outline only, ${f3(Math.abs(zOffsetMm))}mm above safe Z ---`);
+  g.push(`; Bounds the whole job: every cut lies inside this rectangle.`);
+  g.push(`; No spindle and no tool changes — this program cannot cut.`);
+  g.push(`G90 G21`);
+  g.push(`G17`);
+  g.push(`G0 Z${z}`);
+
+  for (let lap = 1; lap <= 2; lap++) {
+    g.push(`; --- lap ${lap} of 2 ---`);
+    g.push(`G0 X${f3(corners[0].x)} Y${f3(corners[0].y)}`);
+    for (let i = 1; i < corners.length; i++) {
+      g.push(`G1 X${f3(corners[i].x)} Y${f3(corners[i].y)} F${options.travelFeedrate}`);
+    }
+  }
+
+  g.push(`G0 Z${z}`);
+  g.push(`G0 X0 Y0`);
+  g.push(`M30 ; End`);
+  return g.join('\n');
+}
+
 export function generateAirCutGcode(gcode: string, zOffsetMm = 20): string {
   if (!gcode) return gcode;
   const lines = gcode.split('\n');

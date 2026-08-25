@@ -20,6 +20,18 @@ export interface ProbeGrid {
   gridY: number; // Number of sample points along Y axis (>= 2)
   /** 2D array of probed points: points[row_y][col_x] */
   points: ProbePoint[][];
+  /**
+   * How far a re-probe of the first point landed from its recorded height, in
+   * mm — the machine's own repeatability, measured on this setup rather than
+   * assumed.
+   *
+   * It is the number the isolation depth budget actually needs. Probe trigger
+   * scatter, backlash, a frame that shifted mid-probe and lost steps all show
+   * up here, and none of them are visible in the map itself: the map is one
+   * reading per point with nothing to compare against. Undefined when the
+   * verification pass did not run.
+   */
+  verifyDeviationMm?: number;
 }
 
 export interface GridStats {

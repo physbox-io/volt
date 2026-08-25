@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { AlertCircle, Play, RefreshCw } from 'lucide-react';
 
 export interface JobPauseModalProps {
@@ -12,10 +12,23 @@ export interface JobPauseModalProps {
   isStreamPaused: boolean;
   /** Thickness of the touch plate, so the button can name what it assumes. */
   touchPlateMm: number;
+  /**
+   * Spindle speed the job resumes at. Shown because the bit going in is what
+   * that speed has to suit: a 0.8mm drill and a 1.5mm end mill do not want the
+   * same RPM, and the number is otherwise buried in a tab behind this dialog at
+   * the one moment the operator has their hands on the machine.
+   */
+  spindleRpm: number;
   /** Non-empty while some machine action is in flight; buttons lock. */
   busy: string;
+  /**
+   * True while work Z0 still describes the bit that came *out*. Resuming on it
+   * cuts as deep as the two bits differ in length, so the operator has to
+   * either re-zero or say outright that the length has not changed.
+   */
+  needsZero: boolean;
   error?: string | null;
-  onResume: () => void;
+  onResume: (opts: { toolLengthUnchanged: boolean }) => void;
   onCancel: () => void;
   onZeroOnCopper: () => void;
   onZeroOnPlate: () => void;
@@ -39,7 +52,9 @@ export const JobPauseModal: React.FC<JobPauseModalProps> = ({
   message,
   isStreamPaused,
   touchPlateMm,
+  spindleRpm,
   busy,
+  needsZero,
   error,
   onResume,
   onCancel,
@@ -47,6 +62,19 @@ export const JobPauseModal: React.FC<JobPauseModalProps> = ({
   onZeroOnPlate,
 }) => {
   const locked = !!busy;
+
+  /**
+   * The operator's explicit "the length did not change" — for a re-seated bit,
+   * or a zero set by some other means. Deliberately not remembered across
+   * pauses: it is a claim about one bit change, and the next one deserves the
+   * question again.
+   */
+  const [lengthUnchanged, setLengthUnchanged] = useState(false);
+  useEffect(() => {
+    if (needsZero) setLengthUnchanged(false);
+  }, [needsZero]);
+
+  const resumeBlocked = needsZero && !lengthUnchanged;
   const secondary =
     'px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 ' +
     'disabled:opacity-40 disabled:cursor-not-allowed text-slate-800 dark:text-slate-100 ' +
@@ -68,12 +96,37 @@ export const JobPauseModal: React.FC<JobPauseModalProps> = ({
 
         {isStreamPaused && (
           <div className="space-y-2 pt-2 border-t border-amber-500/30">
+            <div className="flex items-center justify-between gap-2 bg-slate-900/5 dark:bg-slate-950/50 border border-amber-500/30 rounded-lg px-2.5 py-1.5">
+              <span className="text-[11px] font-semibold">Spindle speed on resume</span>
+              <span className="font-mono text-sm font-bold tabular-nums">
+                {spindleRpm.toLocaleString()} <span className="text-[10px] font-semibold opacity-70">RPM</span>
+              </span>
+            </div>
+
             <p className="text-[11px] leading-relaxed">
               A new bit is a different length, so work Z0 no longer matches the tool. Re-zero
               before resuming, or this operation cuts at the wrong depth. The tool is parked
               clear of the board and the spindle is stopped, so it is safe to change the bit
               now.
             </p>
+
+            {needsZero && (
+              <label className="flex items-start gap-2 text-[11px] leading-relaxed bg-amber-500/10 border border-amber-500/40 rounded-lg p-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={lengthUnchanged}
+                  onChange={e => setLengthUnchanged(e.target.checked)}
+                  className="mt-0.5 accent-amber-600 cursor-pointer"
+                />
+                <span>
+                  I did not change the bit length — resume without re-zeroing.
+                  <span className="block opacity-80">
+                    Only for a re-seated bit, or a zero set some other way. A bit of a different
+                    length cuts as deep as the difference.
+                  </span>
+                </span>
+              </label>
+            )}
             <div className="flex flex-wrap items-center gap-2">
               <button onClick={onZeroOnCopper} disabled={locked} className={secondary}>
                 {busy === 'zeroing' && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
@@ -116,8 +169,9 @@ export const JobPauseModal: React.FC<JobPauseModalProps> = ({
             Cancel job
           </button>
           <button
-            onClick={onResume}
-            disabled={locked}
+            onClick={() => onResume({ toolLengthUnchanged: lengthUnchanged })}
+            disabled={locked || resumeBlocked}
+            title={resumeBlocked ? 'Re-zero Z, or confirm the bit length is unchanged' : undefined}
             className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-bold text-xs rounded-lg flex items-center space-x-1.5 cursor-pointer"
           >
             <Play className="w-3.5 h-3.5 fill-current" />

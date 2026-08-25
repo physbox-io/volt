@@ -56,7 +56,43 @@ const WCO_POLL_ATTEMPTS = 40;
  * warp. Copper-clad FR4 of any size warps well under a millimetre; anything
  * beyond this is a wrong or missing Z zero, not a bent board.
  */
+/** A G-code line with its `;` or `(...)` comment removed. */
+function stripGcodeComment(line: string): string {
+  const semi = line.indexOf(';');
+  const paren = line.indexOf('(');
+  const at = semi < 0 ? paren : paren < 0 ? semi : Math.min(semi, paren);
+  return (at < 0 ? line : line.slice(0, at)).trim();
+}
+
+/**
+ * Whether a line is an unconditional stop, ignoring anything in its comment.
+ *
+ * Defence in depth rather than a fix for an observed failure: `startJob` drops
+ * whole-line comments before anything is queued, so today nothing with a `;` in
+ * front of it reaches this test. What it guards is the *trailing* comment — a
+ * bare `includes('M6')` on `G1 X10 ; back to the M6 hole` stops a job dead in
+ * the middle of a cut, and nothing but the wording of our own generated
+ * comments currently prevents that. Comments are not instructions.
+ */
+function isMaterialPause(line: string): boolean {
+  return /(^|\s)M0{1,2}(\s|$)/.test(stripGcodeComment(line));
+}
+
+/** Whether a line commands a tool change, ignoring anything in its comment. */
+function isToolChangePause(line: string): boolean {
+  const code = stripGcodeComment(line);
+  return /(^|\s)M0?6(\s|$)/.test(code) || /(^|\s)T\d+(\s|$)/.test(code);
+}
+
 const MAX_SURFACE_OFFSET_MM = 1.5;
+/**
+ * How far a re-probe of an already-probed point may land from its first reading
+ * before the map is untrustworthy. Generous — this is the "something is loose"
+ * threshold, not the repeatability figure, which is measured and reported.
+ */
+const MAX_PROBE_SCATTER_MM = 0.15;
+/** How far the tool lifts between the fast and slow stabs of a zeroing probe. */
+const PROBE_RESTAB_LIFT_MM = 0.5;
 /**
  * How far the probed surface may sit clear of work Z0 *beyond* the board's own
  * measured warp before the map is treated as referenced to the wrong plane.
@@ -175,6 +211,18 @@ export interface MachineState {
    */
   zeroXYConfirmed?: boolean;
   zeroZConfirmed?: boolean;
+  /**
+   * Set at a tool-change pause and cleared by a Z zeroing operation. While it
+   * is true, resuming would cut with a work Z0 that describes the *previous*
+   * bit — which is a gouge as deep as the two bits differ in length.
+   */
+  needsZeroBeforeResume?: boolean;
+  /**
+   * How far the two stabs of the last Z zeroing probe disagreed, in mm. The
+   * machine's own repeatability at the one place it matters most — everything
+   * the job cuts is referenced to that zero.
+   */
+  zeroZScatterMm?: number;
   zeroXYPending?: boolean;
   zeroZPending?: boolean;
   /**
@@ -392,6 +440,29 @@ class WebSerialManager {
   private inflight: PendingAck[] = [];
   /** Woken whenever the inflight queue shrinks, so writers can resume. */
   private bufferWaiters: Array<() => void> = [];
+
+  /**
+   * Count of completed Z zeroing operations. Compared against its value at the
+   * last tool-change pause to answer "did the operator actually re-zero?" —
+   * which `zeroZConfirmed` cannot, because that flag means "the tool is
+   * standing at the zero", and any jog clears it. Jogging after a re-zero does
+   * not un-set the origin, and the pause dialog invites jogging.
+   */
+  /** Reports that literally carried a `WCO:` field, as opposed to a carried-over one. */
+  private wcoReports = 0;
+  private zeroZOps = 0;
+  private zeroZOpsAtPause = 0;
+  /**
+   * Tool-change pauses reached in the current job.
+   *
+   * The first `T<n> M6` is not a bit *change* — it is the bit the operator
+   * loaded and zeroed during setup, and demanding a re-zero for it would raise
+   * the alarm on every single job. An alarm that is wrong the first time is one
+   * the operator learns to click past, which is worse than not having it: by
+   * the second tool change, when the length really has changed, the habit is
+   * already formed.
+   */
+  private toolChangesSeen = 0;
 
   private probeWaiter: {
     resolve: (r: { x: number; y: number; z: number }) => void;
@@ -676,9 +747,22 @@ class WebSerialManager {
     // would report the old frame as though it were the new one — long enough
     // for a pending zero to "confirm" against a stale reading. Dropping it here
     // rather than in each caller means a new command cannot forget to.
-    if (/^G10(\s|$)/i.test(trimmed)) this.lastWco = undefined;
+    const movesOrigin = /^G10(\s|$)/i.test(trimmed);
     const { ack } = await this.enqueueLine(trimmed);
     await ack;
+    // Dropped *after* the ack, not before the write. GRBL emits status reports
+    // continuously, and one generated before it had executed the G10 still
+    // carries the old offset — clearing first left that report free to land
+    // afterwards and reinstate the stale value, with nothing to clear it again.
+    // A report read after the 'ok' cannot predate the G10: the ack and the
+    // reports come up the same stream in order.
+    //
+    // This is not hypothetical. A mesh probed against a work offset left over
+    // from the previous zero reads as a whole surface displaced by the
+    // difference between the two — the right shape, the right span, bodily
+    // wrong — which is the failure the off-plane guard reports rather than the
+    // one it was supposed to prevent.
+    if (movesOrigin) this.lastWco = undefined;
   }
 
   /** Resolves once every sent line has been acknowledged. */
@@ -740,6 +824,7 @@ class WebSerialManager {
           sawWPos = true;
         } else if (p.startsWith('WCO:')) {
           wco = triple(p.slice(4));
+          this.wcoReports++;
         }
       }
 
@@ -756,6 +841,9 @@ class WebSerialManager {
           y: round3(mpos.y - wpos.y),
           z: round3(mpos.z - wpos.z),
         };
+        // Both frames in one report pins the offset down as firmly as a WCO
+        // field does, so this counts as a first-hand reading too.
+        this.wcoReports++;
       } else if (sawMPos && wco) {
         wpos = { x: round3(mpos.x - wco.x), y: round3(mpos.y - wco.y), z: round3(mpos.z - wco.z) };
       } else if (sawWPos && wco) {
@@ -930,6 +1018,7 @@ class WebSerialManager {
     }
 
     this.jobLayers = layers;
+    this.toolChangesSeen = 0;
     this.jobSpindleLine = rawLines.find(l => /\bM[34]\b/.test(l)) ?? null;
     this.spindleRestartPending = false;
     this.gcodeQueue = rawLines;
@@ -963,7 +1052,7 @@ class WebSerialManager {
 
       // Handle interactive pauses. Let the machine finish everything already
       // buffered first, or it would keep cutting past the pause point.
-      if (line.startsWith('M0') || line.startsWith('M00')) {
+      if (isMaterialPause(line)) {
         await this.drain();
         this.isPaused = true;
         this.pauseKind = 'stream';
@@ -971,12 +1060,23 @@ class WebSerialManager {
         this.updateState({ status: 'PAUSED_MATERIAL', pauseMessage: 'M0 Pause: Swap material sheet and click Resume.' });
         return;
       }
-      if (line.includes('M6') || line.startsWith('T')) {
+      if (isToolChangePause(line)) {
         await this.drain();
         this.isPaused = true;
         this.pauseKind = 'stream';
         this.currentQueueIndex++;
-        this.updateState({ status: 'PAUSED_TOOL', pauseMessage: `Tool Change: ${line}. Change bit and click Resume.` });
+        // A new bit is a different length, so the work Z0 the job has been
+        // cutting to no longer describes this tool. Remember how many zeroing
+        // operations had happened when the machine stopped, so resumeJob can
+        // tell whether the operator actually did one.
+        this.zeroZOpsAtPause = this.zeroZOps;
+        const isFirstTool = this.toolChangesSeen === 0;
+        this.toolChangesSeen++;
+        this.updateState({
+          status: 'PAUSED_TOOL',
+          pauseMessage: `Tool Change: ${stripGcodeComment(line)}. Change bit and click Resume.`,
+          needsZeroBeforeResume: !isFirstTool,
+        });
         return;
       }
 
@@ -1186,13 +1286,36 @@ class WebSerialManager {
     return this.processQueue();
   }
 
-  /** Resumes after either an operator feed hold or an M0 / M6 stream pause. */
-  public async resumeJob() {
+  /**
+   * Resumes after either an operator feed hold or an M0 / M6 stream pause.
+   *
+   * A tool-change pause is refused unless work Z0 has been re-established since
+   * the machine stopped, or the caller states outright that the bit length has
+   * not changed. This used to be advice printed on a dialog next to an always-
+   * enabled Resume button, and advice is not a safeguard: the tool length is
+   * the one thing a bit change always alters, and resuming without it drives
+   * the next operation as deep as the two bits differ. The full-cut simulation
+   * measures 6.1mm for a 4.2mm length difference — through the board, through
+   * the spoilboard, at drill feed.
+   *
+   * `toolLengthUnchanged` is the deliberate way past it, for the operator who
+   * re-seated the same bit or zeroed by some means this class did not run. It
+   * has to be passed on purpose; there is no default that skips the check.
+   */
+  public async resumeJob(opts: { toolLengthUnchanged?: boolean } = {}) {
     if (!this.isPaused) return;
+    if (this.state.status === 'PAUSED_TOOL' && this.state.needsZeroBeforeResume && !opts.toolLengthUnchanged) {
+      if (this.zeroZOps === this.zeroZOpsAtPause) {
+        throw new Error(
+          'Work Z0 has not been re-zeroed since the bit change, so it still describes the ' +
+            'previous tool. Re-zero Z, or confirm the bit length is unchanged, before resuming.'
+        );
+      }
+    }
     const kind = this.pauseKind;
     this.isPaused = false;
     this.pauseKind = null;
-    this.updateState({ status: 'RUNNING', pauseMessage: undefined });
+    this.updateState({ status: 'RUNNING', pauseMessage: undefined, needsZeroBeforeResume: false });
     // Only a feed hold needs cycle start. After a stream pause the machine has
     // already drained and is idle, and `~` there would be a no-op at best.
     if (kind === 'operator') {
@@ -1453,13 +1576,16 @@ class WebSerialManager {
     try {
       await this.sendLine('G21');
       await this.sendLine('G90');
-      await this.probeDown(30, 50);
+      const plate = await this.probeDownTwice(30, 50);
+      this.updateState({ zeroZScatterMm: plate.scatterMm });
       await this.sendLine(
         `G10 L20 P1 Z${(touchPlateThicknessMm + surfaceOffsetMm).toFixed(3)}`
       );
       await this.awaitStatus();
       await this.retract(PROBE_RETRACT_MM);
       await this.drain();
+      this.zeroZOps++;
+      this.updateState({ needsZeroBeforeResume: false });
     } finally {
       if (this.state.status === 'PROBING') {
         this.updateState({ status: resumeStatus === 'PROBING' ? 'IDLE' : resumeStatus });
@@ -1494,11 +1620,14 @@ class WebSerialManager {
     try {
       await this.sendLine('G21');
       await this.sendLine('G90');
-      await this.probeDown(25, 50);
+      const copper = await this.probeDownTwice(25, 50);
+      this.updateState({ zeroZScatterMm: copper.scatterMm });
       await this.sendLine(`G10 L20 P1 Z${surfaceOffsetMm.toFixed(3)}`);
       await this.awaitStatus();
       await this.retract(PROBE_RETRACT_MM);
       await this.drain();
+      this.zeroZOps++;
+      this.updateState({ needsZeroBeforeResume: false });
     } finally {
       if (this.state.status === 'PROBING') {
         this.updateState({ status: resumeStatus === 'PROBING' ? 'IDLE' : resumeStatus });
@@ -1569,16 +1698,56 @@ class WebSerialManager {
   }
 
   /**
+   * Probes the surface twice and returns the slow reading, plus how far the two
+   * disagreed.
+   *
+   * A single stab is a measurement with no error bar, and its error is not
+   * small: the trigger fires when the switch closes, but the axis has already
+   * been moving for a control cycle, so a fast approach reads deep by more than
+   * the copper it is trying to find. Everything downstream inherits it — work
+   * Z0 is that one number, the height map is referenced to it, and an isolation
+   * pass is 35 microns of foil plus whatever margin is left.
+   *
+   * So: a fast stab to find the surface, a short lift, then a slow one to
+   * measure it. The slow reading is the answer. The gap between them is the
+   * first honest error bar this pipeline has ever had, and it is reported
+   * rather than swallowed, because a machine that cannot agree with itself to
+   * within a few microns cannot cut foil reliably no matter what depth it is
+   * given.
+   */
+  private async probeDownTwice(
+    maxDepthMm: number,
+    fastFeed: number
+  ): Promise<{ z: number; scatterMm: number }> {
+    const fast = await this.probeDown(maxDepthMm, fastFeed);
+    await this.retract(PROBE_RESTAB_LIFT_MM);
+    // The second stab only has to cross the lift, and slowly: the whole point
+    // is to spend the time on the reading that counts.
+    const slow = await this.probeDown(
+      PROBE_RESTAB_LIFT_MM * 3,
+      Math.max(5, Math.round(fastFeed / 5))
+    );
+    return { z: slow.z, scatterMm: Math.abs(round3(slow.z - fast.z)) };
+  }
+
+  /**
    * Polls until the controller has told us where the work origin is, so that a
    * machine-coordinate reading can be converted into work space. GRBL only
    * volunteers `WCO:` every 10-30 status reports, hence the repeated asks.
    * Resolves with undefined if it never turns up.
    */
   private async awaitWorkOffset(): Promise<{ x: number; y: number; z: number } | undefined> {
-    for (let i = 0; i < WCO_POLL_ATTEMPTS && !this.lastWco; i++) {
+    // Waits for a report that actually carried a `WCO:` field, not merely for
+    // `lastWco` to be non-empty. The carried-over value is right for deriving a
+    // work position report to report, and wrong as the answer to "where is the
+    // origin *now*" — which is what a probe about to be referenced against it
+    // is asking. Insisting on a fresh field costs a few status polls and closes
+    // the whole class of stale-frame errors.
+    const seenBefore = this.wcoReports;
+    for (let i = 0; i < WCO_POLL_ATTEMPTS && this.wcoReports === seenBefore; i++) {
       await this.awaitStatus();
     }
-    return this.lastWco;
+    return this.wcoReports === seenBefore ? undefined : this.lastWco;
   }
 
   /**
@@ -1656,12 +1825,38 @@ class WebSerialManager {
         points.push(rowPoints);
       }
 
+      // Re-probe the point the mesh started on. One reading per point is a
+      // measurement with nothing to check it against; this second reading of a
+      // known spot is the only number in the whole pipeline that says how much
+      // the machine's own scatter — trigger repeatability, backlash, a frame
+      // that shifted and lost steps part way round — is worth. The isolation
+      // depth budget is spent against exactly that, and it used to be a
+      // constant somebody picked.
+      const first = points[0][0];
+      await this.sendLine(`G0 Z${clearance.toFixed(3)} F${travelFeed}`);
+      await this.sendLine(`G0 X${first.x.toFixed(3)} Y${first.y.toFixed(3)} F${travelFeed}`);
+      const recheck = await this.probeDown(probeDepth, probeFeed);
+      const recheckZ = workOffset ? round3(recheck.z - workOffset.z) : recheck.z;
+      const verifyDeviationMm = Math.abs(round3(recheckZ - first.z));
+
       await this.sendLine(`G0 Z${(clearance * 2).toFixed(3)} F${travelFeed}`);
       await this.sendLine(`G0 X${opts.minX.toFixed(3)} Y${opts.minY.toFixed(3)} F${travelFeed}`);
       await this.drain();
 
       const grid = gridFromPoints(points);
       if (!grid) throw new Error('Probe produced too few points to interpolate');
+      grid.verifyDeviationMm = verifyDeviationMm;
+
+      // A machine that cannot find the same spot twice cannot be levelled to,
+      // and a map built from single readings hides that completely.
+      if (verifyDeviationMm > MAX_PROBE_SCATTER_MM) {
+        throw new Error(
+          `Re-probing the first point read ${verifyDeviationMm.toFixed(3)}mm away from its ` +
+            'first reading, which is more scatter than a height map can be built on. Check the ' +
+            'continuity clip for an intermittent contact, the collet for a slipping bit, and ' +
+            'the Z axis for lost steps or backlash.'
+        );
+      }
 
       if (!workOffset) {
         // No WCO ever arrived, so work space is unknown and the readings are

@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { loadMachiningSettings, saveMachiningSettings } from '../utils/storage';
 import type { Node, Edge } from '@xyflow/react';
 import {
   X,
@@ -17,7 +18,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import {
-  generateAirCutGcode,
+  generateAirCutPerimeterGcode,
   calculateSuggestedBoardSize,
   groupDrillsByBit,
   DEFAULT_PCB_OPTIONS,
@@ -112,11 +113,22 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       // estimate is still what "Fit to circuit" offers in fixed-size mode.
       boardWidthMm: DEFAULT_PCB_OPTIONS.boardWidthMm,
       boardHeightMm: DEFAULT_PCB_OPTIONS.boardHeightMm,
+      // Whatever this board was last set up with — trace width, clearances,
+      // feeds, depths — including anything a loaded preset brought with it.
+      // Spread over the defaults so a setting added since a preset was saved
+      // still arrives at its default rather than as undefined.
+      ...loadMachiningSettings(),
       // Retract height is a property of the bench, not of this board, so the
-      // saved one wins over the built-in default.
+      // saved one wins over both.
       safeZ: readNumericSetting('grblSafeZMm', DEFAULT_PCB_OPTIONS.safeZ),
     };
   });
+
+  // Persisted as they change, so closing the dialog does not discard them and
+  // so saving a preset picks up what is on screen now.
+  useEffect(() => {
+    saveMachiningSettings(rawOptions);
+  }, [rawOptions]);
   const [activeTab, setActiveTab] = useState<'layout' | 'cam' | 'serial'>('layout');
   const [serialState, setSerialState] = useState(webSerialManager.getState());
   /**
@@ -536,27 +548,21 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
   const handleAirCutBoard = async () => {
     if (!result.success || machineBusy) return;
-    if (heightmapWontBeApplied) {
-      setMachineError(
-        'The probed height map no longer covers this board, so it will not be applied. Re-probe ' +
-          'the surface, or turn auto-level on — an air cut that does not model the levelling is ' +
-          'not a rehearsal of the job that would run.'
-      );
-      return;
-    }
     if (!(await ensureConnected())) return;
-
-    let grid = activeHeightmap;
-    if (autoLevel && !grid) {
-      grid = await runProbe();
-      if (!grid) return;
-    }
 
     setBusy('milling');
     try {
-      const baseGcode = webSerialManager.applyHeightmapToGcode(result.gcode, grid);
-      const airCutGcode = generateAirCutGcode(baseGcode, airCutZOffset);
-      await webSerialManager.startJob(airCutGcode);
+      // The outline, not the job lifted up: it bounds every cut in the program,
+      // so one lap answers the registration question — is the blank where the
+      // job thinks it is, do the clamps foul the travel — in seconds instead of
+      // re-flying ten thousand isolation moves.
+      //
+      // No probe and no height map either. The map compensates depth, and there
+      // is no depth here; needing one would only stop an air cut being the
+      // quick check it is supposed to be.
+      await webSerialManager.startJob(
+        generateAirCutPerimeterGcode(result, options, airCutZOffset)
+      );
     } catch (e: any) {
       setMachineError(e?.message || 'Air Cut job failed');
     } finally {
@@ -725,10 +731,10 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     }
   };
 
-  const handleResume = async () => {
+  const handleResume = async (opts: { toolLengthUnchanged: boolean }) => {
     setMachineError(null);
     try {
-      await webSerialManager.resumeJob();
+      await webSerialManager.resumeJob(opts);
     } catch (e: any) {
       setMachineError(e?.message || 'Could not resume the job');
     }
@@ -2035,7 +2041,9 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
           message={serialState.pauseMessage || 'Job paused'}
           isStreamPaused={isStreamPaused}
           touchPlateMm={touchPlateMm}
+          spindleRpm={options.spindleRpm}
           busy={busy}
+          needsZero={!!serialState.needsZeroBeforeResume}
           error={machineError}
           onResume={handleResume}
           onCancel={handleCancel}

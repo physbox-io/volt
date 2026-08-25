@@ -39,6 +39,9 @@ const failures: string[] = [];
  * browser logs that; node kills the process. Collected rather than ignored.
  */
 const unhandled: string[] = [];
+/** Tools whose change was let through / stopped for want of a Z re-zero. */
+const resumeAllowed: string[] = [];
+const resumeRefused: string[] = [];
 declare const process: { on(ev: string, cb: (e: any) => void): void };
 process.on('unhandledRejection', (e: any) => unhandled.push(e?.message ?? String(e)));
 /**
@@ -327,7 +330,14 @@ class FakeCnc {
         continue;
       }
 
-      const cmd = /^G0*([01])(\s|$)/.exec(line);
+      // A motion word is modal and can sit anywhere on the line — `G91 G0 Z0.5`
+      // is one move, and GRBL executes it. Matching only at the start of the
+      // line meant this machine silently swallowed every post-probe retract,
+      // leaving the simulated tool standing at the contact point while the real
+      // one had lifted clear. Nothing failed; the rig just was not modelling
+      // the move. `G10`, `G17`, `G21`, `G90` and `G91` are excluded by the
+      // trailing boundary, and `G38.2` is handled above.
+      const cmd = /(^|\s)G0*([01])(?=\s|$)/.exec(line);
       if (cmd) {
         let tx = this.x;
         let ty = this.y;
@@ -339,7 +349,7 @@ class FakeCnc {
           if (m[1] === 'Y') ty = abs === null ? this.y + v : abs + this.offY;
           if (m[1] === 'Z') tz = abs === null ? this.z + v : abs + this.offZ;
         }
-        this.travel(cmd[1] === '0' ? 'G0' : 'G1', tx, ty, tz, line, index);
+        this.travel(cmd[2] === '0' ? 'G0' : 'G1', tx, ty, tz, line, index);
       }
 
       this.reply('ok');
@@ -560,11 +570,24 @@ async function runJob(
       }
       await new Promise(r => setTimeout(r, 200));
     }
-    await webSerialManager.resumeJob();
+    // A tool-change resume is refused unless Z was re-zeroed since the machine
+    // stopped. The no-re-zero scenario below is exercising what happens when
+    // the operator overrides that, so it has to say so out loud — which is the
+    // point: there is no longer a way to skip the zero without claiming the
+    // bit length is unchanged.
+    try {
+      await webSerialManager.resumeJob();
+      if (!reZero) resumeAllowed.push(t ?? '?');
+    } catch (e: any) {
+      if (reZero) throw e;
+      resumeRefused.push(t ?? '?');
+      await webSerialManager.resumeJob({ toolLengthUnchanged: true });
+    }
   }
   return webSerialManager.getState();
 }
 
+let levelledIso: MotionSample[] = [];
 console.log('Cutting (levelled)…');
 const finalState = await runJob(warped, true);
 check('the job ran to completion', finalState.status === 'IDLE', `${finalState.status} ${finalState.lastError || ''}`);
@@ -738,7 +761,7 @@ function analyse(
   return { iso, drill, profile };
 }
 
-analyse('levelled', cnc.samples, { strict: true, levelled: true });
+levelledIso = analyse('levelled', cnc.samples, { strict: true, levelled: true }).iso;
 
 // --- 4b. Where the tool stands when a bit is swapped ----------------------
 // The pause dialog invites the operator to jog XY and to auto-zero Z on the
@@ -807,11 +830,31 @@ console.log(
     `(bit length difference was ${Math.max(...Object.values(TOOL_LENGTHS)).toFixed(1)}mm)`
 );
 
+// The gouge above is what the override buys, and it is why the override has to
+// be asked for. This used to be a warning printed beside a Resume button that
+// was never disabled — the run below only reaches that depth because the test
+// explicitly claims the bit length is unchanged.
+check(
+  'every bit change after the first is refused until Z is re-zeroed',
+  resumeRefused.length > 0 && resumeAllowed.every(t => t === 'T1'),
+  `refused ${resumeRefused.join(',') || 'nothing'}; allowed ${resumeAllowed.join(',') || 'nothing'}`
+);
+// The first T1 is the bit the operator loaded and zeroed during setup, not a
+// change. Warning on it would be wrong on every job, and an alarm that is wrong
+// the first time is one the operator learns to click past before the second
+// tool change — when the length really has moved — ever comes up.
+check(
+  'the first tool of a job is not treated as a bit change',
+  resumeAllowed.includes('T1'),
+  `allowed ${resumeAllowed.join(',') || 'nothing'}`
+);
+
 // --- 7. An air cut must never touch the stock ------------------------------
 await freshMachine();
 console.log('\nAir cut…');
-const { generateAirCutGcode } = await import('./utils/pcbExporter');
-await runJob(generateAirCutGcode(warped, 20), false);
+const { generateAirCutPerimeterGcode } = await import('./utils/pcbExporter');
+const airProgram = generateAirCutPerimeterGcode(layout, options, 20);
+const airState = await runJob(airProgram, false);
 const touched = cnc.samples.filter(s => s.depth > 0);
 check(
   'an air cut never touches the board',
@@ -821,6 +864,46 @@ check(
       `on "${touched[0]!.line}"`
     : ''
 );
+// Pausing is decided on the code in a line, not its comment. Whole-line
+// comments never reach that test — startJob drops them — but a trailing one on
+// a motion line would, and stopping a job mid-cut over the wording of a comment
+// is not a failure mode worth keeping available.
+check(
+  'an air cut runs start to finish without pausing',
+  airState.status === 'IDLE',
+  `${airState.status} ${airState.pauseMessage ?? ''}`
+);
+check(
+  'an air cut cannot start the spindle',
+  !/\bM0?3\b/.test(airProgram) && !cnc.spindleOn,
+  cnc.spindleOn ? 'the spindle was left running' : 'the program contains a spindle start'
+);
+// The whole job has to sit inside the lap that was flown, or the rehearsal did
+// not rehearse anything.
+const airXY = cnc.samples.filter(s => s.moving);
+const jobPts = warped
+  .split('\n')
+  .map(l => [/X(-?[\d.]+)/.exec(l), /Y(-?[\d.]+)/.exec(l)])
+  .filter(([x, y]) => x && y)
+  .map(([x, y]) => ({ x: parseFloat(x![1]), y: parseFloat(y![1]) }));
+const airBox = {
+  minX: Math.min(...airXY.map(s => s.bx)),
+  maxX: Math.max(...airXY.map(s => s.bx)),
+  minY: Math.min(...airXY.map(s => s.by)),
+  maxY: Math.max(...airXY.map(s => s.by)),
+};
+const outside = jobPts.filter(
+  p => p.x < airBox.minX - 1e-6 || p.x > airBox.maxX + 1e-6 || p.y < airBox.minY - 1e-6 || p.y > airBox.maxY + 1e-6
+);
+check(
+  'the air cut lap bounds every cut in the job',
+  outside.length === 0,
+  outside.length
+    ? `${outside.length} job points outside the lap, first ${outside[0]!.x.toFixed(2)},${outside[0]!.y.toFixed(2)} ` +
+      `vs lap ${airBox.minX.toFixed(2)}..${airBox.maxX.toFixed(2)} x ${airBox.minY.toFixed(2)}..${airBox.maxY.toFixed(2)}`
+    : ''
+);
+console.log(`  air cut: ${airProgram.split('\n').length} lines vs ${warped.split('\n').length} for the job`);
 
 // --- 8. Control: the same board with levelling off -------------------------
 // If the harness cannot see an uncompensated job go wrong on this warp, it
@@ -830,11 +913,32 @@ await freshMachine();
 console.log('\nCutting (control: no height map)…');
 await runJob(layout.gcode, true, { x: layout.boardOriginMm, y: layout.boardOriginMm });
 const raw = analyse('unlevelled', cnc.samples, { strict: false, levelled: false });
-const rawMin = Math.min(...raw.iso.map(s => s.depth));
+const rawDepths = raw.iso.map(s => s.depth);
+const rawSpread = Math.max(...rawDepths) - Math.min(...rawDepths);
+const levelledSpread = (() => {
+  const d = levelledIso.map(s => s.depth);
+  return Math.max(...d) - Math.min(...d);
+})();
+
+// This used to assert that the uncompensated cut failed to sever the copper,
+// which stopped being true the moment the isolation depth was given a real
+// margin — the warp no longer defeats a cut that deep, which is the entire
+// point of cutting that deep. Failing to sever was never the property worth
+// checking anyway: it made the harness's sensitivity depend on the depth
+// setting happening to be marginal.
+//
+// What levelling actually does is take the warp out of the depth, so that is
+// what is measured — the compensated cut has to hold a visibly tighter depth
+// band than the uncompensated one over the same board.
 check(
   'the harness can tell an uncompensated cut apart',
-  rawMin < COPPER_MM,
-  `uncompensated shallowest ${rawMin.toFixed(4)}mm — the simulated warp proves nothing`
+  rawSpread > levelledSpread * 2,
+  `unlevelled depth spread ${rawSpread.toFixed(4)}mm vs levelled ${levelledSpread.toFixed(4)}mm — ` +
+    'the simulated warp proves nothing'
+);
+console.log(
+  `  levelling narrowed the isolation depth band from ${rawSpread.toFixed(3)}mm to ` +
+    `${levelledSpread.toFixed(3)}mm over the same board`
 );
 
 await webSerialManager.disconnect();

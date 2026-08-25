@@ -461,7 +461,7 @@ export function calculatePcbFeeds(
  * margin it was cut with — 0.02mm over 0.035mm of foil, which is inside the
  * noise of the probe that measured it. Traces came out faint or uncut.
  */
-const IRREDUCIBLE_Z_ERROR_MM = 0.03;
+const IRREDUCIBLE_Z_ERROR_MM = 0.06;
 
 /**
  * How much deeper than the copper the isolation pass has to cut to be sure it
@@ -486,16 +486,26 @@ export function isolationFlatnessAllowanceMm(heightmapSpanZmm?: number): number 
 }
 
 /**
- * The shallowest isolation depth that still clears the copper.
+ * The isolation depth to cut at.
  *
  * A V-bit's cut widens with depth, so depth is the single biggest lever on how
  * much copper a job removes: every micron cut past the foil is a wider channel
- * and two narrower traces. The catalogue depth is a safe figure for an
- * unlevelled board with unknown copper; once the material and the board's
- * flatness are known, the same job usually runs a good deal shallower.
+ * and two narrower traces. That makes a shallow cut tempting, and this function
+ * used to take the temptation — it returned `min(catalogue, copper + slack)`,
+ * treating the tool's recommendation as a ceiling and aiming for the shallowest
+ * pass that could theoretically clear the foil.
  *
- * Never returns anything deeper than the tool's own recommendation — this is a
- * lever for cutting less, not for cutting more.
+ * A design with no margin fails the moment reality supplies any, and it does:
+ * a 30-degree 0.1mm-tip bit at the resulting 0.08mm cuts a 0.143mm channel with
+ * 0.045mm over 1oz foil, and probe repeatability, runout, spindle deflection
+ * and a worn tip are each a fair fraction of that on a hobby machine. The cut
+ * comes out as a hairline that fades and, on the high spots, stops.
+ *
+ * So the catalogue figure is now a floor rather than a ceiling: cut at least
+ * what the tool asks for, and deeper when the error budget says the foil would
+ * not otherwise be cleared. The cost is a wider channel — 0.16mm rather than
+ * 0.14mm on that bit — which is the right thing to spend to get a cut that
+ * actually isolates.
  */
 export function autoIsolationDepthMm(
   tool: PcbToolPreset,
@@ -505,7 +515,7 @@ export function autoIsolationDepthMm(
   const copperMm = material.copperThicknessUm / 1000;
   const recommended = Math.abs(tool.recommendedDepthMm * material.depthMultiplier);
   const needed = copperMm + Math.max(0.02, flatnessMm);
-  return -parseFloat(Math.min(recommended, needed).toFixed(3));
+  return -parseFloat(Math.max(recommended, needed).toFixed(3));
 }
 
 // ---------------------------------------------------------------------------

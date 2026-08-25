@@ -1,7 +1,15 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 import { presets, DEFAULT_PRESET_KEY } from '../utils/presets';
-import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey, type CircuitPreset } from '../utils/storage';
+import {
+  loadUserPresets,
+  addUserPreset,
+  removeUserPreset,
+  nameToKey,
+  loadMachiningSettings,
+  saveMachiningSettings,
+  type CircuitPreset,
+} from '../utils/storage';
 
 interface UsePresetsArgs {
   nodes: Node[];
@@ -36,6 +44,12 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     if (preset.recommendedSimLength) {
       setSimLength(preset.recommendedSimLength);
     }
+    // Handed to the CAM tab through storage rather than through props: the
+    // export dialog is mounted on demand and reads its settings when it opens,
+    // so there is nothing to push them into at this point.
+    if (preset.pcbOptions && Object.keys(preset.pcbOptions).length > 0) {
+      saveMachiningSettings(preset.pcbOptions);
+    }
   }, [allPresets, stopSimulation, setInitialConditions, setNodes, setEdges, setSimLength]);
 
   const handlePresetChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -53,6 +67,10 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
         ...e,
         data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined
       })),
+      // The board is milled with the trace width and clearance it was routed
+      // for, so the CAM settings travel with the circuit rather than being
+      // re-derived every time it is opened.
+      pcbOptions: loadMachiningSettings(),
     };
     const updated = addUserPreset(key, preset);
     setUserPresets(updated);
@@ -72,6 +90,10 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
         ...e,
         data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined
       })),
+      // The board is milled with the trace width and clearance it was routed
+      // for, so the CAM settings travel with the circuit rather than being
+      // re-derived every time it is opened.
+      pcbOptions: loadMachiningSettings(),
     };
     const updated = addUserPreset(key, preset);
     setUserPresets(updated);

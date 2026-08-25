@@ -336,7 +336,16 @@ check('far corner picks up the tilt', Math.abs(grid.points[0][3].z - 0.6) < 1e-6
 check('probe never overflowed', !fake.overflowed);
 
 const probeLines = meshSent.filter(l => l.includes('G38.2'));
-check('one probe per point', probeLines.length === 16, `${probeLines.length}`);
+// One stab per point, plus a re-probe of the first point at the end. The mesh
+// measures differences between points, so a double stab at every one of them
+// would double the probe time to tighten a number the map barely depends on —
+// the reading it does depend on is work Z0, which is double-stabbed.
+check('one probe per point plus a verification re-probe', probeLines.length === 17, `${probeLines.length}`);
+check(
+  'the mesh reports the machine repeatability it measured',
+  typeof grid.verifyDeviationMm === 'number',
+  `${grid.verifyDeviationMm}`
+);
 
 // The probe depth is a search *distance*, so it has to go out in relative mode.
 // Sent absolute, `G38.2 Z-3` means "descend to work Z = -3" — from a clearance
@@ -668,7 +677,20 @@ check('reached the second tool change', webSerialManager.getState().status === '
 check('now cutting the second layer', webSerialManager.getCurrentLayer()?.label === 'Through-hole drilling', `${webSerialManager.getCurrentLayer()?.label}`);
 
 const cutsBefore = fake.received.filter(l => l === 'G1 X1.000').length;
-await webSerialManager.resumeJob();
+
+// The second tool change is a real bit change, and the bit that goes in is a
+// different length — so resuming on the old work Z0 is refused. Nothing below
+// is about that policy, so it is asserted once here and then overridden.
+let refused = '';
+try {
+  await webSerialManager.resumeJob();
+} catch (e: any) {
+  refused = e.message;
+}
+check('resuming a bit change without re-zeroing is refused', refused.includes('re-zeroed'), refused || '(allowed)');
+check('and the job is still sitting at the pause', webSerialManager.getState().status === 'PAUSED_TOOL', webSerialManager.getState().status);
+
+await webSerialManager.resumeJob({ toolLengthUnchanged: true });
 check('job finished', webSerialManager.getState().status === 'IDLE', webSerialManager.getState().status);
 
 // Now run it again and restart the *live* layer part-way through.
@@ -699,7 +721,7 @@ check('progress rewound to the layer start', (webSerialManager.getState().progre
 // header far behind this layer — so it would never be replayed. It is re-sent
 // on resume, not before, so it is never turning during a bit change.
 const spindleBefore = fake.received.filter(l => l === 'M3 S12000').length;
-await webSerialManager.resumeJob();
+await webSerialManager.resumeJob({ toolLengthUnchanged: true });
 check('the spindle is restarted on resume', fake.received.filter(l => l === 'M3 S12000').length === spindleBefore + 1, `${spindleBefore}`);
 check('the layer is cut again', fake.received.filter(l => l === 'G1 X9.000').length > beforeRestart);
 check('job completes after a restart', webSerialManager.getState().status === 'IDLE', webSerialManager.getState().status);
@@ -723,7 +745,7 @@ check(
   webSerialManager.getState().status === 'PAUSED_TOOL',
   `${webSerialManager.getState().status} — ${webSerialManager.getState().lastError || ''}`
 );
-await webSerialManager.resumeJob();
+await webSerialManager.resumeJob({ toolLengthUnchanged: true });
 check('job completes after an auto-unlock', webSerialManager.getState().status === 'IDLE', webSerialManager.getState().status);
 
 // A *coded* alarm is the opposite case: a limit trip or a reset mid-motion,

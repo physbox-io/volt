@@ -1,3 +1,4 @@
+import type { PcbOptions } from './pcbExporter';
 import { type Node, type Edge } from '@xyflow/react';
 
 export interface CircuitPreset {
@@ -6,6 +7,19 @@ export interface CircuitPreset {
   edges: Edge[];
   recommendedSimLength?: number;
   noteCard?: string;
+  /**
+   * The CAM settings the board was set up with — trace width, clearances,
+   * feeds, depths, tabs.
+   *
+   * They belong with the circuit rather than with the app: a board is milled
+   * with the trace width and clearance it was routed for, and reopening a saved
+   * design to find the CAM tab back on the defaults means re-deriving numbers
+   * that were arrived at once, carefully, and then thrown away on close.
+   * Partial because a preset saved before this existed has none, and because
+   * anything absent should fall back to the current default rather than to
+   * whatever this preset happened to freeze.
+   */
+  pcbOptions?: Partial<PcbOptions>;
 }
 
 export interface AppSettings {
@@ -15,6 +29,7 @@ export interface AppSettings {
 }
 
 const SETTINGS_KEY = 'circuitexpt_settings';
+const MACHINING_KEY = 'circuitexpt_machining_options';
 const USER_PRESETS_KEY = 'circuitexpt_user_presets';
 
 // ─── Settings ────────────────────────────────────────────────────────────────
@@ -76,4 +91,28 @@ export function removeUserPreset(key: string): Record<string, CircuitPreset> {
 /** Derive a safe localStorage key from a user-supplied name */
 export function nameToKey(name: string): string {
   return 'user_' + name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+}
+
+// ─── Machining settings ──────────────────────────────────────────────────────
+//
+// Held apart from the circuit so the CAM tab survives being closed, and so a
+// preset can carry a copy without the modal having to know about presets.
+
+export function loadMachiningSettings(): Partial<PcbOptions> {
+  try {
+    const raw = localStorage.getItem(MACHINING_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveMachiningSettings(options: Partial<PcbOptions>): void {
+  try {
+    localStorage.setItem(MACHINING_KEY, JSON.stringify(options));
+  } catch {
+    // Non-fatal: the settings just will not survive a reload.
+  }
 }
