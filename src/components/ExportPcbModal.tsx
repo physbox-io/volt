@@ -64,6 +64,13 @@ const DEFAULT_PROBE_DEPTH_MM = 3;
 const DEFAULT_SAFE_Z_MM = 2;
 /** Thickness of the touch plate used to set work Z0. */
 const DEFAULT_TOUCH_PLATE_MM = 12;
+/**
+ * How far the board may extend past the probed mesh before the map counts as
+ * no longer describing it. Inside this margin the leveller's clamped
+ * interpolation carries the edge samples outward, which is a fair reading over
+ * a strip this narrow.
+ */
+const HEIGHTMAP_EDGE_MARGIN_MM = 1;
 
 /**
  * Reads a persisted machine setting. These are bench measurements — plate
@@ -131,7 +138,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   );
   const [busy, setBusy] = useState<'' | 'probing' | 'zeroing' | 'milling' | 'homing'>('');
   const [machineError, setMachineError] = useState<string | null>(null);
-  const [heightmap, setHeightmap] = useState<{ grid: ProbeGrid; boardTag: string } | null>(null);
+  const [heightmap, setHeightmap] = useState<ProbeGrid | null>(null);
 
   const [selectedToolId, setSelectedToolId] = useState<string>('t1_vbit_30');
   const [profileToolId, setProfileToolId] = useState<string>('t6b_endmill_15');
@@ -206,7 +213,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * otherwise invalidate the map that set the depth in the first place.
    */
   const probedSpanZ = useMemo(
-    () => (heightmap ? getGridStats(heightmap.grid).spanZ : undefined),
+    () => (heightmap ? getGridStats(heightmap).spanZ : undefined),
     [heightmap]
   );
 
@@ -255,9 +262,24 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const atMaxEffort = nextEffortMs === options.routingBudgetMs;
 
   const errorCount = result.violations.filter(v => v.severity === 'error').length;
-  const boardTag = `${result.boardWidthMm}x${result.boardHeightMm}mm`;
+  /**
+   * A map stays usable as long as it still spans the board. Comparing bounds
+   * rather than board dimensions matters because probing itself moves the
+   * board: the measured flatness feeds the auto isolation depth, which changes
+   * the channel width and so the auto-sized board by a fraction of a mm. That
+   * shift leaves the mesh covering the board perfectly well, and an equality
+   * test on the size would throw away every map the moment it was made. The
+   * margin is what the edge samples can be stretched over before the flat
+   * extrapolation outside the mesh is a guess rather than a reading.
+   */
+  const coversBoard =
+    heightmap !== null &&
+    heightmap.minX <= result.boardOriginMm + HEIGHTMAP_EDGE_MARGIN_MM &&
+    heightmap.minY <= result.boardOriginMm + HEIGHTMAP_EDGE_MARGIN_MM &&
+    heightmap.maxX >= result.boardOriginMm + result.boardWidthMm - HEIGHTMAP_EDGE_MARGIN_MM &&
+    heightmap.maxY >= result.boardOriginMm + result.boardHeightMm - HEIGHTMAP_EDGE_MARGIN_MM;
 
-  const activeHeightmap = heightmap && heightmap.boardTag === boardTag ? heightmap.grid : null;
+  const activeHeightmap = coversBoard ? heightmap : null;
   const heightmapStale = heightmap !== null && activeHeightmap === null;
 
   const gridStats = activeHeightmap ? getGridStats(activeHeightmap) : null;
@@ -406,7 +428,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
         probeDepthMm,
         clearanceMm: options.safeZ,
       });
-      setHeightmap({ grid, boardTag });
+      setHeightmap(grid);
       return grid;
     } catch (e: any) {
       setMachineError(e?.message || 'Surface probe failed');
@@ -785,12 +807,12 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                   </div>
                   {gridStats && (
                     <span className="text-cyan-700 dark:text-cyan-400 font-bold flex items-center gap-1">
-                      <Check className="w-3 h-3" /> Levelled — {suggestedGrid.cols}×{suggestedGrid.rows} mesh ({gridStats.spanZ.toFixed(3)}mm warp)
+                      <Check className="w-3 h-3" /> Levelled — {activeHeightmap!.gridX}×{activeHeightmap!.gridY} mesh ({gridStats.spanZ.toFixed(3)}mm warp)
                     </span>
                   )}
                   {heightmapStale && (
                     <span className="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" /> Heightmap discarded (board resized)
+                      <AlertTriangle className="w-3 h-3" /> Heightmap discarded (board outgrew the probed mesh)
                     </span>
                   )}
                 </div>
