@@ -1806,14 +1806,17 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       >
                         <ArrowLeft className="w-4 h-4" />
                       </button>
-                      <button
-                        onClick={handleZeroXY}
-                        disabled={machineBusy}
-                        className="w-10 h-8 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white rounded text-[10px] font-bold cursor-pointer"
-                        title="Zero XY Work Coordinates (G92 X0 Y0)"
+                      {/* The centre of a jog cross is where every other machine
+                          control puts "go home", so a button here read as one —
+                          and setting the work origin is the one action on this
+                          panel you cannot undo by jogging back. It lives below
+                          with the other zeros now, named. */}
+                      <div
+                        className="w-10 h-8 flex items-center justify-center text-slate-300 dark:text-slate-700"
+                        aria-hidden
                       >
-                        XY0
-                      </button>
+                        <Crosshair className="w-3.5 h-3.5" />
+                      </div>
                       <button
                         onClick={() => handleJog('X', 1)}
                         disabled={manualMoveBlocked}
@@ -1842,7 +1845,36 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       </button>
                     </div>
 
-                    <div className="flex gap-2 pt-1">
+                    <div className="pt-2 mt-1 border-t border-slate-200 dark:border-slate-800">
+                      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                        Set the work origin
+                      </p>
+                      {/* XY first because that is the order it is done in: park
+                          the bit on the corner of the blank, fix X0 Y0 there,
+                          then probe Z on the copper. */}
+                      <button
+                        onClick={handleZeroXY}
+                        disabled={machineBusy}
+                        title="Sets the work origin X0 Y0 at the tool's current position (G10 L20)"
+                        className={`w-full py-1.5 rounded font-semibold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 ${
+                          serialState.zeroXYConfirmed
+                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                            : 'bg-emerald-700 hover:bg-emerald-600 text-white'
+                        }`}
+                      >
+                        {serialState.zeroXYConfirmed ? (
+                          <Check className="w-3.5 h-3.5" />
+                        ) : (
+                          <Crosshair className="w-3.5 h-3.5" />
+                        )}
+                        {serialState.zeroXYConfirmed ? 'XY0 set here' : 'Set XY0 at this spot'}
+                      </button>
+                      <p className="mt-1 mb-2 text-[9px] text-slate-400 dark:text-slate-500 leading-normal">
+                        Jog the bit over the front-left corner of the blank first — everything the
+                        job cuts is measured from the spot you set here.
+                      </p>
+
+                      <div className="flex gap-2">
                       <button
                         onClick={handleZeroZ}
                         disabled={manualMoveBlocked}
@@ -1860,6 +1892,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       >
                         Probe Z0 on Plate
                       </button>
+                      </div>
                     </div>
 
                     <div className="flex gap-2">
