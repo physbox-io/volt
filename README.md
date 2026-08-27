@@ -70,3 +70,16 @@ We have heavily modified the original Ngspice-WASM baseline to support:
 - **Synchronized Async Bridge**: Eliminated simulation hangs by correctly `await`ing JavaScript handlers in the WASM stack.
 - **State-Gated Event Handling**: Optimized initialization vs. simulation phases.
 - **Real-time Animation**: Supported looping simulation results in the UI for components like LEDs and Oscilloscopes.
+
+---
+
+## 📜 License
+
+Distributed under the **PhysBox Permissive Public License (PPPL-1.0)**.
+
+Free for personal, academic, educational, research, and commercial use, including the
+commercial sale of anything you produce with it — schematics, netlists, simulation
+results, and PCB layouts. Attribution must be retained. Redistributing, re-branding,
+or hosting the software itself as a standalone or competing product or SaaS requires
+prior written authorization. See [LICENSE](LICENSE) for full terms, including the
+electrical and hardware safety disclaimer.
