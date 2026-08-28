@@ -580,7 +580,7 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
           <select
             value={(selectedNode.data.orientation as string) || 'horizontal'}
             onChange={e => updateData('orientation', e.target.value)}
-            className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none mb-2"
+            className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-emerald-500 focus:outline-none mb-2"
           >
             <option value="horizontal">Horizontal</option>
             {ORIENTABLE_NODE_TYPES.includes(selectedNode.type || '') && (
@@ -624,7 +624,7 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
             type="text"
             value={selectedNode.data.name !== undefined ? selectedNode.data.name : getNodeDefaultName(selectedNode.id, selectedNode.type)}
             onChange={e => updateData('name', e.target.value)}
-            className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+            className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-emerald-500 focus:outline-none"
           />
         </div>
       )}

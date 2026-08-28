@@ -29,7 +29,7 @@ export function MountingHoleProperties({ node, updateData }: NodePropertiesProps
   const keepout = node.data?.keepoutDiameterMm ?? 6.5;
   const inputClass =
     'w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 ' +
-    'text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none';
+    'text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none';
 
   return (
     <>

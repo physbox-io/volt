@@ -84,20 +84,20 @@ export function DFlipFlopNode({ selected }: any) {
       </svg>
 
       {/* D Input */}
-      <Handle type="target" position={Position.Left} id="d" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[30%]" />
-      <Handle type="source" position={Position.Left} id="d" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[30%]" />
+      <Handle type="target" position={Position.Left} id="d" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[30%]" />
+      <Handle type="source" position={Position.Left} id="d" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[30%]" />
 
       {/* CLK Input */}
-      <Handle type="target" position={Position.Left} id="clk" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[70%]" />
-      <Handle type="source" position={Position.Left} id="clk" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[70%]" />
+      <Handle type="target" position={Position.Left} id="clk" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[70%]" />
+      <Handle type="source" position={Position.Left} id="clk" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[70%]" />
 
       {/* Q Output */}
-      <Handle type="source" position={Position.Right} id="q" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[30%]" />
-      <Handle type="target" position={Position.Right} id="q" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[30%]" />
+      <Handle type="source" position={Position.Right} id="q" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[30%]" />
+      <Handle type="target" position={Position.Right} id="q" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[30%]" />
 
       {/* Q_bar Output */}
-      <Handle type="source" position={Position.Right} id="qbar" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[70%]" />
-      <Handle type="target" position={Position.Right} id="qbar" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[70%]" />
+      <Handle type="source" position={Position.Right} id="qbar" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[70%]" />
+      <Handle type="target" position={Position.Right} id="qbar" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[70%]" />
     </div>
   );
 }

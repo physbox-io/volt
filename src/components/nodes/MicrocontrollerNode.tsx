@@ -390,7 +390,7 @@ export function MicrocontrollerNode({ data, selected }: any) {
   return (
     <div
       style={{ width: `${cardWidth}px`, height: `${cardHeight}px` }}
-      className={`${DEVICE_CARD_DARK} flex flex-col relative select-none ${selected ? '!border-blue-500 shadow-lg shadow-blue-500/20' : ''}`}
+      className={`${DEVICE_CARD_DARK} flex flex-col relative select-none ${selected ? '!border-emerald-500 shadow-lg shadow-emerald-500/20' : ''}`}
     >
       {/* Top Header */}
       <div className="bg-gray-900 text-white text-[9px] font-bold text-center py-1 uppercase tracking-wider rounded-t border-b border-gray-800 flex items-center justify-center px-1 truncate">

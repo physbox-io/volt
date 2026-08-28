@@ -19,7 +19,7 @@ export function TransformerProperties({ node, updateData }: NodePropertiesProps)
             updateData('l_pri_label', e.target.value);
             updateData('l_pri', sanitizeSpiceValue(e.target.value));
           }}
-          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none"
         />
       </div>
       <div className="mb-3">
@@ -31,7 +31,7 @@ export function TransformerProperties({ node, updateData }: NodePropertiesProps)
             updateData('l_sec_label', e.target.value);
             updateData('l_sec', sanitizeSpiceValue(e.target.value));
           }}
-          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none"
         />
       </div>
       <div className="mb-3">
@@ -43,7 +43,7 @@ export function TransformerProperties({ node, updateData }: NodePropertiesProps)
           max="1.0"
           value={(node.data.k as number) ?? 0.99}
           onChange={e => updateData('k', parseFloat(e.target.value) || 0.99)}
-          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none"
         />
       </div>
     </>
@@ -61,14 +61,14 @@ export function TransformerNode({ data, selected }: any) {
         type="target" 
         position={Position.Left} 
         id="p1" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={{ top: '25%', left: '0%' }}
       />
       <Handle 
         type="source" 
         position={Position.Left} 
         id="p1" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={{ top: '25%', left: '0%' }}
       />
       
@@ -76,14 +76,14 @@ export function TransformerNode({ data, selected }: any) {
         type="target" 
         position={Position.Left} 
         id="p2" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={{ top: '75%', left: '0%' }}
       />
       <Handle 
         type="source" 
         position={Position.Left} 
         id="p2" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={{ top: '75%', left: '0%' }}
       />
 
@@ -92,14 +92,14 @@ export function TransformerNode({ data, selected }: any) {
         type="target" 
         position={Position.Right} 
         id="s1" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={{ top: '25%', left: '100%' }}
       />
       <Handle 
         type="source" 
         position={Position.Right} 
         id="s1" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={{ top: '25%', left: '100%' }}
       />
 
@@ -107,14 +107,14 @@ export function TransformerNode({ data, selected }: any) {
         type="target" 
         position={Position.Right} 
         id="s2" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={{ top: '75%', left: '100%' }}
       />
       <Handle 
         type="source" 
         position={Position.Right} 
         id="s2" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={{ top: '75%', left: '100%' }}
       />
 

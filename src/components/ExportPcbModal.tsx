@@ -42,6 +42,7 @@ import {
 } from '../utils/pcbTooling';
 import { usePcbLayout } from '../hooks/usePcbLayout';
 import { webSerialManager } from '../utils/webSerialManager';
+import { fetchMachineDevices, type MachineDevice } from '../utils/apiClient';
 import {
   getGridStats,
   findUnwarpableCommands,
@@ -183,12 +184,39 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const [isAirCutMode, setIsAirCutMode] = useState<boolean>(false);
   const [jogStep, setJogStep] = useState<number>(1.0);
 
-  // How the machine is reached: direct USB (Web Serial) or WiFi via an ESP32
-  // WebSocket proxy. USB stays the default; the WiFi IP is remembered.
+  // How the machine is reached: a USB cable to this computer, or a Tekno Box
+  // over WiFi. USB stays the default; the chosen box is remembered.
   const [transportMode, setTransportMode] = useState<'usb' | 'wifi'>(
     () => (localStorage.getItem('grblTransport') === 'wifi' ? 'wifi' : 'usb')
   );
-  const [wifiIp, setWifiIp] = useState<string>(() => localStorage.getItem('grblWifiIp') || '');
+  const [cloudDeviceId, setCloudDeviceId] = useState<string>(
+    () => localStorage.getItem('grblCloudDeviceId') || ''
+  );
+  const [machineDevices, setMachineDevices] = useState<MachineDevice[]>([]);
+
+  /*
+   * The machines on this account.
+   *
+   * Fetched when the WiFi option is actually being looked at, and discarded if
+   * the reply lands after the operator has switched away — otherwise a slow
+   * response selects a machine they are no longer choosing between.
+   */
+  useEffect(() => {
+    if (transportMode !== 'wifi') return;
+    let live = true;
+    void fetchMachineDevices().then(list => {
+      if (!live) return;
+      setMachineDevices(list);
+      setCloudDeviceId(current =>
+        current && list.some(d => d.deviceId === current)
+          ? current
+          : list.find(d => d.online)?.deviceId ?? list[0]?.deviceId ?? ''
+      );
+    });
+    return () => {
+      live = false;
+    };
+  }, [transportMode]);
 
   React.useEffect(() => {
     return webSerialManager.addListener(state => {
@@ -519,16 +547,16 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const ensureConnected = async () => {
     if (serialState.connected) return true;
     setMachineError(null);
-    if (transportMode === 'wifi' && !wifiIp.trim()) {
+    if (transportMode === 'wifi' && !cloudDeviceId) {
       setMachineError('Enter the device IP address for WiFi mode');
       return false;
     }
-    webSerialManager.setTransport(transportMode, wifiIp.trim());
+    webSerialManager.setTransport(transportMode, cloudDeviceId);
     const connected = await webSerialManager.connect();
     if (!connected) {
       setMachineError(
         transportMode === 'wifi'
-          ? `Could not connect to the device at ${wifiIp.trim()}`
+          ? 'Could not reach that Tekno Box'
           : 'Could not open the serial port'
       );
     }
@@ -1686,23 +1714,37 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       ))}
                     </div>
 
+                    {/* WiFi means a Tekno Box, reached through physbox rather
+                        than by address: the box is behind the customer's router
+                        with nothing to dial, and a page on https may not open a
+                        plain connection to a home network in any case. */}
                     {transportMode === 'wifi' && (
-                      <div>
-                        <label className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1 block">
-                          Device IP address
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold block">
+                          Tekno Box
                         </label>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="192.168.1.50"
-                          value={wifiIp}
-                          disabled={serialState.connected}
-                          onChange={e => {
-                            setWifiIp(e.target.value);
-                            localStorage.setItem('grblWifiIp', e.target.value);
-                          }}
-                          className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-mono text-[11px] disabled:opacity-40"
-                        />
+                        {machineDevices.length > 0 ? (
+                          <select
+                            value={cloudDeviceId}
+                            disabled={serialState.connected}
+                            onChange={e => {
+                              setCloudDeviceId(e.target.value);
+                              localStorage.setItem('grblCloudDeviceId', e.target.value);
+                            }}
+                            className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 text-[11px] disabled:opacity-40 cursor-pointer"
+                          >
+                            {machineDevices.map(d => (
+                              <option key={d.deviceId} value={d.deviceId}>
+                                {d.name} {d.online ? '— online' : '— offline'}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                            No Tekno Box paired to this account. Pair one in physbox, then it shows
+                            up here.
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>

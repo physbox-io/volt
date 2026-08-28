@@ -1,30 +1,30 @@
 export function Logo() {
   return (
-    <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0 p-1">
+    <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0 p-1">
       <svg viewBox="0 0 512 512" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="logo-cyan-blue" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#00f2fe" />
-            <stop offset="100%" stopColor="#3b82f6" />
+            <stop offset="0%" stopColor="#34d399" />
+            <stop offset="100%" stopColor="#059669" />
           </linearGradient>
           <linearGradient id="logo-blue-purple" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#3b82f6" />
-            <stop offset="100%" stopColor="#7c3aed" />
+            <stop offset="0%" stopColor="#10b981" />
+            <stop offset="100%" stopColor="#047857" />
           </linearGradient>
           <linearGradient id="logo-face-top" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#00f2fe" stopOpacity="0.15" />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.15" />
+            <stop offset="0%" stopColor="#34d399" stopOpacity="0.18" />
+            <stop offset="100%" stopColor="#10b981" stopOpacity="0.18" />
           </linearGradient>
           <linearGradient id="logo-face-left" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="#1d4ed8" stopOpacity="0.25" />
+            <stop offset="0%" stopColor="#059669" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#047857" stopOpacity="0.25" />
           </linearGradient>
           <linearGradient id="logo-face-right" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.20" />
-            <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.20" />
+            <stop offset="0%" stopColor="#047857" stopOpacity="0.20" />
+            <stop offset="100%" stopColor="#065f46" stopOpacity="0.20" />
           </linearGradient>
           <filter id="logo-glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="12" stdDeviation="16" floodColor="#3b82f6" floodOpacity="0.45" />
+            <feDropShadow dx="0" dy="12" stdDeviation="16" floodColor="#059669" floodOpacity="0.45" />
           </filter>
         </defs>
 
@@ -73,20 +73,20 @@ export function Logo() {
         {/* Glowing Mesh Nodes */}
         <g fill="#ffffff">
           {/* Front nodes */}
-          <circle cx="320" cy="60" r="18" stroke="#7c3aed" strokeWidth="8" />
-          <circle cx="140" cy="240" r="18" stroke="#3b82f6" strokeWidth="8" />
-          <circle cx="230" cy="240" r="18" stroke="#3b82f6" strokeWidth="8" />
-          <circle cx="180" cy="450" r="18" stroke="#7c3aed" strokeWidth="8" />
-          <circle cx="340" cy="270" r="18" stroke="#3b82f6" strokeWidth="8" />
-          <circle cx="250" cy="270" r="18" stroke="#3b82f6" strokeWidth="8" />
+          <circle cx="320" cy="60" r="18" stroke="#047857" strokeWidth="8" />
+          <circle cx="140" cy="240" r="18" stroke="#059669" strokeWidth="8" />
+          <circle cx="230" cy="240" r="18" stroke="#059669" strokeWidth="8" />
+          <circle cx="180" cy="450" r="18" stroke="#047857" strokeWidth="8" />
+          <circle cx="340" cy="270" r="18" stroke="#059669" strokeWidth="8" />
+          <circle cx="250" cy="270" r="18" stroke="#059669" strokeWidth="8" />
           
           {/* Back nodes */}
-          <circle cx="350" cy="80" r="11" stroke="#00f2fe" strokeWidth="5" />
-          <circle cx="170" cy="260" r="11" stroke="#00f2fe" strokeWidth="5" />
-          <circle cx="260" cy="260" r="11" stroke="#00f2fe" strokeWidth="5" />
-          <circle cx="210" cy="470" r="11" stroke="#00f2fe" strokeWidth="5" />
-          <circle cx="370" cy="290" r="11" stroke="#00f2fe" strokeWidth="5" />
-          <circle cx="280" cy="290" r="11" stroke="#00f2fe" strokeWidth="5" />
+          <circle cx="350" cy="80" r="11" stroke="#34d399" strokeWidth="5" />
+          <circle cx="170" cy="260" r="11" stroke="#34d399" strokeWidth="5" />
+          <circle cx="260" cy="260" r="11" stroke="#34d399" strokeWidth="5" />
+          <circle cx="210" cy="470" r="11" stroke="#34d399" strokeWidth="5" />
+          <circle cx="370" cy="290" r="11" stroke="#34d399" strokeWidth="5" />
+          <circle cx="280" cy="290" r="11" stroke="#34d399" strokeWidth="5" />
         </g>
       </svg>
     </div>

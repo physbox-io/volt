@@ -61,7 +61,7 @@ export function SettingsModal({ onClose, showAura, setShowAura, userPresets, onD
   const isKnownModel = [...claudeOptions, ...geminiOptions].some((m) => m.id === model);
 
   const fieldClass =
-    'w-full px-2 py-1.5 text-xs border border-slate-200 dark:border-slate-800 rounded bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200 shadow-inner focus:outline-none focus:ring-1 focus:ring-blue-500';
+    'w-full px-2 py-1.5 text-xs border border-slate-200 dark:border-slate-800 rounded bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200 shadow-inner focus:outline-none focus:ring-1 focus:ring-emerald-500';
   const labelClass =
     'block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1';
 
@@ -84,7 +84,7 @@ export function SettingsModal({ onClose, showAura, setShowAura, userPresets, onD
           onClick={() => setTab('general')}
           className={`pb-2 pr-4 font-semibold transition-colors cursor-pointer ${
             tab === 'general'
-              ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-500'
+              ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500'
               : 'text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300'
           }`}
         >
@@ -94,13 +94,13 @@ export function SettingsModal({ onClose, showAura, setShowAura, userPresets, onD
           onClick={() => setTab('presets')}
           className={`pb-2 px-4 font-semibold transition-colors cursor-pointer flex items-center gap-1 ${
             tab === 'presets'
-              ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-500'
+              ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-500'
               : 'text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300'
           }`}
         >
           Presets
           {userPresetKeys.length > 0 && (
-            <span className="bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-400 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+            <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
               {userPresetKeys.length}
             </span>
           )}
@@ -123,7 +123,7 @@ export function SettingsModal({ onClose, showAura, setShowAura, userPresets, onD
                   onChange={(e) => setShowAura(e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-9 h-5 bg-slate-200 dark:bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 dark:border-slate-600 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500" />
+                <div className="w-9 h-5 bg-slate-200 dark:bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 dark:border-slate-600 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500" />
               </label>
             </div>
 
@@ -232,7 +232,7 @@ export function SettingsModal({ onClose, showAura, setShowAura, userPresets, onD
             <div className="pt-3.5 border-t border-slate-100 dark:border-slate-800/60">
               <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-bold mb-1.5">Simulation Engine</p>
               <div className="bg-slate-50 dark:bg-slate-950/60 rounded px-2.5 py-1.5 text-[11px] text-slate-600 dark:text-slate-350 border border-slate-100 dark:border-slate-800/60">
-                Running on <span className="font-mono font-bold text-blue-600 dark:text-blue-400">ngspice-wasm</span>
+                Running on <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">ngspice-wasm</span>
               </div>
             </div>
           </>
@@ -244,7 +244,7 @@ export function SettingsModal({ onClose, showAura, setShowAura, userPresets, onD
               <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-6">No saved presets yet.</p>
             ) : (
               userPresetKeys.map((key) => (
-                <div key={key} className="flex items-center justify-between bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded px-2.5 py-2 group hover:border-blue-200 dark:hover:border-blue-900/60 transition-colors">
+                <div key={key} className="flex items-center justify-between bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded px-2.5 py-2 group hover:border-emerald-200 dark:hover:border-emerald-900/60 transition-colors">
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">{userPresets[key].name}</div>
                     <div className="text-[9px] text-slate-400 dark:text-slate-500 font-mono truncate">{key}</div>

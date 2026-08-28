@@ -20,14 +20,14 @@ export function VoltageNode({ data, selected }: any) {
         type="target" 
         position={isHorizontal ? Position.Left : Position.Top} 
         id="pos" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isHorizontal ? { top: '50%', left: '0%' } : { left: '50%', top: '0%' }}
       />
       <Handle 
         type="source" 
         position={isHorizontal ? Position.Left : Position.Top} 
         id="pos" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isHorizontal ? { top: '50%', left: '0%' } : { left: '50%', top: '0%' }}
       />
       
@@ -80,14 +80,14 @@ export function VoltageNode({ data, selected }: any) {
         type="source" 
         position={isHorizontal ? Position.Right : Position.Bottom} 
         id="neg" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isHorizontal ? { top: '50%', left: '100%' } : { left: '50%', top: '100%' }}
       />
       <Handle 
         type="target" 
         position={isHorizontal ? Position.Right : Position.Bottom} 
         id="neg" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isHorizontal ? { top: '50%', left: '100%' } : { left: '50%', top: '100%' }}
       />
     </div>

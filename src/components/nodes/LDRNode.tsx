@@ -25,7 +25,7 @@ export function LDRProperties({ node, updateData, webcam }: NodePropertiesProps)
             updateData('r_dark_label', e.target.value);
             updateData('r_dark', sanitizeSpiceValue(e.target.value));
           }}
-          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none"
         />
       </div>
 

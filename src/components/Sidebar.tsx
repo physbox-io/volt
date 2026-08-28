@@ -49,10 +49,10 @@ export function Sidebar({
       : {}),
   });
 
-  const itemClass = "px-1 py-1.5 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center text-center cursor-grab hover:border-blue-400 dark:hover:border-blue-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all group";
+  const itemClass = "px-1 py-1.5 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-xs flex flex-col items-center justify-center text-center cursor-grab hover:border-emerald-400 dark:hover:border-emerald-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all group";
   const sectionTitleClass = "text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-3 mb-1.5";
   // One ink for every palette icon; the section heading carries the category.
-  const iconClass = "mb-0.5 text-slate-600 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors";
+  const iconClass = "mb-0.5 text-slate-600 dark:text-slate-300 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors";
 
   return (
     /* z-[120] below `lg`, above the note card's 100: as an overlay the drawer
@@ -317,7 +317,7 @@ export function Sidebar({
             {...partProps('heltec_v4')}
           >
             <div className={iconClass}>
-              <div className="border border-blue-300 dark:border-blue-700 rounded px-1 py-0.5 text-[9px] font-bold">HELTEC</div>
+              <div className="border border-emerald-300 dark:border-emerald-700 rounded px-1 py-0.5 text-[9px] font-bold">HELTEC</div>
             </div>
             <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">Heltec V4</span>
           </div>

@@ -1618,7 +1618,7 @@ export default function App() {
             <div className="hidden md:block">
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-extrabold tracking-tight text-slate-900 dark:text-white font-sans">
-                  Physbox <span className="text-blue-500 dark:text-blue-400 font-normal">Volt</span>
+                  Physbox <span className="text-emerald-600 dark:text-emerald-400 font-normal">Volt</span>
                 </h1>
                 <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-cyan-100 dark:bg-cyan-950/80 border border-cyan-200 dark:border-cyan-800/50 text-cyan-700 dark:text-cyan-300">
                   Circuit Studio
@@ -1812,7 +1812,7 @@ export default function App() {
               disabled={!nodes.some(n => n.selected)}
               className={`lg:hidden flex items-center justify-center w-8 h-8 rounded-full border transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs disabled:opacity-40 disabled:cursor-not-allowed ${
                 isPropertiesOpen
-                  ? 'bg-blue-100 border-blue-400 text-blue-700 dark:bg-blue-955 dark:border-blue-700 dark:text-blue-400'
+                  ? 'bg-emerald-100 border-emerald-400 text-emerald-700 dark:bg-emerald-950 dark:border-emerald-700 dark:text-emerald-400'
                   : 'border-slate-200 dark:border-slate-700 text-slate-650 dark:text-slate-300 bg-white dark:bg-slate-900'
               }`}
               title={nodes.some(n => n.selected) ? 'Properties' : 'Select a component to see its properties'}
@@ -1834,7 +1834,7 @@ export default function App() {
               onClick={() => setIsSettingsOpen(!isSettingsOpen)}
               className={`flex items-center justify-center w-8 h-8 rounded-full border transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs ${
                 isSettingsOpen 
-                  ? 'bg-blue-100 border-blue-400 text-blue-700 dark:bg-blue-955 dark:border-blue-700 dark:text-blue-400' 
+                  ? 'bg-emerald-100 border-emerald-400 text-emerald-700 dark:bg-emerald-950 dark:border-emerald-700 dark:text-emerald-400' 
                   : 'border-slate-200 dark:border-slate-700 text-slate-650 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800'
               }`}
               title="Settings"
@@ -1884,10 +1884,10 @@ export default function App() {
           {isSpiceRunning && (
             <div className="bg-white/90 dark:bg-slate-900/90 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-800/80 px-3.5 py-1.5 rounded-full shadow-md flex items-center gap-2.5 text-xs font-semibold backdrop-blur-md transition-all duration-300 pointer-events-auto">
               <div className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </div>
-              <Activity className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
+              <Activity className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span className="tracking-wide">SPICE Simulating</span>
             </div>
           )}
@@ -2017,7 +2017,7 @@ export default function App() {
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-2xl max-w-md w-full p-6 flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-950 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                <div className="w-9 h-9 rounded-lg bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
                   <Save className="w-5 h-5" />
                 </div>
                 <div>
@@ -2035,7 +2035,7 @@ export default function App() {
                   if (e.key === 'Enter') savePreset();
                   if (e.key === 'Escape') setIsSaveDialogOpen(false);
                 }}
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100"
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100"
               />
               <div className="flex justify-end gap-2 text-xs">
                 <button
@@ -2047,7 +2047,7 @@ export default function App() {
                 <button
                   onClick={savePreset}
                   disabled={!saveDialogName.trim()}
-                  className="px-4 py-2 font-semibold text-white bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors"
+                  className="px-4 py-2 font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors"
                 >
                   Save
                 </button>

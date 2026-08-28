@@ -21,7 +21,7 @@ import {
 } from './meshLeveler';
 import {
   WebSerialTransport,
-  WebSocketTransport,
+  CloudTransport,
   type GrblTransport,
 } from './grblTransport';
 
@@ -380,9 +380,10 @@ interface PendingAck {
 class WebSerialManager {
   /** The active byte pipe — a USB Web Serial port or a WiFi WebSocket proxy. */
   private transport: GrblTransport | null = null;
-  /** Chosen transport + its WiFi target. Set via setTransport before connect. */
+  /** Chosen transport + the paired machine it targets. Set via setTransport. */
   private transportMode: TransportMode = 'usb';
-  private wifiIp = '';
+  /** Which Tekno Box to reach, from `fetchMachineDevices`. */
+  private cloudDeviceId = '';
   /** Accumulates serial RX across chunks; parsed line by line on each '\n'. */
   private rxBuffer = '';
   private statusPollTimer: any = null;
@@ -494,18 +495,28 @@ class WebSerialManager {
   private lastTelemetryStatus: MachineStatus | null = null;
 
   public isSupported(): boolean {
-    // WiFi rides on WebSocket, which is always available; USB needs Web Serial.
+    // WiFi rides on a secure WebSocket to physbox, which any browser can open;
+    // USB needs Web Serial, which not all of them have.
     if (this.transportMode === 'wifi') return true;
     return typeof navigator !== 'undefined' && 'serial' in navigator;
   }
 
   /**
-   * Chooses how the machine is reached. Call before connect(). USB (Web Serial)
-   * is the default; WiFi routes byte I/O through a WebSocket proxy at `ip`.
+   * Chooses how the machine is reached. Call before connect().
+   *
+   * USB is a cable to this computer. WiFi is a Tekno Box, reached through
+   * api.physbox.io rather than directly: the box sits behind the customer's
+   * router with no address to dial and no certificate a browser would accept,
+   * and a page served over https may not open a plain connection to a home
+   * network anyway. So it connects out to physbox and this meets it there.
    */
-  public setTransport(mode: TransportMode, ip?: string): void {
+  public setTransport(mode: TransportMode, deviceId?: string): void {
     this.transportMode = mode;
-    if (ip !== undefined) this.wifiIp = ip;
+    if (deviceId !== undefined) this.cloudDeviceId = deviceId;
+  }
+
+  public getCloudDeviceId(): string {
+    return this.cloudDeviceId;
   }
 
   public getTransportMode(): TransportMode {
@@ -593,7 +604,7 @@ class WebSerialManager {
 
       const transport: GrblTransport =
         this.transportMode === 'wifi'
-          ? new WebSocketTransport(this.wifiIp, baudRate)
+          ? new CloudTransport(this.cloudDeviceId, baudRate)
           : new WebSerialTransport(baudRate);
       transport.onData(chunk => this.handleData(chunk));
       transport.onDisconnect?.(err => this.handleTransportDisconnect(err));
@@ -605,7 +616,7 @@ class WebSerialManager {
         status: 'IDLE',
         connected: true,
         lastError: undefined,
-        portName: this.transportMode === 'wifi' ? `WiFi ${this.wifiIp}` : 'USB Serial',
+        portName: this.transportMode === 'wifi' ? 'Tekno Box (WiFi)' : 'USB Serial',
       });
 
       // GRBL status polling. '?' is a realtime command: it bypasses the RX

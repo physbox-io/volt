@@ -1,3 +1,5 @@
+import { machineSocketUrl, submitMachineJob } from './apiClient';
+
 // ---------------------------------------------------------------------------
 // GRBL byte transports.
 //
@@ -21,16 +23,26 @@ export interface GrblTransport {
   onData(cb: (chunk: string) => void): void;
   /** Registers a callback when the connection is closed or dropped unexpectedly. */
   onDisconnect?(cb: (err?: Error) => void): void;
+  /**
+   * Hands a whole program over for the far end to run by itself.
+   *
+   * Present only on transports where the machine can do that. Over USB this
+   * browser is the streamer and the job lives as long as the tab; through a
+   * Tekno Box the device runs the program instead.
+   */
+  runJob?(
+    gcode: string,
+    options: { name?: string; estimatedSeconds?: number }
+  ): Promise<{ delivered: boolean; message: string }>;
   isOpen(): boolean;
 }
 
 /** Longest wait for the WiFi proxy to open the machine link before giving up. */
 const WS_CONNECT_TIMEOUT_MS = 8000;
 
-/** The subset of proxy JSON frames this transport acts on. */
+/** The subset of relay JSON frames this transport acts on. */
 interface GrblFrame {
   type?: string;
-  open?: boolean;
   err?: string;
   data?: string;
 }
@@ -146,16 +158,16 @@ export class WebSerialTransport implements GrblTransport {
  * socket also carries unrelated traffic (mesh_*, hil_*, repl_*), so anything
  * that is not a `grbl_data` / `grbl_status` frame is ignored.
  */
-export class WebSocketTransport implements GrblTransport {
+export class CloudTransport implements GrblTransport {
   private ws: WebSocket | null = null;
   private open = false;
   private dataCb: ((chunk: string) => void) | null = null;
   private disconnectCb: ((err?: Error) => void) | null = null;
-  private ip: string;
+  private deviceId: string;
   private baudRate: number;
 
-  constructor(ip: string, baudRate = 115200) {
-    this.ip = ip;
+  constructor(deviceId: string, baudRate = 115200) {
+    this.deviceId = deviceId;
     this.baudRate = baudRate;
   }
 
@@ -171,21 +183,17 @@ export class WebSocketTransport implements GrblTransport {
     return this.open;
   }
 
-  private url(): string {
-    const raw = this.ip.trim();
-    const withScheme = /^wss?:\/\//i.test(raw) ? raw : `ws://${raw}`;
-    // Root path on port 80, as the proxy expects.
-    return withScheme.replace(/\/+$/, '') + '/';
+  private url(): string | null {
+    return machineSocketUrl(this.deviceId);
   }
 
   connect(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      if (!this.ip.trim()) {
-        reject(new Error('Enter the device IP address for WiFi mode'));
+      const url = this.url();
+      if (!url) {
+        reject(new Error('Sign in to physbox, and pair a Tekno Box, to cut over WiFi.'));
         return;
       }
-
-      const url = this.url();
       let settled = false;
       try {
         this.ws = new WebSocket(url);
@@ -214,9 +222,10 @@ export class WebSocketTransport implements GrblTransport {
         }
       };
 
-      this.ws.onopen = () => {
-        this.ws?.send(JSON.stringify({ cmd: 'grbl_open', baud: this.baudRate }));
-      };
+      // Nothing to send on open: the relay authenticates from the URL and
+      // answers with `welcome`. The baud rate is the device's business, since
+      // it is the one holding the cable.
+      void this.baudRate;
 
       this.ws.onmessage = ev => {
         if (typeof ev.data !== 'string') return;
@@ -228,20 +237,25 @@ export class WebSocketTransport implements GrblTransport {
         }
         if (!msg || typeof msg !== 'object') return;
 
-        if (msg.type === 'grbl_status') {
-          if (msg.open === true) done();
-          else if (msg.open === false) {
-            if (settled) {
-              this.open = false;
-              this.disconnectCb?.(new Error(msg.err || 'Machine link dropped'));
-            } else {
-              done(new Error(msg.err || 'The device could not open the machine link'));
-            }
+        if (msg.type === 'welcome') {
+          done();
+          return;
+        }
+
+        if (msg.type === 'device_offline') {
+          // The relay is up; the machine is not. From here the two are the same
+          // thing — commands will not reach the cutter either way — so it is
+          // reported as a dropped link rather than swallowed.
+          if (settled) {
+            this.open = false;
+            this.disconnectCb?.(new Error(msg.err || 'The machine is not connected.'));
+          } else {
+            done(new Error(msg.err || 'That machine is not switched on.'));
           }
           return;
         }
 
-        if (msg.type === 'grbl_data' && typeof msg.data === 'string') {
+        if (msg.type === 'machine_data' && typeof msg.data === 'string') {
           this.dataCb?.(msg.data);
         }
         // Every other type (mesh_*, hil_*, repl_*, …) is not ours — ignore it.
@@ -271,7 +285,7 @@ export class WebSocketTransport implements GrblTransport {
     this.open = false;
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       try {
-        this.ws.send(JSON.stringify({ cmd: 'grbl_close' }));
+        this.ws.close();
       } catch {
         // Best effort — we are tearing the socket down regardless.
       }
@@ -297,15 +311,36 @@ export class WebSocketTransport implements GrblTransport {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('Not connected to a machine');
     }
-    this.ws.send(JSON.stringify({ cmd: 'grbl_line', data: line }));
+    this.ws.send(JSON.stringify({ type: 'machine_line', data: line }));
   }
 
   async writeRealtime(byte: number): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
-      this.ws.send(JSON.stringify({ cmd: 'grbl_raw', bytes: [byte & 0xff] }));
+      this.ws.send(JSON.stringify({ type: 'machine_realtime', bytes: [byte & 0xff] }));
     } catch {
       // Fire-and-forget, same as a serial realtime byte.
     }
+  }
+
+  /**
+   * Hands a whole program to the machine to cut on its own.
+   *
+   * Not streamed from here, unlike the USB path. GRBL acknowledges a line at a
+   * time, so a round trip through physbox per line would be unusable — and a
+   * browser tab is the wrong thing to hang a long job on. Once this returns the
+   * cut survives the laptop being shut.
+   */
+  async runJob(
+    gcode: string,
+    options: { name?: string; estimatedSeconds?: number } = {}
+  ): Promise<{ delivered: boolean; message: string }> {
+    const result = await submitMachineJob({
+      deviceId: this.deviceId,
+      gcode,
+      name: options.name,
+      estimatedSeconds: options.estimatedSeconds,
+    });
+    return { delivered: result.delivered, message: result.message };
   }
 }

@@ -95,7 +95,7 @@ export function DeviceField({
         className="w-[30px] bg-transparent text-right font-mono text-[8px] leading-none
                    text-slate-700 dark:text-slate-200 border-b border-dotted
                    border-slate-300 dark:border-slate-600 outline-none
-                   focus:border-solid focus:border-blue-500
+                   focus:border-solid focus:border-emerald-500
                    [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
       />
       <span className="font-mono text-[8px] leading-none text-slate-400 dark:text-slate-500">
@@ -223,7 +223,7 @@ export function LeadHandles({
   first,
   second,
   orientation,
-  className = 'w-2 h-2 bg-blue-500 !border-0',
+  className = 'w-2 h-2 bg-emerald-500 !border-0',
 }: {
   /** Handle id of the first lead — `in`, `anode`, `pos`, `a`. */
   first: string;

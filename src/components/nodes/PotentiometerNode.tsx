@@ -29,42 +29,42 @@ export function PotentiometerNode({ data, selected }: any) {
         type="target" 
         position={isVertical ? Position.Top : Position.Left} 
         id="in" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isVertical ? { left: '50%', top: '0%' } : { top: '50%', left: '0%' }}
       />
       <Handle 
         type="source" 
         position={isVertical ? Position.Top : Position.Left} 
         id="in" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isVertical ? { left: '50%', top: '0%' } : { top: '50%', left: '0%' }}
       />
       <Handle 
         type="source" 
         position={isVertical ? Position.Bottom : Position.Right} 
         id="out" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isVertical ? { left: '50%', top: '100%' } : { top: '50%', left: '100%' }}
       />
       <Handle 
         type="target" 
         position={isVertical ? Position.Bottom : Position.Right} 
         id="out" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isVertical ? { left: '50%', top: '100%' } : { top: '50%', left: '100%' }}
       />
       <Handle 
         type="target" 
         position={isVertical ? Position.Left : Position.Top} 
         id="wiper" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isVertical ? { top: '50%', left: '0%' } : { left: '50%', top: '0%' }}
       />
       <Handle 
         type="source" 
         position={isVertical ? Position.Left : Position.Top} 
         id="wiper" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isVertical ? { top: '50%', left: '0%' } : { left: '50%', top: '0%' }}
       />
 

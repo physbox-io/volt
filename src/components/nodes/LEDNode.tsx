@@ -38,7 +38,7 @@ export function LEDProperties({ node, updateData, webcam }: NodePropertiesProps)
           <>
             <div className="mb-3">
               <label className="block text-xs font-medium text-gray-700 mb-1">Reverse Sensitivity (μA)</label>
-              <input type="number" min="0" step="1" value={node.data.lightSensitivity !== undefined ? node.data.lightSensitivity : 10} onChange={e => updateData('lightSensitivity', parseInt(e.target.value) || 0)} className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none" />
+              <input type="number" min="0" step="1" value={node.data.lightSensitivity !== undefined ? node.data.lightSensitivity : 10} onChange={e => updateData('lightSensitivity', parseInt(e.target.value) || 0)} className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none" />
             </div>
 
             <div className="mb-3 flex items-center gap-2">
@@ -108,7 +108,7 @@ export function LEDProperties({ node, updateData, webcam }: NodePropertiesProps)
       {node.data.isExploded && (
         <button
           onClick={() => { updateData('isExploded', false); updateData('brightness', 0); }}
-          className="w-full mt-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-1 px-2 rounded shadow-sm text-sm"
+          className="w-full mt-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-1 px-2 rounded shadow-sm text-sm"
         >
           Repair Component
         </button>
@@ -173,14 +173,14 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
         type="target" 
         position={isHorizontal ? (isLeft ? Position.Right : Position.Left) : (isUp ? Position.Bottom : Position.Top)} 
         id="anode" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isHorizontal ? { top: '50%', left: isLeft ? '100%' : '0%' } : { left: '50%', top: isUp ? '100%' : '0%' }}
       />
       <Handle 
         type="source" 
         position={isHorizontal ? (isLeft ? Position.Right : Position.Left) : (isUp ? Position.Bottom : Position.Top)} 
         id="anode" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isHorizontal ? { top: '50%', left: isLeft ? '100%' : '0%' } : { left: '50%', top: isUp ? '100%' : '0%' }}
       />
       
@@ -270,14 +270,14 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
         type="source" 
         position={isHorizontal ? (isLeft ? Position.Left : Position.Right) : (isUp ? Position.Top : Position.Bottom)} 
         id="cathode" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isHorizontal ? { top: '50%', left: isLeft ? '0%' : '100%' } : { left: '50%', top: isUp ? '0%' : '100%' }}
       />
       <Handle 
         type="target" 
         position={isHorizontal ? (isLeft ? Position.Left : Position.Right) : (isUp ? Position.Top : Position.Bottom)} 
         id="cathode" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isHorizontal ? { top: '50%', left: isLeft ? '0%' : '100%' } : { left: '50%', top: isUp ? '0%' : '100%' }}
       />
     </div>

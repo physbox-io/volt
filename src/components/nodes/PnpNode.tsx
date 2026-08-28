@@ -4,12 +4,12 @@ import { SchematicLabel } from './schematic';
 export function PnpNode({ data, selected }: any) {
   return (
     <div className="schematic-node w-[32px] h-[32px] flex items-center justify-center relative select-none">
-      <Handle type="target" position={Position.Top} id="e" className="w-2 h-2 bg-blue-500 !border-0" style={{ left: '75%' }} />
-      <Handle type="source" position={Position.Top} id="e" className="w-2 h-2 bg-blue-500 !border-0" style={{ left: '75%' }} />
-      <Handle type="target" position={Position.Left} id="b" className="w-2 h-2 bg-blue-500 !border-0" style={{ top: '50%' }} />
-      <Handle type="source" position={Position.Left} id="b" className="w-2 h-2 bg-blue-500 !border-0" style={{ top: '50%' }} />
-      <Handle type="source" position={Position.Bottom} id="c" className="w-2 h-2 bg-blue-500 !border-0" style={{ left: '75%' }} />
-      <Handle type="target" position={Position.Bottom} id="c" className="w-2 h-2 bg-blue-500 !border-0" style={{ left: '75%' }} />
+      <Handle type="target" position={Position.Top} id="e" className="w-2 h-2 bg-emerald-500 !border-0" style={{ left: '75%' }} />
+      <Handle type="source" position={Position.Top} id="e" className="w-2 h-2 bg-emerald-500 !border-0" style={{ left: '75%' }} />
+      <Handle type="target" position={Position.Left} id="b" className="w-2 h-2 bg-emerald-500 !border-0" style={{ top: '50%' }} />
+      <Handle type="source" position={Position.Left} id="b" className="w-2 h-2 bg-emerald-500 !border-0" style={{ top: '50%' }} />
+      <Handle type="source" position={Position.Bottom} id="c" className="w-2 h-2 bg-emerald-500 !border-0" style={{ left: '75%' }} />
+      <Handle type="target" position={Position.Bottom} id="c" className="w-2 h-2 bg-emerald-500 !border-0" style={{ left: '75%' }} />
       
       <svg 
         width="32" 

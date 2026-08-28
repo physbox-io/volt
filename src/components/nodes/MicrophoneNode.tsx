@@ -112,8 +112,8 @@ export function MicrophoneNode({ id, data }: any) {
       {/* The signal lead leaves sideways and ground drops down, which is how
           these read on a horizontal rail. Vertical puts the signal on top and
           ground at the bottom, for a part drawn on end. */}
-      <Handle type="target" position={isVertical ? Position.Top : Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
-      <Handle type="source" position={isVertical ? Position.Top : Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
+      <Handle type="target" position={isVertical ? Position.Top : Position.Right} id="out" className="w-3 h-3 bg-emerald-500" />
+      <Handle type="source" position={isVertical ? Position.Top : Position.Right} id="out" className="w-3 h-3 bg-emerald-500" />
       <Handle type="source" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
       <Handle type="target" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
     </div>

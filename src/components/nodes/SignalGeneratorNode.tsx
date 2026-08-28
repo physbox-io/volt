@@ -77,7 +77,7 @@ export function SignalGeneratorNode({ id, data }: any) {
         onPointerDown={(e) => e.stopPropagation()}
         onClick={() => update({ waveform: type === 'square' ? 'sine' : 'square' })}
         className={`nodrag nopan ${DEVICE_SCREEN} w-full h-[22px] flex items-center justify-center
-                    hover:border-blue-400 dark:hover:border-blue-600 transition-colors`}
+                    hover:border-emerald-400 dark:hover:border-emerald-600 transition-colors`}
       >
         <svg width="64" height="24" viewBox="0 0 64 24" style={{ overflow: 'visible' }}>
           <WaveformPath type={type} />
@@ -104,8 +104,8 @@ export function SignalGeneratorNode({ id, data }: any) {
       {/* The signal lead leaves sideways and ground drops down, which is how
           these read on a horizontal rail. Vertical puts the signal on top and
           ground at the bottom, for a part drawn on end. */}
-      <Handle type="target" position={isVertical ? Position.Top : Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
-      <Handle type="source" position={isVertical ? Position.Top : Position.Right} id="out" className="w-3 h-3 bg-blue-500" />
+      <Handle type="target" position={isVertical ? Position.Top : Position.Right} id="out" className="w-3 h-3 bg-emerald-500" />
+      <Handle type="source" position={isVertical ? Position.Top : Position.Right} id="out" className="w-3 h-3 bg-emerald-500" />
       <Handle type="source" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
       <Handle type="target" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
     </div>

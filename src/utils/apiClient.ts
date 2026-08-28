@@ -231,3 +231,98 @@ export async function fetchLatestTelemetry(appId?: string): Promise<MachiningTel
     return [];
   }
 }
+
+// ---------------------------------------------------------------------------
+// Machines reached through the cloud
+// ---------------------------------------------------------------------------
+//
+// A Tekno Box sits behind the customer's router with no address anyone can dial
+// and no certificate a browser would accept. It connects out to this API and
+// stays connected; the browser meets it here. That is what lets a machine be
+// driven from the deployed https app at all — see `src/machine/relay.ts` in the
+// API, and `lib/physbox_cloud.py` on the device.
+
+export interface MachineDevice {
+  deviceId: string;
+  name: string;
+  /** Whether the device is connected to the relay right now. */
+  online: boolean;
+  lastSeenAt: string | null;
+}
+
+export interface SubmittedJob {
+  jobId: string;
+  totalLines: number;
+  /**
+   * Whether the machine was connected to take it.
+   *
+   * Said plainly rather than implied, because queueing a job for a machine that
+   * is switched off is a perfectly reasonable thing to have done — and a job
+   * the operator believes is cutting when it is not is not.
+   */
+  delivered: boolean;
+  message: string;
+}
+
+/** The machines on this account, and which are reachable. */
+export async function fetchMachineDevices(): Promise<MachineDevice[]> {
+  if (!getStoredAuthToken()) return [];
+  try {
+    return await request<MachineDevice[]>('/api/machine/devices');
+  } catch {
+    return [];
+  }
+}
+
+/** Ties a machine to this account using the code on its screen. */
+export async function claimMachineDevice(
+  pairCode: string,
+  name?: string
+): Promise<{ deviceId: string }> {
+  return request<{ deviceId: string }>('/api/machine/devices/claim', {
+    method: 'POST',
+    body: JSON.stringify({ pairCode, name }),
+  });
+}
+
+export async function forgetMachineDevice(deviceId: string): Promise<boolean> {
+  try {
+    await request(`/api/machine/devices/${encodeURIComponent(deviceId)}`, { method: 'DELETE' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Hands a program to a machine to cut on its own.
+ *
+ * The G-code goes to the API and the machine fetches it from there. It is not
+ * streamed from this browser: GRBL acknowledges one line at a time, so a round
+ * trip per line would be unusable — and more to the point a browser tab is the
+ * wrong thing to hang a four-hour carve on. Once this returns, the cut survives
+ * the laptop being shut.
+ */
+export async function submitMachineJob(input: {
+  deviceId: string;
+  gcode: string;
+  name?: string;
+  estimatedSeconds?: number;
+}): Promise<SubmittedJob> {
+  return request<SubmittedJob>('/api/machine/jobs', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/** The websocket the browser half of the relay connects to. */
+export function machineSocketUrl(deviceId: string): string | null {
+  const token = getStoredAuthToken();
+  if (!token) return null;
+  const base = getApiBaseUrl().replace(/^http/, 'ws');
+  // Credentials ride in the query string because a browser's WebSocket
+  // constructor cannot set headers — there is no way to send an Authorization
+  // header on the upgrade. It is wss in production, so they are not in clear on
+  // the wire.
+  return `${base}/api/machine/ws?deviceId=${encodeURIComponent(deviceId)}&token=${encodeURIComponent(token)}`;
+}

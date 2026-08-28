@@ -25,7 +25,7 @@ const SEGMENT_PATHS: Record<string, string> = {
 
 const SEG_COLORS: Record<string, string> = {
   a: 'bg-red-400', b: 'bg-orange-400', c: 'bg-yellow-400',
-  d: 'bg-green-400', e: 'bg-teal-400', f: 'bg-blue-400', g: 'bg-purple-400',
+  d: 'bg-green-400', e: 'bg-teal-400', f: 'bg-emerald-400', g: 'bg-purple-400',
 };
 
 export const SevenSegmentNode = memo(function SevenSegmentNode({ data }: any) {

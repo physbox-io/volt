@@ -49,7 +49,7 @@ export function ProbeTooltip({ probeData, isSimulating, onClose }: { probeData: 
         <>
           <div className="grid grid-cols-3 gap-1 text-[9px] text-slate-400 border-t border-slate-800/50 pt-1.5 mt-0.5">
             <div>Max: <span className="text-red-400">{probeData.maxV?.toFixed(2)}V</span></div>
-            <div>Min: <span className="text-blue-400">{probeData.minV?.toFixed(2)}V</span></div>
+            <div>Min: <span className="text-emerald-400">{probeData.minV?.toFixed(2)}V</span></div>
             <div>Avg: <span className="text-amber-400">{probeData.avgV?.toFixed(2)}V</span></div>
           </div>
 

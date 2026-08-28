@@ -26,14 +26,14 @@ export function ResistorNode({ id, data, selected }: any) {
         type="target" 
         position={isVertical ? (isUp ? Position.Bottom : Position.Top) : (isLeft ? Position.Right : Position.Left)} 
         id="in" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isVertical ? { left: '50%', top: isUp ? '100%' : '0%' } : { top: '50%', left: isLeft ? '100%' : '0%' }}
       />
       <Handle 
         type="source" 
         position={isVertical ? (isUp ? Position.Bottom : Position.Top) : (isLeft ? Position.Right : Position.Left)} 
         id="in" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isVertical ? { left: '50%', top: isUp ? '100%' : '0%' } : { top: '50%', left: isLeft ? '100%' : '0%' }}
       />
       
@@ -66,14 +66,14 @@ export function ResistorNode({ id, data, selected }: any) {
         type="source" 
         position={isVertical ? (isUp ? Position.Top : Position.Bottom) : (isLeft ? Position.Left : Position.Right)} 
         id="out" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isVertical ? { left: '50%', top: isUp ? '0%' : '100%' } : { top: '50%', left: isLeft ? '0%' : '100%' }}
       />
       <Handle 
         type="target" 
         position={isVertical ? (isUp ? Position.Top : Position.Bottom) : (isLeft ? Position.Left : Position.Right)} 
         id="out" 
-        className="w-2 h-2 bg-blue-500 !border-0" 
+        className="w-2 h-2 bg-emerald-500 !border-0" 
         style={isVertical ? { left: '50%', top: isUp ? '0%' : '100%' } : { top: '50%', left: isLeft ? '0%' : '100%' }}
       />
     </div>

@@ -40,7 +40,7 @@ html.dark, html.dark body, html.dark #root {
 }
 
 .physics-accent {
-  color: #3b82f6;
+  color: #059669;
 }
 
 
@@ -105,8 +105,8 @@ aside.glass-panel input[type="text"]:focus,
 aside.glass-panel input[type="password"]:focus,
 aside.glass-panel input[type="number"]:focus,
 aside.glass-panel textarea:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25);
+  border-color: #059669;
+  box-shadow: 0 0 0 1px rgba(5, 150, 105, 0.25);
 }
 
 .dark aside.glass-panel select:focus,
@@ -114,7 +114,7 @@ aside.glass-panel textarea:focus {
 .dark aside.glass-panel input[type="password"]:focus,
 .dark aside.glass-panel input[type="number"]:focus,
 .dark aside.glass-panel textarea:focus {
-  border-color: #3b82f6;
+  border-color: #10b981;
 }
 
 aside.glass-panel .bg-white {
@@ -142,7 +142,7 @@ aside.glass-panel .bg-slate-50 {
 /* Range Sliders */
 aside.glass-panel input[type="range"] {
   width: 100%;
-  accent-color: #3b82f6;
+  accent-color: #059669;
   cursor: pointer;
   height: 6px;
   border-radius: 4px;
@@ -275,12 +275,12 @@ aside.glass-panel h3:hover {
 .react-flow .react-flow__edge.selected .react-flow__edge-path,
 .react-flow .react-flow__edge:focus .react-flow__edge-path,
 .react-flow .react-flow__edge:focus-visible .react-flow__edge-path {
-  stroke: #3b82f6;
+  stroke: #059669;
   stroke-width: 1.8;
 }
 
 .react-flow .react-flow__connection-path {
-  stroke: #3b82f6;
+  stroke: #059669;
   stroke-width: 1.4;
 }
 

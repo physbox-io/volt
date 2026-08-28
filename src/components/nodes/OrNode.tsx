@@ -45,14 +45,14 @@ export function OrNode({ selected }: any) {
       </svg>
       
       {/* Inputs */}
-      <Handle type="target" position={Position.Left} id="in1" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[30%]" />
-      <Handle type="source" position={Position.Left} id="in1" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[30%]" />
-      <Handle type="target" position={Position.Left} id="in2" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[70%]" />
-      <Handle type="source" position={Position.Left} id="in2" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[70%]" />
+      <Handle type="target" position={Position.Left} id="in1" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[30%]" />
+      <Handle type="source" position={Position.Left} id="in1" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[30%]" />
+      <Handle type="target" position={Position.Left} id="in2" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[70%]" />
+      <Handle type="source" position={Position.Left} id="in2" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[70%]" />
       
       {/* Output */}
-      <Handle type="source" position={Position.Right} id="out" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[50%]" />
-      <Handle type="target" position={Position.Right} id="out" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[50%]" />
+      <Handle type="source" position={Position.Right} id="out" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[50%]" />
+      <Handle type="target" position={Position.Right} id="out" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[50%]" />
     </div>
   );
 }

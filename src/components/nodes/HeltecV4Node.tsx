@@ -54,7 +54,7 @@ export function HeltecV4Properties({ node, updateData, isSimulating }: NodePrope
           type="text"
           value={(node.data.ip as string) || '192.168.1.244'}
           onChange={e => updateData('ip', e.target.value)}
-          className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none mb-2"
+          className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none mb-2"
         />
       </div>
 
@@ -64,7 +64,7 @@ export function HeltecV4Properties({ node, updateData, isSimulating }: NodePrope
           value={(node.data.hilExecutionMode as string) || 'native'}
           disabled={isSimulating}
           onChange={e => updateData('hilExecutionMode', e.target.value)}
-          className={`w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none ${isSimulating ? 'opacity-50 cursor-not-allowed' : ''}`}
+          className={`w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none ${isSimulating ? 'opacity-50 cursor-not-allowed' : ''}`}
           title={isSimulating ? "Stop the simulation to change HIL execution mode." : "Native: whole slice runs in one UART transaction on the Heltec's own C++ firmware (needs firmware with the hil_batch handler). Legacy: CYD loops gpio_write/adc_read per op — one blocking ~11ms UART round trip each, works against any firmware."}
         >
           <option value="native">Native (single UART transaction)</option>
@@ -170,7 +170,7 @@ export function HeltecV4Properties({ node, updateData, isSimulating }: NodePrope
                   const nextPins = { ...currentPins, [pinId]: e.target.value };
                   updateData('pins', nextPins);
                 }}
-                className="text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-0.5 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+                className="text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-0.5 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none"
               >
                 <option value="digital_in">Digital In</option>
                 <option value="analog_in">Analog In (ADC)</option>
@@ -201,7 +201,7 @@ export const HeltecV4Node = memo(function HeltecV4Node({ id, data, selected }: a
     const mode = pins[pinId] || 'digital_in';
     if (mode === 'analog_in') return '!bg-green-500';
     if (mode === 'digital_in') return '!bg-amber-500';
-    return '!bg-blue-500';
+    return '!bg-emerald-500';
   };
 
   const formatPinValue = (pinId: string) => {

@@ -13,13 +13,13 @@ export function MultimeterProperties({ node, updateData }: NodePropertiesProps) 
           type="text"
           value={(node.data.label as string) || 'Multimeter'}
           onChange={e => updateData('label', e.target.value)}
-          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none"
         />
       </div>
       <div className="mb-3">
         <div className="flex items-center justify-between mb-2">
           <label className="block text-xs font-medium text-gray-700">Display Mode</label>
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${node.data.isRms ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${node.data.isRms ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}`}>
             {node.data.isRms ? 'RMS' : (node.data.mode === 'current' ? 'AMPS' : 'VOLTS')}
           </span>
         </div>
@@ -166,7 +166,7 @@ export const MultimeterNode = memo(function MultimeterNode({ id, data }: any) {
             }}
             className="sr-only peer"
           />
-          <div className="w-5 h-3 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-gray-300 after:rounded-full after:h-2.5 after:w-2.5 after:transition-all peer-checked:bg-blue-500"></div>
+          <div className="w-5 h-3 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-gray-300 after:rounded-full after:h-2.5 after:w-2.5 after:transition-all peer-checked:bg-emerald-500"></div>
           <span className="ml-1 text-[8px] font-bold text-gray-300 tracking-wider">RMS</span>
         </label>
 
@@ -182,7 +182,7 @@ export const MultimeterNode = memo(function MultimeterNode({ id, data }: any) {
             }}
             className="sr-only peer"
           />
-          <div className="w-5 h-3 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-gray-300 after:rounded-full after:h-2.5 after:w-2.5 after:transition-all peer-checked:bg-blue-500"></div>
+          <div className="w-5 h-3 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-gray-300 after:rounded-full after:h-2.5 after:w-2.5 after:transition-all peer-checked:bg-emerald-500"></div>
           <span className="ml-1 text-[8px] font-bold text-gray-300 tracking-wider">AMPS</span>
         </label>
       </div>

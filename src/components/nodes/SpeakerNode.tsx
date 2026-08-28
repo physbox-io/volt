@@ -12,7 +12,7 @@ export function SpeakerProperties({ node, updateData }: NodePropertiesProps) {
         <select 
           value={(node.data.outputTarget as string) ?? 'computer'} 
           onChange={e => updateData('outputTarget', e.target.value)} 
-          className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none"
+          className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none"
         >
           <option value="computer">💻 Computer Speaker</option>
           <option value="cyd">📟 CYD Speaker (HIL)</option>
@@ -20,7 +20,7 @@ export function SpeakerProperties({ node, updateData }: NodePropertiesProps) {
       </div>
       <div className="mb-3">
         <label className="block text-xs font-medium text-gray-700 dark:text-slate-400 mb-1">Voltage Scale (V)</label>
-        <input type="number" step="1" min="0.1" value={(node.data.voltageScale as number) ?? 5} onChange={e => updateData('voltageScale', parseFloat(e.target.value) || 5)} className="w-full text-sm border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-blue-500 focus:outline-none" />
+        <input type="number" step="1" min="0.1" value={(node.data.voltageScale as number) ?? 5} onChange={e => updateData('voltageScale', parseFloat(e.target.value) || 5)} className="w-full text-sm border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none" />
         <div className="text-[10px] text-gray-400 mt-1">Full-scale voltage (±V maps to ±1.0 audio)</div>
       </div>
       <div className="mb-2 flex items-center gap-2">
@@ -125,19 +125,19 @@ export function SpeakerNode({ data }: any) {
   const isCyd = data.outputTarget === 'cyd';
 
   return (
-    <div className={`${DEVICE_CARD} ${isCyd ? '!border-blue-500' : ''} p-1 w-12 h-12 flex flex-col items-center justify-center relative`}>
+    <div className={`${DEVICE_CARD} ${isCyd ? '!border-emerald-500' : ''} p-1 w-12 h-12 flex flex-col items-center justify-center relative`}>
       {/* The signal lead leaves sideways and ground drops down, which is how
           these read on a horizontal rail. Vertical puts the signal on top and
           ground at the bottom, for a part drawn on end. */}
-      <Handle type="target" position={isVertical ? Position.Top : Position.Left} id="in" className="w-3 h-3 bg-blue-500" />
-      <Handle type="source" position={isVertical ? Position.Top : Position.Left} id="in" className="w-3 h-3 bg-blue-500" />
+      <Handle type="target" position={isVertical ? Position.Top : Position.Left} id="in" className="w-3 h-3 bg-emerald-500" />
+      <Handle type="source" position={isVertical ? Position.Top : Position.Left} id="in" className="w-3 h-3 bg-emerald-500" />
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isCyd ? '#3b82f6' : 'currentColor'} strokeWidth="1.4" className="text-slate-700 dark:text-slate-200">
         <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
         <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
         <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
       </svg>
       {isCyd && (
-        <span className="text-[8px] font-bold text-blue-600 mt-0.5 uppercase tracking-wider select-none">CYD</span>
+        <span className="text-[8px] font-bold text-emerald-600 mt-0.5 uppercase tracking-wider select-none">CYD</span>
       )}
       <Handle type="source" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
       <Handle type="target" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />

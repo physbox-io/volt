@@ -44,21 +44,21 @@ export function OpAmpNode({ selected }: any) {
       
       {/* Handles */}
       {/* Inverting input */}
-      <Handle type="target" position={Position.Left} id="in_inv" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[30%]" />
-      <Handle type="source" position={Position.Left} id="in_inv" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[30%]" />
+      <Handle type="target" position={Position.Left} id="in_inv" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[30%]" />
+      <Handle type="source" position={Position.Left} id="in_inv" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[30%]" />
       {/* Non-inverting input */}
-      <Handle type="target" position={Position.Left} id="in_non" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[70%]" />
-      <Handle type="source" position={Position.Left} id="in_non" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[70%]" />
+      <Handle type="target" position={Position.Left} id="in_non" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[70%]" />
+      <Handle type="source" position={Position.Left} id="in_non" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[70%]" />
       
       {/* Output */}
-      <Handle type="source" position={Position.Right} id="out" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[50%]" />
-      <Handle type="target" position={Position.Right} id="out" className="w-2.5 h-2.5 bg-blue-500 !border-0 !top-[50%]" />
+      <Handle type="source" position={Position.Right} id="out" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[50%]" />
+      <Handle type="target" position={Position.Right} id="out" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[50%]" />
       
       {/* Power pins (top/bottom) */}
-      <Handle type="target" position={Position.Top} id="vcc" className="w-2.5 h-2.5 bg-blue-500 !border-0 !left-[50%]" />
-      <Handle type="source" position={Position.Top} id="vcc" className="w-2.5 h-2.5 bg-blue-500 !border-0 !left-[50%]" />
-      <Handle type="target" position={Position.Bottom} id="vee" className="w-2.5 h-2.5 bg-blue-500 !border-0 !left-[50%]" />
-      <Handle type="source" position={Position.Bottom} id="vee" className="w-2.5 h-2.5 bg-blue-500 !border-0 !left-[50%]" />
+      <Handle type="target" position={Position.Top} id="vcc" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !left-[50%]" />
+      <Handle type="source" position={Position.Top} id="vcc" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !left-[50%]" />
+      <Handle type="target" position={Position.Bottom} id="vee" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !left-[50%]" />
+      <Handle type="source" position={Position.Bottom} id="vee" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !left-[50%]" />
     </div>
   );
 }

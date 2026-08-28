@@ -4,9 +4,9 @@ import { SchematicLabel } from './schematic';
 export function PmosNode({ data, selected }: any) {
   return (
     <div className="schematic-node w-[48px] h-[48px] flex items-center justify-center relative select-none">
-      <Handle type="target" position={Position.Top} id="s" className="w-2 h-2 bg-blue-500 !border-0" style={{ left: '75%' }} />
-      <Handle type="target" position={Position.Left} id="g" className="w-2 h-2 bg-blue-500 !border-0" style={{ top: '50%' }} />
-      <Handle type="source" position={Position.Bottom} id="d" className="w-2 h-2 bg-blue-500 !border-0" style={{ left: '75%' }} />
+      <Handle type="target" position={Position.Top} id="s" className="w-2 h-2 bg-emerald-500 !border-0" style={{ left: '75%' }} />
+      <Handle type="target" position={Position.Left} id="g" className="w-2 h-2 bg-emerald-500 !border-0" style={{ top: '50%' }} />
+      <Handle type="source" position={Position.Bottom} id="d" className="w-2 h-2 bg-emerald-500 !border-0" style={{ left: '75%' }} />
       
       <svg 
         width="48" 
