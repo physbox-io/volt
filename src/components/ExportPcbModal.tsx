@@ -98,12 +98,10 @@ const PASTE_STENCIL_HINT =
  */
 const ETCH_HINT =
   'Open the stencil in Physbox Etch as vector artwork, to laser cut it. A ~0.1mm beam holds ' +
-  'apertures a nozzle closes up — roughly 0.65mm pitch against 1.27mm. Best cut from a printed ' +
-  'black shim (the button beside this one) or any black film: a 450nm diode cuts what absorbs ' +
-  'blue. Amber polyimide (Kapton) is what a CO2 would use and only part-absorbs blue, so on a ' +
-  '12W diode it is marginal — thin gauges, several passes, air assist, and some films will not ' +
-  'take at all. Cutting film needs ducted fume extraction either way. Etch offsets the cut by ' +
-  'half its kerf, so set that figure in its status bar and the apertures come out the size drawn.';
+  'apertures a nozzle closes up — roughly 0.65mm pitch against 1.27mm. Cut it from thin opaque ' +
+  'film your machine\'s wavelength actually absorbs: a CO2 takes almost any polymer, a blue diode ' +
+  'needs dark stock such as the printed shim, and never cut PVC on either. Etch offsets the cut ' +
+  'by half its kerf, so set that figure in its status bar and apertures come out the size drawn.';
 
 /**
  * The shim is stock, not a part, which is the bit that needs saying: it comes
@@ -2203,12 +2201,10 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                           0.2mm sheet — simplest, but printed apertures close up below about
                           0.5mm, so it stops at roughly SOIC/1.27mm pitch.{' '}
                           <strong>Laser</strong> it in Etch — a ~0.1mm beam holds about 0.65mm
-                          pitch. Or, better on a diode, print the <strong>shim</strong>: one layer
-                          of black filament, or buy 0.1–0.15mm opaque black polyester (PET/Mylar).
-                          Blue cuts what absorbs blue, so black is the dependable stock and
-                          polyimide — the CO2 answer — is only marginal on a diode. Never cut
-                          vinyl/PVC &quot;stencil film&quot;: hydrogen chloride wrecks the machine
-                          and your lungs. Ducted extraction either way.
+                          pitch. Or print the <strong>shim</strong> and cut that: one layer of
+                          black filament is thin opaque stock any machine will take, which a blue
+                          diode in particular needs. Never cut vinyl/PVC film on any machine, and
+                          use ducted extraction. Docs → PCB Milling has the per-machine list.
                         </InfoTip>
                       </span>
                     </div>

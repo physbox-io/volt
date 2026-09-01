@@ -363,89 +363,46 @@ export function DocsModal({ onClose }: DocsModalProps) {
 
                 <h4 className="text-xl font-semibold mb-2 mt-6">Solder paste stencils</h4>
                 <p className="mb-4">
-                  A milled board has no solder mask and no stencil, and hand-pasting SMD pads is where
-                  bridges come from. The CAM panel exports one as a physical part: a sheet the size of the
-                  board with an aperture over every SMD pad, plus corner brackets that drop over the board
-                  edge to register it. Lay it on the copper, squeegee paste across it, lift it off, place
-                  the parts, reflow. Through-hole pads are deliberately left closed &mdash; paste in an
-                  unplated hole drops straight through &mdash; so those are soldered by hand afterwards.
+                  A milled board has no stencil, so the CAM panel exports one: a 0.2&nbsp;mm sheet with an
+                  aperture over every SMD pad, and corner brackets that drop over the board edge to
+                  register it. Squeegee paste through it, lift it off, place the parts, reflow. Through-hole
+                  pads are left closed &mdash; paste in an unplated hole falls through. Apertures too fine
+                  or too deep to release their paste are refused rather than discovered at reflow.
                 </p>
-                <p className="mb-4">
-                  Thickness <em>is</em> the deposit height, which is why the sheet is 0.2&nbsp;mm and not
-                  something stiffer. Two numbers decide whether a stencil works, and both fight thickness:
-                  deposit volume is aperture area times thickness, and <strong>area ratio</strong> &mdash;
-                  aperture floor over aperture wall &mdash; has to clear about 0.66 or the paste stays in
-                  the hole instead of on the pad. The export refuses boards that fail either, rather than
-                  letting you reflow a bridged board to find out.
-                </p>
-                <p className="mb-4">Three routes to the same part:</p>
                 <ul className="list-disc pl-6 mb-4 space-y-1">
                   <li>
-                    <strong>Export Paste Stencil</strong> &mdash; the printable sheet, as an STL. Simplest,
-                    and needs nothing but a printer. An FDM machine cannot hold an aperture much under
-                    0.5&nbsp;mm, though, because the walls either side of the hole merge into one, so this
-                    route is honest down to roughly SOIC/1.27&nbsp;mm pitch and no further.
+                    <strong>Export Paste Stencil</strong> &mdash; the printed sheet, as an STL. Printed
+                    apertures close up below about 0.5&nbsp;mm, so this stops at roughly SOIC/1.27&nbsp;mm
+                    pitch.
                   </li>
                   <li>
-                    <strong>Send to Etch</strong> (the scissors) &mdash; the same geometry as vector
-                    artwork, opened in Physbox Etch to be laser cut. A ~0.1&nbsp;mm beam holds roughly
-                    0.65&nbsp;mm pitch, twice as fine as a printed sheet, and film comes in thicknesses
-                    a printer cannot reach. Apertures and outline arrive as one layer on purpose: that
-                    is what lets Etch see which contour is a hole and shrink it while growing the
-                    outline, and it makes the apertures cut before the outline that frees the sheet.
+                    <strong>Send to Etch</strong> (scissors) &mdash; the same geometry as vector artwork,
+                    to laser cut. About twice as fine, and it arrives as one layer so the cutter can tell
+                    an aperture from the outline.
                   </li>
                   <li>
-                    <strong>Export Shim</strong> (the layers icon) &mdash; a blank single-layer sheet, sized
-                    to the stencil plus 5&nbsp;mm of holding margin, to laser the stencil out of. Print it
-                    in <strong>black</strong>, which is the whole point of it: a 450&nbsp;nm diode cuts
-                    what absorbs blue, so black is the one stencil stock it is reliable on. Thin dark
-                    film is a nuisance to buy in ones, and a single layer of black filament is the same
-                    thing. That margin is also the answer to curl: a one-layer print is all first layer,
-                    and a first layer lifts at its edges &mdash; but the stencil is cut out of the middle,
-                    so the curl goes in the offcut. If it does lift, it is an adhesion problem like any
-                    other: clean sheet, glue, more squish, slower, no part cooling.
+                    <strong>Export Shim</strong> (layers) &mdash; a blank single-layer sheet to cut the
+                    stencil out of. Print it black. It is 5&nbsp;mm oversize, so a first layer curling at
+                    its edges curls in the offcut.
                   </li>
                 </ul>
-                <h4 className="text-xl font-semibold mb-2 mt-6">What a diode laser will and will not cut</h4>
                 <p className="mb-4">
-                  A 450&nbsp;nm diode cuts what absorbs blue, which is a shorter list than "plastic film".
-                  Two things qualify. The <strong>printed shim</strong> is free, already the right
-                  thickness, and guaranteed to be a plastic you can safely cut. <strong>Black polyester
-                  (PET / Mylar) sheet</strong> is the bought answer, with a cleaner aperture wall. Ask for
-                  5&nbsp;mil (0.125&nbsp;mm): that is the commercial stencil gauge. The other common size,
-                  7.5&nbsp;mil (0.19&nbsp;mm), works but lays down half as much paste again &mdash; fine
-                  for 0603 and up, and about the limit at SOIC/1.27&nbsp;mm pitch. It has to be properly
-                  opaque, not tinted translucent.
-                </p>
-                <p className="mb-4">
-                  <strong>Polyimide (Kapton) is the wrong tool here.</strong> It is what a CO2 reaches for
-                  and what the internet will tell you to use, but amber film only part-absorbs blue, so on
-                  a 12&nbsp;W diode it is marginal: thin gauges, several passes, air assist, and some films
-                  will not take at all. Its advantage is heat resistance, which a paste stencil never needs
-                  &mdash; it is lifted off before the board sees reflow. Clear PET and Mylar do not cut at
-                  all, and no diode touches the stainless or brass foil a commercial stencil is made from;
-                  that needs a fibre laser.
+                  <strong>Stock:</strong> thin, flat and opaque, 0.1&ndash;0.15&nbsp;mm (5&nbsp;mil is the
+                  commercial gauge). It has to absorb your machine's wavelength &mdash; a CO2 or UV laser
+                  takes almost any polymer, a blue diode needs dark stock such as the printed shim, and a
+                  fibre laser should cut 0.1&nbsp;mm stainless instead. Unsure about a film? Lay it on black
+                  card and fire one low-power line; if the card marks and the film does not, the beam is
+                  going through it.
                 </p>
                 <p className="mb-4 rounded-lg border border-red-300 dark:border-red-700/60 bg-red-50 dark:bg-red-950/30 p-3 text-sm">
-                  <strong>Never cut PVC.</strong> Craft and airbrush shops sell "stencil film" that is
-                  vinyl &mdash; PVC &mdash; and lasering it releases hydrogen chloride, which corrodes the
-                  machine from the inside out and is dangerous to breathe. Mylar and polyester are the
-                  words you want on the label; vinyl and PVC are the ones you do not. Do not cut unlabelled
-                  film.
-                </p>
-                <p className="mb-4 rounded-lg border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm">
-                  <strong>Extraction, not ventilation.</strong> Laser-cutting polyimide and other plastic
-                  film produces fumes you should not be breathing &mdash; polyimide in particular. Run it
-                  with a proper extractor ducted outside and the enclosure shut. An open window is not the
-                  same thing.
+                  <strong>Never cut PVC, on any machine</strong> &mdash; much craft "stencil film" is vinyl,
+                  and it releases hydrogen chloride that corrodes the machine and is dangerous to breathe.
+                  Cut film with ducted extraction and the enclosure shut.
                 </p>
                 <p className="mb-4">
-                  Apertures are exported at their finished size, with no kerf taken off. The kerf belongs
-                  to the machine, the material and the focus, none of which this app knows, and baking one
-                  machine's figure into the file would be silently wrong on every other one &mdash; and on
-                  the printed route, which has no kerf at all. Compensating is the cutter's job, and Etch
-                  does it: it offsets a laser cut by half the kerf set in its status bar, so measure that
-                  once from a test cut and the apertures come out the size they were drawn.
+                  Apertures are exported at finished size, with no kerf taken off: the kerf belongs to the
+                  machine, and the printed route has none. Etch offsets a laser cut by half the kerf set in
+                  its status bar.
                 </p>
 
                 <h4 className="text-xl font-semibold mb-2 mt-6">What is not compensated</h4>
