@@ -78,24 +78,45 @@ async function gzip(text: string): Promise<Uint8Array | null> {
  */
 const SYNC_LIMIT_BYTES = 48 * 1024;
 
+/**
+ * What the artwork is cut from, for the receiving app to set up the job with.
+ *
+ * Feeds come from the material and the stock thickness, so artwork that
+ * arrives without them is planned against whatever document was last open —
+ * 6mm plywood, by default, which is not a stencil. The thickness sent is the
+ * printed shim's, because that is the stock this app can actually produce;
+ * anyone cutting bought film adjusts it there.
+ */
+export interface HandoffStock {
+  /** A material id in the receiving app's catalogue. */
+  material: string;
+  thicknessMm: number;
+}
+
 /** The fragment Etch reads the artwork out of, without compressing it. */
-export function encodeSvgHandoffSync(svg: string, name: string): string {
+export function encodeSvgHandoffSync(svg: string, name: string, stock?: HandoffStock): string {
   return new URLSearchParams({
     v: HANDOFF_VERSION,
     name,
     gz: '0',
+    ...(stock ? { material: stock.material, thickness: String(stock.thicknessMm) } : {}),
     data: toBase64Url(new TextEncoder().encode(svg)),
   }).toString();
 }
 
 /** The same fragment, gzipped. Async, because `CompressionStream` is. */
-export async function encodeSvgHandoff(svg: string, name: string): Promise<string> {
+export async function encodeSvgHandoff(
+  svg: string,
+  name: string,
+  stock?: HandoffStock
+): Promise<string> {
   const packed = await gzip(svg);
-  if (!packed) return encodeSvgHandoffSync(svg, name);
+  if (!packed) return encodeSvgHandoffSync(svg, name, stock);
   return new URLSearchParams({
     v: HANDOFF_VERSION,
     name,
     gz: '1',
+    ...(stock ? { material: stock.material, thickness: String(stock.thicknessMm) } : {}),
     data: toBase64Url(packed),
   }).toString();
 }
@@ -110,8 +131,12 @@ export async function encodeSvgHandoff(svg: string, name: string): Promise<strin
  * had just opened sat there empty. The destination is our own app, which is
  * the case where an opener reference is not a hazard.
  */
-export async function openSvgInEtch(svg: string, name: string): Promise<void> {
-  const plain = encodeSvgHandoffSync(svg, name);
+export async function openSvgInEtch(
+  svg: string,
+  name: string,
+  stock?: HandoffStock
+): Promise<void> {
+  const plain = encodeSvgHandoffSync(svg, name, stock);
 
   // The ordinary path: one synchronous call, still inside the click that asked
   // for it, which is what keeps a pop-up blocker out of it.
@@ -134,7 +159,7 @@ export async function openSvgInEtch(svg: string, name: string): Promise<void> {
     throw new Error('Etch could not be opened — allow pop-ups for this site and try again.');
   }
   try {
-    tab.location.href = `${etchBaseUrl()}/#${await encodeSvgHandoff(svg, name)}`;
+    tab.location.href = `${etchBaseUrl()}/#${await encodeSvgHandoff(svg, name, stock)}`;
   } catch (e) {
     tab.close();
     throw e;

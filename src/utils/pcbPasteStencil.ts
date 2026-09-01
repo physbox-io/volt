@@ -607,6 +607,10 @@ export function pasteStencilSvg(
     `  <desc>Solder paste stencil, ${art.apertures.length} apertures, true size. ` +
       `Drawn at finished size: the cutter offsets for its own kerf.</desc>`,
     `  <g fill="none" stroke="${STENCIL_SVG_COLOR}" stroke-width="${SVG_STROKE_MM}">`,
+    // Names the layer on the other side. Without it the importer has only the
+    // stroke colour to go on and calls it "Imported #ff0000", which tells an
+    // operator nothing about which layer is which.
+    `    <title>Solder paste stencil</title>`,
     // The outline first, so a reader sees the sheet before its holes. Order
     // does not decide the cut — the cutter sorts by area, innermost first.
     `    <path d="${svgPath(art.outline, minX, maxY)}"/>`,

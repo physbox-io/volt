@@ -710,7 +710,13 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     setStencilNote(null);
     try {
       const svg = pasteStencilSvg(result, options);
-      await openSvgInEtch(svg, `PCB paste stencil ${Math.round(result.boardWidthMm)}x${Math.round(result.boardHeightMm)}`);
+      await openSvgInEtch(
+        svg,
+        `PCB paste stencil ${Math.round(result.boardWidthMm)}x${Math.round(result.boardHeightMm)}`,
+        // The shim's thickness, because that is the stock this app can make.
+        // Cutting bought film means correcting it there, which is one field.
+        { material: 'film', thicknessMm: DEFAULT_PASTE_SHIM_OPTIONS.thicknessMm }
+      );
       setStencilNote('Stencil sent to Etch — set the kerf compensation there before cutting.');
     } catch (e: any) {
       setStencilNote(e?.message || 'Could not open the stencil in Etch.');
