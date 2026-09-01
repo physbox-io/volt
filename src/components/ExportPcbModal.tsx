@@ -42,7 +42,7 @@ import {
 } from '../utils/pcbTooling';
 import { usePcbLayout } from '../hooks/usePcbLayout';
 import { webSerialManager } from '../utils/webSerialManager';
-import { fetchMachineDevices, type MachineDevice } from '../utils/apiClient';
+import { TeknoBoxPicker } from './TeknoBoxPicker';
 import {
   getGridStats,
   findUnwarpableCommands,
@@ -192,31 +192,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const [cloudDeviceId, setCloudDeviceId] = useState<string>(
     () => localStorage.getItem('grblCloudDeviceId') || ''
   );
-  const [machineDevices, setMachineDevices] = useState<MachineDevice[]>([]);
 
-  /*
-   * The machines on this account.
-   *
-   * Fetched when the WiFi option is actually being looked at, and discarded if
-   * the reply lands after the operator has switched away — otherwise a slow
-   * response selects a machine they are no longer choosing between.
-   */
-  useEffect(() => {
-    if (transportMode !== 'wifi') return;
-    let live = true;
-    void fetchMachineDevices().then(list => {
-      if (!live) return;
-      setMachineDevices(list);
-      setCloudDeviceId(current =>
-        current && list.some(d => d.deviceId === current)
-          ? current
-          : list.find(d => d.online)?.deviceId ?? list[0]?.deviceId ?? ''
-      );
-    });
-    return () => {
-      live = false;
-    };
-  }, [transportMode]);
 
   React.useEffect(() => {
     return webSerialManager.addListener(state => {
@@ -1723,28 +1699,15 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                         <label className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold block">
                           Tekno Box
                         </label>
-                        {machineDevices.length > 0 ? (
-                          <select
-                            value={cloudDeviceId}
-                            disabled={serialState.connected}
-                            onChange={e => {
-                              setCloudDeviceId(e.target.value);
-                              localStorage.setItem('grblCloudDeviceId', e.target.value);
-                            }}
-                            className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 text-[11px] disabled:opacity-40 cursor-pointer"
-                          >
-                            {machineDevices.map(d => (
-                              <option key={d.deviceId} value={d.deviceId}>
-                                {d.name} {d.online ? '— online' : '— offline'}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                            No Tekno Box paired to this account. Pair one in physbox, then it shows
-                            up here.
-                          </p>
-                        )}
+                        <TeknoBoxPicker
+                          value={cloudDeviceId}
+                          onChange={deviceId => {
+                            setCloudDeviceId(deviceId);
+                            localStorage.setItem('grblCloudDeviceId', deviceId);
+                          }}
+                          disabled={serialState.connected}
+                          accentClass="bg-emerald-600 hover:bg-emerald-500 text-white"
+                        />
                       </div>
                     )}
                   </div>
