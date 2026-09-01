@@ -7,9 +7,12 @@ import { datasheets } from '../utils/datasheets';
 import {
   defaultPackageForType,
   footprintFromParams,
+  packageOptionsForType,
   resolveFootprint,
+  supportsPackageSelection,
   type FootprintParams,
 } from '../utils/pcbFootprints';
+import { isPhysical } from '../utils/pcbNets';
 import { minPadGapMm } from '../utils/pcbTooling';
 import { nodeRegistry } from './nodes/registry';
 
@@ -275,6 +278,24 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
     previewFootprint = null;
   }
 
+  // What the selector shows, and the packages it is filtered down to. Whatever
+  // is set on the node wins even if this component type would not normally be
+  // offered it, so an existing board keeps the footprint it was laid out with.
+  const setPackageId = selectedNode.data?.packageId as string | undefined;
+  const packageGroups = packageOptionsForType(
+    selectedNode.type,
+    setPackageId === CUSTOM_PACKAGE_ID ? undefined : setPackageId
+  );
+  // Falling back to the first offered package rather than a blanket 0805: for a
+  // part that is never a chip passive, 0805 is a selection nobody made showing
+  // as though somebody had.
+  const selectedPackageId = showFootprintEditor
+    ? CUSTOM_PACKAGE_ID
+    : setPackageId ||
+      defaultPackageForType(selectedNode.type) ||
+      packageGroups[0]?.options[0]?.id ||
+      '0805';
+
   // 0.35mm is roughly what a 20-degree V-bit cuts at a workable depth; below
   // that the part needs a sharper bit than most people own.
   const isFineParametric =
@@ -331,19 +352,14 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
       <div className="text-[10px] text-slate-400 dark:text-slate-500 mb-3 font-mono">ID: {selectedNode.id}</div>
 
       {/* PCB Package Footprint Selector */}
+      {isPhysical(selectedNode.type) && supportsPackageSelection(selectedNode.type) && (
       <div className="mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
           <span>PCB Footprint Package</span>
           <span className="text-[10px] text-indigo-500 font-mono font-bold">CNC Milling</span>
         </label>
         <select
-          value={
-            showFootprintEditor
-              ? CUSTOM_PACKAGE_ID
-              : (selectedNode.data?.packageId as string) ||
-                defaultPackageForType(selectedNode.type) ||
-                '0805'
-          }
+          value={selectedPackageId}
           onChange={e => {
             const next = e.target.value;
             updateData('packageId', next);
@@ -374,100 +390,20 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
               </option>
             </optgroup>
           )}
-          <optgroup label="Through-Hole (THT)">
-            <option value="AXIAL-0.3">Axial Resistor/Diode (0.3" / 7.62mm pitch)</option>
-            <option value="LED-5MM">Radial 5mm THT (LED / Capacitor)</option>
-            <option value="DIP-8">DIP-8 IC Package</option>
-            <option value="DIP-14">DIP-14 IC Package</option>
-            <option value="DIP-16">DIP-16 IC Package</option>
-            <option value="TO-220">TO-220 Power Package (Regulator / MOSFET)</option>
-            <option value="TO-92">TO-92 Small Signal Transistor (BJT)</option>
-            <option value="DIP-10">DIP-10 (7-Segment Display)</option>
-            <option value="RADIAL-5MM">Radial 5mm (Electrolytic / LDR)</option>
-            <option value="POT-3PIN">Potentiometer (3-Pin, 2.54mm)</option>
-            <option value="TRANSFORMER-4P">Transformer (2 Primary / 2 Secondary)</option>
-            <option value="TACT-4PIN">6x6mm Tactile Switch</option>
-            <option value="CC1101">CC1101 RF Module (2x4 Dupont Header)</option>
-            <option value="HELTEC-V4">Heltec WiFi LoRa 32 V4 (Dual Header Board)</option>
-            <option value="HEADER-1x02">1x2 Pin Header (2.54mm pitch)</option>
-            <option value="HEADER-1x03">1x3 Pin Header (2.54mm pitch)</option>
-            <option value="HEADER-1x04">1x4 Pin Header (2.54mm pitch)</option>
-            <option value="HEADER-1x06">1x6 Pin Header (2.54mm pitch)</option>
-            <option value="HEADER-1x08">1x8 Pin Header (2.54mm pitch)</option>
-            <option value="HEADER-2x02">2x2 Pin Dupont Header (2.54mm pitch)</option>
-            <option value="HEADER-2x03">2x3 Pin Dupont Header (2.54mm pitch)</option>
-            <option value="HEADER-2x04">2x4 Pin Dupont Header (2.54mm pitch)</option>
-            <option value="HEADER-2x06">2x6 Pin Dupont Header (2.54mm pitch)</option>
-            <option value="HEADER-2x08">2x8 Pin Dupont Header (2.54mm pitch)</option>
-            <option value="TERMINAL-2P">5.08mm Screw Terminal (2-Pin)</option>
-            <option value="TERMINAL-3P">5.08mm Screw Terminal (3-Pin)</option>
-            <option value="DIP-18">DIP-18 IC Package</option>
-            <option value="DIP-20">DIP-20 IC Package</option>
-            <option value="DIP-24">DIP-24 (0.3" narrow)</option>
-            <option value="DIP-24-W">DIP-24 (0.6" wide)</option>
-            <option value="DIP-28">DIP-28 (0.3" narrow — ATmega328P)</option>
-            <option value="DIP-28-W">DIP-28 (0.6" wide)</option>
-            <option value="DIP-32-W">DIP-32 (0.6" wide)</option>
-            <option value="DIP-40-W">DIP-40 (0.6" wide)</option>
-            <option value="TO-247">TO-247 High Power Transistor</option>
-          </optgroup>
-          <optgroup label="Surface Mount — Passives &amp; Diodes">
-            <option value="0402">SMD 0402 Passive (1.0 x 0.5mm)</option>
-            <option value="0603">SMD 0603 Passive (1.6 x 0.8mm)</option>
-            <option value="0805">SMD 0805 Passive (2.0 x 1.25mm)</option>
-            <option value="1206">SMD 1206 Passive (3.2 x 1.6mm)</option>
-            <option value="1210">SMD 1210 Passive (3.2 x 2.5mm)</option>
-            <option value="2512">SMD 2512 Power Resistor (6.3 x 3.2mm)</option>
-            <option value="SOD-123">SOD-123 Diode</option>
-            <option value="SOD-323">SOD-323 Diode</option>
-            <option value="SMA">SMA / DO-214AC Diode</option>
-            <option value="SMB">SMB / DO-214AA Diode</option>
-          </optgroup>
-          <optgroup label="Surface Mount — Discrete">
-            <option value="SOT-23">SOT-23 Transistor (3-Pin)</option>
-            <option value="SOT-23-5">SOT-23-5</option>
-            <option value="SOT-23-6">SOT-23-6</option>
-            <option value="SOT-323">SOT-323 / SC-70</option>
-            <option value="SOT-89">SOT-89 Power Transistor</option>
-            <option value="SOT-223">SOT-223 Regulator</option>
-            <option value="TO-252">TO-252 / DPAK</option>
-            <option value="TO-263">TO-263 / D2PAK</option>
-          </optgroup>
-          <optgroup label="Surface Mount — Small Outline ICs">
-            <option value="SOIC-8">SOIC-8 (1.27mm pitch)</option>
-            <option value="SOIC-14">SOIC-14 (1.27mm pitch)</option>
-            <option value="SOIC-16">SOIC-16 (1.27mm pitch)</option>
-            <option value="SOIC-16-W">SOIC-16 Wide (7.5mm body)</option>
-            <option value="SOIC-20-W">SOIC-20 Wide (7.5mm body)</option>
-            <option value="SSOP-16">SSOP-16 (0.65mm pitch)</option>
-            <option value="SSOP-20">SSOP-20 (0.65mm pitch)</option>
-            <option value="TSSOP-8">TSSOP-8 (0.65mm pitch)</option>
-            <option value="TSSOP-14">TSSOP-14 (0.65mm pitch)</option>
-            <option value="TSSOP-16">TSSOP-16 (0.65mm pitch)</option>
-            <option value="TSSOP-20">TSSOP-20 (0.65mm pitch)</option>
-            <option value="TSSOP-28">TSSOP-28 (0.65mm pitch)</option>
-            <option value="MSOP-8">MSOP-8 (0.65mm pitch)</option>
-            <option value="MSOP-10">MSOP-10 (0.65mm pitch)</option>
-            <option value="QSOP-16">QSOP-16 (0.635mm pitch)</option>
-          </optgroup>
-          <optgroup label="Surface Mount — Quad (fine pitch)">
-            <option value="QFN-16">QFN-16 (0.5mm pitch, 4mm body)</option>
-            <option value="QFN-20">QFN-20 (0.5mm pitch)</option>
-            <option value="QFN-24">QFN-24 (0.5mm pitch)</option>
-            <option value="QFN-28">QFN-28 (0.5mm pitch)</option>
-            <option value="QFN-32">QFN-32 (0.5mm pitch, 5mm body)</option>
-            <option value="QFN-32-P0.65">QFN-32 (0.65mm pitch, 7mm body)</option>
-            <option value="QFN-48">QFN-48 (0.5mm pitch, 7mm body)</option>
-            <option value="QFN-64">QFN-64 (0.5mm pitch, 9mm body)</option>
-            <option value="DFN-8">DFN-8 (0.5mm pitch)</option>
-            <option value="DFN-10">DFN-10 (0.5mm pitch)</option>
-            <option value="TQFP-32">TQFP-32 (0.8mm pitch, 7mm body)</option>
-            <option value="TQFP-44">TQFP-44 (0.8mm pitch, 10mm body)</option>
-            <option value="TQFP-64">TQFP-64 (0.5mm pitch, 10mm body)</option>
-            <option value="TQFP-100">TQFP-100 (0.5mm pitch, 14mm body)</option>
-            <option value="LQFP-48">LQFP-48 (0.5mm pitch)</option>
-            <option value="LQFP-64">LQFP-64 (0.5mm pitch)</option>
-          </optgroup>
+          {/*
+            Only the packages this kind of part is actually made in. The full
+            catalogue was every package in the library for every component,
+            which offered a DIP-16 for an LED — and picking it mills sixteen
+            holes for a two-lead part with nothing downstream able to tell that
+            from a deliberate choice.
+          */}
+          {packageGroups.map(group => (
+            <optgroup key={group.label} label={group.label}>
+              {group.options.map(opt => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </optgroup>
+          ))}
           <optgroup label="Custom">
             <option value="CUSTOM-PARAMETRIC">Custom footprint (set dimensions below)</option>
           </optgroup>
@@ -479,6 +415,7 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
           </p>
         )}
       </div>
+      )}
 
       {showFootprintEditor && (
         <div className="mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">

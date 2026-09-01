@@ -272,6 +272,234 @@ const DEFAULT_PACKAGE_BY_TYPE: Record<string, string> = {
   heltec_v4: 'HELTEC-V4',
 };
 
+// ---------------------------------------------------------------------------
+// Which packages a part can sensibly be built in
+// ---------------------------------------------------------------------------
+
+/**
+ * Every package the properties panel can offer, with the label it is offered
+ * under. Grouped the way a parts catalogue is, because that is how someone
+ * picks one.
+ */
+const PACKAGE_CATALOG: { group: string; id: string; label: string }[] = [
+  { group: 'Through-Hole (THT)', id: 'AXIAL-0.3', label: 'Axial Resistor/Diode (0.3" / 7.62mm pitch)' },
+  { group: 'Through-Hole (THT)', id: 'LED-5MM', label: 'Radial 5mm THT (LED / Capacitor)' },
+  { group: 'Through-Hole (THT)', id: 'RADIAL-5MM', label: 'Radial 5mm (Electrolytic / LDR)' },
+  { group: 'Through-Hole (THT)', id: 'TO-92', label: 'TO-92 Small Signal Transistor (BJT)' },
+  { group: 'Through-Hole (THT)', id: 'TO-220', label: 'TO-220 Power Package (Regulator / MOSFET)' },
+  { group: 'Through-Hole (THT)', id: 'TO-247', label: 'TO-247 High Power Transistor' },
+  { group: 'Through-Hole (THT)', id: 'POT-3PIN', label: 'Potentiometer (3-Pin, 2.54mm)' },
+  { group: 'Through-Hole (THT)', id: 'TACT-4PIN', label: '6x6mm Tactile Switch' },
+  { group: 'Through-Hole (THT)', id: 'TRANSFORMER-4P', label: 'Transformer (2 Primary / 2 Secondary)' },
+  { group: 'Through-Hole (THT)', id: 'DIP-8', label: 'DIP-8 IC Package' },
+  { group: 'Through-Hole (THT)', id: 'DIP-10', label: 'DIP-10 (7-Segment Display)' },
+  { group: 'Through-Hole (THT)', id: 'DIP-14', label: 'DIP-14 IC Package' },
+  { group: 'Through-Hole (THT)', id: 'DIP-16', label: 'DIP-16 IC Package' },
+  { group: 'Through-Hole (THT)', id: 'DIP-18', label: 'DIP-18 IC Package' },
+  { group: 'Through-Hole (THT)', id: 'DIP-20', label: 'DIP-20 IC Package' },
+  { group: 'Through-Hole (THT)', id: 'DIP-24', label: 'DIP-24 (0.3" narrow)' },
+  { group: 'Through-Hole (THT)', id: 'DIP-24-W', label: 'DIP-24 (0.6" wide)' },
+  { group: 'Through-Hole (THT)', id: 'DIP-28', label: 'DIP-28 (0.3" narrow — ATmega328P)' },
+  { group: 'Through-Hole (THT)', id: 'DIP-28-W', label: 'DIP-28 (0.6" wide)' },
+  { group: 'Through-Hole (THT)', id: 'DIP-32-W', label: 'DIP-32 (0.6" wide)' },
+  { group: 'Through-Hole (THT)', id: 'DIP-40-W', label: 'DIP-40 (0.6" wide)' },
+
+  { group: 'Connectors & Headers', id: 'HEADER-1x02', label: '1x2 Pin Header (2.54mm pitch)' },
+  { group: 'Connectors & Headers', id: 'HEADER-1x03', label: '1x3 Pin Header (2.54mm pitch)' },
+  { group: 'Connectors & Headers', id: 'HEADER-1x04', label: '1x4 Pin Header (2.54mm pitch)' },
+  { group: 'Connectors & Headers', id: 'HEADER-1x06', label: '1x6 Pin Header (2.54mm pitch)' },
+  { group: 'Connectors & Headers', id: 'HEADER-1x08', label: '1x8 Pin Header (2.54mm pitch)' },
+  { group: 'Connectors & Headers', id: 'HEADER-2x02', label: '2x2 Pin Dupont Header (2.54mm pitch)' },
+  { group: 'Connectors & Headers', id: 'HEADER-2x03', label: '2x3 Pin Dupont Header (2.54mm pitch)' },
+  { group: 'Connectors & Headers', id: 'HEADER-2x04', label: '2x4 Pin Dupont Header (2.54mm pitch)' },
+  { group: 'Connectors & Headers', id: 'HEADER-2x06', label: '2x6 Pin Dupont Header (2.54mm pitch)' },
+  { group: 'Connectors & Headers', id: 'HEADER-2x08', label: '2x8 Pin Dupont Header (2.54mm pitch)' },
+  { group: 'Connectors & Headers', id: 'TERMINAL-2P', label: '5.08mm Screw Terminal (2-Pin)' },
+  { group: 'Connectors & Headers', id: 'TERMINAL-3P', label: '5.08mm Screw Terminal (3-Pin)' },
+
+  { group: 'Modules', id: 'CC1101', label: 'CC1101 RF Module (2x4 Dupont Header)' },
+  { group: 'Modules', id: 'HELTEC-V4', label: 'Heltec WiFi LoRa 32 V4 (Dual Header Board)' },
+
+  { group: 'Surface Mount — Passives', id: '0402', label: 'SMD 0402 Passive (1.0 x 0.5mm)' },
+  { group: 'Surface Mount — Passives', id: '0603', label: 'SMD 0603 Passive (1.6 x 0.8mm)' },
+  { group: 'Surface Mount — Passives', id: '0805', label: 'SMD 0805 Passive (2.0 x 1.25mm)' },
+  { group: 'Surface Mount — Passives', id: '1206', label: 'SMD 1206 Passive (3.2 x 1.6mm)' },
+  { group: 'Surface Mount — Passives', id: '1210', label: 'SMD 1210 Passive (3.2 x 2.5mm)' },
+  { group: 'Surface Mount — Passives', id: '2512', label: 'SMD 2512 Power Resistor (6.3 x 3.2mm)' },
+
+  { group: 'Surface Mount — Diodes', id: 'SOD-123', label: 'SOD-123 Diode' },
+  { group: 'Surface Mount — Diodes', id: 'SOD-323', label: 'SOD-323 Diode' },
+  { group: 'Surface Mount — Diodes', id: 'SMA', label: 'SMA / DO-214AC Diode' },
+  { group: 'Surface Mount — Diodes', id: 'SMB', label: 'SMB / DO-214AA Diode' },
+
+  { group: 'Surface Mount — Discrete', id: 'SOT-23', label: 'SOT-23 Transistor (3-Pin)' },
+  { group: 'Surface Mount — Discrete', id: 'SOT-23-5', label: 'SOT-23-5' },
+  { group: 'Surface Mount — Discrete', id: 'SOT-23-6', label: 'SOT-23-6' },
+  { group: 'Surface Mount — Discrete', id: 'SOT-323', label: 'SOT-323 / SC-70' },
+  { group: 'Surface Mount — Discrete', id: 'SOT-89', label: 'SOT-89 Power Transistor' },
+  { group: 'Surface Mount — Discrete', id: 'SOT-223', label: 'SOT-223 Regulator' },
+  { group: 'Surface Mount — Discrete', id: 'TO-252', label: 'TO-252 / DPAK' },
+  { group: 'Surface Mount — Discrete', id: 'TO-263', label: 'TO-263 / D2PAK' },
+
+  { group: 'Surface Mount — Small Outline ICs', id: 'SOIC-8', label: 'SOIC-8 (1.27mm pitch)' },
+  { group: 'Surface Mount — Small Outline ICs', id: 'SOIC-14', label: 'SOIC-14 (1.27mm pitch)' },
+  { group: 'Surface Mount — Small Outline ICs', id: 'SOIC-16', label: 'SOIC-16 (1.27mm pitch)' },
+  { group: 'Surface Mount — Small Outline ICs', id: 'SOIC-16-W', label: 'SOIC-16 Wide (7.5mm body)' },
+  { group: 'Surface Mount — Small Outline ICs', id: 'SOIC-20-W', label: 'SOIC-20 Wide (7.5mm body)' },
+  { group: 'Surface Mount — Small Outline ICs', id: 'SSOP-16', label: 'SSOP-16 (0.65mm pitch)' },
+  { group: 'Surface Mount — Small Outline ICs', id: 'SSOP-20', label: 'SSOP-20 (0.65mm pitch)' },
+  { group: 'Surface Mount — Small Outline ICs', id: 'TSSOP-8', label: 'TSSOP-8 (0.65mm pitch)' },
+  { group: 'Surface Mount — Small Outline ICs', id: 'TSSOP-14', label: 'TSSOP-14 (0.65mm pitch)' },
+  { group: 'Surface Mount — Small Outline ICs', id: 'TSSOP-16', label: 'TSSOP-16 (0.65mm pitch)' },
+  { group: 'Surface Mount — Small Outline ICs', id: 'TSSOP-20', label: 'TSSOP-20 (0.65mm pitch)' },
+  { group: 'Surface Mount — Small Outline ICs', id: 'TSSOP-28', label: 'TSSOP-28 (0.65mm pitch)' },
+  { group: 'Surface Mount — Small Outline ICs', id: 'MSOP-8', label: 'MSOP-8 (0.65mm pitch)' },
+  { group: 'Surface Mount — Small Outline ICs', id: 'MSOP-10', label: 'MSOP-10 (0.65mm pitch)' },
+  { group: 'Surface Mount — Small Outline ICs', id: 'QSOP-16', label: 'QSOP-16 (0.635mm pitch)' },
+
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'QFN-16', label: 'QFN-16 (0.5mm pitch, 4mm body)' },
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'QFN-20', label: 'QFN-20 (0.5mm pitch)' },
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'QFN-24', label: 'QFN-24 (0.5mm pitch)' },
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'QFN-28', label: 'QFN-28 (0.5mm pitch)' },
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'QFN-32', label: 'QFN-32 (0.5mm pitch, 5mm body)' },
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'QFN-32-P0.65', label: 'QFN-32 (0.65mm pitch, 7mm body)' },
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'QFN-48', label: 'QFN-48 (0.5mm pitch, 7mm body)' },
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'QFN-64', label: 'QFN-64 (0.5mm pitch, 9mm body)' },
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'DFN-8', label: 'DFN-8 (0.5mm pitch)' },
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'DFN-10', label: 'DFN-10 (0.5mm pitch)' },
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'TQFP-32', label: 'TQFP-32 (0.8mm pitch, 7mm body)' },
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'TQFP-44', label: 'TQFP-44 (0.8mm pitch, 10mm body)' },
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'TQFP-64', label: 'TQFP-64 (0.5mm pitch, 10mm body)' },
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'TQFP-100', label: 'TQFP-100 (0.5mm pitch, 14mm body)' },
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'LQFP-48', label: 'LQFP-48 (0.5mm pitch)' },
+  { group: 'Surface Mount — Quad (fine pitch)', id: 'LQFP-64', label: 'LQFP-64 (0.5mm pitch)' },
+];
+
+/** Two-lead SMD chip sizes, shared by every discrete passive. */
+const CHIP_PASSIVES = ['0402', '0603', '0805', '1206', '1210'];
+/** Anything a two-pin part can be wired out through. */
+const TWO_PIN_CONNECTORS = ['HEADER-1x02', 'TERMINAL-2P'];
+/** Dual-in-line logic bodies, THT and SMD, for the 14/16-pin gate families. */
+const LOGIC_BODIES = [
+  'DIP-14', 'DIP-16', 'SOIC-14', 'SOIC-16', 'TSSOP-14', 'TSSOP-16', 'SSOP-16',
+];
+
+/**
+ * Packages each node type can actually be bought in, in the order they should
+ * be offered. The whole catalogue is the wrong list for a specific part: a
+ * DIP-16 offered for an LED is not a choice, it is a way to mill a board with
+ * sixteen holes where a two-lead part goes, and nothing downstream can tell
+ * that from a deliberate decision.
+ *
+ * A type absent from here gets the whole catalogue, which is the right
+ * behaviour for anything whose shape is genuinely open — an MCU, or a node
+ * type added after this table.
+ */
+const PACKAGES_BY_TYPE: Record<string, string[]> = {
+  resistor: ['AXIAL-0.3', ...CHIP_PASSIVES, '2512', ...TWO_PIN_CONNECTORS],
+  inductor: ['AXIAL-0.3', 'RADIAL-5MM', ...CHIP_PASSIVES, ...TWO_PIN_CONNECTORS],
+  capacitor: ['RADIAL-5MM', 'LED-5MM', 'AXIAL-0.3', ...CHIP_PASSIVES, ...TWO_PIN_CONNECTORS],
+  led: ['LED-5MM', 'RADIAL-5MM', '0603', '0805', '1206', ...TWO_PIN_CONNECTORS],
+  ldr: ['RADIAL-5MM', 'LED-5MM', ...TWO_PIN_CONNECTORS],
+  diode: ['AXIAL-0.3', 'SOD-123', 'SOD-323', 'SMA', 'SMB', ...TWO_PIN_CONNECTORS],
+  zener: ['AXIAL-0.3', 'SOD-123', 'SOD-323', 'SMA', 'SMB', ...TWO_PIN_CONNECTORS],
+
+  npn: ['TO-92', 'TO-220', 'SOT-23', 'SOT-323', 'SOT-89', 'SOT-223', 'TO-252'],
+  pnp: ['TO-92', 'TO-220', 'SOT-23', 'SOT-323', 'SOT-89', 'SOT-223', 'TO-252'],
+  nmos: ['TO-220', 'TO-247', 'TO-92', 'SOT-23', 'SOT-89', 'SOT-223', 'TO-252', 'TO-263'],
+  pmos: ['TO-220', 'TO-247', 'TO-92', 'SOT-23', 'SOT-89', 'SOT-223', 'TO-252', 'TO-263'],
+
+  switch: ['TACT-4PIN', 'HEADER-1x02', 'HEADER-1x03', 'TERMINAL-2P'],
+  potentiometer: ['POT-3PIN', 'HEADER-1x03', 'TERMINAL-3P'],
+  transformer: ['TRANSFORMER-4P', 'HEADER-2x02', 'HEADER-1x04', 'TERMINAL-2P'],
+
+  // Op-amps come single (8-pin) and quad (14-pin); the 555 is 8-pin only.
+  opamp: ['DIP-8', 'SOIC-8', 'TSSOP-8', 'MSOP-8', 'DFN-8', 'DIP-14', 'SOIC-14', 'TSSOP-14'],
+  timer555: ['DIP-8', 'SOIC-8', 'TSSOP-8', 'MSOP-8', 'DFN-8'],
+
+  and: LOGIC_BODIES,
+  or: LOGIC_BODIES,
+  nand: LOGIC_BODIES,
+  nor: LOGIC_BODIES,
+  xor: LOGIC_BODIES,
+  not: LOGIC_BODIES,
+  dff: LOGIC_BODIES,
+  sevenseg: ['DIP-10', 'DIP-14', 'DIP-16'],
+
+  // Sources and instruments are not parts on the board — they are where the
+  // bench wires on, so every option is a connector.
+  voltage: ['TERMINAL-2P', 'TERMINAL-3P', 'HEADER-1x02', 'HEADER-1x03'],
+  acvoltage: ['TERMINAL-2P', 'TERMINAL-3P', 'HEADER-1x02', 'HEADER-1x03'],
+  currentsource: ['TERMINAL-2P', 'HEADER-1x02'],
+  signalgen: ['TERMINAL-2P', 'HEADER-1x02', 'HEADER-1x03'],
+  speaker: ['TERMINAL-2P', 'HEADER-1x02'],
+  microphone: ['TERMINAL-2P', 'HEADER-1x02', 'HEADER-1x03'],
+
+  heltec_v4: ['HELTEC-V4', 'HEADER-2x08', 'HEADER-1x08'],
+};
+
+/**
+ * Node types whose footprint is generated from their own data — pitch, drill,
+ * hole size, cutout shape — and which ignore `packageId` entirely (see
+ * {@link resolveFootprint}). Offering a package selector for one of these is
+ * offering a control that does nothing.
+ */
+const SELF_DESCRIBING_TYPES = new Set([
+  'pinheader', 'via', 'mountinghole', 'jumper', 'cutout',
+]);
+
+/** Whether the properties panel should offer a package selector at all. */
+export function supportsPackageSelection(componentType?: string): boolean {
+  return !SELF_DESCRIBING_TYPES.has((componentType || '').toLowerCase());
+}
+
+export interface PackageOptionGroup {
+  label: string;
+  options: { id: string; label: string }[];
+}
+
+/**
+ * The packages worth offering for a node type, grouped for a `<select>`.
+ *
+ * `currentId` is always included even when it is not on the type's list: a
+ * board saved with a package this table would not offer must keep milling the
+ * footprint it was designed around, and silently swapping the selection for
+ * the first sane option is how a layout changes shape behind someone's back.
+ */
+export function packageOptionsForType(
+  componentType?: string,
+  currentId?: string
+): PackageOptionGroup[] {
+  const type = (componentType || '').toLowerCase();
+  const allowed = PACKAGES_BY_TYPE[type];
+
+  const byId = new Map(PACKAGE_CATALOG.map(entry => [entry.id, entry]));
+  const chosen = allowed
+    ? allowed.filter(id => byId.has(id)).map(id => byId.get(id)!)
+    : PACKAGE_CATALOG;
+
+  const entries = [...chosen];
+  if (currentId && !entries.some(e => e.id === currentId)) {
+    const known = byId.get(currentId);
+    entries.unshift(
+      known ?? { group: 'Currently set', id: currentId, label: `${currentId} (set on this part)` }
+    );
+  }
+
+  const groups: PackageOptionGroup[] = [];
+  for (const entry of entries) {
+    let group = groups.find(g => g.label === entry.group);
+    if (!group) {
+      group = { label: entry.group, options: [] };
+      groups.push(group);
+    }
+    if (!group.options.some(o => o.id === entry.id)) {
+      group.options.push({ id: entry.id, label: entry.label });
+    }
+  }
+  return groups;
+}
+
 /** The default package id for a node type, if one is defined. */
 export function defaultPackageForType(componentType?: string): string | undefined {
   return DEFAULT_PACKAGE_BY_TYPE[(componentType || '').toLowerCase()];

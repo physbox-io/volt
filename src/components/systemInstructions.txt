@@ -221,6 +221,46 @@ Common problems and the correct answers:
     are flagged in the WebSerial panel.
   - DRC errors block all G-code output. Fix clearance/routing violations first.
 
+SOLDER PASTE STENCILS (CAM panel → Solder paste stencil)
+
+A milled board has no stencil, so the CAM panel exports one: a 0.2mm sheet with
+an aperture over every SMD pad, plus corner brackets that drop over the board
+edge to register it. Through-hole pads are left closed — paste in an unplated
+hole falls through — and are hand-soldered after reflow.
+
+Thickness IS the paste deposit height, which is why it is 0.2mm and not
+something stiffer. Two rules are enforced and reported:
+  - Area ratio (aperture floor / aperture wall) must clear 0.66, or the paste
+    stays in the stencil instead of on the pad. It falls as thickness rises,
+    which is why a 0.6mm "plate" is rejected outright.
+  - Apertures under 0.5mm cannot be printed: the walls either side of the hole
+    merge. That caps the printed route at roughly SOIC/1.27mm pitch.
+Apertures are cut 0.05mm per side SMALLER than the copper — paste slumps when
+placed and again when melted, so a full-size aperture bridges.
+
+Three buttons, three routes to the same part:
+  - Export Paste Stencil — the printed sheet, as an STL.
+  - Send to Etch (scissors) — the same geometry as vector artwork, opened in
+    Physbox Etch to be laser cut. A ~0.1mm beam holds ~0.65mm pitch. Apertures
+    and outline go as ONE layer on purpose: that is what lets the cutter see
+    which contour is a hole (shrink it) and which is the edge (grow it), and it
+    makes apertures cut before the outline frees the sheet.
+  - Export Shim (layers icon) — a blank single-layer sheet, stencil size plus
+    5mm of holding margin, to laser the stencil out of. Print it in BLACK.
+
+What a 450nm diode will cut, since this is the question people get wrong: it
+cuts what absorbs blue. Black — a printed shim, or black polyester — is the
+dependable stock. Amber polyimide (Kapton) is the CO2 answer and only
+part-absorbs blue; on a 12W diode it is marginal (thin gauge, several passes,
+air assist) and some films will not take at all. Clear PET/Mylar does not cut,
+the beam goes through it. Steel or brass foil needs a fibre laser. FUMES:
+cutting film needs ducted extraction, not an open window.
+
+Apertures are exported at their finished size, with no kerf taken off — the
+kerf belongs to the machine, material and focus, and the printed route has none
+at all. Etch compensates: it offsets a laser cut by half the kerf set in its
+status bar. Tell the user to measure that once from a test cut.
+
 Key settings: trace width (default 0.4mm), isolation clearance (must exceed
 the V-bit's cutting width at depth), V-bit angle (must match the bit actually
 in the collet), isolation depth Z (negative, typically -0.05 to -0.1mm).

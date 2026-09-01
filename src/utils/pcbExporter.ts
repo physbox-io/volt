@@ -407,7 +407,7 @@ function padOffset(
  * an annulus that the drill removes entirely, leaving the joint with nothing to
  * solder to.
  */
-function padPolygon(pad: PlacedPad, rotationDeg: 0 | 90, marginMm = 0): Poly {
+export function padPolygon(pad: PlacedPad, rotationDeg: 0 | 90, marginMm = 0): Poly {
   const { w: rawW, h: rawH } = padOffset(pad.spec, rotationDeg);
   const drill = pad.spec.drillDiameter || 0;
   const grow = Math.max(marginMm, 0);

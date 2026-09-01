@@ -4,6 +4,8 @@
  * Run with:  npx tsx src/test_footprints_tooling.ts
  */
 import {
+  packageOptionsForType,
+  supportsPackageSelection,
   resolveFootprint,
   parsePackageId,
   generateDIPFootprint,
@@ -288,6 +290,51 @@ console.log('\n--- Millability ---');
 
   const soic = generateDualSmdFootprint('SOIC', 8);
   ok(checkMillability(soic.pads, v30, -0.08).ok, 'SOIC-8 is millable with the standard bit');
+}
+
+{
+  console.log('\n--- Packages offered per component type ---');
+
+  const idsFor = (type: string, current?: string) =>
+    packageOptionsForType(type, current).flatMap(g => g.options.map(o => o.id));
+
+  // The bug this table exists for: a DIP-16 offered for a two-lead part.
+  const led = idsFor('led');
+  ok(!led.includes('DIP-16'), 'an LED is not offered a DIP-16');
+  ok(!led.some(id => id.startsWith('QFN-')), 'an LED is not offered a QFN');
+  ok(led.includes('LED-5MM') && led.includes('0805'), 'an LED still gets its THT and SMD sizes');
+
+  const resistor = idsFor('resistor');
+  ok(resistor.includes('AXIAL-0.3') && resistor.includes('0603'), 'a resistor gets axial and chip sizes');
+  ok(!resistor.includes('SOT-23'), 'a resistor is not offered a transistor package');
+
+  const bjt = idsFor('npn');
+  ok(bjt.includes('TO-92') && bjt.includes('SOT-23'), 'a BJT gets THT and SMD transistor bodies');
+  ok(!bjt.includes('AXIAL-0.3'), 'a BJT is not offered an axial body');
+
+  ok(idsFor('timer555').every(id => /^(DIP|SOIC|TSSOP|MSOP|DFN)-8$/.test(id)), 'a 555 is only offered 8-pin bodies');
+
+  // Every default has to survive the filter, or opening the panel silently
+  // re-selects a different footprint than the one the board was laid out with.
+  for (const [type, expected] of [
+    ['resistor', 'AXIAL-0.3'], ['capacitor', 'RADIAL-5MM'], ['led', 'LED-5MM'],
+    ['diode', 'AXIAL-0.3'], ['npn', 'TO-92'], ['nmos', 'TO-220'], ['switch', 'TACT-4PIN'],
+    ['potentiometer', 'POT-3PIN'], ['transformer', 'TRANSFORMER-4P'], ['opamp', 'DIP-8'],
+    ['timer555', 'DIP-8'], ['dff', 'DIP-14'], ['sevenseg', 'DIP-10'], ['voltage', 'TERMINAL-2P'],
+    ['heltec_v4', 'HELTEC-V4'],
+  ] as const) {
+    ok(idsFor(type).includes(expected), `${type} is still offered its default ${expected}`);
+  }
+
+  // A board saved with an unusual package keeps it.
+  ok(idsFor('led', 'DIP-16').includes('DIP-16'), 'a package already set on the part is kept in the list');
+
+  // An unknown type has no table, so nothing is hidden from it.
+  ok(idsFor('mcu').length > 60, 'an MCU still gets the whole catalogue');
+
+  ok(!supportsPackageSelection('via'), 'a via has no package to choose');
+  ok(!supportsPackageSelection('cutout'), 'a cutout has no package to choose');
+  ok(supportsPackageSelection('resistor'), 'a resistor does');
 }
 
 console.log(`\n${failures} failure(s)\n`);

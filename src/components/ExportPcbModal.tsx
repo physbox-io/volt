@@ -16,6 +16,9 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowRight,
+  Box,
+  Scissors,
+  Layers2,
 } from 'lucide-react';
 import {
   generateAirCutPerimeterGcode,
@@ -40,6 +43,14 @@ import {
   type ToolType,
   type CustomToolInput,
 } from '../utils/pcbTooling';
+import {
+  generatePasteStencilStl,
+  generatePasteShimStl,
+  pasteStencilSvg,
+  DEFAULT_PASTE_STENCIL_OPTIONS,
+  DEFAULT_PASTE_SHIM_OPTIONS,
+} from '../utils/pcbPasteStencil';
+import { openSvgInEtch } from '../utils/etchHandoff';
 import { usePcbLayout } from '../hooks/usePcbLayout';
 import { webSerialManager } from '../utils/webSerialManager';
 import { TeknoBoxPicker } from './TeknoBoxPicker';
@@ -65,6 +76,47 @@ const ROUTING_EFFORT_PRESETS = [
   { ms: 30000, label: 'Thorough — 30s' },
   { ms: 120000, label: 'Exhaustive — 2min' },
 ];
+
+/**
+ * What each of the three stencil buttons makes. Long enough to matter on a
+ * tooltip: people reach for a "solder mask" expecting the green lacquer, and
+ * these are three routes to a paste stencil — a sheet you squeegee through and
+ * then take off again.
+ */
+const PASTE_STENCIL_HINT =
+  'Download a printable solder paste stencil: a ' +
+  `${DEFAULT_PASTE_STENCIL_OPTIONS.thicknessMm}mm sheet with an aperture over every SMD pad and ` +
+  'corner brackets that register it on the milled board. Squeegee paste across it, lift it off, ' +
+  'place the parts, reflow. Printed apertures close up below about 0.5mm, so this route stops at ' +
+  'roughly SOIC/1.27mm pitch — finer boards want the laser.';
+
+/**
+ * Why the scissors sit next to the download.
+ *
+ * The material advice is the part worth getting right: a blue diode cuts what
+ * absorbs blue, which is a much shorter list than "plastic film".
+ */
+const ETCH_HINT =
+  'Open the stencil in Physbox Etch as vector artwork, to laser cut it. A ~0.1mm beam holds ' +
+  'apertures a nozzle closes up — roughly 0.65mm pitch against 1.27mm. Best cut from a printed ' +
+  'black shim (the button beside this one) or any black film: a 450nm diode cuts what absorbs ' +
+  'blue. Amber polyimide (Kapton) is what a CO2 would use and only part-absorbs blue, so on a ' +
+  '12W diode it is marginal — thin gauges, several passes, air assist, and some films will not ' +
+  'take at all. Cutting film needs ducted fume extraction either way. Etch offsets the cut by ' +
+  'half its kerf, so set that figure in its status bar and the apertures come out the size drawn.';
+
+/**
+ * The shim is stock, not a part, which is the bit that needs saying: it comes
+ * out of the printer blank and only becomes a stencil on the laser.
+ */
+const SHIM_HINT =
+  `Download a blank ${DEFAULT_PASTE_SHIM_OPTIONS.thicknessMm}mm shim to laser the stencil out of ` +
+  '— a single layer, sized to the stencil plus ' +
+  `${DEFAULT_PASTE_SHIM_OPTIONS.marginMm}mm of holding margin. Print it in BLACK, which is the ` +
+  'whole point: black absorbs 450nm, so this is the one stencil material a diode laser is ' +
+  'reliable on. Thin dark film is awkward to buy in ones; a single layer of black filament is ' +
+  'the same thing, and you already have it.';
+
 
 /** Search distance for a mesh probe point, measured down from the retract. */
 const DEFAULT_PROBE_DEPTH_MM = 3;
@@ -157,6 +209,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   );
   const [busy, setBusy] = useState<'' | 'probing' | 'zeroing' | 'milling' | 'homing'>('');
   const [machineError, setMachineError] = useState<string | null>(null);
+  /** Last word from the stencil export — the file written, or why not. */
+  const [stencilNote, setStencilNote] = useState<string | null>(null);
   const [heightmap, setHeightmap] = useState<ProbeGrid | null>(null);
 
   const [selectedToolId, setSelectedToolId] = useState<string>('t1_vbit_30');
@@ -581,7 +635,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     }
   };
 
-  const handleAirCutBoard = async () => {
+  const handleFrameBoard = async () => {
     if (!result.success || machineBusy) return;
     if (!(await ensureConnected())) return;
 
@@ -599,9 +653,94 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
         generateAirCutPerimeterGcode(result, options, airCutZOffset)
       );
     } catch (e: any) {
-      setMachineError(e?.message || 'Air Cut job failed');
+      setMachineError(e?.message || 'Framing failed');
     } finally {
       setBusy('');
+    }
+  };
+
+  /**
+   * Writes the printable solder mask out as an STL.
+   *
+   * Purely local: nothing here touches the machine, so it stays available with
+   * no serial port connected — the plate is printed on a different machine
+   * than the one that mills the board, usually before the board is even cut.
+   */
+  const handleExportPasteStencil = () => {
+    if (!result.success) return;
+    setStencilNote(null);
+    try {
+      const stencil = generatePasteStencilStl(result, options);
+      if (stencil.triangleCount === 0 || stencil.apertureCount === 0) {
+        setStencilNote(stencil.warnings[0] || 'Nothing to export — the stencil came out empty.');
+        return;
+      }
+
+      const blob = new Blob([stencil.stl.buffer as ArrayBuffer], { type: 'model/stl' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download =
+        `pcb-paste-stencil-${Math.round(stencil.widthMm)}x${Math.round(stencil.heightMm)}.stl`;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      // The warning is the useful half when there is one: an aperture too fine
+      // to print, or too deep to release its paste, reflows into a bridge and
+      // looks fine in the slicer preview on the way there.
+      setStencilNote(
+        stencil.warnings[0] ||
+          `Paste stencil written: ${stencil.apertureCount} apertures at ${stencil.thicknessMm}mm.`
+      );
+    } catch (e: any) {
+      setStencilNote(e?.message || 'Could not build the paste stencil.');
+    }
+  };
+
+  /**
+   * Hands the same stencil to Etch as vector artwork, to be laser cut.
+   *
+   * A cut foil beats a printed sheet on the two numbers that matter — a
+   * 0.1mm beam holds apertures a printed one closes up, and film comes in
+   * thicknesses an FDM machine cannot reach — so the fine-pitch boards this
+   * refuses to print are exactly the ones worth sending here.
+   */
+  const handleStencilToEtch = async () => {
+    if (!result.success) return;
+    setStencilNote(null);
+    try {
+      const svg = pasteStencilSvg(result, options);
+      await openSvgInEtch(svg, `PCB paste stencil ${Math.round(result.boardWidthMm)}x${Math.round(result.boardHeightMm)}`);
+      setStencilNote('Stencil sent to Etch — set the kerf compensation there before cutting.');
+    } catch (e: any) {
+      setStencilNote(e?.message || 'Could not open the stencil in Etch.');
+    }
+  };
+
+  /**
+   * Downloads the blank shim the stencil gets cut out of.
+   *
+   * No layout geometry in it at all — it is stock, sized to the job. The
+   * apertures arrive on the laser, from the SVG the scissors button sends.
+   */
+  const handleExportShim = () => {
+    if (!result.success) return;
+    setStencilNote(null);
+    try {
+      const shim = generatePasteShimStl(result);
+      const blob = new Blob([shim.stl.buffer as ArrayBuffer], { type: 'model/stl' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `pcb-stencil-shim-${Math.round(shim.widthMm)}x${Math.round(shim.heightMm)}.stl`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setStencilNote(
+        `Shim written: ${Math.round(shim.widthMm)}×${Math.round(shim.heightMm)}mm at ` +
+          `${shim.thicknessMm}mm. Print it in black, one layer, then cut the stencil from it.`
+      );
+    } catch (e: any) {
+      setStencilNote(e?.message || 'Could not build the shim.');
     }
   };
 
@@ -743,29 +882,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * Traces the board outline with the spindle off, so the blank can be checked
    * against the job before any of it is cut.
    */
-  const handleFrameBoard = async () => {
-    if (machineBusy) return;
-    if (!(await ensureConnected())) return;
-    setMachineError(null);
-    setBusy('milling');
-    try {
-      // Frame the stock the job actually sweeps, outline pass included.
-      await webSerialManager.frameJob(
-        {
-          minX: 0,
-          minY: 0,
-          maxX: result.boardWidthMm + result.boardOriginMm * 2,
-          maxY: result.boardHeightMm + result.boardOriginMm * 2,
-        },
-        { safeZMm: options.safeZ }
-      );
-    } catch (e: any) {
-      setMachineError(e?.message || 'Framing failed');
-    } finally {
-      setBusy('');
-    }
-  };
-
   const handleResume = async () => {
     setMachineError(null);
     try {
@@ -832,7 +948,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Automated trace routing, isolation toolpaths, through-hole drilling, air cuts, and surface heightmaps.
+                Automated trace routing, isolation toolpaths, through-hole drilling, outline framing, printable paste stencils, and surface heightmaps.
                 <InfoTip>
                   Generates a single-sided copper board from your schematic, then drives a GRBL
                   machine directly over WebSerial.
@@ -1540,7 +1656,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
                   <div>
                     <label className="flex items-center justify-between text-slate-600 dark:text-slate-300 font-semibold mb-1">
-                      <span>Air Cut Z-Offset</span>
+                      <span>Frame Z-Offset</span>
                       <span className="text-[10px] text-amber-600 dark:text-amber-400 font-mono">+{airCutZOffset}mm Z</span>
                     </label>
                     <div className="flex gap-1.5">
@@ -2073,23 +2189,60 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       </button>
                     </div>
 
-                    <div className="flex gap-2 pt-2">
+                    <div className="flex items-center justify-between pt-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                      <span className="flex items-center gap-1">
+                        Solder paste stencil
+                        <InfoTip>
+                          Three routes to the same part. <strong>Print</strong> it as a
+                          0.2mm sheet — simplest, but printed apertures close up below about
+                          0.5mm, so it stops at roughly SOIC/1.27mm pitch.{' '}
+                          <strong>Laser</strong> it in Etch — a ~0.1mm beam holds about 0.65mm
+                          pitch. Or, better on a diode, print the <strong>shim</strong>: one layer
+                          of black filament, or buy 0.1–0.15mm opaque black polyester (PET/Mylar).
+                          Blue cuts what absorbs blue, so black is the dependable stock and
+                          polyimide — the CO2 answer — is only marginal on a diode. Never cut
+                          vinyl/PVC &quot;stencil film&quot;: hydrogen chloride wrecks the machine
+                          and your lungs. Ducted extraction either way.
+                        </InfoTip>
+                      </span>
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
                       <button
-                        onClick={handleAirCutBoard}
-                        disabled={!result.success || machineBusy}
-                        className="flex-1 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded font-bold flex items-center justify-center gap-1.5 cursor-pointer text-xs shadow-sm"
+                        onClick={handleExportPasteStencil}
+                        disabled={!result.success}
+                        title={PASTE_STENCIL_HINT}
+                        className="flex-1 min-w-0 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-bold flex items-center justify-center gap-1.5 cursor-pointer text-xs whitespace-nowrap"
                       >
-                        <ShieldCheck className="w-4 h-4" />
-                        Start Air Cut (+{airCutZOffset}mm)
+                        <Box className="w-4 h-4 shrink-0" />
+                        Paste Stencil
+                      </button>
+
+                      <button
+                        onClick={handleExportShim}
+                        disabled={!result.success}
+                        title={SHIM_HINT}
+                        className="shrink-0 px-2 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-bold flex items-center justify-center cursor-pointer text-xs"
+                      >
+                        <Layers2 className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={handleStencilToEtch}
+                        disabled={!result.success}
+                        title={ETCH_HINT}
+                        className="shrink-0 px-2 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-bold flex items-center justify-center cursor-pointer text-xs"
+                      >
+                        <Scissors className="w-4 h-4" />
                       </button>
 
                       <button
                         onClick={handleMillBoard}
                         disabled={!result.success || machineBusy}
-                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded font-bold flex items-center justify-center gap-1.5 cursor-pointer text-xs shadow-sm"
+                        className="flex-1 min-w-0 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded font-bold flex items-center justify-center gap-1.5 cursor-pointer text-xs shadow-sm whitespace-nowrap"
                       >
-                        {busy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                        Mill PCB Live
+                        {busy ? <RefreshCw className="w-4 h-4 shrink-0 animate-spin" /> : <Play className="w-4 h-4 shrink-0" />}
+                        Start Milling
                       </button>
                     </div>
                   </div>
@@ -2099,27 +2252,63 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
             {/* Bottom Action Footer */}
             <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-950/60 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2" />
+              {/* Whatever the last export had to say — a file written, or why
+                  the mask is not worth printing for this board. */}
+              <div className="flex flex-1 items-center gap-2 min-w-0">
+                {stencilNote && (
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate" title={stencilNote}>
+                    {stencilNote}
+                  </span>
+                )}
+              </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
-                  onClick={handleAirCutBoard}
+                  onClick={handleFrameBoard}
                   disabled={!result.success || machineBusy}
-                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm"
-                  title="Run air cut dry run live on connected machine"
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm whitespace-nowrap"
+                  title={`Trace the board outline live, ${airCutZOffset}mm above safe Z, with no spindle and no plunges — checks the blank is where the job thinks it is`}
                 >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Air Cut (+{airCutZOffset}mm)
+                  <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                  Frame
+                </button>
+
+                <button
+                  onClick={handleExportPasteStencil}
+                  disabled={!result.success}
+                  className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs whitespace-nowrap"
+                  title={PASTE_STENCIL_HINT}
+                >
+                  <Box className="w-3.5 h-3.5 shrink-0" />
+                  Export Paste Stencil
+                </button>
+
+                <button
+                  onClick={handleExportShim}
+                  disabled={!result.success}
+                  className="px-2 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 font-bold rounded flex items-center cursor-pointer text-xs"
+                  title={SHIM_HINT}
+                >
+                  <Layers2 className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  onClick={handleStencilToEtch}
+                  disabled={!result.success}
+                  className="px-2 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 font-bold rounded flex items-center cursor-pointer text-xs"
+                  title={ETCH_HINT}
+                >
+                  <Scissors className="w-3.5 h-3.5" />
                 </button>
 
                 <button
                   onClick={handleMillBoard}
                   disabled={!result.success || machineBusy}
-                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm"
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm whitespace-nowrap"
                   title="Start live isolation milling on CNC machine via Web Serial"
                 >
-                  {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                  Mill PCB Live
+                  {busy ? <RefreshCw className="w-3.5 h-3.5 shrink-0 animate-spin" /> : <Play className="w-3.5 h-3.5 shrink-0" />}
+                  Start Milling
                 </button>
               </div>
             </div>
