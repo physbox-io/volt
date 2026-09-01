@@ -20,7 +20,7 @@ import {
   DEFAULT_PASTE_STENCIL_OPTIONS,
   DEFAULT_PASTE_SHIM_OPTIONS,
 } from './utils/pcbPasteStencil';
-import { encodeSvgHandoff } from './utils/etchHandoff';
+import { encodeSvgHandoff, encodeSvgHandoffSync, openSvgInEtch } from './utils/etchHandoff';
 
 let fails = 0;
 function check(name: string, cond: boolean, detail = '') {
@@ -308,6 +308,74 @@ for (const t of shimTris.tris) for (const v of t.xyz) {
   shimMaxZ = Math.max(shimMaxZ, v[2]);
 }
 check('and it prints flat', Math.abs(shimMinZ) < 1e-9 && Math.abs(shimMaxZ - shim.thicknessMm) < 1e-6, `${shimMinZ}..${shimMaxZ}`);
+
+// --- 10. Actually opening Etch ------------------------------------------------
+// The regression this exists for: `window.open` returns null when 'noopener'
+// is passed — that is what the flag means — so the button opened an empty tab,
+// decided pop-ups were blocked, and never navigated it anywhere.
+{
+  const calls: { url: string; target?: string; features?: string }[] = [];
+  let navigatedTo: string | null = null;
+  const fakeTab = {
+    get location() {
+      return {
+        set href(v: string) {
+          navigatedTo = v;
+        },
+      };
+    },
+    close() {},
+  };
+  const g = globalThis as unknown as {
+    window?: { open: (url: string, target?: string, features?: string) => unknown; location: unknown };
+    localStorage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+  };
+  g.window = {
+    open: (url: string, target?: string, features?: string) => {
+      calls.push({ url, target, features });
+      return fakeTab;
+    },
+    location: { hostname: 'localhost', protocol: 'http:' },
+  };
+  g.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+
+  await openSvgInEtch(svg, 'PCB paste stencil');
+
+  check('one window is opened', calls.length === 1, `${calls.length} calls`);
+  check(
+    'it is opened straight at the artwork, not at a blank page',
+    calls[0]?.url.includes('#') && calls[0].url.includes('data='),
+    calls[0]?.url.slice(0, 60)
+  );
+  check('nothing has to navigate it afterwards', navigatedTo === null, String(navigatedTo));
+  // 'noopener' makes window.open return null, which is indistinguishable from a
+  // blocked pop-up. Never pass it here.
+  check('noopener is not passed', !(calls[0]?.features || '').includes('noopener'), calls[0]?.features);
+  check('it goes to the local Etch in dev', calls[0]?.url.startsWith('http://localhost:5176/#'), calls[0]?.url.slice(0, 40));
+
+  const sync = new URLSearchParams(encodeSvgHandoffSync(svg, 'x'));
+  check('the synchronous fragment says it is uncompressed', sync.get('gz') === '0');
+  const decoded = new TextDecoder().decode(
+    Uint8Array.from(
+      atob((sync.get('data') || '').replace(/-/g, '+').replace(/_/g, '/')),
+      c => c.charCodeAt(0)
+    )
+  );
+  check('and decodes back to the artwork', decoded === svg, `${decoded.length} vs ${svg.length} bytes`);
+
+  // A blocked pop-up is still reported, now for the right reason.
+  g.window.open = () => null;
+  let blocked = '';
+  try {
+    await openSvgInEtch(svg, 'x');
+  } catch (e) {
+    blocked = e instanceof Error ? e.message : String(e);
+  }
+  check('a genuinely blocked pop-up is reported', /pop-ups/.test(blocked), blocked);
+
+  delete g.window;
+  delete g.localStorage;
+}
 
 console.log(`\n${fails} failure(s)`);
 if (fails) throw new Error(`${fails} paste stencil test failure(s)`);

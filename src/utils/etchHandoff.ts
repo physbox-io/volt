@@ -69,28 +69,67 @@ async function gzip(text: string): Promise<Uint8Array | null> {
   return out;
 }
 
-/** The fragment Etch reads the artwork out of. */
-export async function encodeSvgHandoff(svg: string, name: string): Promise<string> {
-  const packed = await gzip(svg);
-  const params = new URLSearchParams({
+/**
+ * How big a fragment is still worth sending uncompressed.
+ *
+ * Well past any real board — the densest tested is 25KB — and well inside what
+ * browsers take in a fragment. It exists so that an implausible board still
+ * arrives rather than making a URL nothing will open.
+ */
+const SYNC_LIMIT_BYTES = 48 * 1024;
+
+/** The fragment Etch reads the artwork out of, without compressing it. */
+export function encodeSvgHandoffSync(svg: string, name: string): string {
+  return new URLSearchParams({
     v: HANDOFF_VERSION,
     name,
-    gz: packed ? '1' : '0',
-    data: toBase64Url(packed ?? new TextEncoder().encode(svg)),
-  });
-  return params.toString();
+    gz: '0',
+    data: toBase64Url(new TextEncoder().encode(svg)),
+  }).toString();
+}
+
+/** The same fragment, gzipped. Async, because `CompressionStream` is. */
+export async function encodeSvgHandoff(svg: string, name: string): Promise<string> {
+  const packed = await gzip(svg);
+  if (!packed) return encodeSvgHandoffSync(svg, name);
+  return new URLSearchParams({
+    v: HANDOFF_VERSION,
+    name,
+    gz: '1',
+    data: toBase64Url(packed),
+  }).toString();
 }
 
 /**
  * Opens Etch in a new tab with the artwork loaded.
  *
- * The tab is opened *before* the artwork is encoded, blank, and navigated
- * afterwards. Compression is async, and a `window.open` that happens after an
- * await is no longer attributable to the click that started it — which is
- * exactly what a popup blocker stops.
+ * Deliberately not `noopener`. It reads like the safe choice and it is the
+ * reason this used to open a blank tab and nothing else: `window.open` returns
+ * *null* when noopener is set — that is what the flag means, no handle back —
+ * so the null check fired, the error said pop-ups were blocked, and the tab it
+ * had just opened sat there empty. The destination is our own app, which is
+ * the case where an opener reference is not a hazard.
  */
 export async function openSvgInEtch(svg: string, name: string): Promise<void> {
-  const tab = window.open('', '_blank', 'noopener');
+  const plain = encodeSvgHandoffSync(svg, name);
+
+  // The ordinary path: one synchronous call, still inside the click that asked
+  // for it, which is what keeps a pop-up blocker out of it.
+  if (plain.length <= SYNC_LIMIT_BYTES) {
+    const tab = window.open(`${etchBaseUrl()}/#${plain}`, '_blank');
+    if (!tab) {
+      throw new Error('Etch could not be opened — allow pop-ups for this site and try again.');
+    }
+    return;
+  }
+
+  /*
+   * A board big enough to be worth compressing. Compression is async, and a
+   * window opened after an await is no longer plainly attributable to the
+   * click — so the tab is opened first, empty, and navigated once the artwork
+   * is ready.
+   */
+  const tab = window.open('', '_blank');
   if (!tab) {
     throw new Error('Etch could not be opened — allow pop-ups for this site and try again.');
   }
