@@ -628,9 +628,15 @@ export interface PasteShimOptions {
    */
   thicknessMm: number;
   /**
-   * Spare material around the stencil outline, per side, in mm. The laser cuts
-   * the outline as well as the apertures, so the blank has to be bigger than
-   * the finished part — and something has to hold it flat on the bed.
+   * Spare material around the stencil outline, per side, in mm.
+   *
+   * The laser cuts the outline as well as the apertures, so the blank has to
+   * be bigger than the finished part, and something has to hold it flat on the
+   * bed. It also answers the obvious worry about printing a sheet one layer
+   * thick: a single layer is all first layer, and what a first layer does when
+   * it lifts is curl at the edges. Here the edges are sacrificial — the
+   * finished stencil is cut out of the middle — so the curl ends up in the
+   * offcut rather than under a pad.
    */
   marginMm: number;
 }

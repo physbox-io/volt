@@ -400,7 +400,10 @@ export function DocsModal({ onClose }: DocsModalProps) {
                     in <strong>black</strong>, which is the whole point of it: a 450&nbsp;nm diode cuts
                     what absorbs blue, so black is the one stencil stock it is reliable on. Thin dark
                     film is a nuisance to buy in ones, and a single layer of black filament is the same
-                    thing.
+                    thing. That margin is also the answer to curl: a one-layer print is all first layer,
+                    and a first layer lifts at its edges &mdash; but the stencil is cut out of the middle,
+                    so the curl goes in the offcut. If it does lift, it is an adhesion problem like any
+                    other: clean sheet, glue, more squish, slower, no part cooling.
                   </li>
                 </ul>
                 <h4 className="text-xl font-semibold mb-2 mt-6">What a diode laser will and will not cut</h4>
