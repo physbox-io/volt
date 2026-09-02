@@ -7,6 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  STANDARD_FOOTPRINTS,
   packageOptionsForType,
   supportsPackageSelection,
   resolveFootprint,
@@ -385,5 +386,30 @@ describe('packages offered per component type', () => {
     ok(!supportsPackageSelection('via'), 'a via has no package to choose');
     ok(!supportsPackageSelection('cutout'), 'a cutout has no package to choose');
     ok(supportsPackageSelection('resistor'), 'a resistor does');
+  });
+});
+
+describe('every footprint courtyard contains its own copper', () => {
+  /*
+   * The courtyard is what the placer separates parts by, so a footprint that
+   * declares a body smaller than its pads lets a neighbour's pad land on top of
+   * this one's while the placer believes there is a full gap between them. Seven
+   * of the hand-written entries used to do exactly that — the figure was the
+   * plastic package rather than the land pattern — and it surfaced as a short in
+   * the design rule check on two shipped presets rather than as a placement
+   * fault where it belonged.
+   */
+  it.each(Object.keys(STANDARD_FOOTPRINTS))('%s', id => {
+    const fp = STANDARD_FOOTPRINTS[id];
+    let halfW = 0;
+    let halfH = 0;
+    for (const pad of fp.pads) {
+      halfW = Math.max(halfW, Math.abs(pad.x) + Math.max(pad.padWidth, pad.drillDiameter || 0) / 2);
+      halfH = Math.max(halfH, Math.abs(pad.y) + Math.max(pad.padHeight, pad.drillDiameter || 0) / 2);
+    }
+    expect(fp.widthMm, `${id} courtyard width must cover ${(halfW * 2).toFixed(2)}mm of copper`)
+      .toBeGreaterThanOrEqual(halfW * 2 - 1e-9);
+    expect(fp.heightMm, `${id} courtyard height must cover ${(halfH * 2).toFixed(2)}mm of copper`)
+      .toBeGreaterThanOrEqual(halfH * 2 - 1e-9);
   });
 });

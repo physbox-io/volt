@@ -36,7 +36,36 @@ export interface ComponentFootprint {
   requestedPackageId?: string;
 }
 
-export const STANDARD_FOOTPRINTS: Record<string, ComponentFootprint> = {
+/**
+ * Grows a footprint's courtyard until it contains its own copper.
+ *
+ * The courtyard is what the placer separates parts by, so a footprint that
+ * declares a body smaller than its pads lets the placer sit a neighbour's pad
+ * on top of it while believing there is a 3.5mm gap. That is a short, and it
+ * reached the DRC rather than the placer: seven of the hand-written entries
+ * below understated their body, RADIAL-5MM by 1.08mm, because the figure was
+ * the plastic package rather than the land pattern.
+ *
+ * The generated families already do this — see the courtyard growth in
+ * `generateDualRowFootprint` — so this only brings the hand-written table under
+ * the same rule rather than introducing a new one.
+ */
+function withContainedCourtyard(fp: ComponentFootprint): ComponentFootprint {
+  let halfW = 0;
+  let halfH = 0;
+  for (const pad of fp.pads) {
+    // A through-hole pad's copper is the larger of its land and its own drill.
+    halfW = Math.max(halfW, Math.abs(pad.x) + Math.max(pad.padWidth, pad.drillDiameter || 0) / 2);
+    halfH = Math.max(halfH, Math.abs(pad.y) + Math.max(pad.padHeight, pad.drillDiameter || 0) / 2);
+  }
+  return {
+    ...fp,
+    widthMm: Math.max(fp.widthMm, halfW * 2),
+    heightMm: Math.max(fp.heightMm, halfH * 2),
+  };
+}
+
+const RAW_STANDARD_FOOTPRINTS: Record<string, ComponentFootprint> = {
   '0805': {
     packageId: '0805',
     name: '0805 Surface Mount Passive',
@@ -230,6 +259,10 @@ export const STANDARD_FOOTPRINTS: Record<string, ComponentFootprint> = {
     ],
   },
 };
+
+export const STANDARD_FOOTPRINTS: Record<string, ComponentFootprint> = Object.fromEntries(
+  Object.entries(RAW_STANDARD_FOOTPRINTS).map(([id, fp]) => [id, withContainedCourtyard(fp)])
+);
 
 /**
  * Maps React Flow node types (see components/nodes/registry.ts) to the default

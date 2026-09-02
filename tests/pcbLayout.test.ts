@@ -24,16 +24,14 @@ const OPTS = { ...DEFAULT_PCB_OPTIONS, autoGrowBoard: true };
 const BOARDS = Object.entries(presets).filter(([, p]) => p.nodes.length > 0);
 
 /**
- * Presets whose copper still comes out shorted.
+ * Presets whose copper comes out shorted.
  *
- * Both put GND against N4 in the *nominal* routed geometry — setting
- * `copperFloodMm: 0` does not clear it, so this is the router placing a track
- * on top of another net's copper rather than the flood growing into it. Listed
- * rather than skipped: if the router is fixed these go green and this list is
- * what tells you to shorten it, and if the fault spreads to another preset the
- * suite goes red.
+ * Empty, and meant to stay that way. Two presets used to sit here with GND
+ * against N4; the cause was a footprint whose declared courtyard was smaller
+ * than its own pads, so the placer left a full gap between two parts while
+ * their copper overlapped. See the courtyard test in footprintsAndTooling.
  */
-const KNOWN_SHORTED = new Set(['classABamp', 'transformerRectifier']);
+const KNOWN_SHORTED = new Set<string>([]);
 
 /**
  * Presets the router cannot finish on a single layer at the default clearance.
