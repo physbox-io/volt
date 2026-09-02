@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link2, RefreshCw } from 'lucide-react';
+import { Link2, RefreshCw, Unlink } from 'lucide-react';
 import {
   claimMachineDevice,
   fetchMachineDevices,
+  forgetMachineDevice,
   getStoredAuthToken,
   type MachineDevice,
 } from '../utils/apiClient';
@@ -34,11 +35,26 @@ export const TeknoBoxPicker: React.FC<{
   /** Locked while a machine is connected — swapping under a live link is nonsense. */
   disabled?: boolean;
   /**
+   * Called once a machine has just been claimed.
+   *
+   * Pairing is not a thing anyone wants to have done; it is a step on the way
+   * to using the machine. Leaving them on a panel that now says "online" beside
+   * a badge that still says DISCONNECTED, with another button to find, is
+   * asking them to do the obvious thing by hand.
+   */
+  onPaired?: (deviceId: string) => void;
+  /**
    * Tailwind classes for the primary action, so this sits in each app's palette
    * without carrying a theme of its own.
    */
   accentClass?: string;
-}> = ({ value, onChange, disabled = false, accentClass = 'bg-blue-500 hover:bg-blue-600 text-slate-950' }) => {
+}> = ({
+  value,
+  onChange,
+  disabled = false,
+  onPaired,
+  accentClass = 'bg-blue-500 hover:bg-blue-600 text-slate-950',
+}) => {
   const [devices, setDevices] = useState<MachineDevice[]>([]);
   const [pairCode, setPairCode] = useState('');
   const [pairing, setPairing] = useState(false);
@@ -97,6 +113,31 @@ export const TeknoBoxPicker: React.FC<{
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn]);
 
+  /**
+   * Lets go of a machine.
+   *
+   * Confirmed first, because it is not undoable from here: the device key goes
+   * with the row, and getting the box back means claiming it again with a fresh
+   * code off its screen — which needs somebody standing in front of it.
+   */
+  const handleForget = async (device: MachineDevice) => {
+    if (!window.confirm(
+      `Unpair ${device.name}?\n\nIt will stop being reachable from your apps, and pairing it ` +
+      `again means reading a new code off the machine's own screen.`
+    )) {
+      return;
+    }
+    setError(null);
+    const ok = await forgetMachineDevice(device.deviceId);
+    if (!ok) {
+      setError('Could not unpair that machine. Try again in a moment.');
+      return;
+    }
+    const list = await fetchMachineDevices();
+    setDevices(list);
+    settle(list, '');
+  };
+
   const handlePair = async () => {
     const code = pairCode.trim().toUpperCase();
     if (!code) return;
@@ -108,6 +149,7 @@ export const TeknoBoxPicker: React.FC<{
       const list = await fetchMachineDevices();
       setDevices(list);
       onChange(deviceId, list.find((d) => d.deviceId === deviceId)?.name);
+      onPaired?.(deviceId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Could not pair that machine.');
     } finally {
@@ -150,6 +192,18 @@ export const TeknoBoxPicker: React.FC<{
             className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const device = devices.find((d) => d.deviceId === value);
+              if (device) void handleForget(device);
+            }}
+            disabled={disabled || !value}
+            title="Unpair this machine from your account"
+            className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-200 dark:hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
+          >
+            <Unlink className="w-3.5 h-3.5" />
           </button>
         </div>
       ) : (

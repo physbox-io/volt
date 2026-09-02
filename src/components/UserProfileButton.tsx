@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { User, LogOut, Radio, Sparkles, ShieldCheck, CheckCircle } from 'lucide-react';
 import { getStoredUser, clearStoredAuth, loginWithGoogle, fetchCurrentUser } from '../utils/apiClient';
+import { renderGoogleSignInButton, disableGoogleAutoSelect } from '../utils/googleAuth';
 import type { PhysBoxUser } from '../utils/apiClient';
 import { RemoteMachiningModal } from './RemoteMachiningModal';
 import { GuestListModal } from './GuestListModal';
@@ -11,9 +12,9 @@ export const UserProfileButton: React.FC = () => {
   const [user, setUser] = useState<PhysBoxUser | null>(getStoredUser());
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const googleButtonRef = useRef<HTMLDivElement>(null);
   const [showRemoteModal, setShowRemoteModal] = useState(false);
   const [showGuestModal, setShowGuestModal] = useState(false);
-  const [loginEmail, setLoginEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -39,14 +40,11 @@ export const UserProfileButton: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleLoginSubmit = async (e?: React.FormEvent, customEmail?: string) => {
-    if (e) e.preventDefault();
-    const targetEmail = (customEmail || loginEmail).trim();
-    if (!targetEmail) return;
+  const handleCredential = React.useCallback(async (credential: string) => {
     setIsLoading(true);
     setLoginError(null);
     try {
-      const res = await loginWithGoogle({ email: targetEmail });
+      const res = await loginWithGoogle({ credential });
       setUser(res.user);
       void restoreLlmSettingsFromCloud();
       setShowLoginModal(false);
@@ -60,10 +58,38 @@ export const UserProfileButton: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  /*
+   * Google's button is drawn once the modal is on screen, not before: it needs
+   * a mounted container to render into.
+   */
+  useEffect(() => {
+    if (!showLoginModal || !googleButtonRef.current) return;
+    let cancelled = false;
+    renderGoogleSignInButton(
+      googleButtonRef.current,
+      (credential) => {
+        if (!cancelled) void handleCredential(credential);
+      },
+      (message) => {
+        if (!cancelled) setLoginError(message);
+      }
+    ).catch((err) => {
+      if (!cancelled) {
+        setLoginError(err instanceof Error ? err.message : 'Could not load Google sign-in.');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [showLoginModal, handleCredential]);
 
   const handleLogout = () => {
     clearStoredAuth();
+    // Otherwise Google hands the same account straight back next time, and
+    // signing out looks like it did nothing.
+    disableGoogleAutoSelect();
     setUser(null);
     setDropdownOpen(false);
   };
@@ -212,27 +238,19 @@ export const UserProfileButton: React.FC = () => {
                   {loginError}
                 </div>
               )}
-              <form onSubmit={(e) => handleLoginSubmit(e)} className="space-y-3 pt-1">
-                <div>
-                  <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Email Address</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="you@gmail.com"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-100 focus:outline-none transition shadow-inner"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <User className="w-4 h-4" />
-                  <span>{isLoading ? 'Signing In...' : 'Sign In with Google'}</span>
-                </button>
-              </form>
+              {/* Google draws its own button here. The email textbox this
+                  replaces sent a typed address to the API and got a session
+                  back — nothing about it involved Google, and nothing
+                  established that the person typing owned the address. The API
+                  now rejects that outright, so this form could not sign anyone
+                  in at all: it failed quietly, and the machines list stayed
+                  empty because nobody was ever signed in. */}
+              <div className="flex justify-center pt-1">
+                <div ref={googleButtonRef} />
+              </div>
+              {isLoading && (
+                <p className="text-center text-xs text-slate-500 dark:text-slate-400">Signing in…</p>
+              )}
             </div>
           </div>,
           document.body
@@ -242,7 +260,7 @@ export const UserProfileButton: React.FC = () => {
       <GuestListModal
         isOpen={showGuestModal}
         onClose={() => setShowGuestModal(false)}
-        userEmail={user?.email || loginEmail}
+        userEmail={user?.email || ''}
       />
     </div>
   );

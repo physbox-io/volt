@@ -1825,6 +1825,14 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                             setCloudDeviceId(deviceId);
                             localStorage.setItem('grblCloudDeviceId', deviceId);
                           }}
+                          onPaired={deviceId => {
+                            // Straight on to the machine: having just proved you
+                            // are standing in front of it, being asked to press
+                            // Connect is a step with nothing behind it.
+                            localStorage.setItem('grblCloudDeviceId', deviceId);
+                            webSerialManager.setTransport('wifi', deviceId);
+                            void webSerialManager.connect();
+                          }}
                           disabled={serialState.connected}
                           accentClass="bg-emerald-600 hover:bg-emerald-500 text-white"
                         />
