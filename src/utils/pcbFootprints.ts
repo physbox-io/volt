@@ -1794,6 +1794,21 @@ function fallbackFootprint(requested: string, base: ComponentFootprint): Compone
   };
 }
 
+/**
+ * The modules built by hand rather than from a catalogue entry or a parametric
+ * id. Reachable both from an explicitly chosen package and from a node type's
+ * default, which are the same geometry and must not disagree.
+ */
+function buildSpecialPackage(packageId: string): ComponentFootprint | null {
+  if (packageId === 'HELTEC-V4' || packageId.startsWith('HELTEC')) {
+    return generateModule2xFootprint(18, 28.0, 58.0, 2.54, 22.86, 1.0);
+  }
+  if (packageId === 'CC1101') {
+    return generateMatrixHeaderFootprint(4, 2, 2.54, 2.54);
+  }
+  return null;
+}
+
 export function resolveFootprint(
   packageId?: string,
   componentType?: string,
@@ -1852,12 +1867,8 @@ export function resolveFootprint(
   }
 
   if (packageId) {
-    if (packageId === 'HELTEC-V4' || packageId.startsWith('HELTEC')) {
-      return generateModule2xFootprint(18, 28.0, 58.0, 2.54, 22.86, 1.0);
-    }
-    if (packageId === 'CC1101') {
-      return generateMatrixHeaderFootprint(4, 2, 2.54, 2.54);
-    }
+    const special = buildSpecialPackage(packageId);
+    if (special) return special;
 
     const parsed = parsePackageId(packageId, pinCount);
     if (parsed) return parsed;
@@ -1868,6 +1879,13 @@ export function resolveFootprint(
   const mapped = DEFAULT_PACKAGE_BY_TYPE[type];
   if (mapped) {
     if (STANDARD_FOOTPRINTS[mapped]) return STANDARD_FOOTPRINTS[mapped];
+    // The same builders the explicit path uses. Without this a type whose
+    // default is a hand-built module — heltec_v4 — resolved to neither a
+    // standard nor a parseable id and fell all the way through to the 0805 at
+    // the end of this function: a 36-pad dev board laid out as a two-pad chip
+    // resistor, with every GPIO connection dropped for want of a pin to map.
+    const mappedSpecial = buildSpecialPackage(mapped);
+    if (mappedSpecial) return mappedSpecial;
     const mappedFp = parsePackageId(mapped, pinCount);
     if (mappedFp) return mappedFp;
   }
