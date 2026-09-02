@@ -1,5 +1,7 @@
+import React, { useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Handle, Position } from '@xyflow/react';
+import { parseEngValue, formatEngValue } from '../../utils/engValue';
 
 /**
  * Shared visual language for the schematic canvas.
@@ -79,29 +81,249 @@ export function DeviceField({
   title?: string;
   onCommit: (next: number) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(String(value));
+  const [seen, setSeen] = useState(value);
+  const [scrubbing, setScrubbing] = useState(false);
+
+  // Follow the value while the box is idle, but never overwrite a part-typed
+  // number: clearing the field and retyping "0", "0.", "0.0", "0.05" has to
+  // survive, so nothing is echoed back until the edit ends.
+  if (!editing && value !== seen) {
+    setSeen(value);
+    setText(String(value));
+  }
+
+  const clamp = (n: number) => {
+    if (min !== undefined && n < min) return min;
+    if (max !== undefined && n > max) return max;
+    return n;
+  };
+
+  /** Decimal places implied by `step`, so scrubbing cannot accrue float noise. */
+  const places = (() => {
+    const s = String(step);
+    const dot = s.indexOf('.');
+    return dot === -1 ? 0 : s.length - dot - 1;
+  })();
+
+  /*
+   * Drag the number to change it.
+   *
+   * The increment scales with how fast the pointer is moving, so the same
+   * gesture covers both ends of a range: easing across gives single steps for
+   * dialling in a value, and a quick sweep runs through orders of magnitude
+   * without asking anyone to drag a thousand pixels. Speed is measured per
+   * move event and smoothed, because a raw px/ms reading from one event is
+   * jumpy enough to feel random.
+   *
+   * Shift and Alt are the usual fine/coarse modifiers.
+   */
+  const drag = useRef<{ x: number; t: number; acc: number; boost: number; moved: number } | null>(null);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (editing) return;               // typing wins over scrubbing
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    drag.current = { x: e.clientX, t: e.timeStamp, acc: 0, boost: 1, moved: 0 };
+    (e.target as Element).setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.x;
+    const dt = Math.max(1, e.timeStamp - d.t);
+    d.x = e.clientX;
+    d.t = e.timeStamp;
+    d.moved += Math.abs(dx);
+    if (d.moved > 3 && !scrubbing) setScrubbing(true);
+
+    // px/ms, smoothed. 1 px/ms is a brisk sweep; below that it stays near 1.
+    const speed = Math.abs(dx) / dt;
+    d.boost = d.boost * 0.7 + (1 + Math.min(speed * 12, 40)) * 0.3;
+
+    const mod = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+    // A step every 4px at rest, accelerating with the sweep.
+    d.acc += (dx / 4) * step * d.boost * mod;
+    const whole = Math.round(d.acc / step) * step;
+    if (whole === 0) return;
+    d.acc -= whole;
+    const next = clamp(Number((value + whole).toFixed(places + 2)));
+    if (next !== value) onCommit(next);
+  };
+
+  const endDrag = (e: React.PointerEvent) => {
+    const d = drag.current;
+    drag.current = null;
+    setScrubbing(false);
+    if (d && d.moved <= 3) {
+      // A click, not a drag: hand it to the keyboard.
+      (e.currentTarget as HTMLInputElement).focus();
+      (e.currentTarget as HTMLInputElement).select();
+    }
+  };
+
   return (
-    <label className="nodrag nopan flex items-baseline gap-[1px] cursor-text" title={title}>
+    <label
+      className={`nodrag nopan flex items-baseline gap-[1px] ${scrubbing ? 'cursor-ew-resize' : 'cursor-text'}`}
+      title={title ? `${title} — drag to change, or click to type` : 'Drag to change, or click to type'}
+    >
       <input
-        type="number"
-        value={value}
+        type="text"
+        inputMode="decimal"
+        value={editing ? text : String(value)}
         min={min}
         max={max}
         step={step}
-        onPointerDown={(e) => e.stopPropagation()}
-        onChange={(e) => {
-          const next = parseFloat(e.target.value);
-          if (!Number.isNaN(next)) onCommit(next);
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onFocus={() => {
+          setEditing(true);
+          setText(String(value));
         }}
-        className="w-[30px] bg-transparent text-right font-mono text-[8px] leading-none
+        onChange={(e) => {
+          setText(e.target.value);
+          const next = parseFloat(e.target.value);
+          if (Number.isNaN(next)) return;
+          if (min !== undefined && next < min) return;
+          if (max !== undefined && next > max) return;
+          onCommit(next);
+        }}
+        onBlur={() => {
+          setEditing(false);
+          setSeen(value);
+          setText(String(value));
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur();
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            const mod = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+            const delta = (e.key === 'ArrowUp' ? 1 : -1) * step * mod;
+            const next = clamp(Number((value + delta).toFixed(places + 2)));
+            setText(String(next));
+            onCommit(next);
+          }
+        }}
+        className={`w-[30px] bg-transparent text-right font-mono text-[8px] leading-none
                    text-slate-700 dark:text-slate-200 border-b border-dotted
                    border-slate-300 dark:border-slate-600 outline-none
                    focus:border-solid focus:border-emerald-500
-                   [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                   ${scrubbing ? 'cursor-ew-resize select-none' : ''}
+                   [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none`}
       />
       <span className="font-mono text-[8px] leading-none text-slate-400 dark:text-slate-500">
         {unit}
       </span>
     </label>
+  );
+}
+
+/**
+ * A component value on the canvas — "4.7k", "100n" — that can be dragged.
+ *
+ * Component values are multiplicative, not additive: the useful neighbours of
+ * 10k are 9k and 11k, and the useful neighbours of 100n are 90n and 110n. So a
+ * drag scales the value by a proportion rather than adding a fixed step, which
+ * makes one gesture cover picofarads to farads without changing units by hand.
+ * Speed still scales it, so easing across nudges and a sweep crosses decades.
+ *
+ * A label the parser cannot read is left exactly as typed — someone who wrote
+ * "R_load" meant it, and a scrub must not turn it into a number.
+ */
+export function EngField({
+  value,
+  onCommit,
+  title,
+}: {
+  /** The label as written, e.g. "4.7k". */
+  value: string;
+  onCommit: (next: string) => void;
+  title?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(value);
+  const [seen, setSeen] = useState(value);
+  const [scrubbing, setScrubbing] = useState(false);
+
+  if (!editing && value !== seen) {
+    setSeen(value);
+    setText(value);
+  }
+
+  const drag = useRef<{ x: number; t: number; boost: number; moved: number } | null>(null);
+  const numeric = parseEngValue(value);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (editing || e.button !== 0 || numeric === null) return;
+    e.stopPropagation();
+    drag.current = { x: e.clientX, t: e.timeStamp, boost: 1, moved: 0 };
+    (e.target as Element).setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const current = parseEngValue(value);
+    if (current === null || current === 0) return;
+    const dx = e.clientX - d.x;
+    const dt = Math.max(1, e.timeStamp - d.t);
+    d.x = e.clientX;
+    d.t = e.timeStamp;
+    d.moved += Math.abs(dx);
+    if (d.moved > 3 && !scrubbing) setScrubbing(true);
+
+    const speed = Math.abs(dx) / dt;
+    d.boost = d.boost * 0.7 + (1 + Math.min(speed * 8, 25)) * 0.3;
+    const mod = e.shiftKey ? 4 : e.altKey ? 0.25 : 1;
+    // ~0.8% per pixel at rest: a decade is a comfortable sweep, not a marathon.
+    const factor = Math.pow(1.008, dx * d.boost * mod);
+    const next = current * factor;
+    if (!Number.isFinite(next) || next <= 0) return;
+    const written = formatEngValue(next);
+    if (written !== value) onCommit(written);
+  };
+
+  const endDrag = (e: React.PointerEvent) => {
+    const d = drag.current;
+    drag.current = null;
+    setScrubbing(false);
+    if (d && d.moved <= 3) {
+      (e.currentTarget as HTMLInputElement).focus();
+      (e.currentTarget as HTMLInputElement).select();
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      value={editing ? text : value}
+      title={title ?? (numeric === null ? 'Click to type' : 'Drag to change, or click to type')}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onFocus={() => { setEditing(true); setText(value); }}
+      onChange={(e) => { setText(e.target.value); onCommit(e.target.value); }}
+      onBlur={() => { setEditing(false); setSeen(value); setText(value); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur();
+        if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && numeric !== null) {
+          e.preventDefault();
+          const mod = e.shiftKey ? 4 : e.altKey ? 0.25 : 1;
+          const f = Math.pow(1.1, (e.key === 'ArrowUp' ? 1 : -1) * mod);
+          onCommit(formatEngValue(numeric * f));
+        }
+      }}
+      className={`nodrag nopan w-[38px] bg-transparent text-center font-mono text-[9px] leading-none
+                 text-slate-600 dark:text-slate-300 border-b border-dotted border-transparent
+                 hover:border-slate-300 dark:hover:border-slate-600 outline-none
+                 focus:border-solid focus:border-emerald-500
+                 ${scrubbing ? 'cursor-ew-resize select-none' : 'cursor-text'}`}
+    />
   );
 }
 

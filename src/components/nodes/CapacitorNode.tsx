@@ -1,7 +1,8 @@
-import { Handle, Position } from '@xyflow/react';
+import { useCallback } from 'react';
+import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { getNodeDefaultName } from '../../utils/nodeNaming';
 import type { NodePropertiesProps } from './registry';
-import { SchematicLabel } from './schematic';
+import { SchematicLabel, EngField } from './schematic';
 
 export function CapacitorProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -19,6 +20,10 @@ export function CapacitorNode({ id, data, selected }: any) {
   const isUp = orientation === 'up';
 
   const name = data.name !== undefined ? data.name : getNodeDefaultName(id, 'capacitor');
+  const { setNodes } = useReactFlow();
+  const update = useCallback((patch: Record<string, any>) => {
+    setNodes((nds: any[]) => nds.map(n => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
+  }, [id, setNodes]);
 
   return (
     <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[24px] h-[40px]' : 'w-[40px] h-[24px]'}`}>
@@ -73,7 +78,7 @@ export function CapacitorNode({ id, data, selected }: any) {
       <SchematicLabel
         placement={isVertical ? 'right' : 'below'}
         name={name}
-        value={data.label || '10u'}
+        value={<EngField value={data.label || '10u'} onCommit={(v) => update({ label: v })} />}
       />
       
       <Handle 
