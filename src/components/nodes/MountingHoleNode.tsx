@@ -1,4 +1,5 @@
 import type { NodePropertiesProps } from './registry';
+import { NumberInput } from '../NumberInput';
 
 /**
  * An unplated screw / mounting hole. It carries no net and has no handles, so
@@ -59,31 +60,27 @@ export function MountingHoleProperties({ node, updateData }: NodePropertiesProps
       <div className="mb-3 grid grid-cols-2 gap-2">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Hole (mm)</label>
-          <input
-            type="number"
-            step="0.1"
-            min="0.5"
+          <NumberInput
+            step={0.1}
+            min={0.5}
             value={hole}
-            onChange={e => {
+            onChange={v => {
               updateData('screwSize', 'custom');
-              updateData('holeDiameterMm', parseFloat(e.target.value) || 3.2);
-            }}
-            className={inputClass}
-          />
+              updateData('holeDiameterMm', v);
+            }} className={inputClass}
+                    />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Keepout (mm)</label>
-          <input
-            type="number"
-            step="0.1"
-            min="0.5"
+          <NumberInput
+            step={0.1}
+            min={0.5}
             value={keepout}
-            onChange={e => {
+            onChange={v => {
               updateData('screwSize', 'custom');
-              updateData('keepoutDiameterMm', parseFloat(e.target.value) || 6.5);
-            }}
-            className={inputClass}
-          />
+              updateData('keepoutDiameterMm', v);
+            }} className={inputClass}
+                    />
         </div>
       </div>
 

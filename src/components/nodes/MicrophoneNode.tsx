@@ -3,12 +3,16 @@ import { useState, useRef, useCallback } from 'react';
 import { Mic, Square } from 'lucide-react';
 import type { NodePropertiesProps } from './registry';
 import { DEVICE_CARD, DEVICE_TITLE, resolveOrientation } from './schematic';
+import { NumberInput } from '../NumberInput';
 
 export function MicrophoneProperties({ node, updateData }: NodePropertiesProps) {
   return (
     <div className="mb-3">
       <label className="block text-xs font-medium text-gray-700 mb-1">Amplification (×)</label>
-      <input type="number" step="10" min="1" max="1000" value={(node.data.amplification as number) ?? 100} onChange={e => updateData('amplification', parseInt(e.target.value) || 100)} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+      <NumberInput step={10} min={1} max={1000} value={(node.data.amplification as number) ?? 100} onChange={v => updateData('amplification', v)}
+                      className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+                      integer
+                    />
       <div className="text-[10px] text-gray-400 mt-1">Output voltage = mic × 0.05V × gain</div>
     </div>
   );

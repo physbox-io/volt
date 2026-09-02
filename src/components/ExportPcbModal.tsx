@@ -53,6 +53,7 @@ import {
 import { openSvgInEtch } from '../utils/etchHandoff';
 import { usePcbLayout } from '../hooks/usePcbLayout';
 import { webSerialManager } from '../utils/webSerialManager';
+import { NumberInput } from './NumberInput';
 import { TeknoBoxPicker } from './TeknoBoxPicker';
 import {
   getGridStats,
@@ -118,8 +119,6 @@ const SHIM_HINT =
 
 /** Search distance for a mesh probe point, measured down from the retract. */
 const DEFAULT_PROBE_DEPTH_MM = 3;
-/** Retract height between probe points and rapid moves. */
-const DEFAULT_SAFE_Z_MM = 2;
 /** Thickness of the touch plate used to set work Z0. */
 const DEFAULT_TOUCH_PLATE_MM = 12;
 /**
@@ -1194,10 +1193,9 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
                       {options.autoGrowBoard ? 'Minimum Width (mm)' : 'Board Width (mm)'}
                     </label>
-                    <input
-                      type="number"
+                    <NumberInput
                       value={options.boardWidthMm}
-                      onChange={e => setOptions({ ...options, boardWidthMm: parseFloat(e.target.value) || 50 })}
+                      onChange={v => setOptions({ ...options, boardWidthMm: v })}
                       className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
@@ -1205,10 +1203,9 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
                       {options.autoGrowBoard ? 'Minimum Height (mm)' : 'Board Height (mm)'}
                     </label>
-                    <input
-                      type="number"
+                    <NumberInput
                       value={options.boardHeightMm}
-                      onChange={e => setOptions({ ...options, boardHeightMm: parseFloat(e.target.value) || 40 })}
+                      onChange={v => setOptions({ ...options, boardHeightMm: v })}
                       className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
@@ -1231,19 +1228,16 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                             allowed for separately, so a small value here cannot cut into them.
                           </InfoTip>
                         </label>
-                        <input
-                          type="number"
+                        <NumberInput
                           step="0.5"
-                          min="0"
+                          min={0}
                           value={options.boardMarginMm ?? 1.5}
-                          onChange={e =>
-                            setOptions({
+                          onChange={v => setOptions({
                               ...options,
-                              boardMarginMm: Math.max(0, parseFloat(e.target.value) || 0),
+                              boardMarginMm: v,
                             })
-                          }
-                          className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
-                        />
+                          } className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                    />
                       </div>
                     </>
                   )}
@@ -1256,11 +1250,10 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                         with flooding on, every track that has room ends up wider than this.
                       </InfoTip>
                     </label>
-                    <input
-                      type="number"
+                    <NumberInput
                       step="0.05"
                       value={options.traceWidthMm}
-                      onChange={e => setOptions({ ...options, traceWidthMm: parseFloat(e.target.value) || 0.4 })}
+                      onChange={v => setOptions({ ...options, traceWidthMm: v })}
                       className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
@@ -1278,18 +1271,15 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                         the nominal trace width and nothing more.
                       </InfoTip>
                     </label>
-                    <input
-                      type="number"
+                    <NumberInput
                       step="0.1"
-                      min="0"
+                      min={0}
                       value={options.copperFloodMm ?? 0}
-                      onChange={e =>
-                        setOptions({
+                      onChange={v => setOptions({
                           ...options,
-                          copperFloodMm: Math.max(0, parseFloat(e.target.value) || 0),
+                          copperFloodMm: v,
                         })
-                      }
-                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                      } className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                     <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
                       {result.copperFloodMm > 0
@@ -1301,11 +1291,10 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                   </div>
                   <div>
                     <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">Trace Clearance (mm)</label>
-                    <input
-                      type="number"
+                    <NumberInput
                       step="0.05"
                       value={options.clearanceMm}
-                      onChange={e => setOptions({ ...options, clearanceMm: parseFloat(e.target.value) || 0.3 })}
+                      onChange={v => setOptions({ ...options, clearanceMm: v })}
                       className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
@@ -1320,15 +1309,12 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                         leave nets unroutable.
                       </InfoTip>
                     </label>
-                    <input
-                      type="number"
+                    <NumberInput
                       step="0.05"
-                      min="0"
+                      min={0}
                       value={options.padMarginMm ?? 0}
-                      onChange={e =>
-                        setOptions({ ...options, padMarginMm: Math.max(0, parseFloat(e.target.value) || 0) })
-                      }
-                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                      onChange={v => setOptions({ ...options, padMarginMm: v })
+                      } className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
                   <div>
@@ -1341,18 +1327,15 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                         drill every nominal size with its own bit.
                       </InfoTip>
                     </label>
-                    <input
-                      type="number"
+                    <NumberInput
                       step="0.1"
-                      min="0"
+                      min={0}
                       value={options.drillConsolidationMm ?? 0}
-                      onChange={e =>
-                        setOptions({
+                      onChange={v => setOptions({
                           ...options,
-                          drillConsolidationMm: Math.max(0, parseFloat(e.target.value) || 0),
+                          drillConsolidationMm: v,
                         })
-                      }
-                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                      } className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
                   <div>
@@ -1586,52 +1569,53 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                           <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">
                             {toolDraft.type === 'vbit' ? 'Tip diameter (mm)' : 'Diameter (mm)'}
                           </span>
-                          <input
-                            type="number" step={0.01} min={0.01}
+                          <NumberInput step={0.01} min={0.01}
                             value={toolDraft.tipDiameterMm}
-                            onChange={e => setToolDraft({ ...toolDraft, tipDiameterMm: parseFloat(e.target.value) || 0 })}
-                            className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono"
-                          />
+                            onChange={v => setToolDraft({ ...toolDraft, tipDiameterMm: v })}
+                      className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono"
+                    />
                         </label>
 
                         {(toolDraft.type === 'vbit' || toolDraft.type === 'ballnose') && (
                           <label className="block">
                             <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Included angle (°)</span>
-                            <input
-                              type="number" step={1} min={1} max={179}
+                            <NumberInput step={1} min={1} max={179}
                               value={toolDraft.angleDeg ?? 30}
-                              onChange={e => setToolDraft({ ...toolDraft, angleDeg: parseFloat(e.target.value) || 30 })}
-                              className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono"
-                            />
+                              onChange={v => setToolDraft({ ...toolDraft, angleDeg: v })}
+                      className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono"
+                    />
                           </label>
                         )}
 
                         <label className="block">
                           <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Flutes</span>
-                          <input
-                            type="number" step={1} min={1} max={8}
+                          <NumberInput step={1} min={1} max={8}
                             value={toolDraft.fluteCount ?? 1}
-                            onChange={e => setToolDraft({ ...toolDraft, fluteCount: parseInt(e.target.value, 10) || 1 })}
-                            className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono"
-                          />
+                            onChange={v => setToolDraft({ ...toolDraft, fluteCount: v })}
+                      className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono"
+                      integer
+                    />
                         </label>
 
                         <label className="block">
                           <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Spindle RPM</span>
-                          <input
-                            type="number" step={500} min={1000}
+                          <NumberInput step={500} min={1000}
                             value={toolDraft.recommendedRpm ?? 12000}
-                            onChange={e => setToolDraft({ ...toolDraft, recommendedRpm: parseInt(e.target.value, 10) || 12000 })}
-                            className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono"
-                          />
+                            onChange={v => setToolDraft({ ...toolDraft, recommendedRpm: v })}
+                      className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono"
+                      integer
+                    />
                         </label>
 
                         <label className="block">
                           <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Chipload (mm/tooth)</span>
-                          <input
-                            type="number" step={0.005} min={0.001}
-                            value={toolDraft.chiploadMm ?? suggestedChiploadMm(toolDraft.type, toolDraft.tipDiameterMm)}
-                            onChange={e => setToolDraft({ ...toolDraft, chiploadMm: parseFloat(e.target.value) || undefined })}
+                          <NumberInput
+                            allowEmpty
+                            step={0.005}
+                            min={0.001}
+                            value={toolDraft.chiploadMm ?? null}
+                            placeholder={String(suggestedChiploadMm(toolDraft.type, toolDraft.tipDiameterMm))}
+                            onChange={v => setToolDraft({ ...toolDraft, chiploadMm: v ?? undefined })}
                             className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono"
                           />
                         </label>
@@ -1703,33 +1687,33 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 block">Cut Feed (mm/min)</label>
-                      <input
-                        type="number"
+                      <NumberInput
                         value={options.cutFeedrate}
-                        onChange={e => setOptions({ ...options, cutFeedrate: parseInt(e.target.value, 10) || 300 })}
-                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
-                      />
+                        onChange={v => setOptions({ ...options, cutFeedrate: v })}
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                      integer
+                    />
                     </div>
                     <div>
                       <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 block">Plunge Feed (mm/min)</label>
-                      <input
-                        type="number"
+                      <NumberInput
                         value={options.plungeFeedrate}
-                        onChange={e => setOptions({ ...options, plungeFeedrate: parseInt(e.target.value, 10) || 80 })}
-                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
-                      />
+                        onChange={v => setOptions({ ...options, plungeFeedrate: v })}
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                      integer
+                    />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 block">Spindle RPM</label>
-                      <input
-                        type="number"
+                      <NumberInput
                         value={options.spindleRpm}
-                        onChange={e => setOptions({ ...options, spindleRpm: parseInt(e.target.value, 10) || 12000 })}
-                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
-                      />
+                        onChange={v => setOptions({ ...options, spindleRpm: v })}
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                      integer
+                    />
                     </div>
                     <div>
                       <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
@@ -1743,14 +1727,13 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                           fatter.
                         </InfoTip>
                       </label>
-                      <input
-                        type="number"
+                      <NumberInput
                         step="0.01"
                         value={options.isolationDepthZ}
                         disabled={autoIsolationDepth}
-                        onChange={e => setOptions({ ...options, isolationDepthZ: parseFloat(e.target.value) || -0.08 })}
-                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 disabled:opacity-60"
-                      />
+                        onChange={v => setOptions({ ...options, isolationDepthZ: v })}
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                    />
                       <label className="flex items-center gap-1.5 mt-1 cursor-pointer text-[10px] text-slate-500 dark:text-slate-400">
                         <input
                           type="checkbox"
@@ -2108,14 +2091,12 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       <label className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1 block">
                         Touch plate thickness (mm)
                       </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0.1"
+                      <NumberInput
+                                                step={0.1}
+                        min={0.1}
                         value={touchPlateMm}
                         disabled={machineBusy}
-                        onChange={e => {
-                          const v = parseFloat(e.target.value) || DEFAULT_TOUCH_PLATE_MM;
+                        onChange={v => {
                           setTouchPlateMm(v);
                           localStorage.setItem('grblTouchPlateMm', String(v));
                         }}
@@ -2153,14 +2134,12 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                         <label className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1 block">
                           Retract / safe Z (mm)
                         </label>
-                        <input
-                          type="number"
-                          step="0.5"
-                          min="0.5"
+                        <NumberInput
+                          step={0.5}
+                          min={0.5}
                           value={options.safeZ}
                           disabled={machineBusy}
-                          onChange={e => {
-                            const v = parseFloat(e.target.value) || DEFAULT_SAFE_Z_MM;
+                          onChange={v => {
                             setOptions({ ...options, safeZ: v });
                             localStorage.setItem('grblSafeZMm', String(v));
                           }}
@@ -2171,17 +2150,15 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                         <label className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1 block">
                           Probe search depth (mm)
                         </label>
-                        <input
-                          type="number"
-                          step="0.5"
-                          min="0.5"
+                        <NumberInput
+                          step={0.5}
+                          min={0.5}
                           value={probeDepthMm}
                           disabled={machineBusy}
-                          onChange={e => {
-                            const v = parseFloat(e.target.value) || DEFAULT_PROBE_DEPTH_MM;
-                            setProbeDepthMm(v);
-                            localStorage.setItem('grblProbeDepthMm', String(v));
-                          }}
+                          onChange={v => {
+                          setProbeDepthMm(v);
+                          localStorage.setItem('grblProbeDepthMm', String(v));
+                        }}
                           className="w-full px-2 py-1.5 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-mono text-[11px] disabled:opacity-40"
                         />
                       </div>

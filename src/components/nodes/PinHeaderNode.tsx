@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
+import { NumberInput } from '../NumberInput';
 
 /**
  * A bare pin header of arbitrary rows x cols. It is a mechanical breakout
@@ -134,50 +135,48 @@ export function PinHeaderProperties({ node, updateData }: NodePropertiesProps) {
       <div className="mb-3 grid grid-cols-2 gap-2">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Rows</label>
-          <input
-            type="number"
+          <NumberInput
             min={PIN_HEADER_LIMITS.minRows}
             max={PIN_HEADER_LIMITS.maxRows}
             value={geom.rows}
-            onChange={e => updateData('rows', parseInt(e.target.value, 10) || 1)}
-            className={inputClass}
-          />
+            onChange={v => updateData('rows', v)}
+                      className={inputClass}
+                      integer
+                    />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Columns</label>
-          <input
-            type="number"
+          <NumberInput
             min={PIN_HEADER_LIMITS.minCols}
             max={PIN_HEADER_LIMITS.maxCols}
             value={geom.cols}
-            onChange={e => updateData('cols', parseInt(e.target.value, 10) || 1)}
-            className={inputClass}
-          />
+            onChange={v => updateData('cols', v)}
+                      className={inputClass}
+                      integer
+                    />
         </div>
       </div>
 
       <div className="mb-3 grid grid-cols-2 gap-2">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Pitch (mm)</label>
-          <input
-            type="number"
-            step="0.01"
-            min="0.5"
+          <NumberInput
+            step={0.01}
+            min={0.5}
             value={geom.pitchMm}
-            onChange={e => updateData('pitchMm', parseFloat(e.target.value) || 2.54)}
-            className={inputClass}
-          />
+            onChange={v => updateData('pitchMm', v)}
+                      className={inputClass}
+                    />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Row Spacing (mm)</label>
-          <input
-            type="number"
-            step="0.01"
-            min="0.5"
+          <NumberInput
+            step={0.01}
+            min={0.5}
             value={geom.rowSpacingMm}
-            onChange={e => updateData('rowSpacingMm', parseFloat(e.target.value) || 2.54)}
-            className={inputClass}
-          />
+            onChange={v => updateData('rowSpacingMm', v)}
+                      className={inputClass}
+                    />
         </div>
       </div>
 

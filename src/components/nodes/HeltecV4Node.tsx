@@ -3,6 +3,7 @@ import { Wifi, WifiOff, ExternalLink } from 'lucide-react';
 import { memo } from 'react';
 import type { NodePropertiesProps } from './registry';
 import { DEVICE_CARD_DARK } from './schematic';
+import { NumberInput } from '../NumberInput';
 
 export const HELTEC_V4_GPIO_PINS = ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41'];
 
@@ -119,14 +120,14 @@ export function HeltecV4Properties({ node, updateData, isSimulating }: NodePrope
 
             <div className="flex items-center justify-between text-xs">
               <span className="text-slate-600 dark:text-slate-400">Max Hit Limit</span>
-              <input
-                type="number"
+              <NumberInput
                 min={5}
                 max={500}
                 value={maxHits}
-                onChange={e => updateData('hilMaxConsecutiveHits', parseInt(e.target.value, 10) || 50)}
-                className="w-16 text-xs border border-gray-300 dark:border-slate-800 rounded px-1.5 py-0.5 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-right"
-              />
+                onChange={v => updateData('hilMaxConsecutiveHits', v)}
+                      className="w-16 text-xs border border-gray-300 dark:border-slate-800 rounded px-1.5 py-0.5 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-right"
+                      integer
+                    />
             </div>
 
             {stats && (

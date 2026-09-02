@@ -1,5 +1,6 @@
 import type { NodePropertiesProps } from './registry';
 import { LeadHandles, RotatedSymbol, leadBoxStyle, resolveOrientation } from './schematic';
+import { NumberInput } from '../NumberInput';
 
 /**
  * A wire jumper: two pads bridged by a hand-fitted wire after milling.
@@ -37,25 +38,23 @@ export function JumperProperties({ node, updateData }: NodePropertiesProps) {
       <div className="mb-3 grid grid-cols-2 gap-2">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Pitch (mm)</label>
-          <input
-            type="number"
-            step="0.01"
-            min="1"
+          <NumberInput
+            step={0.01}
+            min={1}
             value={pitch}
-            onChange={e => updateData('pitchMm', parseFloat(e.target.value) || 5.08)}
-            className={inputClass}
-          />
+            onChange={v => updateData('pitchMm', v)}
+                      className={inputClass}
+                    />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Drill (mm)</label>
-          <input
-            type="number"
-            step="0.1"
-            min="0.3"
+          <NumberInput
+            step={0.1}
+            min={0.3}
             value={drill}
-            onChange={e => updateData('drillDiameterMm', parseFloat(e.target.value) || 0.8)}
-            className={inputClass}
-          />
+            onChange={v => updateData('drillDiameterMm', v)}
+                      className={inputClass}
+                    />
         </div>
       </div>
       <p className="text-[11px] text-slate-500 dark:text-slate-400">

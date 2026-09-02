@@ -1,4 +1,5 @@
 import type { NodePropertiesProps } from './registry';
+import { NumberInput } from '../NumberInput';
 
 /**
  * A hole milled clean through the board — a slot for a connector to poke
@@ -67,26 +68,24 @@ export function CutoutProperties({ node, updateData }: NodePropertiesProps) {
           <label className="block text-xs font-medium text-gray-700 mb-1">
             {geom.shape === 'circle' ? 'Diameter (mm)' : 'Width (mm)'}
           </label>
-          <input
-            type="number"
-            step="0.5"
-            min="1"
+          <NumberInput
+            step={0.5}
+            min={1}
             value={geom.widthMm}
-            onChange={e => updateData('cutoutWidthMm', parseFloat(e.target.value) || 10)}
-            className={inputClass}
-          />
+            onChange={v => updateData('cutoutWidthMm', v)}
+                      className={inputClass}
+                    />
         </div>
         {geom.shape === 'rect' && (
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Height (mm)</label>
-            <input
-              type="number"
-              step="0.5"
-              min="1"
+            <NumberInput
+              step={0.5}
+              min={1}
               value={geom.heightMm}
-              onChange={e => updateData('cutoutHeightMm', parseFloat(e.target.value) || 6)}
-              className={inputClass}
-            />
+              onChange={v => updateData('cutoutHeightMm', v)}
+                      className={inputClass}
+                    />
           </div>
         )}
       </div>

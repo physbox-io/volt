@@ -3,6 +3,7 @@ import { useEffect, useRef, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
+import { NumberInput } from '../NumberInput';
 
 export function LEDProperties({ node, updateData, webcam }: NodePropertiesProps) {
   const { stream, videoRef, isRecordingWebcam, startRecordingWebcam } = webcam;
@@ -38,7 +39,10 @@ export function LEDProperties({ node, updateData, webcam }: NodePropertiesProps)
           <>
             <div className="mb-3">
               <label className="block text-xs font-medium text-gray-700 mb-1">Reverse Sensitivity (μA)</label>
-              <input type="number" min="0" step="1" value={node.data.lightSensitivity !== undefined ? node.data.lightSensitivity : 10} onChange={e => updateData('lightSensitivity', parseInt(e.target.value) || 0)} className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none" />
+              <NumberInput min={0} step={1} value={node.data.lightSensitivity !== undefined ? node.data.lightSensitivity : 10} onChange={v => updateData('lightSensitivity', v)}
+                      className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none"
+                      integer
+                    />
             </div>
 
             <div className="mb-3 flex items-center gap-2">

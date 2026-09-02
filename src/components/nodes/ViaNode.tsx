@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
+import { NumberInput } from '../NumberInput';
 
 /**
  * A plated through-hole. On a single-sided milled board this is the tie point
@@ -29,25 +30,23 @@ export function ViaProperties({ node, updateData }: NodePropertiesProps) {
       <div className="mb-3 grid grid-cols-2 gap-2">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Drill (mm)</label>
-          <input
-            type="number"
-            step="0.1"
-            min="0.2"
+          <NumberInput
+            step={0.1}
+            min={0.2}
             value={drill}
-            onChange={e => updateData('drillDiameterMm', parseFloat(e.target.value) || 0.6)}
-            className={inputClass}
-          />
+            onChange={v => updateData('drillDiameterMm', v)}
+                      className={inputClass}
+                    />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Pad (mm)</label>
-          <input
-            type="number"
-            step="0.1"
-            min="0.4"
+          <NumberInput
+            step={0.1}
+            min={0.4}
             value={pad}
-            onChange={e => updateData('padDiameterMm', parseFloat(e.target.value) || 1.2)}
-            className={inputClass}
-          />
+            onChange={v => updateData('padDiameterMm', v)}
+                      className={inputClass}
+                    />
         </div>
       </div>
       {pad < drill + 0.4 && (

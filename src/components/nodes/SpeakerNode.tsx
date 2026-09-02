@@ -2,6 +2,7 @@ import { Handle, Position } from '@xyflow/react';
 import { useEffect, useRef } from 'react';
 import type { NodePropertiesProps } from './registry';
 import { DEVICE_CARD, resolveOrientation } from './schematic';
+import { NumberInput } from '../NumberInput';
 
 
 export function SpeakerProperties({ node, updateData }: NodePropertiesProps) {
@@ -20,7 +21,9 @@ export function SpeakerProperties({ node, updateData }: NodePropertiesProps) {
       </div>
       <div className="mb-3">
         <label className="block text-xs font-medium text-gray-700 dark:text-slate-400 mb-1">Voltage Scale (V)</label>
-        <input type="number" step="1" min="0.1" value={(node.data.voltageScale as number) ?? 5} onChange={e => updateData('voltageScale', parseFloat(e.target.value) || 5)} className="w-full text-sm border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none" />
+        <NumberInput step={1} min={0.1} value={(node.data.voltageScale as number) ?? 5} onChange={v => updateData('voltageScale', v)}
+                      className="w-full text-sm border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none" 
+                    />
         <div className="text-[10px] text-gray-400 mt-1">Full-scale voltage (±V maps to ±1.0 audio)</div>
       </div>
       <div className="mb-2 flex items-center gap-2">

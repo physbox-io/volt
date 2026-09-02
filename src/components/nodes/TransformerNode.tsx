@@ -2,6 +2,7 @@ import { Handle, Position } from '@xyflow/react';
 import { sanitizeSpiceValue } from '../../utils/spice';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
+import { NumberInput } from '../NumberInput';
 
 export function transformerDefaultData() {
   return { label: 'Transformer', l_pri: '10m', l_sec: '10m', k: 0.99, l_pri_label: '10mH', l_sec_label: '10mH' };
@@ -36,15 +37,14 @@ export function TransformerProperties({ node, updateData }: NodePropertiesProps)
       </div>
       <div className="mb-3">
         <label className="block text-xs font-medium text-gray-700 mb-1">Coupling Coefficient (K)</label>
-        <input
-          type="number"
-          step="0.01"
-          min="0.01"
-          max="1.0"
+        <NumberInput
+          step={0.01}
+          min={0.01}
+          max={1.0}
           value={(node.data.k as number) ?? 0.99}
-          onChange={e => updateData('k', parseFloat(e.target.value) || 0.99)}
-          className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none"
-        />
+          onChange={v => updateData('k', v)}
+                      className="w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none"
+                    />
       </div>
     </>
   );

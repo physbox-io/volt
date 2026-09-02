@@ -12,6 +12,7 @@ import {
   type McuPinType,
 } from '../../utils/mcuConfig';
 import { Plus, Trash2, Cpu, Wrench } from 'lucide-react';
+import { NumberInput } from '../NumberInput';
 
 export function MicrocontrollerProperties({ node, updateData }: NodePropertiesProps) {
   const config = getEffectiveMcuConfig(node.data);
@@ -291,29 +292,27 @@ export function MicrocontrollerProperties({ node, updateData }: NodePropertiesPr
               <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-400 mb-0.5">
                 Width (mm)
               </label>
-              <input
-                type="number"
-                step="0.5"
-                min="3"
-                max="150"
+              <NumberInput
+                step={0.5}
+                min={3}
+                max={150}
                 value={config.widthMm}
-                onChange={e => setConfig({ ...config, widthMm: parseFloat(e.target.value) || 10, presetKey: 'custom' })}
-                className="w-full text-xs px-2 py-1 border border-gray-300 dark:border-slate-700 rounded bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-              />
+                onChange={v => setConfig({ ...config, widthMm: v, presetKey: 'custom' })}
+                      className="w-full text-xs px-2 py-1 border border-gray-300 dark:border-slate-700 rounded bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+                    />
             </div>
             <div>
               <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-400 mb-0.5">
                 Height (mm)
               </label>
-              <input
-                type="number"
-                step="0.5"
-                min="3"
-                max="200"
+              <NumberInput
+                step={0.5}
+                min={3}
+                max={200}
                 value={config.heightMm}
-                onChange={e => setConfig({ ...config, heightMm: parseFloat(e.target.value) || 12, presetKey: 'custom' })}
-                className="w-full text-xs px-2 py-1 border border-gray-300 dark:border-slate-700 rounded bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-              />
+                onChange={v => setConfig({ ...config, heightMm: v, presetKey: 'custom' })}
+                      className="w-full text-xs px-2 py-1 border border-gray-300 dark:border-slate-700 rounded bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+                    />
             </div>
           </div>
 

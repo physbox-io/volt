@@ -17,9 +17,10 @@ import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
 import { getEffectiveMcuConfig } from './utils/mcuConfig';
 import { buildNetlistResultIndex, findNetGraph } from './utils/netlistResult';
 import { isPortConnected } from './utils/graphTopology';
-import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight } from 'lucide-react';
+import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight, Wrench } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
 import { ExportPcbModal } from './components/ExportPcbModal';
+import { webSerialManager, type MachineState } from './utils/webSerialManager';
 import { playbackTicker } from './utils/playbackTicker';
 import { presets, DEFAULT_PRESET_KEY } from './utils/presets';
 import { EdgePathProvider } from './components/AuraEdge';
@@ -39,6 +40,7 @@ import { PropertiesPanel } from './components/PropertiesPanel';
 import { FlowArea } from './components/FlowArea';
 import { ProbeTooltip } from './components/ProbeTooltip';
 import { HILMemoizer } from './utils/hilMemoizer';
+import { NumberInput } from './components/NumberInput';
 
 
 
@@ -142,6 +144,16 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showAICopilot, setShowAICopilot] = useState(false);
   const [isPcbModalOpen, setIsPcbModalOpen] = useState(false);
+
+  /*
+   * Machine state for the bottom bar.
+   *
+   * Seeded from the manager rather than a literal, so a bar that mounts after a
+   * connection shows the real state instead of a disconnected one — the same
+   * arrangement Mesh and Etch use.
+   */
+  const [machineState, setMachineState] = useState<MachineState>(webSerialManager.getState());
+  useEffect(() => webSerialManager.addListener(setMachineState), []);
   const [showAura, setShowAura] = useState(savedSettings.showAura ?? false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
   // A palette entry tapped on a touch device, waiting for FlowArea to place it
@@ -1860,7 +1872,7 @@ export default function App() {
 
             {/* GitHub link */}
             <a
-              href="https://github.com/physbox-io/circuitsim"
+              href="https://github.com/physbox-io/volt"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs"
@@ -2089,32 +2101,62 @@ export default function App() {
             <span>·</span>
             <span>Wires: {edges.length}</span>
           </div>
+
+          <div className="w-px h-3 bg-slate-200 dark:bg-slate-800 max-lg:hidden" />
+
+          {/* The mill that cuts the board this schematic becomes. */}
+          <div className="flex items-center gap-2">
+            <div
+              className={`w-2 h-2 rounded-full ${
+                machineState.connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400 dark:bg-slate-600'
+              }`}
+            />
+            <span>Machine:</span>
+            <span
+              className={
+                machineState.connected
+                  ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                  : 'text-slate-400'
+              }
+            >
+              {machineState.status}
+            </span>
+            {/* Next to the status it acts on. A disconnected machine is the
+                moment someone wants this button. Volt keeps its machine setup
+                inside the PCB export modal, so that is what this opens. */}
+            <button
+              onClick={() => setIsPcbModalOpen(true)}
+              className="p-1 rounded text-amber-600 dark:text-amber-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              title="Connect the machine, home it, and set the work origin"
+            >
+              <Wrench className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Right: Simulation Parameters (Duration & Resolution) */}
         <div className="flex items-center gap-3 max-lg:shrink-0">
           {/* Duration Block */}
           <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 ${nodes.some(n => n.type === 'heltec_v4') ? 'opacity-50 cursor-not-allowed' : ''}`}>
-            <label htmlFor="bottom-duration" className="text-slate-500 dark:text-slate-400 font-semibold">
+            <label htmlFor="bottom-duration" className="text-slate-500 dark:text-slate-400 font-semibold leading-none">
               Duration:
             </label>
-            <input
+            <NumberInput
               id="bottom-duration"
-              type="number"
-              min="0.1"
-              step="0.1"
+              min={0.1}
+              step={0.1}
               value={nodes.some(n => n.type === 'heltec_v4') ? 0.05 : simLength}
               disabled={nodes.some(n => n.type === 'heltec_v4')}
-              onChange={e => setSimLength(parseFloat(e.target.value) || 1.0)}
-              className={`w-12 text-xs border-none bg-transparent focus:ring-0 text-right font-medium text-slate-900 dark:text-slate-100 p-0 ${nodes.some(n => n.type === 'heltec_v4') ? 'cursor-not-allowed' : ''}`}
+              onChange={v => setSimLength(v)}
+                      className={`w-12 text-[11px] leading-none border-none bg-transparent focus:ring-0 text-right font-medium text-slate-900 dark:text-slate-100 p-0 ${nodes.some(n => n.type === 'heltec_v4') ? 'cursor-not-allowed' : ''}`}
               title={nodes.some(n => n.type === 'heltec_v4') ? "Locked to 50ms transient slices in Hardware-in-the-Loop mode." : "Simulation duration in seconds"}
-            />
-            <span className="text-slate-500 dark:text-slate-400">{nodes.some(n => n.type === 'heltec_v4') ? 's (HIL)' : 's'}</span>
+                    />
+            <span className="text-slate-500 dark:text-slate-400 leading-none">{nodes.some(n => n.type === 'heltec_v4') ? 's (HIL)' : 's'}</span>
           </div>
 
           {/* Resolution Block */}
           <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 ${nodes.some(n => n.type === 'heltec_v4') ? 'opacity-50 cursor-not-allowed' : ''}`}>
-            <label htmlFor="bottom-res" className="text-slate-500 dark:text-slate-400 font-semibold">
+            <label htmlFor="bottom-res" className="text-slate-500 dark:text-slate-400 font-semibold leading-none">
               Res:
             </label>
             <select
@@ -2122,7 +2164,7 @@ export default function App() {
               value={simResolution}
               disabled={nodes.some(n => n.type === 'heltec_v4')}
               onChange={e => setSimResolution(e.target.value as 'normal' | 'high')}
-              className={`bg-transparent border-none text-slate-900 dark:text-slate-100 text-xs focus:ring-0 font-medium cursor-pointer p-0 ${nodes.some(n => n.type === 'heltec_v4') ? 'cursor-not-allowed' : ''}`}
+              className={`bg-transparent border-none text-slate-900 dark:text-slate-100 text-[11px] leading-none focus:ring-0 font-medium cursor-pointer p-0 ${nodes.some(n => n.type === 'heltec_v4') ? 'cursor-not-allowed' : ''}`}
               title={nodes.some(n => n.type === 'heltec_v4') ? "Locked in Hardware-in-the-Loop mode." : "Solver timestep resolution"}
             >
               <option value="normal" className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300">Normal</option>
