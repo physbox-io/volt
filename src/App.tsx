@@ -2102,8 +2102,11 @@ export default function App() {
             <span>Wires: {edges.length}</span>
           </div>
 
-          <div className="w-px h-3 bg-slate-200 dark:bg-slate-800 max-lg:hidden" />
 
+        </div>
+
+        {/* Right: Simulation Parameters (Duration & Resolution) */}
+        <div className="flex items-center gap-3 max-lg:shrink-0">
           {/* The mill that cuts the board this schematic becomes. */}
           <div className="flex items-center gap-2">
             <div
@@ -2132,10 +2135,9 @@ export default function App() {
               <Wrench className="w-3.5 h-3.5" />
             </button>
           </div>
-        </div>
 
-        {/* Right: Simulation Parameters (Duration & Resolution) */}
-        <div className="flex items-center gap-3 max-lg:shrink-0">
+          <div className="w-px h-3 bg-slate-200 dark:bg-slate-800 max-lg:hidden" />
+
           {/* Duration Block */}
           <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 ${nodes.some(n => n.type === 'heltec_v4') ? 'opacity-50 cursor-not-allowed' : ''}`}>
             <label htmlFor="bottom-duration" className="text-slate-500 dark:text-slate-400 font-semibold leading-none">

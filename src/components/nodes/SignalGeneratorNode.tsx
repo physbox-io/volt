@@ -59,8 +59,10 @@ export function SignalGeneratorNode({ id, data }: any) {
   const { isVertical } = resolveOrientation(data.orientation);
   const { setNodes } = useReactFlow();
   const type = data.waveform || 'sine';
-  const freq = data.frequency || 1;
-  const amp = data.amplitude || 5;
+  // `??`, not `||`: 0V and 0Hz are values someone can scrub to, and `||` sent
+  // the field springing back to the default the moment it reached zero.
+  const freq = data.frequency ?? 1;
+  const amp = data.amplitude ?? 5;
 
   const update = useCallback((patch: Record<string, any>) => {
     setNodes((nds: any[]) => nds.map(n => n.id === id ? { ...n, data: { ...n.data, ...patch } } : n));

@@ -7,11 +7,11 @@ export function ACVoltageProperties({ node, updateData }: NodePropertiesProps) {
     <>
       <div className="mb-3">
         <label className="block text-xs font-medium text-gray-700 mb-1">Amplitude (V)</label>
-        <input type="number" step="1" value={(node.data.amplitude as number) || 10} onChange={e => { updateData('amplitude', parseFloat(e.target.value)); updateData('label', `${e.target.value}V ${node.data.frequency || 60}Hz`); }} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+        <input type="number" step="1" value={(node.data.amplitude as number) ?? 10} onChange={e => { updateData('amplitude', parseFloat(e.target.value)); updateData('label', `${e.target.value}V ${node.data.frequency ?? 60}Hz`); }} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
       </div>
       <div className="mb-3">
         <label className="block text-xs font-medium text-gray-700 mb-1">Frequency (Hz)</label>
-        <input type="number" step="1" value={(node.data.frequency as number) || 60} onChange={e => { updateData('frequency', parseFloat(e.target.value)); updateData('label', `${node.data.amplitude || 10}V ${e.target.value}Hz`); }} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+        <input type="number" step="1" value={(node.data.frequency as number) ?? 60} onChange={e => { updateData('frequency', parseFloat(e.target.value)); updateData('label', `${node.data.amplitude ?? 10}V ${e.target.value}Hz`); }} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
       </div>
     </>
   );

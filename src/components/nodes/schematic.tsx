@@ -119,13 +119,20 @@ export function DeviceField({
    *
    * Shift and Alt are the usual fine/coarse modifiers.
    */
-  const drag = useRef<{ x: number; t: number; acc: number; boost: number; moved: number } | null>(null);
+  /*
+   * `cur` is the value being dragged, held here rather than read back from the
+   * prop on each move. Pointer events arrive faster than React commits, so
+   * consecutive moves would otherwise all compute from the same stale value and
+   * every increment but the last would be thrown away — which is what made a
+   * scrub stutter and lag behind the mouse.
+   */
+  const drag = useRef<{ x: number; t: number; cur: number; boost: number; moved: number } | null>(null);
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (editing) return;               // typing wins over scrubbing
     if (e.button !== 0) return;
     e.stopPropagation();
-    drag.current = { x: e.clientX, t: e.timeStamp, acc: 0, boost: 1, moved: 0 };
+    drag.current = { x: e.clientX, t: e.timeStamp, cur: value, boost: 1, moved: 0 };
     (e.target as Element).setPointerCapture(e.pointerId);
   };
 
@@ -145,11 +152,11 @@ export function DeviceField({
 
     const mod = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
     // A step every 4px at rest, accelerating with the sweep.
-    d.acc += (dx / 4) * step * d.boost * mod;
-    const whole = Math.round(d.acc / step) * step;
-    if (whole === 0) return;
-    d.acc -= whole;
-    const next = clamp(Number((value + whole).toFixed(places + 2)));
+    const raw = d.cur + (dx / 4) * step * d.boost * mod;
+    // Snapped to the step, so the number reads as a setting and not as float
+    // noise, while `cur` keeps the unsnapped position so slow drags still creep.
+    d.cur = clamp(raw);
+    const next = clamp(Number((Math.round(d.cur / step) * step).toFixed(places + 2)));
     if (next !== value) onCommit(next);
   };
 
@@ -254,21 +261,22 @@ export function EngField({
     setText(value);
   }
 
-  const drag = useRef<{ x: number; t: number; boost: number; moved: number } | null>(null);
+  // `cur` carries the dragged value between moves; see DeviceField above for
+  // why reading it back from the prop drops increments.
+  const drag = useRef<{ x: number; t: number; cur: number; boost: number; moved: number } | null>(null);
   const numeric = parseEngValue(value);
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (editing || e.button !== 0 || numeric === null) return;
     e.stopPropagation();
-    drag.current = { x: e.clientX, t: e.timeStamp, boost: 1, moved: 0 };
+    drag.current = { x: e.clientX, t: e.timeStamp, cur: numeric, boost: 1, moved: 0 };
     (e.target as Element).setPointerCapture(e.pointerId);
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
     const d = drag.current;
     if (!d) return;
-    const current = parseEngValue(value);
-    if (current === null || current === 0) return;
+    if (!Number.isFinite(d.cur) || d.cur === 0) return;
     const dx = e.clientX - d.x;
     const dt = Math.max(1, e.timeStamp - d.t);
     d.x = e.clientX;
@@ -280,10 +288,9 @@ export function EngField({
     d.boost = d.boost * 0.7 + (1 + Math.min(speed * 8, 25)) * 0.3;
     const mod = e.shiftKey ? 4 : e.altKey ? 0.25 : 1;
     // ~0.8% per pixel at rest: a decade is a comfortable sweep, not a marathon.
-    const factor = Math.pow(1.008, dx * d.boost * mod);
-    const next = current * factor;
-    if (!Number.isFinite(next) || next <= 0) return;
-    const written = formatEngValue(next);
+    d.cur *= Math.pow(1.008, dx * d.boost * mod);
+    if (!Number.isFinite(d.cur) || d.cur <= 0) return;
+    const written = formatEngValue(d.cur);
     if (written !== value) onCommit(written);
   };
 
