@@ -180,6 +180,23 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   useEffect(() => {
     saveMachiningSettings(rawOptions);
   }, [rawOptions]);
+
+  /*
+   * Pick the machine back up when this panel opens.
+   *
+   * Only for a Tekno Box, and only one attempt — a cloud link reconnects with
+   * nobody present, where USB needs a port prompt that must never be raised
+   * unprompted. Silent on failure: the box may simply be asleep.
+   */
+  useEffect(() => {
+    const savedMode = localStorage.getItem('grblTransport');
+    const savedDevice = localStorage.getItem('grblCloudDeviceId');
+    if (savedMode !== 'wifi' || !savedDevice) return;
+    if (webSerialManager.getState().connected) return;
+    webSerialManager.setTransport('wifi', savedDevice);
+    void webSerialManager.connect().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [activeTab, setActiveTab] = useState<'layout' | 'cam' | 'serial'>('layout');
   const [serialState, setSerialState] = useState(webSerialManager.getState());
   /**
