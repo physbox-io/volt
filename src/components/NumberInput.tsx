@@ -59,9 +59,15 @@ export function NumberInput({
 
   // Follow the value while the box is not being typed into, so a change made
   // elsewhere (the max S-value clamping the power, say) still shows up.
-  if (!editing && value !== seen) {
+  /*
+   * `Object.is`, not `!==`. A NaN — which is what an unguarded `parseFloat` on
+   * a cleared box stores — is never equal to itself, so this condition stayed
+   * true on every render and the update below looped until React gave up with
+   * "Too many re-renders", taking the app with it.
+   */
+  if (!editing && !Object.is(value, seen)) {
     setSeen(value);
-    setText(value === null ? '' : String(value));
+    setText(value === null || !Number.isFinite(value) ? '' : String(value));
   }
 
   const parse = (raw: string): number | null => {

@@ -1,12 +1,17 @@
 import { Handle, Position } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
+import { NumberInput } from '../NumberInput';
 
 export function DiodeProperties({ node, updateData }: NodePropertiesProps) {
   return (
     <div className="mb-3">
       <label className="block text-xs font-medium text-gray-700 mb-1">Forward Voltage Drop (V)</label>
-      <input type="number" step="0.1" value={(node.data.v_drop as number) || 0.7} onChange={e => updateData('v_drop', parseFloat(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+      <NumberInput step={0.1}
+          value={Number.isFinite(node.data.v_drop as number) ? (node.data.v_drop as number) : 0.7}
+          onChange={v => updateData('v_drop', v)}
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+        />
       <div className="text-[10px] text-gray-400 mt-1">Silicon: 0.7V, Germanium: 0.3V</div>
     </div>
   );

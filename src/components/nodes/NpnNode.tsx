@@ -1,13 +1,18 @@
 import { Handle, Position } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
+import { NumberInput } from '../NumberInput';
 
 /** Shared by NpnNode and PnpNode — both BJT types expose the same single "current gain" property. */
 export function BJTProperties({ node, updateData }: NodePropertiesProps) {
   return (
     <div className="mb-3">
       <label className="block text-xs font-medium text-gray-700 mb-1">Current Gain (BF)</label>
-      <input type="number" value={(node.data.bf as number) || 300} onChange={e => updateData('bf', parseInt(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+      <NumberInput
+          value={Number.isFinite(node.data.bf as number) ? (node.data.bf as number) : 300}
+          onChange={v => updateData('bf', v)}
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+        />
     </div>
   );
 }

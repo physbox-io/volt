@@ -4,18 +4,35 @@ import { computeFFT } from '../../utils/fft';
 import { detectPeriod } from '../../utils/periodDetect';
 import type { NodePropertiesProps } from './registry';
 import { DEVICE_CARD_DARK } from './schematic';
+import { NumberInput } from '../NumberInput';
 
 export function ScopeProperties({ node, updateData }: NodePropertiesProps) {
   return (
     <>
       <div className="mb-3">
         <label className="block text-xs font-medium text-gray-700 mb-1">V/div</label>
-        <input type="number" step="0.1" min="0.01" value={(node.data.vDiv as number) ?? ''} onChange={e => updateData('vDiv', e.target.value ? parseFloat(e.target.value) : undefined)} placeholder="Auto" className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+        <NumberInput
+          allowEmpty
+          step={0.1}
+          min={0.01}
+          value={Number.isFinite(node.data.vDiv as number) ? (node.data.vDiv as number) : null}
+          onChange={v => updateData('vDiv', v ?? undefined)}
+          placeholder="Auto"
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+        />
         <div className="text-[10px] text-gray-400 mt-0.5">Leave empty for auto-detect</div>
       </div>
       <div className="mb-3">
         <label className="block text-xs font-medium text-gray-700 mb-1">Time/div (ms)</label>
-        <input type="number" step="0.1" min="0.001" value={(node.data.tDiv as number) ?? ''} onChange={e => updateData('tDiv', e.target.value ? parseFloat(e.target.value) : undefined)} placeholder="Auto" className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+        <NumberInput
+          allowEmpty
+          step={0.1}
+          min={0.001}
+          value={Number.isFinite(node.data.tDiv as number) ? (node.data.tDiv as number) : null}
+          onChange={v => updateData('tDiv', v ?? undefined)}
+          placeholder="Auto"
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+        />
         <div className="text-[10px] text-gray-400 mt-0.5">Leave empty for auto-detect</div>
       </div>
       <div className="mb-3 flex items-center gap-2">

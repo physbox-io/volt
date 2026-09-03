@@ -15,11 +15,19 @@ export function LEDProperties({ node, updateData, webcam }: NodePropertiesProps)
       </div>
       <div className="mb-3">
         <label className="block text-xs font-medium text-gray-700 mb-1">Forward Voltage Drop (V)</label>
-        <input type="number" step="0.1" value={(node.data.v_drop as number) || 2.0} onChange={e => updateData('v_drop', parseFloat(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+        <NumberInput step={0.1}
+          value={Number.isFinite(node.data.v_drop as number) ? (node.data.v_drop as number) : 2.0}
+          onChange={v => updateData('v_drop', v)}
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+        />
       </div>
       <div className="mb-3">
         <label className="block text-xs font-medium text-gray-700 mb-1">Max Current (mA)</label>
-        <input type="number" value={(node.data.max_current as number) || 20} onChange={e => updateData('max_current', parseInt(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+        <NumberInput
+          value={Number.isFinite(node.data.max_current as number) ? (node.data.max_current as number) : 20}
+          onChange={v => updateData('max_current', v)}
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+        />
       </div>
 
       <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800">

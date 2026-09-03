@@ -18,7 +18,11 @@ export function SignalGeneratorProperties({ node, updateData, simLength }: NodeP
       {node.data.waveform === 'square' && (
         <div className="mb-3">
           <label className="block text-xs font-medium text-gray-700 mb-1">Duty Cycle (%)</label>
-          <input type="number" min="1" max="99" value={(node.data.dutyCycle as number) || 50} onChange={e => updateData('dutyCycle', parseInt(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+          <NumberInput min={1} max={99}
+          value={Number.isFinite(node.data.dutyCycle as number) ? (node.data.dutyCycle as number) : 50}
+          onChange={v => updateData('dutyCycle', v)}
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+        />
         </div>
       )}
       <div className="mb-3">
