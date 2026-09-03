@@ -292,6 +292,82 @@ function squareOffDiagonals(points: Point[], sourcePosition: string): Point[] {
   return out;
 }
 
+/**
+ * Guarantee a path starts on its source pin and ends on its target pin.
+ *
+ * The schematic router has several branches — A* with obstacles, a smooth-step
+ * fallback, a waypoint path for wires that have been dragged — and a pin that
+ * sits a pixel or two off the grid the route was planned on can leave the last
+ * segment finishing beside the pin rather than on it. Moving the part far
+ * enough changes the remainder and the wire connects again, which is exactly
+ * how the fault presented: nudge a symbol one snap step and its wire ends a few
+ * pixels short of the lead it is drawn to.
+ *
+ * Rather than tune each branch, the path is corrected where it leaves them.
+ * A missing terminal is added as a corner plus a final run along the pin's own
+ * normal, so the wire still arrives perpendicular and stays orthogonal.
+ */
+export function ensureTerminals(
+  path: string,
+  sourceX: number,
+  sourceY: number,
+  sourcePosition: string,
+  targetX: number,
+  targetY: number,
+  targetPosition: string,
+): string {
+  const nums = (path.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+  if (nums.length < 4) return path;
+  const pts: Point[] = [];
+  for (let i = 0; i + 1 < nums.length; i += 2) pts.push({ x: nums[i], y: nums[i + 1] });
+
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.01;
+  const onPin = (p: Point, x: number, y: number) => near(p.x, x) && near(p.y, y);
+  const vertical = (pos: string) => pos === 'top' || pos === 'bottom';
+
+  /** How far to back off a pin when a jog has to be made right at it. */
+  const STUB = 8;
+  const away = (pos: string) => (pos === 'left' || pos === 'top' ? -1 : 1);
+
+  // Target end: the last run must arrive along the pin's own normal. When the
+  // path already sits at the pin's own coordinate on that axis there is no room
+  // to turn, so it backs off by a stub first and steps across there.
+  const last = pts[pts.length - 1];
+  if (!onPin(last, targetX, targetY)) {
+    if (vertical(targetPosition)) {
+      if (!near(last.x, targetX)) {
+        const y = near(last.y, targetY) ? targetY + away(targetPosition) * STUB : last.y;
+        if (!near(y, last.y)) pts.push({ x: last.x, y });
+        pts.push({ x: targetX, y });
+      }
+    } else if (!near(last.y, targetY)) {
+      const x = near(last.x, targetX) ? targetX + away(targetPosition) * STUB : last.x;
+      if (!near(x, last.x)) pts.push({ x, y: last.y });
+      pts.push({ x, y: targetY });
+    }
+    pts.push({ x: targetX, y: targetY });
+  }
+
+  // Source end, mirrored: leave the pin along its normal before turning.
+  const first = pts[0];
+  if (!onPin(first, sourceX, sourceY)) {
+    const lead: Point[] = [{ x: sourceX, y: sourceY }];
+    if (vertical(sourcePosition)) {
+      if (!near(first.x, sourceX)) {
+        const y = near(first.y, sourceY) ? sourceY + away(sourcePosition) * STUB : first.y;
+        lead.push({ x: sourceX, y }, { x: first.x, y });
+      }
+    } else if (!near(first.y, sourceY)) {
+      const x = near(first.x, sourceX) ? sourceX + away(sourcePosition) * STUB : first.x;
+      lead.push({ x, y: sourceY }, { x, y: first.y });
+    }
+    pts.unshift(...lead);
+  }
+
+  const clean = simplifyCollinear(pts);
+  return clean.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
+}
+
 export function routeOrthogonal({
   sourceX,
   sourceY,
@@ -1182,7 +1258,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
   const context = useContext(EdgePathContext);
   const { registerPath, unregisterPath } = context || {};
 
-  const edgePath = useMemo(() => {
+  const rawEdgePath = useMemo(() => {
     const direct = getSchematicPath({
       sourceX,
       sourceY,
@@ -1229,6 +1305,15 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     sourceOffset, sourceIndex, targetIndex, allNodes, source, target, id, allEdges,
     context?.paths,
   ]);
+
+  /*
+   * Whatever branch produced the route, the wire has to begin and end on the
+   * pins it connects. See `ensureTerminals`.
+   */
+  const edgePath = useMemo(
+    () => ensureTerminals(rawEdgePath, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition),
+    [rawEdgePath, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition],
+  );
 
 
   const [current, setCurrent] = useState(0);
