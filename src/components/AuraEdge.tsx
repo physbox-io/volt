@@ -805,15 +805,34 @@ export function getSchematicPath({
     if (srcJunction) sp = { x: srcJunction.position.x, y: srcJunction.position.y };
     if (tgtJunction) tp = { x: tgtJunction.position.x, y: tgtJunction.position.y };
 
+    /*
+     * A clear shot between two pins that are on, or nearly on, the same axis.
+     *
+     * "Nearly" is the snap grid: a part nudged one step leaves its pin up to
+     * AXIS_EPS off its neighbour's on the cross axis. This used to draw the run
+     * at the *source's* coordinate and stop at the target's — `{x: tp.x, y:
+     * sp.y}` — so the wire finished up to 4px beside the pin it was drawn to,
+     * and moving the part further made it connect again because the shortcut
+     * stopped applying. Both ends must land on their own pin, so the remainder
+     * is taken as a step at the midpoint, which keeps the wire orthogonal and
+     * puts the offset in open space rather than against a symbol.
+     */
     const AXIS_EPS = 4;
-    const straight =
-      Math.abs(sp.y - tp.y) <= AXIS_EPS && Math.abs(sp.x - tp.x) > 8
-        ? { x: tp.x, y: sp.y }
-        : Math.abs(sp.x - tp.x) <= AXIS_EPS && Math.abs(sp.y - tp.y) > 8
-          ? { x: sp.x, y: tp.y }
-          : null;
-    if (straight && !segmentIntersectsObstacle(sp, straight, spanObstacles)) {
-      return `M ${sp.x} ${sp.y} L ${straight.x} ${straight.y}`;
+    const dy = Math.abs(sp.y - tp.y);
+    const dx = Math.abs(sp.x - tp.x);
+    const horizontalShot = dy <= AXIS_EPS && dx > 8;
+    const verticalShot = dx <= AXIS_EPS && dy > 8;
+    if ((horizontalShot || verticalShot) && !segmentIntersectsObstacle(sp, tp, spanObstacles)) {
+      const onAxis = horizontalShot ? dy < 0.01 : dx < 0.01;
+      if (onAxis) {
+        return `M ${sp.x} ${sp.y} L ${tp.x} ${tp.y}`;
+      }
+      if (horizontalShot) {
+        const mx = (sp.x + tp.x) / 2;
+        return `M ${sp.x} ${sp.y} L ${mx} ${sp.y} L ${mx} ${tp.y} L ${tp.x} ${tp.y}`;
+      }
+      const my = (sp.y + tp.y) / 2;
+      return `M ${sp.x} ${sp.y} L ${sp.x} ${my} L ${tp.x} ${my} L ${tp.x} ${tp.y}`;
     }
 
     // Same own-node treatment as the straight-shot case above: the two nodes
