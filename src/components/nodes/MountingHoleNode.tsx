@@ -95,7 +95,7 @@ export function MountingHoleProperties({ node, updateData }: NodePropertiesProps
 export function MountingHoleNode({ data }: { data?: any }) {
   const label = data?.screwSize && data.screwSize !== 'custom' ? data.screwSize : '';
   return (
-    <div className="schematic-node relative w-[22px] h-[22px] flex items-center justify-center">
+    <div className="schematic-node relative w-[24px] h-[24px] flex items-center justify-center">
       <svg width="22" height="22" viewBox="0 0 22 22" style={{ overflow: 'visible' }}>
         <circle
           cx="11"

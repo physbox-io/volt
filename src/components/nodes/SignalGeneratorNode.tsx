@@ -91,8 +91,16 @@ export function SignalGeneratorNode({ id, data }: any) {
     setNodes((nds: any[]) => nds.map(n => n.id === id ? { ...n, data: { ...n.data, ...patch } } : n));
   }, [id, setNodes]);
 
+  /*
+   * The card's height is fixed at a multiple of 8 so the side pin, which sits
+   * at its vertical centre, lands on the 4px snap grid. At its natural 58px the
+   * pin sat 29px down, and 29 is not a multiple of 4 — so the offset between
+   * this pin and a resistor's could never be closed by dragging, however
+   * carefully, and every wire between them stayed 1-3px out of true.
+   * `justify-center` keeps the contents centred in the slightly taller box.
+   */
   return (
-    <div className={`${DEVICE_CARD} px-1.5 py-1 w-[88px] flex flex-col items-center gap-1 relative`}>
+    <div className={`${DEVICE_CARD} px-1.5 py-1 w-[88px] h-[64px] flex flex-col items-center justify-center gap-1 relative`}>
       <div className={DEVICE_TITLE}>Sig Gen</div>
 
       {/* The waveform is the component's identity, and doubles as its toggle. */}

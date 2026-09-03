@@ -24,8 +24,8 @@ export const basicBlink: CircuitPreset = {
   recommendedSimLength: 1.0,
   nodes: [
     { id: 'sg1', type: 'signalgen', position: { x: 120, y: 136 }, data: { label: 'SIGNALGEN', waveform: 'square', frequency: 1, amplitude: 5 } },
-    { id: 'r1', type: 'resistor', position: { x: 350, y: 153 }, data: { label: '330Ω' } },
-    { id: 'led1', type: 'led', position: { x: 500, y: 165 }, data: { label: 'LED', color: 'red', v_drop: 2.0, max_current: 20, orientation: 'vertical' } },
+    { id: 'r1', type: 'resistor', position: { x: 350, y: 156 }, data: { label: '330Ω' } },
+    { id: 'led1', type: 'led', position: { x: 500, y: 168 }, data: { label: 'LED', color: 'red', v_drop: 2.0, max_current: 20, orientation: 'vertical' } },
     { id: 'g1', type: 'ground', position: { x: 504, y: 260 }, data: { label: 'GND' } },
     { id: 'g2', type: 'ground', position: { x: 152, y: 260 }, data: { label: 'GND' } },
   ],
@@ -383,7 +383,7 @@ export const mcuCleanAudioSampler: CircuitPreset = {
   nodes: [
     // Signal generation (2V amplitude so it swings 0.5V to 4.5V when biased at 2.5V)
     { id: 'sg1', type: 'signalgen', position: { x: 50, y: 300 }, data: { label: '440Hz Sine', waveform: 'sine', frequency: 440, amplitude: 2 } },
-    { id: 'cin', type: 'capacitor', position: { x: 200, y: 317 }, data: { label: '10µF AC Couple', capacitance: 10e-6 } },
+    { id: 'cin', type: 'capacitor', position: { x: 200, y: 320 }, data: { label: '10µF AC Couple', capacitance: 10e-6 } },
     
     // DC Bias network
     { id: 'v1', type: 'voltage', position: { x: 352, y: 50 }, data: { label: '5V' } },
@@ -974,13 +974,13 @@ export const voltageComparator: CircuitPreset = {
   recommendedSimLength: 1.0,
   nodes: [
     { id: 'v1', type: 'voltage', position: { x: 250, y: 210 }, data: {'label': '5V', 'voltage': 5, 'orientation': 'vertical'} },
-    { id: 'pot1', type: 'potentiometer', position: { x: 400, y: 210 }, data: {'label': '10k', 'position': 60, 'orientation': 'vertical'} },
+    { id: 'pot1', type: 'potentiometer', position: { x: 400, y: 208 }, data: {'label': '10k', 'position': 60, 'orientation': 'vertical'} },
     { id: 'mm1', type: 'multimeter', position: { x: 330, y: 400 }, data: {'label': 'Vin', 'orientation': 'horizontal'} },
     { id: 'rtop', type: 'resistor', position: { x: 560, y: 140 }, data: {'label': '2.9k', 'orientation': 'vertical'} },
     { id: 'rbot', type: 'resistor', position: { x: 560, y: 290 }, data: {'label': '2.1k', 'orientation': 'vertical'} },
     { id: 'op1', type: 'opamp', position: { x: 700, y: 200 }, data: {'label': 'Comparator', 'orientation': 'horizontal'} },
-    { id: 'r3', type: 'resistor', position: { x: 860, y: 220 }, data: {'label': '330', 'orientation': 'horizontal'} },
-    { id: 'led1', type: 'led', position: { x: 980, y: 220 }, data: {'label': 'Red LED', 'color': 'red', 'v_drop': 2, 'max_current': 20, 'orientation': 'horizontal'} },
+    { id: 'r3', type: 'resistor', position: { x: 860, y: 228 }, data: {'label': '330', 'orientation': 'horizontal'} },
+    { id: 'led1', type: 'led', position: { x: 980, y: 224 }, data: {'label': 'Red LED', 'color': 'red', 'v_drop': 2, 'max_current': 20, 'orientation': 'horizontal'} },
     { id: 'gnd1', type: 'ground', position: { x: 570, y: 470 }, data: {'label': 'GND', 'orientation': 'horizontal'} },
   ],
   edges: [
