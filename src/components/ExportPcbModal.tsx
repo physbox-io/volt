@@ -1261,14 +1261,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
                       Copper Flood (mm)
                       <InfoTip>
-                        How far copper is allowed to spread outward past the routed trace, per
-                        side. Everything the bit does not cut stays copper anyway, so a gap wider
-                        than the bit's own channel is copper thrown away for nothing: flooding
-                        grows each net back out until it is one channel width from its neighbour.
-                        Traces in open laminate take the whole figure; traces squeezed between
-                        pads keep only what the channel leaves. Fat copper couples more strongly
-                        to its neighbours, so keep this small on RF or oscillator boards. 0 mills
-                        the nominal trace width and nothing more.
+                        Expands traces outward into unrouted copper to minimize milling time and
+                        tool wear. Turn down on high-frequency RF boards.
                       </InfoTip>
                     </label>
                     <NumberInput
@@ -1302,11 +1296,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
                       Pad Margin (mm)
                       <InfoTip>
-                        Extra copper grown around every pad, per side. Footprint pads are sized for
-                        a factory process and come out small on a milled board; a bigger annulus is
-                        easier to solder by hand and tolerates a drill that wanders. The router
-                        keeps clear of the grown copper, so a large value on a dense board can
-                        leave nets unroutable.
+                        Adds extra copper around pads for easier hand soldering and drill
+                        alignment tolerance.
                       </InfoTip>
                     </label>
                     <NumberInput
@@ -1719,12 +1710,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
                         Isolation Depth (mm)
                         <InfoTip>
-                          A V-bit gets wider the deeper it goes, so this number decides the
-                          channel width and therefore how much copper is left either side of it.
-                          Auto cuts just past the copper: foil thickness from the material
-                          preset, plus the room the board's flatness demands. Probe a height map
-                          and that allowance drops, the channel narrows, and the traces come out
-                          fatter.
+                          Sets cut depth based on copper foil thickness and probed board flatness.
                         </InfoTip>
                       </label>
                       <NumberInput
@@ -2199,14 +2185,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       <span className="flex items-center gap-1">
                         Solder paste stencil
                         <InfoTip>
-                          Three routes to the same part. <strong>Print</strong> it as a
-                          0.2mm sheet — simplest, but printed apertures close up below about
-                          0.5mm, so it stops at roughly SOIC/1.27mm pitch.{' '}
-                          <strong>Laser</strong> it in Etch — a ~0.1mm beam holds about 0.65mm
-                          pitch. Or print the <strong>shim</strong> and cut that: one layer of
-                          black filament is thin opaque stock any machine will take, which a blue
-                          diode in particular needs. Never cut vinyl/PVC film on any machine, and
-                          use ducted extraction. Docs → PCB Milling has the per-machine list.
+                          Export as a 3D-printable 0.2mm STL stencil, send vector geometry to
+                          Etch for laser cutting, or export a single-layer shim for cutting.
                         </InfoTip>
                       </span>
                     </div>

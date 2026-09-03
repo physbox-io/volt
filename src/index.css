@@ -342,16 +342,25 @@ aside.glass-panel h3:hover {
   opacity: 1 !important;
 }
 
-/* Position handle centers exactly on the inline-style coordinates */
-.react-flow__handle-top,
-.react-flow__handle-bottom,
-.react-flow__handle-left,
-.react-flow__handle-right {
-  transform: translate(-50%, -50%) !important;
-}
+/*
+  Handle positioning is React Flow's own job, and it already centres a pin on
+  the edge it belongs to: each side gets its own transform — the bottom is
+  `translate(-50%, 50%)`, the right `translate(50%, -50%)`, and so on.
+
+  There used to be one rule here forcing `translate(-50%, -50%)` on all four
+  sides. A single transform cannot be correct for four different edges: on the
+  bottom it shifted the pin up by its own height instead of down, so the pin —
+  and every wire that starts at it — sat a handle's height *inside* the node.
+  On the big instrument cards that is a wire emerging through the middle of the
+  part instead of meeting it at the border.
+
+  Growing a pin on hover does not need the transform at all: `scale` is its own
+  property and composes with whatever React Flow set, so the pin grows about
+  its correct centre rather than jumping to a new one.
+*/
 .react-flow__node:hover .react-flow__handle,
 .react-flow__connection-connecting .react-flow__handle {
-  transform: translate(-50%, -50%) scale(1.5) !important;
+  scale: 1.5;
 }
 
 /*

@@ -88,9 +88,16 @@ export function DeviceField({
   // Follow the value while the box is idle, but never overwrite a part-typed
   // number: clearing the field and retyping "0", "0.", "0.0", "0.05" has to
   // survive, so nothing is echoed back until the edit ends.
-  if (!editing && value !== seen) {
+  /*
+   * `Object.is`, not `!==`. A NaN value — which is what a cleared field in the
+   * properties panel used to store — is never equal to itself, so `!==` stayed
+   * true on every render and this state update re-rendered for ever. React
+   * stopped it with "Too many re-renders", which is to say the whole app died
+   * on a backspace.
+   */
+  if (!editing && !Object.is(value, seen)) {
     setSeen(value);
-    setText(String(value));
+    setText(Number.isFinite(value) ? String(value) : '');
   }
 
   const clamp = (n: number) => {
@@ -129,7 +136,7 @@ export function DeviceField({
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (editing) return;               // typing wins over scrubbing
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !Number.isFinite(value)) return;
     e.stopPropagation();
     /*
      * Without this the browser starts its own text-selection drag on the input,
@@ -184,7 +191,7 @@ export function DeviceField({
       <input
         type="text"
         inputMode="decimal"
-        value={editing ? text : String(value)}
+        value={editing ? text : Number.isFinite(value) ? String(value) : ''}
         min={min}
         max={max}
         step={step}
@@ -260,7 +267,7 @@ export function EngField({
   const [text, setText] = useState(value);
   const [seen, setSeen] = useState(value);
 
-  if (!editing && value !== seen) {
+  if (!editing && !Object.is(value, seen)) {
     setSeen(value);
     setText(value);
   }

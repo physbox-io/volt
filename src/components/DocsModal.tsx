@@ -162,7 +162,7 @@ export function DocsModal({ onClose }: DocsModalProps) {
                   visual drag-and-drop interface.
                 </p>
                 <p className="mb-4">
-                  Powered by the robust ngspice engine (via WebAssembly), the simulator can perform 
+                  Powered by ngspice, the simulator can perform 
                   transient analysis on complex circuits involving passive components, transistors, logic 
                   gates, and even scriptable microcontrollers.
                 </p>
@@ -302,9 +302,8 @@ export function DocsModal({ onClose }: DocsModalProps) {
                 <h4 className="text-xl font-semibold mb-2 mt-6">Why auto-levelling matters</h4>
                 <p className="mb-4">
                   Isolation milling cuts only about 0.05&ndash;0.1&nbsp;mm deep &mdash; barely more than the copper
-                  foil is thick. A copper-clad blank is never perfectly flat, and it does not need to be very
-                  unflat to ruin a board: a 0.2&nbsp;mm bow across the work is enough that one corner cuts air
-                  and leaves the traces shorted while the opposite corner ploughs through into the fibreglass.
+                  foil is thick. Copper-clad blanks typically have slight surface variations; auto-levelling
+                  measures the board before cutting so cut depth remains uniform across the workpiece.
                 </p>
                 <p className="mb-4">
                   Auto-levelling measures the actual shape of the board before cutting. The bit is used as an
@@ -326,8 +325,7 @@ export function DocsModal({ onClose }: DocsModalProps) {
                 </ul>
                 <p className="mb-4">
                   Polarity does not matter; it is just a continuity circuit that closes when the bit touches
-                  copper. Do <em>not</em> clip to the spindle body or the machine frame &mdash; the path through
-                  the spindle bearings is intermittent and produces false triggers.
+                  copper. Clip directly to the bit or collet nut; spindle bearings may not provide reliable electrical continuity.
                 </p>
 
                 <h4 className="text-xl font-semibold mb-2 mt-6">Workflow</h4>
@@ -356,7 +354,7 @@ export function DocsModal({ onClose }: DocsModalProps) {
                 <ul className="list-disc pl-6 mb-4 space-y-1">
                   <li><strong>Probe before milling, not after.</strong> Right now the copper is one continuous sheet, so every point has continuity back to your clip. Once isolation routing has cut it into islands, most of the board is connected to nothing and probe points landing on an island will simply miss.</li>
                   <li><strong>The probe only searches 3&nbsp;mm below Z0.</strong> That covers normal FR4 bow. A badly warped offcut reports "probe did not contact the surface" and aborts rather than plunging.</li>
-                  <li><strong>A reading of exactly 0.000&nbsp;mm warp is a red flag,</strong> not a flat board. It almost always means the probe circuit never closed. The panel says so when it happens.</li>
+                  <li><strong>A reading of exactly 0.000&nbsp;mm warp</strong> usually indicates the probe circuit did not close. Check continuity if the heightmap shows no variation across points.</li>
                   <li><strong>Resizing the board discards the heightmap.</strong> A map only describes the board it was probed on, and stretching it over a larger area would silently apply edge values to the new region.</li>
                   <li><strong>Dry-run the first time.</strong> Do the Zero Z step with the bit a few mm clear of the board and touch it to the copper by hand &mdash; it should stop instantly.</li>
                 </ul>
@@ -394,10 +392,9 @@ export function DocsModal({ onClose }: DocsModalProps) {
                   card and fire one low-power line; if the card marks and the film does not, the beam is
                   going through it.
                 </p>
-                <p className="mb-4 rounded-lg border border-red-300 dark:border-red-700/60 bg-red-50 dark:bg-red-950/30 p-3 text-sm">
-                  <strong>Never cut PVC, on any machine</strong> &mdash; much craft "stencil film" is vinyl,
-                  and it releases hydrogen chloride that corrodes the machine and is dangerous to breathe.
-                  Cut film with ducted extraction and the enclosure shut.
+                <p className="mb-4 rounded-lg border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm">
+                  <strong>Material note:</strong> Do not laser cut vinyl or PVC film; use polyester, Mylar,
+                  or the printed shim with ducted extraction.
                 </p>
                 <p className="mb-4">
                   Apertures are exported at finished size, with no kerf taken off: the kerf belongs to the

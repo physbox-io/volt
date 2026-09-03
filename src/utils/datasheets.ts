@@ -140,7 +140,7 @@ export const datasheets: Record<string, DatasheetEntry> = {
   },
   opamp: {
     title: 'Operational Amplifier',
-    description: 'High-gain differential amplifier. Ideal op-amp: infinite gain, infinite input impedance, zero output impedance.',
+    description: 'High-gain differential amplifier. Amplifies voltage difference between non-inverting (+) and inverting (-) inputs; commonly used with feedback for filters, buffers, and amplifiers.',
     formula: 'Non-inv gain: 1 + Rf/Rg  •  Inv gain: −Rf/Rg',
     specs: [
       'Golden Rule 1: V+ = V− (virtual short)',

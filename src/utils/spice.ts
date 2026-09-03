@@ -218,15 +218,27 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       }
     }
     else if (node.type === 'signalgen') {
-      const freq = Number(node.data.frequency || 1);
-      const amp = node.data.amplitude || 5;
+      const rawFreq = Number(node.data.frequency);
+      const freq = Number.isFinite(rawFreq) && rawFreq > 0 ? rawFreq : 0;
+      const amp = Number.isFinite(Number(node.data.amplitude)) ? Number(node.data.amplitude) : 5;
       const duty = (node.data.dutyCycle !== undefined ? Number(node.data.dutyCycle) : 50) / 100;
-      // For square waves, use a 0-to-amp pulse with configurable duty cycle
-      // We use very small rise/fall times relative to frequency
-      const trf = Math.min(1e-6, 0.01 / freq); 
-      const type = node.data.waveform === 'square' 
-        ? `PULSE(0 ${amp} 0 ${trf} ${trf} ${duty/freq} ${1/freq})` 
-        : `SINE(0 ${amp} ${freq})`;
+      /*
+       * 0Hz is DC, and now behaves like it.
+       *
+       * The frequency used to be read as `frequency || 1`, so a generator set
+       * to 0 was quietly run at 1Hz — the canvas said 0Hz and the trace showed
+       * a 1Hz wave. Zero cannot go into PULSE or SINE (both divide by it), so
+       * it becomes what it actually means: a DC source at the set amplitude.
+       *
+       * For square waves the pulse is a 0-to-amp swing with a configurable duty
+       * cycle, and the rise and fall are kept small relative to the period.
+       */
+      const trf = freq > 0 ? Math.min(1e-6, 0.01 / freq) : 1e-6;
+      const type = freq === 0
+        ? `DC ${amp}`
+        : node.data.waveform === 'square'
+          ? `PULSE(0 ${amp} 0 ${trf} ${trf} ${duty / freq} ${1 / freq})`
+          : `SINE(0 ${amp} ${freq})`;
       const n1 = getNet(node.id, 'out');
       const n2 = getNet(node.id, 'gnd');
       netlist += `V_${node.id} ${n1} ${n2} ${type}\n`;

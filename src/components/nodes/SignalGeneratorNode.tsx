@@ -2,6 +2,7 @@ import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { AlertCircle } from 'lucide-react';
 import type { NodePropertiesProps } from './registry';
 import { useCallback } from 'react';
+import { NumberInput } from '../NumberInput';
 import { DEVICE_CARD, DEVICE_SCREEN, DEVICE_TITLE, DeviceField, STROKE, resolveOrientation } from './schematic';
 
 export function SignalGeneratorProperties({ node, updateData, simLength }: NodePropertiesProps) {
@@ -22,11 +23,29 @@ export function SignalGeneratorProperties({ node, updateData, simLength }: NodeP
       )}
       <div className="mb-3">
         <label className="block text-xs font-medium text-gray-700 mb-1">Frequency (Hz)</label>
-        <input type="number" value={(node.data.frequency as number) || 1} onChange={e => updateData('frequency', parseInt(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+        {/*
+          * NumberInput, so the box can be emptied and retyped: it holds its own
+          * text while focused and reports a number only once one parses. The
+          * raw field this replaced ran `parseInt('')` on a backspace and stored
+          * the NaN, and a NaN frequency is not equal to itself — which sent the
+          * canvas field into an unbounded re-render and took the app down.
+          */}
+        <NumberInput
+          step="any"
+          min={0}
+          value={Number.isFinite(node.data.frequency as number) ? (node.data.frequency as number) : 1}
+          onChange={v => updateData('frequency', v)}
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+        />
       </div>
       <div className="mb-3">
         <label className="block text-xs font-medium text-gray-700 mb-1">Amplitude (V)</label>
-        <input type="number" value={(node.data.amplitude as number) || 5} onChange={e => updateData('amplitude', parseInt(e.target.value))} className="w-full text-sm border border-gray-300 rounded px-2 py-1" />
+        <NumberInput
+          step="any"
+          value={Number.isFinite(node.data.amplitude as number) ? (node.data.amplitude as number) : 5}
+          onChange={v => updateData('amplitude', v)}
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+        />
       </div>
       {((node.data.frequency as number) > 10000 && simLength > 0.5) && (
         <div className="mb-3 p-2 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-800 flex items-start gap-2 shadow-sm animate-pulse">
@@ -61,8 +80,8 @@ export function SignalGeneratorNode({ id, data }: any) {
   const type = data.waveform || 'sine';
   // `??`, not `||`: 0V and 0Hz are values someone can scrub to, and `||` sent
   // the field springing back to the default the moment it reached zero.
-  const freq = data.frequency ?? 1;
-  const amp = data.amplitude ?? 5;
+  const freq = Number.isFinite(data.frequency) ? (data.frequency as number) : 1;
+  const amp = Number.isFinite(data.amplitude) ? (data.amplitude as number) : 5;
 
   const update = useCallback((patch: Record<string, any>) => {
     setNodes((nds: any[]) => nds.map(n => n.id === id ? { ...n, data: { ...n.data, ...patch } } : n));
@@ -98,6 +117,7 @@ export function SignalGeneratorNode({ id, data }: any) {
           value={freq}
           unit="Hz"
           min={0}
+          step={0.1}
           title="Frequency"
           onCommit={(v) => update({ frequency: v })}
         />
