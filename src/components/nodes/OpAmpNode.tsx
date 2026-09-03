@@ -1,6 +1,146 @@
 import { Handle, Position } from '@xyflow/react';
+import { useState } from 'react';
+import type { NodePropertiesProps } from './registry';
+import { NumberInput } from '../NumberInput';
+import { OPAMP_MODELS, getOpAmpModel } from '../../utils/deviceModels';
 
-export function OpAmpNode({ selected }: any) {
+export function OpAmpProperties({ node, updateData }: NodePropertiesProps) {
+  const currentModelId = (node.data?.model as string) || 'ideal';
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const handleModelChange = (id: string) => {
+    updateData('model', id);
+    if (id === 'custom') return;
+    const m = getOpAmpModel(id);
+    if (m) {
+      updateData('label', m.id === 'ideal' ? 'OP-AMP' : m.name.split(' ')[0]);
+      updateData('gain', m.gain);
+      updateData('gbw', m.gbw);
+      updateData('rin', m.rin);
+      updateData('rout', m.rout);
+      updateData('vRailDropHi', m.vRailDropHi);
+      updateData('vRailDropLo', m.vRailDropLo);
+    }
+  };
+
+  const currentGain = Number.isFinite(node.data?.gain as number) ? (node.data.gain as number) : 100000;
+  const currentGbw = Number.isFinite(node.data?.gbw as number) ? (node.data.gbw as number) : 0;
+  const currentRin = node.data?.rin !== undefined ? String(node.data.rin) : '100MEG';
+  const currentRout = Number.isFinite(node.data?.rout as number) ? (node.data.rout as number) : 0.01;
+  const currentDropHi = Number.isFinite(node.data?.vRailDropHi as number) ? (node.data.vRailDropHi as number) : 0;
+  const currentDropLo = Number.isFinite(node.data?.vRailDropLo as number) ? (node.data.vRailDropLo as number) : 0;
+
+  return (
+    <>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Op-Amp Model</label>
+        <select
+          value={currentModelId}
+          onChange={e => handleModelChange(e.target.value)}
+          className="w-full text-sm border border-gray-300 dark:border-slate-700 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+        >
+          {OPAMP_MODELS.map(m => (
+            <option key={m.id} value={m.id}>
+              {m.name} ({m.description})
+            </option>
+          ))}
+          <option value="custom">Custom Parameters</option>
+        </select>
+      </div>
+
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Open-Loop Gain (Avol)</label>
+        <NumberInput
+          value={currentGain}
+          onChange={v => {
+            updateData('gain', v);
+            updateData('model', 'custom');
+          }}
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+        />
+      </div>
+
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Gain-Bandwidth Product (Hz, 0=Ideal)</label>
+        <NumberInput
+          value={currentGbw}
+          onChange={v => {
+            updateData('gbw', Math.max(0, v));
+            updateData('model', 'custom');
+          }}
+          className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+        />
+      </div>
+
+      <div className="mt-2 mb-3">
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-medium select-none"
+        >
+          {showAdvanced ? '▾ Hide Advanced Parameters' : '▸ Show Advanced Parameters'}
+        </button>
+
+        {showAdvanced && (
+          <div className="mt-2.5 space-y-2.5 p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded border border-slate-200 dark:border-slate-700/60">
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">Input Resistance (Rin)</label>
+              <input
+                type="text"
+                value={currentRin}
+                onChange={e => {
+                  updateData('rin', e.target.value);
+                  updateData('model', 'custom');
+                }}
+                className="w-full text-xs border border-gray-300 dark:border-slate-700 rounded px-1.5 py-0.5 bg-white dark:bg-slate-900"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">Output Resistance (Rout, Ω)</label>
+              <NumberInput
+                step={0.1}
+                value={currentRout}
+                onChange={v => {
+                  updateData('rout', Math.max(0, v));
+                  updateData('model', 'custom');
+                }}
+                className="w-full text-xs border border-gray-300 rounded px-1.5 py-0.5"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">Headroom below Vcc (V)</label>
+              <NumberInput
+                step={0.1}
+                value={currentDropHi}
+                onChange={v => {
+                  updateData('vRailDropHi', Math.max(0, v));
+                  updateData('model', 'custom');
+                }}
+                className="w-full text-xs border border-gray-300 rounded px-1.5 py-0.5"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">Headroom above Vee (V)</label>
+              <NumberInput
+                step={0.1}
+                value={currentDropLo}
+                onChange={v => {
+                  updateData('vRailDropLo', Math.max(0, v));
+                  updateData('model', 'custom');
+                }}
+                className="w-full text-xs border border-gray-300 rounded px-1.5 py-0.5"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+export function OpAmpNode({ data, selected }: any) {
+  const displayLabel = data?.label || (data?.model && data.model !== 'ideal' ? (getOpAmpModel(data.model)?.name.split(' ')[0] || data.model.toUpperCase()) : 'LM358');
+
   return (
     <div className="schematic-node bg-transparent w-[80px] h-[80px] relative flex items-center justify-center select-none">
       {/* Triangle representation */}
@@ -39,7 +179,7 @@ export function OpAmpNode({ selected }: any) {
         />
         <text x="26" y="36" textAnchor="middle" fontSize="11" fontWeight="bold" className="fill-slate-700 dark:fill-slate-200 transition-colors font-sans">-</text>
         <text x="26" y="76" textAnchor="middle" fontSize="11" fontWeight="bold" className="fill-slate-700 dark:fill-slate-200 transition-colors font-sans">+</text>
-        <text x="42" y="55" textAnchor="middle" fontSize="9" fontWeight="bold" className="fill-slate-700 dark:fill-slate-200 transition-colors font-sans">LM358</text>
+        <text x="42" y="55" textAnchor="middle" fontSize="9" fontWeight="bold" className="fill-slate-700 dark:fill-slate-200 transition-colors font-sans">{displayLabel}</text>
       </svg>
       
       {/* Handles */}
@@ -62,4 +202,3 @@ export function OpAmpNode({ selected }: any) {
     </div>
   );
 }
-

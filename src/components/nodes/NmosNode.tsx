@@ -3,25 +3,156 @@ import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import { NumberInput } from '../NumberInput';
 
-/** Shared by NmosNode and PmosNode. */
+import { useState } from 'react';
+import { MOSFET_NMOS_MODELS, MOSFET_PMOS_MODELS, getMosfetModel } from '../../utils/deviceModels';
+
+/** Shared by NmosNode and PmosNode — both MOSFET types expose model presets and physical SPICE parameters. */
 export function MosfetProperties({ node, updateData }: NodePropertiesProps) {
+  const isPmos = node.type === 'pmos';
+  const models = isPmos ? MOSFET_PMOS_MODELS : MOSFET_NMOS_MODELS;
+  const currentModelId = (node.data?.model as string) || 'generic';
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const handleModelChange = (id: string) => {
+    updateData('model', id);
+    if (id === 'custom') return;
+    const m = getMosfetModel(isPmos ? 'pmos' : 'nmos', id);
+    if (m) {
+      updateData('label', m.id === 'generic' ? (isPmos ? 'PMOS' : 'NMOS') : m.name);
+      updateData('vto', m.vto);
+      updateData('kp', m.kp);
+      updateData('lambda', m.lambda);
+      updateData('rd', m.rd);
+      updateData('rs', m.rs);
+      updateData('cgs', m.cgs);
+      updateData('cgd', m.cgd);
+    }
+  };
+
+  const currentVto = Number.isFinite(node.data.vto as number) ? (node.data.vto as number) : (isPmos ? -2.0 : 2.0);
+  const currentKp = Number.isFinite(node.data.kp as number) ? (node.data.kp as number) : (isPmos ? 0.02 : 0.05);
+  const currentLambda = Number.isFinite(node.data.lambda as number) ? (node.data.lambda as number) : 0.01;
+  const currentRd = Number.isFinite(node.data.rd as number) ? (node.data.rd as number) : 0;
+  const currentRs = Number.isFinite(node.data.rs as number) ? (node.data.rs as number) : 0;
+  const currentCgs = node.data?.cgs !== undefined ? String(node.data.cgs) : '0';
+  const currentCgd = node.data?.cgd !== undefined ? String(node.data.cgd) : '0';
+
   return (
     <>
       <div className="mb-3">
-        <label className="block text-xs font-medium text-gray-700 mb-1">Threshold Voltage (VTO)</label>
-        <NumberInput step={0.1}
-          value={Number.isFinite(node.data.vto as number) ? (node.data.vto as number) : (node.type === 'nmos' ? 2.0 : -2.0)}
-          onChange={v => updateData('vto', v)}
+        <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">MOSFET Model</label>
+        <select
+          value={currentModelId}
+          onChange={e => handleModelChange(e.target.value)}
+          className="w-full text-sm border border-gray-300 dark:border-slate-700 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+        >
+          {models.map(m => (
+            <option key={m.id} value={m.id}>
+              {m.name} ({m.description})
+            </option>
+          ))}
+          <option value="custom">Custom Parameters</option>
+        </select>
+      </div>
+
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Threshold Voltage (VTO / Vth, V)</label>
+        <NumberInput
+          step={0.1}
+          value={currentVto}
+          onChange={v => {
+            updateData('vto', v);
+            updateData('model', 'custom');
+          }}
           className="w-full text-sm border border-gray-300 rounded px-2 py-1"
         />
       </div>
       <div className="mb-3">
-        <label className="block text-xs font-medium text-gray-700 mb-1">Transconductance (KP)</label>
-        <NumberInput step={0.01}
-          value={Number.isFinite(node.data.kp as number) ? (node.data.kp as number) : (node.type === 'nmos' ? 0.05 : 0.02)}
-          onChange={v => updateData('kp', v)}
+        <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Transconductance (KP, A/V²)</label>
+        <NumberInput
+          step={0.01}
+          value={currentKp}
+          onChange={v => {
+            updateData('kp', v);
+            updateData('model', 'custom');
+          }}
           className="w-full text-sm border border-gray-300 rounded px-2 py-1"
         />
+      </div>
+
+      <div className="mt-2 mb-3">
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-medium select-none"
+        >
+          {showAdvanced ? '▾ Hide Advanced Parameters' : '▸ Show Advanced Parameters'}
+        </button>
+
+        {showAdvanced && (
+          <div className="mt-2.5 space-y-2.5 p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded border border-slate-200 dark:border-slate-700/60">
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">Channel Modulation (LAMBDA, 1/V)</label>
+              <NumberInput
+                step={0.005}
+                value={currentLambda}
+                onChange={v => {
+                  updateData('lambda', v);
+                  updateData('model', 'custom');
+                }}
+                className="w-full text-xs border border-gray-300 rounded px-1.5 py-0.5"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">Drain Resistance (RD, Ω)</label>
+              <NumberInput
+                step={0.1}
+                value={currentRd}
+                onChange={v => {
+                  updateData('rd', v);
+                  updateData('model', 'custom');
+                }}
+                className="w-full text-xs border border-gray-300 rounded px-1.5 py-0.5"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">Source Resistance (RS, Ω)</label>
+              <NumberInput
+                step={0.1}
+                value={currentRs}
+                onChange={v => {
+                  updateData('rs', v);
+                  updateData('model', 'custom');
+                }}
+                className="w-full text-xs border border-gray-300 rounded px-1.5 py-0.5"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">Gate-Source Cap (CGS)</label>
+              <input
+                type="text"
+                value={currentCgs}
+                onChange={e => {
+                  updateData('cgs', e.target.value);
+                  updateData('model', 'custom');
+                }}
+                className="w-full text-xs border border-gray-300 dark:border-slate-700 rounded px-1.5 py-0.5 bg-white dark:bg-slate-900"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">Gate-Drain Cap (CGD)</label>
+              <input
+                type="text"
+                value={currentCgd}
+                onChange={e => {
+                  updateData('cgd', e.target.value);
+                  updateData('model', 'custom');
+                }}
+                className="w-full text-xs border border-gray-300 dark:border-slate-700 rounded px-1.5 py-0.5 bg-white dark:bg-slate-900"
+              />
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

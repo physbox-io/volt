@@ -191,7 +191,7 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       const vcc = getNet(node.id, 'vcc');
       const vee = getNet(node.id, 'vee');
       const out = getNet(node.id, 'out');
-      netlist += `X_${node.id} ${in_non} ${in_inv} ${vcc} ${vee} ${out} IDEAL_OPAMP\n`;
+      netlist += `X_${node.id} ${in_non} ${in_inv} ${vcc} ${vee} ${out} OPAMP_MODEL_${node.id}\n`;
     }
     else if (node.type === 'timer555') {
       has555 = true;
@@ -327,6 +327,12 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       const nb = getNet(node.id, 'b');
       const ne = getNet(node.id, 'e');
       const bf = node.data.bf || 300;
+      const is = node.data.is !== undefined ? node.data.is : 1e-14;
+      const vaf = node.data.vaf !== undefined ? node.data.vaf : 100;
+      const ikf = node.data.ikf !== undefined ? node.data.ikf : 0.4;
+      const rb = node.data.rb !== undefined ? node.data.rb : 10;
+      const cjc = node.data.cjc !== undefined ? node.data.cjc : '2p';
+      const cje = node.data.cje !== undefined ? node.data.cje : '4p';
       netlist += `Q_${node.id} ${nc} ${nb} ${ne} NPN_MODEL_${node.id}\n`;
       // CJC/CJE/TR/TF intentionally non-zero (small-signal-BJT scale, picofarads/nanoseconds):
       // at all zero, transistor switching has no physical timescale at all, which is fine for
@@ -335,16 +341,22 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       // edge ("Timestep too small... trouble with node X"). These values are many orders of
       // magnitude faster than any RC time constant a UI-built circuit will realistically have,
       // so they don't change simulated behavior, only give the solver something finite to grab.
-      netlist += `.model NPN_MODEL_${node.id} NPN(IS=1e-14 VAF=100 BF=${bf} IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)\n`;
+      netlist += `.model NPN_MODEL_${node.id} NPN(IS=${is} VAF=${vaf} BF=${bf} IKF=${ikf} XTB=1.5 BR=3 CJC=${cjc} CJE=${cje} TR=40n TF=0.4n RB=${rb})\n`;
     }
     else if (node.type === 'pnp') {
       const nc = getNet(node.id, 'c');
       const nb = getNet(node.id, 'b');
       const ne = getNet(node.id, 'e');
       const bf = node.data.bf || 300;
+      const is = node.data.is !== undefined ? node.data.is : 1e-14;
+      const vaf = node.data.vaf !== undefined ? node.data.vaf : 100;
+      const ikf = node.data.ikf !== undefined ? node.data.ikf : 0.4;
+      const rb = node.data.rb !== undefined ? node.data.rb : 10;
+      const cjc = node.data.cjc !== undefined ? node.data.cjc : '2p';
+      const cje = node.data.cje !== undefined ? node.data.cje : '4p';
       netlist += `Q_${node.id} ${nc} ${nb} ${ne} PNP_MODEL_${node.id}\n`;
       // See NPN model comment above — same reasoning, same fix.
-      netlist += `.model PNP_MODEL_${node.id} PNP(IS=1e-14 VAF=100 BF=${bf} IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)\n`;
+      netlist += `.model PNP_MODEL_${node.id} PNP(IS=${is} VAF=${vaf} BF=${bf} IKF=${ikf} XTB=1.5 BR=3 CJC=${cjc} CJE=${cje} TR=40n TF=0.4n RB=${rb})\n`;
     }
     else if (node.type === 'nmos') {
       const nd = getNet(node.id, 'd');
@@ -352,8 +364,13 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       const ns = getNet(node.id, 's');
       const vto = node.data.vto !== undefined ? node.data.vto : 2.0;
       const kp = node.data.kp !== undefined ? node.data.kp : 0.05;
+      const lambda = node.data.lambda !== undefined ? node.data.lambda : 0.01;
+      const rd = node.data.rd !== undefined ? node.data.rd : 0;
+      const rs = node.data.rs !== undefined ? node.data.rs : 0;
+      const cgsStr = node.data.cgs && node.data.cgs !== '0' && node.data.cgs !== 0 ? ` CGS=${node.data.cgs}` : '';
+      const cgdStr = node.data.cgd && node.data.cgd !== '0' && node.data.cgd !== 0 ? ` CGD=${node.data.cgd}` : '';
       netlist += `M_${node.id} ${nd} ${ng} ${ns} ${ns} NMOS_MODEL_${node.id}\n`;
-      netlist += `.model NMOS_MODEL_${node.id} NMOS(LEVEL=1 VTO=${vto} KP=${kp} GAMMA=0.5 PHI=0.6 LAMBDA=0.01)\n`;
+      netlist += `.model NMOS_MODEL_${node.id} NMOS(LEVEL=1 VTO=${vto} KP=${kp} GAMMA=0.5 PHI=0.6 LAMBDA=${lambda} RD=${rd} RS=${rs}${cgsStr}${cgdStr})\n`;
     }
     else if (node.type === 'pmos') {
       const nd = getNet(node.id, 'd');
@@ -361,8 +378,13 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       const ns = getNet(node.id, 's');
       const vto = node.data.vto !== undefined ? node.data.vto : -2.0;
       const kp = node.data.kp !== undefined ? node.data.kp : 0.02;
+      const lambda = node.data.lambda !== undefined ? node.data.lambda : 0.01;
+      const rd = node.data.rd !== undefined ? node.data.rd : 0;
+      const rs = node.data.rs !== undefined ? node.data.rs : 0;
+      const cgsStr = node.data.cgs && node.data.cgs !== '0' && node.data.cgs !== 0 ? ` CGS=${node.data.cgs}` : '';
+      const cgdStr = node.data.cgd && node.data.cgd !== '0' && node.data.cgd !== 0 ? ` CGD=${node.data.cgd}` : '';
       netlist += `M_${node.id} ${nd} ${ng} ${ns} ${ns} PMOS_MODEL_${node.id}\n`;
-      netlist += `.model PMOS_MODEL_${node.id} PMOS(LEVEL=1 VTO=${vto} KP=${kp} GAMMA=0.5 PHI=0.6 LAMBDA=0.01)\n`;
+      netlist += `.model PMOS_MODEL_${node.id} PMOS(LEVEL=1 VTO=${vto} KP=${kp} GAMMA=0.5 PHI=0.6 LAMBDA=${lambda} RD=${rd} RS=${rs}${cgsStr}${cgdStr})\n`;
     }
     else if (['and', 'or', 'nand', 'nor', 'xor'].includes(node.type)) {
       const in1 = getNet(node.id, 'in1');
@@ -502,7 +524,7 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
 
   if (hasOpAmp) {
     netlist += `
-* Idealized Op-Amp Macro Model
+* Idealized Op-Amp Macro Model (Legacy compatibility)
 * Node order: IN+ IN- VCC VEE OUT
 .SUBCKT IDEAL_OPAMP 1 2 3 4 5
 * High input impedance
@@ -513,6 +535,47 @@ E1 6 0 1 2 100k
 B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
 .ENDS IDEAL_OPAMP
 `;
+
+    const opampNodes = nodes.filter(n => n.type === 'opamp');
+    for (const node of opampNodes) {
+      const gain = Number.isFinite(node.data?.gain) ? Number(node.data.gain) : 100000;
+      const gbw = Number.isFinite(node.data?.gbw) ? Number(node.data.gbw) : 0;
+      const rin = node.data?.rin ? String(node.data.rin) : '100MEG';
+      const rout = Number.isFinite(node.data?.rout) ? Number(node.data.rout) : 0.01;
+      const dropHi = Number.isFinite(node.data?.vRailDropHi) ? Math.max(0, Number(node.data.vRailDropHi)) : 0;
+      const dropLo = Number.isFinite(node.data?.vRailDropLo) ? Math.max(0, Number(node.data.vRailDropLo)) : 0;
+
+      const upperLimit = dropHi > 0 ? `(V(3) - ${dropHi})` : `V(3)`;
+      const lowerLimit = dropLo > 0 ? `(V(4) + ${dropLo})` : `V(4)`;
+
+      netlist += `
+* Parameterized Op-Amp Subcircuit for ${node.id}
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_${node.id} 1 2 3 4 5
+Rin 1 2 ${rin}
+E1 6 0 1 2 ${gain}
+`;
+
+      const internalDrive = rout > 0.01 ? '8' : '5';
+
+      if (gbw > 0) {
+        // Dominant pole for GBW roll-off: fp = GBW / gain.
+        // With Rpole = 100k, Cpole = gain / (2 * pi * GBW * 100000).
+        const cpoleVal = gain / (2 * Math.PI * gbw * 100000);
+        const cpole = cpoleVal < 1e-12 ? `${(cpoleVal * 1e12).toFixed(4)}p` : cpoleVal.toExponential(6);
+        netlist += `Rpole 6 7 100k\n`;
+        netlist += `Cpole 7 0 ${cpole}\n`;
+        netlist += `B1 ${internalDrive} 0 V=V(7) > ${upperLimit} ? ${upperLimit} : (V(7) < ${lowerLimit} ? ${lowerLimit} : V(7))\n`;
+      } else {
+        netlist += `B1 ${internalDrive} 0 V=V(6) > ${upperLimit} ? ${upperLimit} : (V(6) < ${lowerLimit} ? ${lowerLimit} : V(6))\n`;
+      }
+
+      if (rout > 0.01) {
+        netlist += `Rout 8 5 ${rout}\n`;
+      }
+
+      netlist += `.ENDS OPAMP_MODEL_${node.id}\n`;
+    }
   }
 
   if (has555) {

@@ -48,6 +48,7 @@ import { ViaProperties, viaDefaultData } from './ViaNode';
 import { MountingHoleProperties, mountingHoleDefaultData } from './MountingHoleNode';
 import { JumperProperties, jumperDefaultData } from './JumperNode';
 import { CutoutProperties, cutoutDefaultData } from './CutoutNode';
+import { OpAmpProperties } from './OpAmpNode';
 
 export const nodeRegistry: Record<string, NodeMeta> = {
   voltage: { Properties: VoltageProperties },
@@ -63,6 +64,7 @@ export const nodeRegistry: Record<string, NodeMeta> = {
   pnp: { Properties: BJTProperties },
   nmos: { Properties: MosfetProperties },
   pmos: { Properties: MosfetProperties },
+  opamp: { Properties: OpAmpProperties },
   diode: { Properties: DiodeProperties },
   zener: { Properties: ZenerDiodeProperties },
   microphone: { Properties: MicrophoneProperties },

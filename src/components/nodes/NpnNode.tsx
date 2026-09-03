@@ -3,17 +3,158 @@ import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import { NumberInput } from '../NumberInput';
 
-/** Shared by NpnNode and PnpNode — both BJT types expose the same single "current gain" property. */
+import { useState } from 'react';
+import { BJT_NPN_MODELS, BJT_PNP_MODELS, getBjtModel } from '../../utils/deviceModels';
+
+/** Shared by NpnNode and PnpNode — both BJT types expose model presets and physical SPICE parameters. */
 export function BJTProperties({ node, updateData }: NodePropertiesProps) {
+  const isPnp = node.type === 'pnp';
+  const models = isPnp ? BJT_PNP_MODELS : BJT_NPN_MODELS;
+  const currentModelId = (node.data?.model as string) || 'generic';
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const handleModelChange = (id: string) => {
+    updateData('model', id);
+    if (id === 'custom') return;
+    const m = getBjtModel(isPnp ? 'pnp' : 'npn', id);
+    if (m) {
+      updateData('label', m.id === 'generic' ? (isPnp ? 'PNP' : 'NPN') : m.name);
+      updateData('bf', m.bf);
+      updateData('is', m.is);
+      updateData('vaf', m.vaf);
+      updateData('rb', m.rb);
+      updateData('cjc', m.cjc);
+      updateData('cje', m.cje);
+      updateData('ikf', m.ikf);
+    }
+  };
+
+  const currentBf = Number.isFinite(node.data?.bf as number) ? (node.data.bf as number) : 300;
+  const currentVaf = Number.isFinite(node.data?.vaf as number) ? (node.data.vaf as number) : 100;
+  const currentIs = Number.isFinite(node.data?.is as number) ? (node.data.is as number) : 1e-14;
+  const currentRb = Number.isFinite(node.data?.rb as number) ? (node.data.rb as number) : 10;
+  const currentIkf = Number.isFinite(node.data?.ikf as number) ? (node.data.ikf as number) : 0.4;
+  const currentCjc = node.data?.cjc !== undefined ? String(node.data.cjc) : '2p';
+  const currentCje = node.data?.cje !== undefined ? String(node.data.cje) : '4p';
+
   return (
-    <div className="mb-3">
-      <label className="block text-xs font-medium text-gray-700 mb-1">Current Gain (BF)</label>
-      <NumberInput
-          value={Number.isFinite(node.data.bf as number) ? (node.data.bf as number) : 300}
-          onChange={v => updateData('bf', v)}
+    <>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Transistor Model</label>
+        <select
+          value={currentModelId}
+          onChange={e => handleModelChange(e.target.value)}
+          className="w-full text-sm border border-gray-300 dark:border-slate-700 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+        >
+          {models.map(m => (
+            <option key={m.id} value={m.id}>
+              {m.name} ({m.description})
+            </option>
+          ))}
+          <option value="custom">Custom Parameters</option>
+        </select>
+      </div>
+
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Current Gain (BF / β)</label>
+        <NumberInput
+          value={currentBf}
+          onChange={v => {
+            updateData('bf', v);
+            updateData('model', 'custom');
+          }}
           className="w-full text-sm border border-gray-300 rounded px-2 py-1"
         />
-    </div>
+      </div>
+
+      <div className="mt-2 mb-3">
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-medium select-none"
+        >
+          {showAdvanced ? '▾ Hide Advanced Parameters' : '▸ Show Advanced Parameters'}
+        </button>
+
+        {showAdvanced && (
+          <div className="mt-2.5 space-y-2.5 p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded border border-slate-200 dark:border-slate-700/60">
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">Early Voltage (VAF, V)</label>
+              <NumberInput
+                value={currentVaf}
+                onChange={v => {
+                  updateData('vaf', v);
+                  updateData('model', 'custom');
+                }}
+                className="w-full text-xs border border-gray-300 rounded px-1.5 py-0.5"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">Saturation Current (IS, A)</label>
+              <input
+                type="text"
+                value={currentIs.toExponential()}
+                onChange={e => {
+                  const val = parseFloat(e.target.value);
+                  if (Number.isFinite(val) && val > 0) {
+                    updateData('is', val);
+                    updateData('model', 'custom');
+                  }
+                }}
+                className="w-full text-xs border border-gray-300 dark:border-slate-700 rounded px-1.5 py-0.5 bg-white dark:bg-slate-900"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">Base Resistance (RB, Ω)</label>
+              <NumberInput
+                value={currentRb}
+                onChange={v => {
+                  updateData('rb', v);
+                  updateData('model', 'custom');
+                }}
+                className="w-full text-xs border border-gray-300 rounded px-1.5 py-0.5"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">Collector Cap (CJC)</label>
+              <input
+                type="text"
+                value={currentCjc}
+                onChange={e => {
+                  updateData('cjc', e.target.value);
+                  updateData('model', 'custom');
+                }}
+                className="w-full text-xs border border-gray-300 dark:border-slate-700 rounded px-1.5 py-0.5 bg-white dark:bg-slate-900"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">Emitter Cap (CJE)</label>
+              <input
+                type="text"
+                value={currentCje}
+                onChange={e => {
+                  updateData('cje', e.target.value);
+                  updateData('model', 'custom');
+                }}
+                className="w-full text-xs border border-gray-300 dark:border-slate-700 rounded px-1.5 py-0.5 bg-white dark:bg-slate-900"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">High-Current Knee (IKF, A)</label>
+              <NumberInput
+                step={0.1}
+                value={currentIkf}
+                onChange={v => {
+                  updateData('ikf', v);
+                  updateData('model', 'custom');
+                }}
+                className="w-full text-xs border border-gray-300 rounded px-1.5 py-0.5"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
