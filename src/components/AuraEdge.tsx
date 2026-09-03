@@ -1043,10 +1043,21 @@ function clampToPin(nodes: any[], x: number, y: number, pos: string, id?: string
   const w = n.measured?.width;
   const h = n.measured?.height;
   if (!w || !h) return { x, y };
-  if (pos === 'right' && x > n.position.x + w) return { x: n.position.x + w, y };
-  if (pos === 'left' && x < n.position.x) return { x: n.position.x, y };
-  if (pos === 'bottom' && y > n.position.y + h) return { x, y: n.position.y + h };
-  if (pos === 'top' && y < n.position.y) return { x, y: n.position.y };
+  /*
+   * Snap onto the boundary the pin sits on, from whichever side it lands.
+   *
+   * Pulling an endpoint that overshoots back in was only half of it: a card
+   * whose handle is inset from its own edge — the instrument bodies — left the
+   * wire starting inside the box, so it emerged through the card's background
+   * and border partway up the part instead of meeting it at the edge. Moving
+   * the endpoint onto the boundary plane in both directions makes the wire
+   * finish exactly where the part does, and is a no-op for every symbol whose
+   * handles already sit on the edge.
+   */
+  if (pos === 'right') return { x: n.position.x + w, y };
+  if (pos === 'left') return { x: n.position.x, y };
+  if (pos === 'bottom') return { x, y: n.position.y + h };
+  if (pos === 'top') return { x, y: n.position.y };
   return { x, y };
 }
 

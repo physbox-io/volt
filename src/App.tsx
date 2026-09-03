@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   applyNodeChanges,
   applyEdgeChanges,
@@ -1208,7 +1208,11 @@ export default function App() {
     }
   };
 
+  /** True while a solve is in flight, so live re-runs queue instead of piling up. */
+  const simInFlightRef = useRef(false);
+
   const runSimulation = async (nodesOverride?: Node[], customICs?: Record<string, number>) => {
+    simInFlightRef.current = true;
     try {
       const baseNodes = nodesOverride || nodes;
       const currentNodes = baseNodes.map(n => n.type === 'mcu' ? { ...n, data: { ...n.data, state: undefined } } : n);
@@ -1500,6 +1504,15 @@ export default function App() {
       setIsSpiceRunning(false);
       setIsSimulating(false);
       return { ok: false, error: e.message || String(e) };
+    } finally {
+      simInFlightRef.current = false;
+      // Values moved on while this solve was running; take the newest ones.
+      if (rerunPendingRef.current) {
+        rerunPendingRef.current = false;
+        if (isSimulatingRef.current && !hilRunningRef.current) {
+          setTimeout(() => void runSimulation(), 0);
+        }
+      }
     }
   };
 
@@ -1509,6 +1522,70 @@ export default function App() {
   useEffect(() => {
     setInitialConditions({});
   }, [nodes.length, edges.length]);
+
+  /*
+   * Node data the netlist is actually built from.
+   *
+   * Listed rather than hashing the whole of `data` because the simulation
+   * writes its results back onto the nodes — voltages, LED brightness, MCU pin
+   * state — and a signature that included those would re-trigger on its own
+   * output and never settle. Everything here is something a person sets; the
+   * two fields the netlist reads that the run also writes, `pinVoltages` and
+   * `state`, are deliberately absent.
+   */
+  const NETLIST_FIELDS = [
+    'amplification', 'amplitude', 'bf', 'capacitance', 'code', 'dutyCycle', 'frequency',
+    'inductance', 'isOpen', 'k', 'kp', 'l_pri', 'l_pri_label', 'l_sec', 'l_sec_label',
+    'label', 'lightLevel', 'lightSensitivity', 'mcuConfig', 'mode', 'photodiodeMode',
+    'pins', 'position', 'pwlData', 'r_dark', 'resistance', 'v_drop', 'voltage', 'vto',
+    'waveform',
+  ] as const;
+
+  const netlistSignature = useMemo(() => {
+    const parts: string[] = [];
+    for (const n of nodes) {
+      parts.push(n.id, n.type ?? '');
+      const d = n.data as Record<string, unknown> | undefined;
+      for (const k of NETLIST_FIELDS) {
+        const v = d?.[k];
+        if (v === undefined) continue;
+        parts.push(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
+      }
+    }
+    for (const e of edges) {
+      parts.push(e.source, e.sourceHandle ?? '', e.target, e.targetHandle ?? '');
+    }
+    return parts.join('|');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges]);
+
+  /*
+   * Re-run while the simulation is up and someone is changing a value.
+   *
+   * Waiting for the mouse to come up makes a scrub feel disconnected from the
+   * thing it is driving — the point of dragging a frequency is watching the
+   * trace follow. A quarter of a second is short enough to track a drag and
+   * long enough that a solve is not started for every pixel.
+   *
+   * Not a dependency on `isSimulating`: this fires on a change of values, and
+   * having it fire on the run starting would re-solve the circuit that had just
+   * been solved. HIL drives its own cadence over the wire and is left alone.
+   */
+  const rerunPendingRef = useRef(false);
+  useEffect(() => {
+    if (!isSimulatingRef.current || hilRunningRef.current) return;
+    const t = setTimeout(() => {
+      if (!isSimulatingRef.current || hilRunningRef.current) return;
+      if (simInFlightRef.current) {
+        // A solve is already running; take the newest values when it lands.
+        rerunPendingRef.current = true;
+        return;
+      }
+      void runSimulation();
+    }, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [netlistSignature]);
 
   const onNodeClick = useCallback((_: any, node: Node) => {
     if (node.type === 'switch') {
