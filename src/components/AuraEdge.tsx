@@ -80,13 +80,25 @@ export function getNodeDimensions(type: string, data: any) {
     case 'ground':
       return { width: 24, height: 24 };
     case 'timer555':
-    case 'dFlipFlop':
       return { width: 128, height: 156 };
+    // The registry spells these `dff`, `npn` and `pmos` — the old
+    // `dFlipFlop`/`transistorNPN` spellings matched no node type, so every one
+    // of these parts silently took the 48x32 default instead.
+    case 'dff':
+      return { width: 80, height: 80 };
     case 'potentiometer':
       return { width: 48, height: 48 };
-    case 'transistorNPN':
-    case 'transistorPNP':
+    case 'npn':
+    case 'pnp':
+      return { width: 32, height: 32 };
+    case 'nmos':
+    case 'pmos':
       return { width: 48, height: 48 };
+    case 'transformer':
+      return { width: 48, height: 48 };
+    case 'acvoltage':
+    case 'currentsource':
+      return { width: 40, height: 40 };
     case 'mcu': {
       const cfg = getEffectiveMcuConfig(data);
       const leftCount = cfg.pins.filter(p => p.side === 'left').length;
@@ -111,6 +123,13 @@ export function getNodeDimensions(type: string, data: any) {
       return { width: 48, height: 48 };
     case 'cutout':
       return getCutoutSize(data);
+    /*
+     * Everything else — the instrument cards, whose height follows their
+     * content and so cannot be stated here honestly. This is only ever a
+     * stand-in for code with no rendered node to measure; anything that can
+     * reach `measured` must prefer it, and `clampToPin` refuses to work from
+     * this figure at all.
+     */
     default:
       return { width: 48, height: 32 };
   }
@@ -1008,8 +1027,22 @@ export function getSchematicPath({
 function clampToPin(nodes: any[], x: number, y: number, pos: string, id?: string): Point {
   const n = id ? nodes.find((q: any) => q.id === id) : null;
   if (!n) return { x, y };
-  const w = n.measured?.width || getNodeDimensions(n.type, n.data).width;
-  const h = n.measured?.height || getNodeDimensions(n.type, n.data).height;
+  /*
+   * Only ever clamp against a box React Flow has actually measured.
+   *
+   * The fallback table is a rough guide for layout code that has no rendered
+   * node to ask, and it has no entry for most of the instrument cards — a
+   * signal generator, 88px wide and about twice as tall as the 48x32 default,
+   * came back as 48x32. Clamping to that put the ground wire's endpoint a third
+   * of the way up the inside of the card, so the wire ran horizontally across
+   * the middle of the part and stopped short of the pin it belonged to, which
+   * is the break that shows up whenever a node is moved and its measurement is
+   * momentarily unavailable. An unclamped endpoint is a couple of px out; a
+   * wrongly clamped one is halfway into the symbol.
+   */
+  const w = n.measured?.width;
+  const h = n.measured?.height;
+  if (!w || !h) return { x, y };
   if (pos === 'right' && x > n.position.x + w) return { x: n.position.x + w, y };
   if (pos === 'left' && x < n.position.x) return { x: n.position.x, y };
   if (pos === 'bottom' && y > n.position.y + h) return { x, y: n.position.y + h };

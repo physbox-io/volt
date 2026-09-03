@@ -84,7 +84,6 @@ export function DeviceField({
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(String(value));
   const [seen, setSeen] = useState(value);
-  const [scrubbing, setScrubbing] = useState(false);
 
   // Follow the value while the box is idle, but never overwrite a part-typed
   // number: clearing the field and retyping "0", "0.", "0.0", "0.05" has to
@@ -132,8 +131,16 @@ export function DeviceField({
     if (editing) return;               // typing wins over scrubbing
     if (e.button !== 0) return;
     e.stopPropagation();
+    /*
+     * Without this the browser starts its own text-selection drag on the input,
+     * which takes the pointer, shows a caret and swallows the gesture — the
+     * field looked draggable and did nothing. Suppressing the default also
+     * suppresses focus, which is why a click that does not travel focuses the
+     * field by hand in endDrag.
+     */
+    e.preventDefault();
     drag.current = { x: e.clientX, t: e.timeStamp, cur: value, boost: 1, moved: 0 };
-    (e.target as Element).setPointerCapture(e.pointerId);
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -144,7 +151,6 @@ export function DeviceField({
     d.x = e.clientX;
     d.t = e.timeStamp;
     d.moved += Math.abs(dx);
-    if (d.moved > 3 && !scrubbing) setScrubbing(true);
 
     // px/ms, smoothed. 1 px/ms is a brisk sweep; below that it stays near 1.
     const speed = Math.abs(dx) / dt;
@@ -163,7 +169,6 @@ export function DeviceField({
   const endDrag = (e: React.PointerEvent) => {
     const d = drag.current;
     drag.current = null;
-    setScrubbing(false);
     if (d && d.moved <= 3) {
       // A click, not a drag: hand it to the keyboard.
       (e.currentTarget as HTMLInputElement).focus();
@@ -173,7 +178,7 @@ export function DeviceField({
 
   return (
     <label
-      className={`nodrag nopan flex items-baseline gap-[1px] ${scrubbing ? 'cursor-ew-resize' : 'cursor-text'}`}
+      className={`nodrag nopan flex items-baseline gap-[1px] ${editing ? 'cursor-text' : 'cursor-ew-resize'}`}
       title={title ? `${title} — drag to change, or click to type` : 'Drag to change, or click to type'}
     >
       <input
@@ -219,7 +224,7 @@ export function DeviceField({
                    text-slate-700 dark:text-slate-200 border-b border-dotted
                    border-slate-300 dark:border-slate-600 outline-none
                    focus:border-solid focus:border-emerald-500
-                   ${scrubbing ? 'cursor-ew-resize select-none' : ''}
+                   ${editing ? '' : 'cursor-ew-resize select-none'}
                    [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none`}
       />
       <span className="font-mono text-[8px] leading-none text-slate-400 dark:text-slate-500">
@@ -254,7 +259,6 @@ export function EngField({
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(value);
   const [seen, setSeen] = useState(value);
-  const [scrubbing, setScrubbing] = useState(false);
 
   if (!editing && value !== seen) {
     setSeen(value);
@@ -269,8 +273,10 @@ export function EngField({
   const onPointerDown = (e: React.PointerEvent) => {
     if (editing || e.button !== 0 || numeric === null) return;
     e.stopPropagation();
+    // See DeviceField: the native caret drag would otherwise eat the gesture.
+    e.preventDefault();
     drag.current = { x: e.clientX, t: e.timeStamp, cur: numeric, boost: 1, moved: 0 };
-    (e.target as Element).setPointerCapture(e.pointerId);
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -282,7 +288,6 @@ export function EngField({
     d.x = e.clientX;
     d.t = e.timeStamp;
     d.moved += Math.abs(dx);
-    if (d.moved > 3 && !scrubbing) setScrubbing(true);
 
     const speed = Math.abs(dx) / dt;
     d.boost = d.boost * 0.7 + (1 + Math.min(speed * 8, 25)) * 0.3;
@@ -297,7 +302,6 @@ export function EngField({
   const endDrag = (e: React.PointerEvent) => {
     const d = drag.current;
     drag.current = null;
-    setScrubbing(false);
     if (d && d.moved <= 3) {
       (e.currentTarget as HTMLInputElement).focus();
       (e.currentTarget as HTMLInputElement).select();
@@ -329,7 +333,7 @@ export function EngField({
                  text-slate-600 dark:text-slate-300 border-b border-dotted border-transparent
                  hover:border-slate-300 dark:hover:border-slate-600 outline-none
                  focus:border-solid focus:border-emerald-500
-                 ${scrubbing ? 'cursor-ew-resize select-none' : 'cursor-text'}`}
+                 ${editing ? 'cursor-text' : 'cursor-ew-resize select-none'}`}
     />
   );
 }
