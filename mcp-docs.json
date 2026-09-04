@@ -4,9 +4,12 @@
     "1. Call circuit_get_schema to find the list of supported components, their parameters, and connection terminal names.",
     "2. Use circuit_get_state to check the current canvas state: which nodes (components) and edges (wires) are loaded.",
     "3. Construct or modify the circuit by calling circuit_set_nodes and/or circuit_set_edges.",
-    "4. Trigger the transient simulation using circuit_run_sim. Always call this after modifying node properties or connections to update voltages, currents, and MCU outputs.",
-    "5. Retrieve the simulation waveforms using circuit_get_waveforms to inspect voltages, currents, and MCU logs programmatically.",
-    "6. If troubleshooting or analyzing a wire, call circuit_toggle_probe to enable real-time voltage inspection at specific coordinates."
+    "4. Call circuit_update_component to change one part; circuit_set_nodes only when you are replacing the whole circuit.",
+    "5. Trigger the transient simulation using circuit_run_sim. Always call this after modifying node properties or connections to update voltages, currents, and MCU outputs.",
+    "6. Retrieve the simulation waveforms using circuit_get_waveforms to inspect voltages, currents, and MCU logs programmatically.",
+    "7. If troubleshooting or analyzing a wire, call circuit_toggle_probe to enable real-time voltage inspection at specific coordinates.",
+    "8. Call circuit_set_note_cards to put a card on the canvas describing the circuit \u2014 what it is, the component values that set its behaviour and what they work out to, and how it works. A finished circuit is not finished without one.",
+    "9. When the user will come back to it, save it with circuit_save_preset, passing noteCard so the description comes back with the preset."
   ],
   "gotchas": [
     "SINGULAR MATRIX ERROR: ngspice is extremely sensitive to floating nodes. Any pin or terminal that is left unconnected will cause a singular matrix error. To prevent this, the simulation layer automatically shunts unconnected pins with a 1G ohm resistor to ground, but you should always ensure loops are closed and Ground (GND) is connected to a common reference.",
@@ -15,7 +18,8 @@
     "SAMPLING RATES: The oscilloscope and speaker components capture waveforms over the simulation duration (e.g., simLength). If you are outputting audio, make sure the sampling frequency of your signal generator or MCU code matches the time scale to avoid aliasing.",
     "NMOS HIGH-SIDE SWITCHING: Do not use NMOS as the high-side switch in a buck converter (drain at Vin, source at switching node, gate driven from a GND-referenced signal). This is a fundamental electronics constraint, not a simulator limitation: when the NMOS turns on, the source rises toward Vin, collapsing Vgs below the threshold and immediately turning it off. A proper high-side NMOS requires a bootstrap gate driver. Without one, use NMOS low-side only (source tied to GND). For buck converters, the working topology is: NMOS drain at Vin, source at the switching node, freewheeling diode cathode also at the switching node, diode anode to GND, inductor from switching node to output.",
     "SWITCHING FREQUENCY AND SIMULATION SPEED: The default SPICE timestep is around 1ms (normal resolution) or 0.05ms (high resolution). Signal generators running faster than roughly 1-5kHz may require many sub-steps per cycle to converge, significantly increasing simulation time. Very high frequencies (tens of kHz and above) combined with a long simLength can make the simulation slow or unresponsive. If a switching circuit is slow to simulate, try reducing the frequency or the simLength first.",
-    "BUCK CONVERTER DUTY CYCLE: The theoretical duty cycle for a buck converter is Vout/Vin. In practice, MOSFET threshold voltage and diode forward drop mean the effective duty is lower \u2014 expect to tune the dutyCycle parameter down by several percent from the ideal value."
+    "BUCK CONVERTER DUTY CYCLE: The theoretical duty cycle for a buck converter is Vout/Vin. In practice, MOSFET threshold voltage and diode forward drop mean the effective duty is lower \u2014 expect to tune the dutyCycle parameter down by several percent from the ideal value.",
+    "A device's part number lives in data.model, and setting it is what makes the device that part \u2014 do not hand-write bf/vto/gain to imitate a real component when the catalogue in schema.spiceModels already has it. Label alone does nothing: data.label is the caption on the schematic, so a node with label '2N3904' and no model is a generic transistor with a misleading name on it."
   ],
   "coordinateSystem": {
     "canvasGrid": "React Flow canvas uses a standard X/Y coordinate system. X increases to the right, Y increases downwards.",
@@ -31,7 +35,7 @@
     "circuit_toggle_probe": "Toggle probe mode (click a wire to inspect voltage).",
     "circuit_list_presets": "List all available built-in and user-saved circuit presets.",
     "circuit_load_preset": "Load a named circuit preset (e.g., basicBlink, timer555Blink, sineAudio, bjtAmp, micSpeaker, classBamp, classABamp, bridgeRectifier, mcuBlink, mcuSpeaker, mcuAnalogOut, mcuAnalogIn, mcuPassThrough, mcuCleanAudioSampler, mixedLogicBlink, opAmpAmp, boostConverter, bistableMultivibrator, astableMultivibrator, potDimmer, sevenSegDirect, currentMirror, buckConverter, transformerRectifier, dffBlinker, heltecLightToFreqHIL, heltecGPIOToCYDSpeakerHIL, ldrWebcamDemo).",
-    "circuit_save_preset": "Save the current active circuit canvas as a custom user preset.",
+    "circuit_save_preset": "Save the current active circuit canvas as a custom user preset. Always pass noteCard: a markdown string describing THIS circuit, which the app puts up as a note card beside the canvas whenever the preset is loaded. This is the card that comes back up whenever the preset is loaded, so a preset saved without one reopens with nothing explaining it. For the circuit currently on the canvas, use circuit_set_note_cards instead \u2014 the two are separate, and saving a preset does not capture the live card. Shape it like the built-in presets' cards (circuit_load_preset one and read its card on screen): a `#` title naming the circuit, a sentence on what it does, a `## How it works` walking the signal through the stages, and the values that set its behaviour \u2014 supply rail, the RC or divider figures, the frequency or gain they work out to \u2014 quoted from the components actually on the canvas. Optional recommendedSimLength (seconds) sets how long circuit_run_sim runs by default when the preset is loaded; give it one when the interesting behaviour takes longer than a default run to appear.",
     "circuit_delete_preset": "Delete a custom user circuit preset by its key.",
     "circuit_set_nodes": "Replace all components in the PhysBox: Volt canvas.",
     "circuit_set_edges": "Replace all wires in the PhysBox: Volt canvas.",
@@ -40,9 +44,13 @@
     "circuit_get_schema": "Return the PhysBox: Volt component schema, state fields, and SPICE model specifications.",
     "circuit_get_waveforms": "Return transient waveforms (voltage/current time series) for all components and wires after simulation runs.",
     "circuit_get_history": "Return simulation waveform history for all components and wires.",
-    "circuit_get_screenshot": "Capture current rendered frame of the circuit canvas as a PNG image.",
+    "circuit_get_screenshot": "Capture the schematic as a PNG. The frame is the CIRCUIT, not the viewport: every component is fitted into the image with a margin, so the picture does not depend on where the user happens to have scrolled and two calls of the same circuit give the same image. Returns { ok, dataUrl, width, height }; errors when the canvas is empty. Use it to check a layout \u2014 whether parts overlap, whether a wire runs where you meant it to \u2014 after building a circuit.",
     "circuit_upload_audio": "Upload audio samples to a microphone node.",
-    "circuit_download_audio": "Download audio waveforms from a speaker node, optionally interpolated."
+    "circuit_download_audio": "Download audio waveforms from a speaker node, optionally interpolated.",
+    "circuit_get_note_cards": "Return the note card overlays currently on the canvas, as [{ id, markdown, minimized, x, y }].",
+    "circuit_set_note_cards": "Replace the note card overlays on the canvas. Pass noteCards: [{ id, markdown, minimized, x, y }] \u2014 one card is the norm; id can be any unique string, minimized false, and x around (window width - 580) with y 20 parks it clear of the inspector. Call this after circuit_set_circuit or circuit_set_nodes, and again whenever an edit changes what the card claims. Pass an empty array to clear.\n\nThe markdown is the label for THIS circuit:\n- `# Title` naming the circuit (\"Astable 555 Blinker\"), not its category.\n- A sentence on what it does and what to look for when it runs.\n- `## Values` \u2014 the numbers that set the behaviour, read off the components you actually placed: supply rail, each R and C that matters, and the figure they work out to (frequency, duty cycle, gain, cutoff, quiescent current), with the expression so the reader can follow it \u2014 e.g. f = 1.44/((R1+2\u00b7R2)\u00b7C1) \u2248 1.9 Hz.\n- `## How it works` \u2014 the signal walked through the stages.\n- `## Try it` \u2014 two or three specific component changes and what each does.\n\nQuote real values, not \"a few kilohms\", and describe the circuit rather than the plumbing that built it. Circuit_set_circuit and circuit_set_nodes drop a card left over from a loaded preset, since it describes a circuit that is no longer on the canvas \u2014 yours is what replaces it.",
+    "circuit_reset": "Reset the simulation to t=0, leaving the circuit itself untouched. Stops the run and strips the results it painted onto the canvas: node voltages, scope traces, per-edge currents, MCU logs and any initial conditions carried over. Use it before a fresh circuit_run_sim when you want to be certain the waveforms you read back are from this run \u2014 circuit_stop_sim alone leaves the old ones in place, and they look identical to new ones.",
+    "circuit_update_component": "Change one component in place: circuit_update_component(id, updates). Prefer this over circuit_set_nodes for an edit \u2014 set_nodes replaces every node, so anything that changed on the canvas between your read and your write is silently overwritten by your stale copy.\n\nupdates takes the node's own fields (position) and a `data` object that is MERGED, not replaced: { data: { label: '10k' } } changes the label and leaves the simulation output sitting beside it alone. id cannot be changed, and neither can type \u2014 a different part has different terminals and different data, so delete it and add the replacement.\n\nFor a transistor, MOSFET or op-amp, { data: { model: '2n3904' } } is enough to make it that part \u2014 the netlist resolves the model against the catalogue. See schema.spiceModels."
   },
   "schema": {
     "nodeFields": {
@@ -60,7 +68,8 @@
         "time_points": "number[] \u2014 transient timestamps in milliseconds",
         "voltageData": "{t: number, v: number}[] \u2014 transient voltage readings (e.g., for Oscilloscope, Speaker)",
         "segmentVoltageArrays": "Record<string, number[]> \u2014 per-segment voltage readings for 7-Segment displays",
-        "orientation": "string \u2014 'horizontal' or 'vertical', standing the part on end so its leads come off the top and bottom edges instead of left and right. Worth using: a divider drawn with its series elements vertical against a horizontal rail reads far better than an all-horizontal chain. Every two-lead component honours it, plus the potentiometer; see schema.orientation for the list and for which way each type defaults."
+        "orientation": "string \u2014 'horizontal' or 'vertical', standing the part on end so its leads come off the top and bottom edges instead of left and right. Worth using: a divider drawn with its series elements vertical against a horizontal rail reads far better than an all-horizontal chain. Every two-lead component honours it, plus the potentiometer; see schema.orientation for the list and for which way each type defaults.",
+        "model": "string \u2014 the part number, from the catalogue in schema.spiceModels for this device type ('2n3904', 'irf540n', 'lm741', \u2026), or 'custom'. THIS DRIVES THE SIMULATION: the netlist takes the part's parameters from the catalogue, so naming a model is all it takes to simulate that device. Any parameter you also set explicitly overrides the one the part came with, which is what 'custom' records. An unknown name falls back to the generic device, and a part number is not applied across polarity \u2014 '2n3904' on a pnp is not recognised. Applies to npn, pnp, nmos, pmos and opamp."
       }
     },
     "componentTerminals": {
@@ -316,9 +325,26 @@
         }
       },
       "opamp": {
-        "description": "Idealised 5-terminal op-amp macro model (IN+ IN- VCC VEE OUT): 100M input impedance, open-loop gain of 100k, output hard-clamped to the VCC and VEE rail voltages.",
+        "description": "5-terminal op-amp macro model (IN+ IN- VCC VEE OUT), emitted as a .SUBCKT built from the node's own parameters. Not a fixed ideal part: gain, bandwidth, input and output impedance and rail headroom all come off data, so an LM741 and an MCP6002 behave differently in the same circuit.",
+        "parameters": {
+          "gain": "number \u2014 open-loop DC gain (Avol). Default 100000.",
+          "gbw": "number \u2014 gain-bandwidth product in Hz. 0 (the default) means infinite bandwidth; a real figure adds the dominant pole, which is what makes a follower ring or a high-gain stage roll off.",
+          "rin": "string \u2014 differential input resistance, SPICE suffixes allowed ('100MEG' default, '2MEG' bipolar, '1T' for a JFET or CMOS part).",
+          "rout": "number \u2014 series output resistance in ohms. Default 0.01; a real part is 20-75, which is what makes the output sag into a heavy load.",
+          "vRailDropHi": "number \u2014 headroom below VCC the output cannot reach, in volts. Default 0.",
+          "vRailDropLo": "number \u2014 headroom above VEE the output cannot reach, in volts. Default 0. These two are what separate a rail-to-rail part from an LM741 that stops 2 V short of each rail."
+        },
+        "models": {
+          "howToUse": "data.model names the part and the netlist reads its parameters from the catalogue. Set model alone for a stock part; set a parameter as well only to deviate from it.",
+          "ideal": "Ideal / rail-to-rail: gain 100000, gbw 0, rin 100MEG, rout 0.01, drops 0/0.",
+          "lm741": "LM741: gain 200000, gbw 1e6, rin 2MEG, rout 75, drops 2.0/2.0.",
+          "lm358": "LM358 / LM324, single-supply ground-sensing: gain 100000, gbw 1e6, rin 10MEG, rout 50, drops 1.5/0.05.",
+          "tl072": "TL072 / TL082, JFET input: gain 200000, gbw 3e6, rin 1T, rout 50, drops 1.5/1.5.",
+          "mcp6002": "MCP6002, CMOS rail-to-rail: gain 100000, gbw 1e6, rin 1T, rout 20, drops 0.02/0.02."
+        },
+        "noSlewRateModel": "There is no slew-rate parameter. Large-signal slewing is not modelled; gbw gives the small-signal roll-off and that is the whole of the speed behaviour. A circuit whose result turns on slew limiting will simulate optimistically.",
         "comparatorUse": "Open-loop it behaves as a comparator: OUT sits at VCC when in_non > in_inv and at VEE otherwise. Both vcc and vee MUST be wired \u2014 they set the clamp, so an unconnected vee leaves the output swinging to whatever the shunt resistor allows.",
-        "outputDrive": "OUT is an ideal voltage source with no series output resistance and no current limit, so a load drawing amps from it will simulate happily. Size series resistors as you would for the real part."
+        "outputDrive": "OUT is a voltage source behind rout with no current limit, so a load drawing amps from it will simulate happily. Size series resistors as you would for the real part."
       },
       "multimeter": {
         "description": "A meter reads either the voltage across its two terminals or the current through them, and which one changes the netlist, not just the display.",
@@ -336,6 +362,61 @@
           "pitchMm": "number \u2014 pad spacing on the board in mm (default 2.54)"
         },
         "terminals": "Pad numbers as strings, row-major from '1': in a 2x5 header pad 6 starts the second row, directly under pad 1. Resizing renumbers the pads, so an edge pointing at a pad that no longer exists stops connecting."
+      },
+      "bjt": {
+        "description": "npn and pnp are Gummel-Poon models, emitted per node as .model NPN(...) / PNP(...) from the node's own parameters \u2014 \u03b2 and the rest are data, not fixed.",
+        "parameters": {
+          "bf": "number \u2014 forward beta (current gain). Default 300.",
+          "is": "number \u2014 saturation current in amps. Default 1e-14.",
+          "vaf": "number \u2014 forward Early voltage. Default 100.",
+          "ikf": "number \u2014 forward knee current, where beta starts falling off. Default 0.4.",
+          "rb": "number \u2014 base resistance in ohms. Default 10.",
+          "cjc": "string \u2014 base-collector junction capacitance ('2p' default).",
+          "cje": "string \u2014 base-emitter junction capacitance ('4p' default). CJC/CJE are deliberately non-zero: at zero the solver has no timescale to resolve and astable circuits fail with 'timestep too small'."
+        },
+        "models": {
+          "howToUse": "data.model names the part and the netlist reads its parameters from the catalogue. Set model alone for a stock part; set a parameter as well only to deviate from it.",
+          "npn": {
+            "generic": "bf 300, is 1e-14, vaf 100, ikf 0.4, rb 10, cjc 2p, cje 4p",
+            "2n2222": "high-speed switching, 800 mA: bf 200, is 1.4e-14, vaf 74, ikf 0.5, rb 10, cjc 8p, cje 25p",
+            "2n3904": "general-purpose small signal, 200 mA: bf 200, is 1e-14, vaf 74, ikf 0.1, rb 20, cjc 3.5p, cje 4.5p",
+            "bc547": "low-noise general-purpose, 100 mA: bf 300, is 1.8e-14, vaf 80, ikf 0.2, rb 15, cjc 4.5p, cje 10p",
+            "2n3055": "high-power audio, 15 A: bf 50, is 1e-11, vaf 50, ikf 4.0, rb 1, cjc 150p, cje 400p"
+          },
+          "pnp": {
+            "generic": "bf 300, is 1e-14, vaf 100, ikf 0.4, rb 10, cjc 2p, cje 4p",
+            "2n2907": "high-speed switching: bf 200, is 1.4e-14, vaf 74, ikf 0.5, rb 10, cjc 8p, cje 25p",
+            "2n3906": "general-purpose small signal: bf 200, is 1e-14, vaf 74, ikf 0.1, rb 20, cjc 4.5p, cje 10p",
+            "bc557": "low-noise: bf 300, is 1.8e-14, vaf 80, ikf 0.2, rb 15, cjc 4.5p, cje 10p",
+            "mj2955": "high-power: bf 50, is 1e-11, vaf 50, ikf 4.0, rb 1, cjc 150p, cje 400p"
+          }
+        }
+      },
+      "mosfet": {
+        "description": "nmos and pmos are SPICE LEVEL=1 models, emitted per node from the node's own parameters. Body is tied to source. LEVEL=1 is a square-law model: fine for switching and for gate-threshold behaviour, not a substitute for a vendor model in the linear region.",
+        "parameters": {
+          "vto": "number \u2014 threshold voltage in volts (negative for pmos). Default 2.0 / -2.0.",
+          "kp": "number \u2014 transconductance parameter A/V\u00b2. Default 0.05 (nmos) / 0.02 (pmos).",
+          "lambda": "number \u2014 channel-length modulation. Default 0.01.",
+          "rd": "number \u2014 drain resistance in ohms. Default 0.",
+          "rs": "number \u2014 source resistance in ohms. Default 0. rd+rs is effectively the part's on-resistance and is what makes a power FET run cool where a small-signal one does not.",
+          "cgs": "string \u2014 gate-source capacitance; omitted from the netlist when 0.",
+          "cgd": "string \u2014 gate-drain capacitance; omitted when 0. These two set how hard the gate is to drive, so a driver stage sized without them is sized wrong."
+        },
+        "models": {
+          "howToUse": "data.model names the part and the netlist reads its parameters from the catalogue. Set model alone for a stock part; set a parameter as well only to deviate from it.",
+          "nmos": {
+            "generic": "vto 2.0, kp 0.05, lambda 0.01, rd 0, rs 0, no caps",
+            "2n7000": "small-signal: vto 2.1, kp 0.12, lambda 0.02, rd 1.2, rs 1.2, cgs 25p, cgd 5p",
+            "bs170": "small-signal switch, 500 mA: vto 2.0, kp 0.15, lambda 0.02, rd 0.8, rs 0.8, cgs 24p, cgd 7p",
+            "irf540n": "power, 33 A: vto 3.6, kp 1.5, lambda 0.005, rd 0.022, rs 0.022, cgs 1.2n, cgd 120p"
+          },
+          "pmos": {
+            "generic": "vto -2.0, kp 0.02, lambda 0.01, rd 0, rs 0, no caps",
+            "bss84": "small-signal: vto -1.7, kp 0.04, lambda 0.02, rd 4.0, rs 4.0, cgs 20p, cgd 6p",
+            "irf9540": "power, -23 A: vto -3.5, kp 0.8, lambda 0.005, rd 0.058, rs 0.058, cgs 1.1n, cgd 150p"
+          }
+        }
       }
     },
     "probeMode": {

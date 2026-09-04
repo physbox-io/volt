@@ -3,7 +3,8 @@
  */
 
 import { useEffect, useRef } from 'react';
-import type { Node, Edge } from '@xyflow/react';
+import { getNodesBounds, getViewportForBounds, type Node, type Edge } from '@xyflow/react';
+import { toPng } from 'html-to-image';
 import { presets as builtinPresets } from '../utils/presets';
 import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey } from '../utils/storage';
 
@@ -15,12 +16,38 @@ interface BridgeProps {
   probeMode: boolean;
   runSimulation: (nodesOverride?: Node[]) => Promise<any>;
   stopSimulation: () => void;
+  resetSimulation: () => void;
   setProbeMode: (v: boolean) => void;
   setNodes: (nodes: Node[] | ((prev: Node[]) => Node[])) => void;
   setEdges: (edges: Edge[] | ((prev: Edge[]) => Edge[])) => void;
   loadPreset?: (name: string) => void;
   onTransactionStart?: () => void;
   onTransactionEnd?: () => void;
+}
+
+/**
+ * Margin left around the circuit in a screenshot.
+ *
+ * As a `px` string, not the bare number: React Flow reads a bare number as a
+ * FRACTION of the frame, so a plain 48 asks for 4800% padding and fits the whole
+ * circuit into a speck in the middle of the image.
+ */
+const PAD = 48;
+const PAD_CSS = `${PAD}px` as const;
+
+/**
+ * A circuit written over by the bridge is not the preset that is still selected,
+ * so the preset's note card is now describing something that is no longer on the
+ * canvas. Drop it — the same thing Mesh does when BUILD_SCENE replaces a scene.
+ * A card the agent wrote itself is left alone; only preset cards are stale.
+ */
+function clearStalePresetCard() {
+  const getter = window._circuit_getNoteCards;
+  const setter = window._circuit_setNoteCards;
+  if (!getter || !setter) return;
+  const cards = getter();
+  const kept = cards.filter(c => !c.id.startsWith('preset_note_'));
+  if (kept.length !== cards.length) setter(kept);
 }
 
 function getSpeakerAudio(
@@ -134,7 +161,7 @@ export function useMCPBridge(props: BridgeProps) {
 
     const handle = async (cmd: string, msg: any): Promise<unknown> => {
       const { nodes, edges, isSimulating, selectedPreset, probeMode,
-              runSimulation, stopSimulation, setProbeMode, setNodes, setEdges,
+              runSimulation, stopSimulation, resetSimulation, setProbeMode, setNodes, setEdges,
               loadPreset } = p.current;
 
       switch (cmd) {
@@ -157,6 +184,10 @@ export function useMCPBridge(props: BridgeProps) {
 
         case 'STOP_SIM':
           stopSimulation();
+          return { ok: true };
+
+        case 'RESET':
+          resetSimulation();
           return { ok: true };
 
         case 'GET_WAVEFORMS':
@@ -193,7 +224,51 @@ export function useMCPBridge(props: BridgeProps) {
         case 'SET_NODES':
           if (!Array.isArray(msg.nodes)) return { ok: false, error: 'nodes must be array' };
           setNodes(msg.nodes);
+          clearStalePresetCard();
           return { ok: true };
+
+        /*
+          One component, changed in place.
+
+          The only way to alter a resistor used to be to send every node back
+          through SET_NODES, which means reading the whole canvas, editing one
+          field and writing it all back — and anything that changed in between
+          (a simulation result, a component the user moved) is quietly
+          overwritten by the stale copy. This touches the one node.
+
+          `data` is merged rather than replaced: a component's data carries the
+          simulation's output alongside its settings, and a caller sending
+          `{ label: '10k' }` means to change the label, not to erase the
+          waveform sitting next to it.
+        */
+        case 'UPDATE_COMPONENT': {
+          const id = msg.id || msg.nodeId;
+          if (typeof id !== 'string' || !id) return { ok: false, error: 'id is required' };
+          const updates = msg.updates;
+          if (!updates || typeof updates !== 'object') {
+            return { ok: false, error: 'updates must be an object of component fields' };
+          }
+          const existing = nodes.find(n => n.id === id);
+          if (!existing) return { ok: false, error: `No component with id '${id}'` };
+          if ('id' in updates) return { ok: false, error: "A component's id cannot be changed" };
+          if ('type' in updates && updates.type !== existing.type) {
+            return { ok: false, error: "A component's type cannot be changed in place — delete it and add the replacement, so its terminals and data match the new part" };
+          }
+
+          const { data: dataUpdates, ...nodeUpdates } = updates as Record<string, unknown>;
+          setNodes(nds => nds.map(n =>
+            n.id === id
+              ? {
+                  ...n,
+                  ...nodeUpdates,
+                  data: dataUpdates && typeof dataUpdates === 'object'
+                    ? { ...n.data, ...(dataUpdates as Record<string, unknown>) }
+                    : n.data,
+                }
+              : n
+          ));
+          return { ok: true, id };
+        }
 
         case 'SET_EDGES':
           if (!Array.isArray(msg.edges)) return { ok: false, error: 'edges must be array' };
@@ -322,6 +397,7 @@ export function useMCPBridge(props: BridgeProps) {
           }
           setNodes(msg.nodes);
           setEdges(msg.edges);
+          clearStalePresetCard();
           if (msg.runSim !== false) {
             const simRes = await runSimulation(msg.nodes);
             return { ok: true, simResult: simRes || { ok: true } };
@@ -329,22 +405,61 @@ export function useMCPBridge(props: BridgeProps) {
           return { ok: true };
         }
 
+        case 'GET_NOTE_CARDS': {
+          const getter = window._circuit_getNoteCards;
+          return { ok: true, noteCards: getter ? getter() : [] };
+        }
+
+        case 'SET_NOTE_CARDS': {
+          const setter = window._circuit_setNoteCards;
+          if (!setter) return { ok: false, error: 'Note card state not available' };
+          if (!Array.isArray(msg.noteCards)) return { ok: false, error: 'noteCards must be an array' };
+          setter(msg.noteCards);
+          return { ok: true };
+        }
+
+        /*
+          A picture of the schematic.
+
+          This used to make a canvas, fill it with the theme's background colour
+          and return that — an agent asking to see the circuit got a blank sheet
+          and no indication anything was missing, which is worse than no
+          screenshot at all. The nodes are ordinary DOM, so photographing them
+          means rasterising that DOM; html-to-image inlines the styles and
+          serialises it through an SVG foreignObject.
+
+          The frame is the CIRCUIT, not the viewport: what is panned into view is
+          how a person happens to be looking at the canvas, and a screenshot that
+          changed with the scroll position would be no use for checking a layout.
+          Every component, every time, fitted to the image.
+        */
         case 'SCREENSHOT': {
-          const flowEl = document.querySelector('.react-flow') as HTMLElement;
-          if (!flowEl) return { ok: false, error: 'React Flow element container not found' };
+          const viewportEl = document.querySelector('.react-flow__viewport') as HTMLElement | null;
+          if (!viewportEl) return { ok: false, error: 'React Flow canvas is not mounted' };
+          if (nodes.length === 0) return { ok: false, error: 'The canvas is empty — there is nothing to photograph' };
+
           try {
-            const width = flowEl.clientWidth || 800;
-            const height = flowEl.clientHeight || 600;
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.fillStyle = document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc';
-              ctx.fillRect(0, 0, width, height);
-            }
-            // Create data URL representation
-            const dataUrl = canvas.toDataURL('image/png');
+            const dark = document.documentElement.classList.contains('dark');
+            const bounds = getNodesBounds(nodes);
+            // A hard cap keeps a sprawling board from producing a data URL too
+            // large to travel back through the bridge.
+            const width = Math.round(Math.min(2400, Math.max(320, bounds.width + PAD * 2)));
+            const height = Math.round(Math.min(1800, Math.max(240, bounds.height + PAD * 2)));
+            const { x, y, zoom } = getViewportForBounds(bounds, width, height, 0.2, 2, PAD_CSS);
+
+            const dataUrl = await toPng(viewportEl, {
+              backgroundColor: dark ? '#0f172a' : '#f8fafc',
+              width,
+              height,
+              // The live element keeps its own pan/zoom transform. Overriding it
+              // for the capture is what fits the circuit to the frame; the
+              // element on screen is untouched.
+              style: {
+                width: `${width}px`,
+                height: `${height}px`,
+                transform: `translate(${x}px, ${y}px) scale(${zoom})`,
+              },
+            });
             return { ok: true, dataUrl, width, height };
           } catch (e) {
             return { ok: false, error: String(e) };

@@ -2,33 +2,28 @@ import { Handle, Position } from '@xyflow/react';
 import { useState } from 'react';
 import type { NodePropertiesProps } from './registry';
 import { NumberInput } from '../NumberInput';
-import { OPAMP_MODELS, getOpAmpModel } from '../../utils/deviceModels';
+import { OPAMP_MODELS, getOpAmpModel, resolveOpAmpParams } from '../../utils/deviceModels';
 
 export function OpAmpProperties({ node, updateData }: NodePropertiesProps) {
   const currentModelId = (node.data?.model as string) || 'ideal';
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const handleModelChange = (id: string) => {
+    // Model and caption only — see the note in NpnNode.
     updateData('model', id);
     if (id === 'custom') return;
     const m = getOpAmpModel(id);
-    if (m) {
-      updateData('label', m.id === 'ideal' ? 'OP-AMP' : m.name.split(' ')[0]);
-      updateData('gain', m.gain);
-      updateData('gbw', m.gbw);
-      updateData('rin', m.rin);
-      updateData('rout', m.rout);
-      updateData('vRailDropHi', m.vRailDropHi);
-      updateData('vRailDropLo', m.vRailDropLo);
-    }
+    if (m) updateData('label', m.id === 'ideal' ? 'OP-AMP' : m.name.split(' ')[0]);
   };
 
-  const currentGain = Number.isFinite(node.data?.gain as number) ? (node.data.gain as number) : 100000;
-  const currentGbw = Number.isFinite(node.data?.gbw as number) ? (node.data.gbw as number) : 0;
-  const currentRin = node.data?.rin !== undefined ? String(node.data.rin) : '100MEG';
-  const currentRout = Number.isFinite(node.data?.rout as number) ? (node.data.rout as number) : 0.01;
-  const currentDropHi = Number.isFinite(node.data?.vRailDropHi as number) ? (node.data.vRailDropHi as number) : 0;
-  const currentDropLo = Number.isFinite(node.data?.vRailDropLo as number) ? (node.data.vRailDropLo as number) : 0;
+  // Shown as the netlist will read them.
+  const resolved = resolveOpAmpParams(node.data);
+  const currentGain = resolved.gain;
+  const currentGbw = resolved.gbw;
+  const currentRin = resolved.rin;
+  const currentRout = resolved.rout;
+  const currentDropHi = resolved.vRailDropHi;
+  const currentDropLo = resolved.vRailDropLo;
 
   return (
     <>

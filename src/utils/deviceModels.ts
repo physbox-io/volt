@@ -358,3 +358,91 @@ export function getMosfetModel(polarity: 'nmos' | 'pmos', modelId?: string): Mos
 export function getOpAmpModel(modelId?: string): OpAmpModelDef | undefined {
   return OPAMP_MODELS.find(m => m.id.toLowerCase() === modelId?.toLowerCase());
 }
+
+// ==========================================
+// Resolving a node's effective parameters
+// ==========================================
+
+/*
+ * `data.model` used to be a label and nothing more.
+ *
+ * The properties panel wrote the part number AND copied every parameter of that
+ * part onto the node, and the netlist read only the parameters — so the two
+ * agreed as long as the dropdown was the only thing that ever set a model. It
+ * was not. A preset, a saved circuit, an imported one, or anything driving the
+ * app through MCP could set `model: '2n3904'` and get a transistor labelled
+ * 2N3904 that simulated as the generic β=300 device, with nothing anywhere
+ * saying so.
+ *
+ * So the model is resolved here instead, and it now means what it says: the
+ * catalogue supplies the parameters, and an explicit field on the node overrides
+ * the one it came with. Selecting a part in the UI still writes the parameters
+ * out — that is what makes them editable, and an edit is what 'custom' records —
+ * but nothing depends on it having done so.
+ */
+
+const GENERIC_BJT = { bf: 300, is: 1e-14, vaf: 100, ikf: 0.4, rb: 10, cjc: '2p', cje: '4p' } as const;
+
+export interface ResolvedBjtParams {
+  bf: number; is: number; vaf: number; ikf: number; rb: number; cjc: string; cje: string;
+}
+
+/** Node data as the netlist sees it: anything may be absent, and often is. */
+type DeviceData = Record<string, unknown> | undefined | null;
+
+const num = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+
+/** cjc/cje/cgs/cgd carry SPICE suffixes ('2p'), so they stay strings. */
+const str = (v: unknown): string | undefined =>
+  v === undefined || v === null || v === '' ? undefined : String(v);
+
+export function resolveBjtParams(polarity: 'npn' | 'pnp', data: DeviceData): ResolvedBjtParams {
+  const d = data ?? {};
+  const m = getBjtModel(polarity, typeof d.model === 'string' ? d.model : undefined);
+  return {
+    bf:  num(d.bf)  ?? m?.bf  ?? GENERIC_BJT.bf,
+    is:  num(d.is)  ?? m?.is  ?? GENERIC_BJT.is,
+    vaf: num(d.vaf) ?? m?.vaf ?? GENERIC_BJT.vaf,
+    ikf: num(d.ikf) ?? m?.ikf ?? GENERIC_BJT.ikf,
+    rb:  num(d.rb)  ?? m?.rb  ?? GENERIC_BJT.rb,
+    cjc: str(d.cjc) ?? m?.cjc ?? GENERIC_BJT.cjc,
+    cje: str(d.cje) ?? m?.cje ?? GENERIC_BJT.cje,
+  };
+}
+
+export interface ResolvedMosfetParams {
+  vto: number; kp: number; lambda: number; rd: number; rs: number; cgs: string; cgd: string;
+}
+
+export function resolveMosfetParams(polarity: 'nmos' | 'pmos', data: DeviceData): ResolvedMosfetParams {
+  const d = data ?? {};
+  const m = getMosfetModel(polarity, typeof d.model === 'string' ? d.model : undefined);
+  const isN = polarity === 'nmos';
+  return {
+    vto:    num(d.vto)    ?? m?.vto    ?? (isN ? 2.0 : -2.0),
+    kp:     num(d.kp)     ?? m?.kp     ?? (isN ? 0.05 : 0.02),
+    lambda: num(d.lambda) ?? m?.lambda ?? 0.01,
+    rd:     num(d.rd)     ?? m?.rd     ?? 0,
+    rs:     num(d.rs)     ?? m?.rs     ?? 0,
+    cgs:    str(d.cgs)    ?? m?.cgs    ?? '0',
+    cgd:    str(d.cgd)    ?? m?.cgd    ?? '0',
+  };
+}
+
+export interface ResolvedOpAmpParams {
+  gain: number; gbw: number; rin: string; rout: number; vRailDropHi: number; vRailDropLo: number;
+}
+
+export function resolveOpAmpParams(data: DeviceData): ResolvedOpAmpParams {
+  const d = data ?? {};
+  const m = getOpAmpModel(typeof d.model === 'string' ? d.model : undefined);
+  return {
+    gain:        num(d.gain)        ?? m?.gain        ?? 100000,
+    gbw:         num(d.gbw)         ?? m?.gbw         ?? 0,
+    rin:         str(d.rin)         ?? m?.rin         ?? '100MEG',
+    rout:        num(d.rout)        ?? m?.rout        ?? 0.01,
+    vRailDropHi: num(d.vRailDropHi) ?? m?.vRailDropHi ?? 0,
+    vRailDropLo: num(d.vRailDropLo) ?? m?.vRailDropLo ?? 0,
+  };
+}

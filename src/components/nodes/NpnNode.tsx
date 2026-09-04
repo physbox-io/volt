@@ -4,7 +4,7 @@ import { SchematicLabel } from './schematic';
 import { NumberInput } from '../NumberInput';
 
 import { useState } from 'react';
-import { BJT_NPN_MODELS, BJT_PNP_MODELS, getBjtModel } from '../../utils/deviceModels';
+import { BJT_NPN_MODELS, BJT_PNP_MODELS, getBjtModel, resolveBjtParams } from '../../utils/deviceModels';
 
 /** Shared by NpnNode and PnpNode — both BJT types expose model presets and physical SPICE parameters. */
 export function BJTProperties({ node, updateData }: NodePropertiesProps) {
@@ -14,28 +14,27 @@ export function BJTProperties({ node, updateData }: NodePropertiesProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const handleModelChange = (id: string) => {
+    // Only the model and the caption. The parameters come from the catalogue
+    // now — updateData clears any overrides when a catalogue part is picked,
+    // and the netlist resolves the rest — so writing them out here would put a
+    // stale copy of the model on the node and call it a custom device.
     updateData('model', id);
     if (id === 'custom') return;
     const m = getBjtModel(isPnp ? 'pnp' : 'npn', id);
-    if (m) {
-      updateData('label', m.id === 'generic' ? (isPnp ? 'PNP' : 'NPN') : m.name);
-      updateData('bf', m.bf);
-      updateData('is', m.is);
-      updateData('vaf', m.vaf);
-      updateData('rb', m.rb);
-      updateData('cjc', m.cjc);
-      updateData('cje', m.cje);
-      updateData('ikf', m.ikf);
-    }
+    if (m) updateData('label', m.id === 'generic' ? (isPnp ? 'PNP' : 'NPN') : m.name);
   };
 
-  const currentBf = Number.isFinite(node.data?.bf as number) ? (node.data.bf as number) : 300;
-  const currentVaf = Number.isFinite(node.data?.vaf as number) ? (node.data.vaf as number) : 100;
-  const currentIs = Number.isFinite(node.data?.is as number) ? (node.data.is as number) : 1e-14;
-  const currentRb = Number.isFinite(node.data?.rb as number) ? (node.data.rb as number) : 10;
-  const currentIkf = Number.isFinite(node.data?.ikf as number) ? (node.data.ikf as number) : 0.4;
-  const currentCjc = node.data?.cjc !== undefined ? String(node.data.cjc) : '2p';
-  const currentCje = node.data?.cje !== undefined ? String(node.data.cje) : '4p';
+  // Shown as the netlist will read them: the part's values until something on
+  // this node overrides one. Reading the raw fields would show β=300 under a
+  // dropdown that says 2N3055.
+  const resolved = resolveBjtParams(isPnp ? 'pnp' : 'npn', node.data);
+  const currentBf = resolved.bf;
+  const currentVaf = resolved.vaf;
+  const currentIs = resolved.is;
+  const currentRb = resolved.rb;
+  const currentIkf = resolved.ikf;
+  const currentCjc = resolved.cjc;
+  const currentCje = resolved.cje;
 
   return (
     <>

@@ -4,7 +4,7 @@ import { SchematicLabel } from './schematic';
 import { NumberInput } from '../NumberInput';
 
 import { useState } from 'react';
-import { MOSFET_NMOS_MODELS, MOSFET_PMOS_MODELS, getMosfetModel } from '../../utils/deviceModels';
+import { MOSFET_NMOS_MODELS, MOSFET_PMOS_MODELS, getMosfetModel, resolveMosfetParams } from '../../utils/deviceModels';
 
 /** Shared by NmosNode and PmosNode — both MOSFET types expose model presets and physical SPICE parameters. */
 export function MosfetProperties({ node, updateData }: NodePropertiesProps) {
@@ -14,28 +14,22 @@ export function MosfetProperties({ node, updateData }: NodePropertiesProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const handleModelChange = (id: string) => {
+    // Model and caption only — see the note in NpnNode.
     updateData('model', id);
     if (id === 'custom') return;
     const m = getMosfetModel(isPmos ? 'pmos' : 'nmos', id);
-    if (m) {
-      updateData('label', m.id === 'generic' ? (isPmos ? 'PMOS' : 'NMOS') : m.name);
-      updateData('vto', m.vto);
-      updateData('kp', m.kp);
-      updateData('lambda', m.lambda);
-      updateData('rd', m.rd);
-      updateData('rs', m.rs);
-      updateData('cgs', m.cgs);
-      updateData('cgd', m.cgd);
-    }
+    if (m) updateData('label', m.id === 'generic' ? (isPmos ? 'PMOS' : 'NMOS') : m.name);
   };
 
-  const currentVto = Number.isFinite(node.data.vto as number) ? (node.data.vto as number) : (isPmos ? -2.0 : 2.0);
-  const currentKp = Number.isFinite(node.data.kp as number) ? (node.data.kp as number) : (isPmos ? 0.02 : 0.05);
-  const currentLambda = Number.isFinite(node.data.lambda as number) ? (node.data.lambda as number) : 0.01;
-  const currentRd = Number.isFinite(node.data.rd as number) ? (node.data.rd as number) : 0;
-  const currentRs = Number.isFinite(node.data.rs as number) ? (node.data.rs as number) : 0;
-  const currentCgs = node.data?.cgs !== undefined ? String(node.data.cgs) : '0';
-  const currentCgd = node.data?.cgd !== undefined ? String(node.data.cgd) : '0';
+  // Shown as the netlist will read them.
+  const resolved = resolveMosfetParams(isPmos ? 'pmos' : 'nmos', node.data);
+  const currentVto = resolved.vto;
+  const currentKp = resolved.kp;
+  const currentLambda = resolved.lambda;
+  const currentRd = resolved.rd;
+  const currentRs = resolved.rs;
+  const currentCgs = resolved.cgs;
+  const currentCgd = resolved.cgd;
 
   return (
     <>

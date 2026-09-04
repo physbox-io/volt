@@ -1,6 +1,7 @@
 import { type Node, type Edge } from '@xyflow/react';
 import { executeMcuCode, type PWLPoint } from './mcu';
 import { getEffectiveMcuConfig } from './mcuConfig';
+import { resolveBjtParams, resolveMosfetParams, resolveOpAmpParams } from './deviceModels';
 
 /** Strip Unicode symbols from component labels to produce valid SPICE values.
  *  e.g. '47kΩ' → '47k', '10µF' → '10uF' */
@@ -326,13 +327,7 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       const nc = getNet(node.id, 'c');
       const nb = getNet(node.id, 'b');
       const ne = getNet(node.id, 'e');
-      const bf = node.data.bf || 300;
-      const is = node.data.is !== undefined ? node.data.is : 1e-14;
-      const vaf = node.data.vaf !== undefined ? node.data.vaf : 100;
-      const ikf = node.data.ikf !== undefined ? node.data.ikf : 0.4;
-      const rb = node.data.rb !== undefined ? node.data.rb : 10;
-      const cjc = node.data.cjc !== undefined ? node.data.cjc : '2p';
-      const cje = node.data.cje !== undefined ? node.data.cje : '4p';
+      const { bf, is, vaf, ikf, rb, cjc, cje } = resolveBjtParams('npn', node.data);
       netlist += `Q_${node.id} ${nc} ${nb} ${ne} NPN_MODEL_${node.id}\n`;
       // CJC/CJE/TR/TF intentionally non-zero (small-signal-BJT scale, picofarads/nanoseconds):
       // at all zero, transistor switching has no physical timescale at all, which is fine for
@@ -347,13 +342,7 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       const nc = getNet(node.id, 'c');
       const nb = getNet(node.id, 'b');
       const ne = getNet(node.id, 'e');
-      const bf = node.data.bf || 300;
-      const is = node.data.is !== undefined ? node.data.is : 1e-14;
-      const vaf = node.data.vaf !== undefined ? node.data.vaf : 100;
-      const ikf = node.data.ikf !== undefined ? node.data.ikf : 0.4;
-      const rb = node.data.rb !== undefined ? node.data.rb : 10;
-      const cjc = node.data.cjc !== undefined ? node.data.cjc : '2p';
-      const cje = node.data.cje !== undefined ? node.data.cje : '4p';
+      const { bf, is, vaf, ikf, rb, cjc, cje } = resolveBjtParams('pnp', node.data);
       netlist += `Q_${node.id} ${nc} ${nb} ${ne} PNP_MODEL_${node.id}\n`;
       // See NPN model comment above — same reasoning, same fix.
       netlist += `.model PNP_MODEL_${node.id} PNP(IS=${is} VAF=${vaf} BF=${bf} IKF=${ikf} XTB=1.5 BR=3 CJC=${cjc} CJE=${cje} TR=40n TF=0.4n RB=${rb})\n`;
@@ -362,13 +351,9 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       const nd = getNet(node.id, 'd');
       const ng = getNet(node.id, 'g');
       const ns = getNet(node.id, 's');
-      const vto = node.data.vto !== undefined ? node.data.vto : 2.0;
-      const kp = node.data.kp !== undefined ? node.data.kp : 0.05;
-      const lambda = node.data.lambda !== undefined ? node.data.lambda : 0.01;
-      const rd = node.data.rd !== undefined ? node.data.rd : 0;
-      const rs = node.data.rs !== undefined ? node.data.rs : 0;
-      const cgsStr = node.data.cgs && node.data.cgs !== '0' && node.data.cgs !== 0 ? ` CGS=${node.data.cgs}` : '';
-      const cgdStr = node.data.cgd && node.data.cgd !== '0' && node.data.cgd !== 0 ? ` CGD=${node.data.cgd}` : '';
+      const { vto, kp, lambda, rd, rs, cgs, cgd } = resolveMosfetParams('nmos', node.data);
+      const cgsStr = cgs && cgs !== '0' ? ` CGS=${cgs}` : '';
+      const cgdStr = cgd && cgd !== '0' ? ` CGD=${cgd}` : '';
       netlist += `M_${node.id} ${nd} ${ng} ${ns} ${ns} NMOS_MODEL_${node.id}\n`;
       netlist += `.model NMOS_MODEL_${node.id} NMOS(LEVEL=1 VTO=${vto} KP=${kp} GAMMA=0.5 PHI=0.6 LAMBDA=${lambda} RD=${rd} RS=${rs}${cgsStr}${cgdStr})\n`;
     }
@@ -376,13 +361,9 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       const nd = getNet(node.id, 'd');
       const ng = getNet(node.id, 'g');
       const ns = getNet(node.id, 's');
-      const vto = node.data.vto !== undefined ? node.data.vto : -2.0;
-      const kp = node.data.kp !== undefined ? node.data.kp : 0.02;
-      const lambda = node.data.lambda !== undefined ? node.data.lambda : 0.01;
-      const rd = node.data.rd !== undefined ? node.data.rd : 0;
-      const rs = node.data.rs !== undefined ? node.data.rs : 0;
-      const cgsStr = node.data.cgs && node.data.cgs !== '0' && node.data.cgs !== 0 ? ` CGS=${node.data.cgs}` : '';
-      const cgdStr = node.data.cgd && node.data.cgd !== '0' && node.data.cgd !== 0 ? ` CGD=${node.data.cgd}` : '';
+      const { vto, kp, lambda, rd, rs, cgs, cgd } = resolveMosfetParams('pmos', node.data);
+      const cgsStr = cgs && cgs !== '0' ? ` CGS=${cgs}` : '';
+      const cgdStr = cgd && cgd !== '0' ? ` CGD=${cgd}` : '';
       netlist += `M_${node.id} ${nd} ${ng} ${ns} ${ns} PMOS_MODEL_${node.id}\n`;
       netlist += `.model PMOS_MODEL_${node.id} PMOS(LEVEL=1 VTO=${vto} KP=${kp} GAMMA=0.5 PHI=0.6 LAMBDA=${lambda} RD=${rd} RS=${rs}${cgsStr}${cgdStr})\n`;
     }
@@ -538,12 +519,10 @@ B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
 
     const opampNodes = nodes.filter(n => n.type === 'opamp');
     for (const node of opampNodes) {
-      const gain = Number.isFinite(node.data?.gain) ? Number(node.data.gain) : 100000;
-      const gbw = Number.isFinite(node.data?.gbw) ? Number(node.data.gbw) : 0;
-      const rin = node.data?.rin ? String(node.data.rin) : '100MEG';
-      const rout = Number.isFinite(node.data?.rout) ? Number(node.data.rout) : 0.01;
-      const dropHi = Number.isFinite(node.data?.vRailDropHi) ? Math.max(0, Number(node.data.vRailDropHi)) : 0;
-      const dropLo = Number.isFinite(node.data?.vRailDropLo) ? Math.max(0, Number(node.data.vRailDropLo)) : 0;
+      const resolved = resolveOpAmpParams(node.data);
+      const { gain, gbw, rin, rout } = resolved;
+      const dropHi = Math.max(0, resolved.vRailDropHi);
+      const dropLo = Math.max(0, resolved.vRailDropLo);
 
       const upperLimit = dropHi > 0 ? `(V(3) - ${dropHi})` : `V(3)`;
       const lowerLimit = dropLo > 0 ? `(V(4) + ${dropLo})` : `V(4)`;

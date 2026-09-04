@@ -15,6 +15,7 @@ import {
 import { isPhysical } from '../utils/pcbNets';
 import { minPadGapMm } from '../utils/pcbTooling';
 import { nodeRegistry } from './nodes/registry';
+import { getBjtModel, getMosfetModel, getOpAmpModel } from '../utils/deviceModels';
 
 const ORIENTATION_SELECTABLE_TYPES = ['resistor', 'capacitor', 'inductor', 'diode', 'zener', 'led', 'switch', 'voltage', 'acvoltage', 'currentsource'];
 const PASSIVE_NAMED_TYPES = ['resistor', 'capacitor', 'inductor'];
@@ -70,6 +71,24 @@ function FootprintNumber({
   );
 }
 
+/**
+ * Every parameter a device model supplies. Cleared when a catalogue part is
+ * chosen so the part itself provides them; see updateData.
+ */
+const DEVICE_PARAM_KEYS = [
+  'bf', 'is', 'vaf', 'ikf', 'rb', 'cjc', 'cje',                 // BJT
+  'vto', 'kp', 'lambda', 'rd', 'rs', 'cgs', 'cgd',              // MOSFET
+  'gain', 'gbw', 'rin', 'rout', 'vRailDropHi', 'vRailDropLo',   // op-amp
+];
+
+function isCatalogPart(nodeType: string | undefined, modelId: unknown): boolean {
+  if (typeof modelId !== 'string') return false;
+  if (nodeType === 'npn' || nodeType === 'pnp') return !!getBjtModel(nodeType, modelId);
+  if (nodeType === 'nmos' || nodeType === 'pmos') return !!getMosfetModel(nodeType, modelId);
+  if (nodeType === 'opamp') return !!getOpAmpModel(modelId);
+  return false;
+}
+
 export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSimulation, simLength, isOpen, onClose }: { selectedNode: any, setNodes: any, setEdges: any, isSimulating: boolean, runSimulation: () => void, simLength: number, /** Drawer state below `lg`; ignored at `lg`, where this is a column. */ isOpen?: boolean, onClose?: () => void }) {
   const simDebounceTimerRef = useRef<any>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -98,6 +117,19 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
         const overrides = ['voltage', 'resistance', 'capacitance', 'inductance'];
         overrides.forEach(o => {
           if (o in newData) delete (newData as any)[o];
+        });
+      }
+
+      // Picking a part from the catalogue clears the per-parameter overrides,
+      // for the same reason editing a label clears the numeric ones: the part
+      // is now the source of those numbers. It used to copy all of them onto
+      // the node instead, which left every device carrying a frozen snapshot of
+      // the catalogue — a correction to a model never reached a circuit already
+      // drawn, and 'custom' could not be told apart from 'the defaults, written
+      // out'. Editing any one of them writes it back and sets model='custom'.
+      if (key === 'model' && value !== 'custom' && isCatalogPart(selectedNode?.type, value)) {
+        DEVICE_PARAM_KEYS.forEach(k => {
+          if (k in newData) delete (newData as any)[k];
         });
       }
 

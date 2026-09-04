@@ -1,13 +1,21 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CircuitPreset } from '../utils/storage';
 import { presets as presetsMap } from '../utils/presets';
 
-interface NoteCard {
+export interface NoteCard {
   id: string;
   markdown: string;
   minimized: boolean;
   x: number;
   y: number;
+}
+
+declare global {
+  interface Window {
+    /** The cards on screen. Set by useNoteCards, read by the MCP bridge. */
+    _circuit_getNoteCards?: () => NoteCard[];
+    _circuit_setNoteCards?: (cards: NoteCard[]) => void;
+  }
 }
 
 interface UseNoteCardsArgs {
@@ -20,7 +28,15 @@ export function useNoteCards({ selectedPreset, userPresets }: UseNoteCardsArgs) 
   const [noteCards, setNoteCards] = useState<NoteCard[]>([]);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
 
+  // Which preset the cards on screen were spawned for. `userPresets` is a fresh
+  // object on every save, so without this the effect below re-ran and reset the
+  // cards while the selection sat still — which would wipe a card the MCP
+  // bridge had just written the moment anything touched the preset list.
+  const spawnedFor = useRef<string | null>(null);
+
   useEffect(() => {
+    if (spawnedFor.current === selectedPreset) return;
+    spawnedFor.current = selectedPreset;
     const allPresets = { ...presetsMap, ...userPresets };
     const preset = allPresets[selectedPreset];
     if (preset && preset.noteCard) {
@@ -60,6 +76,18 @@ export function useNoteCards({ selectedPreset, userPresets }: UseNoteCardsArgs) 
   const moveCard = useCallback((id: string, x: number, y: number) => {
     setNoteCards(prev => prev.map(c => c.id === id ? { ...c, x, y } : c));
   }, []);
+
+  // Reachable by the MCP bridge, the same way Mesh exposes its cards. Without
+  // this an agent could only describe a circuit by saving it as a preset —
+  // there was no way to card the circuit actually on the canvas.
+  useEffect(() => {
+    window._circuit_getNoteCards = () => noteCards;
+    window._circuit_setNoteCards = (cards) => setNoteCards(cards);
+    return () => {
+      delete window._circuit_getNoteCards;
+      delete window._circuit_setNoteCards;
+    };
+  }, [noteCards]);
 
   return { noteCards, editingCardId, toggleEdit, toggleMinimize, updateMarkdown, closeCard, moveCard };
 }

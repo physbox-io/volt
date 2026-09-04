@@ -1516,6 +1516,36 @@ export default function App() {
     }
   };
 
+  /*
+   * Back to t=0 with the circuit intact — Mesh's Reset, for a schematic.
+   *
+   * Stopping a run leaves its results painted on the canvas: node voltages, LED
+   * brightness, scope traces, MCU logs and the per-edge currents. That is what
+   * you want when you pause to read them, and wrong when you want a clean slate
+   * — an agent inspecting the circuit after a stop cannot tell a stale waveform
+   * from a fresh one. This strips exactly the fields the run writes and leaves
+   * everything a person set.
+   */
+  const resetSimulation = () => {
+    stopSimulation();
+    setInitialConditions({});
+    setNodes(nds => nds.map(n => {
+      const {
+        voltage: _v, voltageData: _vd, voltageData1: _vd1, voltageData2: _vd2,
+        current_array: _ca, time_points: _tp, timePoints: _tps,
+        segmentVoltages: _sv, segmentVoltageArrays: _sva,
+        pinVoltages: _pv, state: _st, logs: _lg, isSimulating: _is,
+        ...kept
+      } = n.data as Record<string, unknown>;
+      return { ...n, data: kept };
+    }));
+    setEdges(eds => eds.map(e => {
+      if (!e.data) return e;
+      const { current_array: _ca, time_points: _tp, ...kept } = e.data as Record<string, unknown>;
+      return { ...e, data: kept };
+    }));
+  };
+
   const { undo, redo, canUndo, canRedo } = useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, setNodes, setEdges });
 
   // Clear initial conditions on structural changes
@@ -1668,7 +1698,7 @@ export default function App() {
 
   useMCPBridge({
     nodes, edges, isSimulating, selectedPreset, probeMode,
-    runSimulation, stopSimulation,
+    runSimulation, stopSimulation, resetSimulation,
     setProbeMode,
     setNodes: (n: any) => setNodes(n),
     setEdges: (e: any) => setEdges(e),

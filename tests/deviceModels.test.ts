@@ -248,3 +248,87 @@ describe('Op-Amp SPICE netlist & macromodel generation', () => {
     expect(netlist).toContain('Rout 8 5 50');
   });
 });
+
+/*
+ * The bug these cover: `data.model` used to be a caption. The properties panel
+ * copied a part's parameters onto the node when you picked it from the dropdown,
+ * and the netlist read only those parameters — so anything that set a model
+ * WITHOUT copying the parameters (a preset, a saved or imported circuit, an
+ * agent driving the app over MCP) produced a transistor labelled 2N3055 that
+ * simulated as the generic β=300 part, silently.
+ */
+describe('a named part simulates as that part', () => {
+  const netlistFor = (node: Partial<Node> & { id: string; type: string; data: Record<string, unknown> }) =>
+    generateSpiceNetlist([{ position: { x: 0, y: 0 }, ...node } as Node], []).netlist;
+
+  it('takes a BJT’s parameters from the catalogue when only the model is named', () => {
+    const netlist = netlistFor({ id: 'q1', type: 'npn', data: { model: '2n3055' } });
+    const m = getBjtModel('npn', '2n3055')!;
+    // The power part: β=50, not the generic 300, and hundreds of picofarads.
+    expect(netlist).toContain(`BF=${m.bf}`);
+    expect(netlist).toContain(`CJC=${m.cjc}`);
+    expect(netlist).toContain(`IKF=${m.ikf}`);
+    expect(netlist).not.toContain('BF=300');
+  });
+
+  it('does the same for a PNP', () => {
+    const netlist = netlistFor({ id: 'q2', type: 'pnp', data: { model: 'bc557' } });
+    const m = getBjtModel('pnp', 'bc557')!;
+    expect(netlist).toContain(`VAF=${m.vaf}`);
+    expect(netlist).toContain(`RB=${m.rb}`);
+  });
+
+  it('takes a MOSFET’s parameters, including the caps that set gate drive', () => {
+    const netlist = netlistFor({ id: 'm1', type: 'nmos', data: { model: 'irf540n' } });
+    const m = getMosfetModel('nmos', 'irf540n')!;
+    expect(netlist).toContain(`VTO=${m.vto}`);
+    expect(netlist).toContain(`KP=${m.kp}`);
+    expect(netlist).toContain(`RD=${m.rd}`);
+    expect(netlist).toContain(`CGS=${m.cgs}`);
+    expect(netlist).toContain(`CGD=${m.cgd}`);
+  });
+
+  it('takes an op-amp’s gain, bandwidth and rail headroom', () => {
+    const netlist = netlistFor({ id: 'u1', type: 'opamp', data: { model: 'lm741' } });
+    const m = getOpAmpModel('lm741')!;
+    expect(netlist).toContain(`Rin 1 2 ${m.rin}`);
+    expect(netlist).toContain(`E1 6 0 1 2 ${m.gain}`);
+    // An LM741 stops 2V short of each rail; the ideal part does not.
+    expect(netlist).toContain(`(V(3) - ${m.vRailDropHi})`);
+    expect(netlist).toContain(`(V(4) + ${m.vRailDropLo})`);
+  });
+});
+
+describe('an explicit parameter still wins over its model', () => {
+  it('keeps a hand-set beta on a catalogue part', () => {
+    const nodes: Node[] = [
+      { id: 'q1', type: 'npn', position: { x: 0, y: 0 }, data: { model: '2n3904', bf: 42 } },
+    ];
+    const { netlist } = generateSpiceNetlist(nodes, []);
+    const m = getBjtModel('npn', '2n3904')!;
+    expect(netlist).toContain('BF=42');
+    // ...while everything it did not set still comes from the part.
+    expect(netlist).toContain(`VAF=${m.vaf}`);
+  });
+
+  it('treats an unknown or custom model as the generic device', () => {
+    for (const model of ['custom', 'bc108', '']) {
+      const nodes: Node[] = [
+        { id: 'q1', type: 'npn', position: { x: 0, y: 0 }, data: { model } },
+      ];
+      expect(generateSpiceNetlist(nodes, []).netlist).toContain('BF=300');
+    }
+  });
+
+  it('leaves a node with no model at all exactly as it was', () => {
+    const nodes: Node[] = [{ id: 'q1', type: 'npn', position: { x: 0, y: 0 }, data: {} }];
+    const { netlist } = generateSpiceNetlist(nodes, []);
+    expect(netlist).toContain('.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)');
+  });
+
+  it('does not confuse an NPN part number with a PNP one', () => {
+    // '2n3904' is an NPN; asking for it on a PNP must not silently apply it.
+    const nodes: Node[] = [{ id: 'q1', type: 'pnp', position: { x: 0, y: 0 }, data: { model: '2n3904' } }];
+    expect(generateSpiceNetlist(nodes, []).netlist).toContain('BF=300');
+  });
+});
