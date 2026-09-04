@@ -48,16 +48,20 @@ describe('a symbol centres its pin on the grid', () => {
 });
 
 describe('preset pins line up', () => {
-  /** Heights of the fixed-size symbols, as [horizontal, vertical]. */
+  /*
+   * Heights of the symbols whose side pin sits at the body's vertical centre,
+   * as [horizontal, vertical].
+   *
+   * Only these. A multi-pin body places its pins on rows instead — an op-amp's
+   * sit at 24, 56 and 40 down an 80px box, a transformer's at 12 and 36 — so
+   * `height / 2` says nothing about where its pins are, and assuming otherwise
+   * reports circuits as misaligned that are in fact dead straight.
+   */
   const H: Record<string, [number, number]> = {
     resistor: [24, 40], capacitor: [24, 40], inductor: [24, 40], diode: [24, 40], zener: [24, 40],
     led: [32, 32], npn: [32, 32], pnp: [32, 32], nmos: [48, 48], pmos: [48, 48],
-    voltage: [24, 24], ground: [24, 24], acvoltage: [40, 40], currentsource: [40, 40],
-    transformer: [48, 48], potentiometer: [40, 64], switch: [40, 48], via: [16, 16],
-    dff: [80, 80], opamp: [80, 80], and: [80, 80], or: [80, 80], nand: [80, 80],
-    nor: [80, 80], not: [80, 80], xor: [80, 80],
-    // Fixed at 64 so its centre pin lands on the grid; see SignalGeneratorNode.
-    signalgen: [64, 64],
+    acvoltage: [40, 40], currentsource: [40, 40], potentiometer: [40, 64],
+    switch: [40, 48], via: [16, 16], signalgen: [64, 64],
   };
 
   /** A part drawn on end takes its leads top and bottom rather than side to side. */

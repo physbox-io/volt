@@ -222,14 +222,12 @@ export const HeltecV4Node = memo(function HeltecV4Node({ id, data, selected }: a
           position={position}
           id={pinId}
           className={`w-2 h-2 ${getPinColor(pinId)} !border-gray-900 ${offsetClass}`}
-          style={{ top: 'auto' }}
         />
         <Handle
           type="source"
           position={position}
           id={pinId}
           className={`w-2 h-2 ${getPinColor(pinId)} !border-gray-900 ${offsetClass} opacity-0 pointer-events-none`}
-          style={{ top: 'auto' }}
         />
       </>
     );
@@ -291,19 +289,19 @@ export const HeltecV4Node = memo(function HeltecV4Node({ id, data, selected }: a
       <div className="p-3 grid grid-cols-2 gap-x-4 gap-y-3 relative">
         
         {/* Left Side Pins */}
-        <div className="flex flex-col gap-2.5 items-start">
+        <div className="flex flex-col gap-2 items-start">
           
           {/* 3V3 */}
           <div className="relative flex items-center h-4">
-            <Handle type="source" position={Position.Left} id="3V3" className="w-2 h-2 !bg-red-500 !border-gray-900 -ml-5" style={{ top: 'auto' }} />
-            <Handle type="target" position={Position.Left} id="3V3" className="w-2 h-2 !bg-red-500 !border-gray-900 -ml-5 opacity-0 pointer-events-none" style={{ top: 'auto' }} />
+            <Handle type="source" position={Position.Left} id="3V3" className="w-2 h-2 !bg-red-500 !border-gray-900 -ml-5" />
+            <Handle type="target" position={Position.Left} id="3V3" className="w-2 h-2 !bg-red-500 !border-gray-900 -ml-5 opacity-0 pointer-events-none" />
             <span className="text-[9px] font-bold text-red-400 font-mono">3V3</span>
           </div>
 
           {/* GND */}
           <div className="relative flex items-center h-4">
-            <Handle type="source" position={Position.Left} id="GND" className="w-2 h-2 !bg-slate-500 !border-gray-900 -ml-5" style={{ top: 'auto' }} />
-            <Handle type="target" position={Position.Left} id="GND" className="w-2 h-2 !bg-slate-500 !border-gray-900 -ml-5 opacity-0 pointer-events-none" style={{ top: 'auto' }} />
+            <Handle type="source" position={Position.Left} id="GND" className="w-2 h-2 !bg-slate-500 !border-gray-900 -ml-5" />
+            <Handle type="target" position={Position.Left} id="GND" className="w-2 h-2 !bg-slate-500 !border-gray-900 -ml-5 opacity-0 pointer-events-none" />
             <span className="text-[9px] font-bold text-slate-400 font-mono">GND</span>
           </div>
 
@@ -328,7 +326,7 @@ export const HeltecV4Node = memo(function HeltecV4Node({ id, data, selected }: a
         </div>
 
         {/* Right Side Pins */}
-        <div className="flex flex-col gap-2.5 items-end">
+        <div className="flex flex-col gap-2 items-end">
           
           {/* GPIO 33 */}
           <div className="relative flex items-center justify-end h-4">

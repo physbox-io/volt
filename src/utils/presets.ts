@@ -79,7 +79,7 @@ export const sineAudio: CircuitPreset = {
   recommendedSimLength: 1.0,
   nodes: [
     { id: 'sg1', type: 'signalgen', position: { x: 100, y: 152 }, data: { label: 'Tone', waveform: 'sine', frequency: 440, amplitude: 2 } },
-    { id: 'spk1', type: 'speaker', position: { x: 400, y: 157 }, data: { label: 'Speaker' } },
+    { id: 'spk1', type: 'speaker', position: { x: 400, y: 160 }, data: { label: 'Speaker' } },
     { id: 'g1', type: 'ground', position: { x: 412, y: 300 }, data: { label: 'GND' } },
     { id: 'g2', type: 'ground', position: { x: 100, y: 300 }, data: { label: 'GND' } },
   ],
@@ -98,15 +98,19 @@ export const bjtAmp: CircuitPreset = {
     { id: 'mic1', type: 'microphone', position: { x: 100, y: 300 }, data: { label: 'Mic', pwlData: [{t:0,v:0}, {t:0.001,v:0.02}, {t:0.002,v:-0.02}, {t:0.003,v:0}] } },
     
     // Input coupling
-    { id: 'cin', type: 'capacitor', position: { x: 252, y: 314.5 }, data: { label: '10µF' } },
+    { id: 'cin', type: 'capacitor', position: { x: 252, y: 316 }, data: { label: '10µF' } },
     
     // Bias
     { id: 'r1', type: 'resistor', position: { x: 400, y: 150 }, data: { label: '47kΩ', orientation: 'vertical' } },
     { id: 'r2', type: 'resistor', position: { x: 400, y: 400 }, data: { label: '10kΩ', orientation: 'vertical' } },
-    { id: 'j_bias', type: 'junction', position: { x: 411.5, y: 326 }, data: {} },
+    { id: 'j_bias', type: 'junction', position: { x: 411.5, y: 327.5 }, data: {} },
     
     // Transistor
-    { id: 'q1', type: 'npn', position: { x: 600, y: 310.5 }, data: { label: '2N3904', bf: 300 } },
+    // Named as the part it is, rather than labelled '2N3904' over a hand-set
+    // β=300 that belongs to no real device — the catalogue's 2N3904 is β=200
+    // with VAF=74 and RB=20, and now that the netlist resolves data.model this
+    // amp is simulated with the transistor its schematic claims.
+    { id: 'q1', type: 'npn', position: { x: 600, y: 312 }, data: { label: '2N3904', model: '2n3904' } },
     
     // Collector & Emitter resistors
     { id: 'rc', type: 'resistor', position: { x: 612, y: 150 }, data: { label: '2.2kΩ', orientation: 'vertical' } },
@@ -155,7 +159,7 @@ export const micSpeaker: CircuitPreset = {
   recommendedSimLength: 1.0,
   nodes: [
     { id: 'mic1', type: 'microphone', position: { x: 100, y: 200 }, data: { label: 'Mic', amplification: 100 } },
-    { id: 'spk1', type: 'speaker', position: { x: 400, y: 202.5 }, data: { label: 'Speaker' } },
+    { id: 'spk1', type: 'speaker', position: { x: 400, y: 204 }, data: { label: 'Speaker' } },
     { id: 'g1', type: 'ground', position: { x: 250, y: 400 }, data: { label: 'GND' } },
   ],
   edges: [
@@ -171,7 +175,7 @@ export const classBamp: CircuitPreset = {
   nodes: [
     { id: 'v1', type: 'voltage', position: { x: 50, y: 50 }, data: { label: '12V' } },
     { id: 'mic1', type: 'microphone', position: { x: 52, y: 300 }, data: { label: 'Mic', amplification: 50 } },
-    { id: 'cin', type: 'capacitor', position: { x: 250, y: 314.5 }, data: { label: '10uF' } },
+    { id: 'cin', type: 'capacitor', position: { x: 250, y: 316 }, data: { label: '10uF' } },
     { id: 'r1', type: 'resistor', position: { x: 400, y: 150 }, data: { label: '10k' } },
     { id: 'r2', type: 'resistor', position: { x: 400, y: 450 }, data: { orientation: 'left', label: '10k' } },
     { id: 'q1', type: 'npn', position: { x: 600, y: 200 }, data: { label: 'NPN', bf: 200 } },
@@ -208,7 +212,7 @@ export const classABamp: CircuitPreset = {
   nodes: [
     { id: 'v1', type: 'voltage', position: { x: 50, y: 50 }, data: { label: '12V' } },
     { id: 'mic1', type: 'microphone', position: { x: 52, y: 352 }, data: { label: 'Mic', amplification: 50 } },
-    { id: 'cin', type: 'capacitor', position: { x: 250, y: 366.5 }, data: { label: '10uF' } },
+    { id: 'cin', type: 'capacitor', position: { x: 250, y: 368 }, data: { label: '10uF' } },
     { id: 'r1', type: 'resistor', position: { x: 420, y: 100 }, data: { label: '4.7k' } },
     { id: 'rbias', type: 'resistor', position: { x: 520, y: 340 }, data: { label: '1.1k' } },
     { id: 'r2', type: 'resistor', position: { x: 420, y: 560 }, data: { orientation: 'left', label: '4.7k' } },
@@ -302,8 +306,8 @@ export const mcuBlink: CircuitPreset = {
   recommendedSimLength: 1.0,
   nodes: [
     { id: 'mcu1', type: 'mcu', position: { x: 100, y: 152 }, data: { label: 'Microcontroller', code: "pinMode('D0', 'OUTPUT');\n\nwhile(true) {\n  digitalWrite('D0', 1);\n  sleep(500);\n  digitalWrite('D0', 0);\n  sleep(500);\n}" } },
-    { id: 'r1', type: 'resistor', position: { x: 400, y: 175.5 }, data: { label: '330Ω' } },
-    { id: 'led1', type: 'led', position: { x: 600, y: 187.5 }, data: { label: 'LED', color: 'blue', v_drop: 2.0, max_current: 20 } },
+    { id: 'r1', type: 'resistor', position: { x: 400, y: 176 }, data: { label: '330Ω' } },
+    { id: 'led1', type: 'led', position: { x: 600, y: 172 }, data: { label: 'LED', color: 'blue', v_drop: 2.0, max_current: 20 } },
     { id: 'g1', type: 'ground', position: { x: 604, y: 350 }, data: { label: 'GND' } },
   ],
   edges: [
@@ -318,7 +322,7 @@ export const mcuSpeaker: CircuitPreset = {
   recommendedSimLength: 1.0,
   nodes: [
     { id: 'mcu1', type: 'mcu', position: { x: 100, y: 152 }, data: { label: 'Microcontroller', code: "pinMode('D1', 'OUTPUT');\n\n// Generate 500Hz square wave\nconst halfPeriod = 1;\nwhile(true) {\n  digitalWrite('D1', 1);\n  sleep(halfPeriod);\n  digitalWrite('D1', 0);\n  sleep(halfPeriod);\n}" } },
-    { id: 'spk1', type: 'speaker', position: { x: 400, y: 175.5 }, data: { label: 'Speaker' } },
+    { id: 'spk1', type: 'speaker', position: { x: 400, y: 188 }, data: { label: 'Speaker' } },
     { id: 'g1', type: 'ground', position: { x: 412, y: 300 }, data: { label: 'GND' } },
   ],
   edges: [
@@ -440,7 +444,7 @@ export const mixedLogicBlink: CircuitPreset = {
     { id: 'sg2', type: 'signalgen', position: { x: 50, y: 300 }, data: { label: 'Clock 2Hz', waveform: 'square', frequency: 2, amplitude: 5 } },
     { id: 'and1', type: 'and', position: { x: 300, y: 200 }, data: { label: 'AND Gate' } },
     { id: 'r1', type: 'resistor', position: { x: 500, y: 200 }, data: { label: '330Ω' } },
-    { id: 'led1', type: 'led', position: { x: 700, y: 212 }, data: { label: 'Output', color: 'lime', v_drop: 2.0, max_current: 20 } },
+    { id: 'led1', type: 'led', position: { x: 700, y: 196 }, data: { label: 'Output', color: 'lime', v_drop: 2.0, max_current: 20 } },
     { id: 'g1', type: 'ground', position: { x: 704, y: 350 }, data: { label: 'GND' } },
     { id: 'g2', type: 'ground', position: { x: 50, y: 200 }, data: { label: 'GND' } },
     { id: 'g3', type: 'ground', position: { x: 50, y: 400 }, data: { label: 'GND' } },
@@ -465,16 +469,16 @@ export const opAmpAmp: CircuitPreset = {
     { id: 'mic1', type: 'microphone', position: { x: 52, y: 180 }, data: { label: 'Mic', amplification: 1 } },
     { id: 'g_mic', type: 'ground', position: { x: 72, y: 280 }, data: { label: 'GND' } },
     
-    { id: 'cin', type: 'capacitor', position: { x: 200, y: 200 }, data: { label: '0.1uF' } },
+    { id: 'cin', type: 'capacitor', position: { x: 200, y: 196 }, data: { label: '0.1uF' } },
     
     // Bias divider for single supply op-amp
     { id: 'r_b1', type: 'resistor', position: { x: 352, y: 152 }, data: { label: '100k', orientation: 'vertical' } },
     { id: 'r_b2', type: 'resistor', position: { x: 352, y: 252 }, data: { label: '100k', orientation: 'vertical' } },
     { id: 'g_rb2', type: 'ground', position: { x: 352, y: 332 }, data: { label: 'GND' } },
-    { id: 'j_op_bias', type: 'junction', position: { x: 363.5, y: 211.5 }, data: {} },
+    { id: 'j_op_bias', type: 'junction', position: { x: 363.5, y: 207.5 }, data: {} },
     
     // Op-amp
-    { id: 'oa1', type: 'opamp', position: { x: 452, y: 156 }, data: { label: 'LM358' } },
+    { id: 'oa1', type: 'opamp', position: { x: 452, y: 152 }, data: { label: 'LM358' } },
     { id: 'g_oa', type: 'ground', position: { x: 480, y: 260 }, data: { label: 'GND' } },
     
     // Feedback network (Gain = 1 + Rf/Rg)
@@ -484,8 +488,8 @@ export const opAmpAmp: CircuitPreset = {
     { id: 'g_cg', type: 'ground', position: { x: 300, y: 312 }, data: { label: 'GND' } },
     
     // Output coupling
-    { id: 'cout', type: 'capacitor', position: { x: 600, y: 184 }, data: { label: '47uF' } },
-    { id: 'spk1', type: 'speaker', position: { x: 720, y: 172 }, data: { label: 'Speaker', acCouple: true, normalize: true } },
+    { id: 'cout', type: 'capacitor', position: { x: 600, y: 180 }, data: { label: '47uF' } },
+    { id: 'spk1', type: 'speaker', position: { x: 720, y: 168 }, data: { label: 'Speaker', acCouple: true, normalize: true } },
     { id: 'g_spk', type: 'ground', position: { x: 732, y: 270 }, data: { label: 'GND' } },
   ],
   edges: [
@@ -677,7 +681,7 @@ export const potDimmer: CircuitPreset = {
     { id: 'v1', type: 'voltage', position: { x: 50, y: 172 }, data: { label: '5V' } },
     { id: 'pot1', type: 'potentiometer', position: { x: 250, y: 152 }, data: { label: '1k', position: 50 } },
     { id: 'r1', type: 'resistor', position: { x: 450, y: 140 }, data: { label: '100' } },
-    { id: 'led1', type: 'led', position: { x: 650, y: 152 }, data: { label: 'LED', color: 'lime', v_drop: 2.0, max_current: 20 } },
+    { id: 'led1', type: 'led', position: { x: 650, y: 136 }, data: { label: 'LED', color: 'lime', v_drop: 2.0, max_current: 20 } },
     { id: 'mm1', type: 'multimeter', position: { x: 350, y: 57.5 }, data: { label: 'Wiper V' } },
     { id: 'g1', type: 'ground', position: { x: 350, y: 350 }, data: { label: 'GND' } },
   ],
@@ -701,7 +705,7 @@ export const sevenSegDirect: CircuitPreset = {
     // Direct drive: wire 5V to segments a,b,c,d,e,f to show "0"
     { id: 'seg1', type: 'sevenseg', position: { x: 400, y: 148.3 }, data: { label: '7-SEG' } },
     { id: 'ra', type: 'resistor', position: { x: 200, y: 80 }, data: { label: '330' } },
-    { id: 'rb', type: 'resistor', position: { x: 200, y: 156 }, data: { label: '330' } },
+    { id: 'rb', type: 'resistor', position: { x: 200, y: 160.3 }, data: { label: '330' } },
     { id: 'rc', type: 'resistor', position: { x: 200, y: 200 }, data: { label: '330' } },
     { id: 'rd', type: 'resistor', position: { x: 200, y: 260 }, data: { label: '330' } },
     { id: 're', type: 'resistor', position: { x: 200, y: 320 }, data: { label: '330' } },
@@ -832,9 +836,9 @@ export const dffBlinker: CircuitPreset = {
   recommendedSimLength: 2.0,
   nodes: [
     { id: 'sg1', type: 'signalgen', position: { x: 50, y: 200 }, data: { label: 'Clock 2Hz', waveform: 'square', frequency: 2, amplitude: 5 } },
-    { id: 'dff1', type: 'dff', position: { x: 280, y: 173 }, data: { label: 'Divider' } },
+    { id: 'dff1', type: 'dff', position: { x: 280, y: 176 }, data: { label: 'Divider' } },
     { id: 'r1', type: 'resistor', position: { x: 520, y: 132 }, data: { label: '330Ω' } },
-    { id: 'led1', type: 'led', position: { x: 670, y: 144 }, data: { label: 'Q LED', color: 'cyan', v_drop: 2.0 } },
+    { id: 'led1', type: 'led', position: { x: 670, y: 128 }, data: { label: 'Q LED', color: 'cyan', v_drop: 2.0 } },
     { id: 'g1', type: 'ground', position: { x: 450, y: 350 }, data: { label: 'GND' } },
   ],
   edges: [
@@ -916,7 +920,7 @@ export const heltecGPIOToCYDSpeakerHIL: CircuitPreset = {
       },
       isConnected: false
     } },
-    { id: 'mcu1', type: 'mcu', position: { x: 350, y: 150 }, data: {
+    { id: 'mcu1', type: 'mcu', position: { x: 350, y: 158 }, data: {
       label: 'Microcontroller',
       code: "pinMode('A0', 'INPUT');\npinMode('D1', 'OUTPUT');\n\nwhile (true) {\n  const val = analogRead('A0');\n  const freq = 200 + val * 0.84;\n  const halfPeriod = 1000 / (2 * freq);\n  digitalWrite('D1', 1);\n  sleep(halfPeriod);\n  digitalWrite('D1', 0);\n  sleep(halfPeriod);\n}"
     } },
@@ -978,9 +982,9 @@ export const voltageComparator: CircuitPreset = {
     { id: 'mm1', type: 'multimeter', position: { x: 330, y: 400 }, data: {'label': 'Vin', 'orientation': 'horizontal'} },
     { id: 'rtop', type: 'resistor', position: { x: 560, y: 140 }, data: {'label': '2.9k', 'orientation': 'vertical'} },
     { id: 'rbot', type: 'resistor', position: { x: 560, y: 290 }, data: {'label': '2.1k', 'orientation': 'vertical'} },
-    { id: 'op1', type: 'opamp', position: { x: 700, y: 200 }, data: {'label': 'Comparator', 'orientation': 'horizontal'} },
-    { id: 'r3', type: 'resistor', position: { x: 860, y: 228 }, data: {'label': '330', 'orientation': 'horizontal'} },
-    { id: 'led1', type: 'led', position: { x: 980, y: 224 }, data: {'label': 'Red LED', 'color': 'red', 'v_drop': 2, 'max_current': 20, 'orientation': 'horizontal'} },
+    { id: 'op1', type: 'opamp', position: { x: 700, y: 184 }, data: {'label': 'Comparator', 'orientation': 'horizontal'} },
+    { id: 'r3', type: 'resistor', position: { x: 860, y: 212 }, data: {'label': '330', 'orientation': 'horizontal'} },
+    { id: 'led1', type: 'led', position: { x: 980, y: 208 }, data: {'label': 'Red LED', 'color': 'red', 'v_drop': 2, 'max_current': 20, 'orientation': 'horizontal'} },
     { id: 'gnd1', type: 'ground', position: { x: 570, y: 470 }, data: {'label': 'GND', 'orientation': 'horizontal'} },
   ],
   edges: [
@@ -1001,6 +1005,8 @@ export const voltageComparator: CircuitPreset = {
     { id: 'e-led-gnd', source: 'led1', target: 'gnd1', sourceHandle: 'cathode', targetHandle: 'in', type: 'smoothstep' },
   ]
 };
+
+
 
 export const presets: Record<string, CircuitPreset> = {
   empty: {

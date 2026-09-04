@@ -2,7 +2,7 @@ import { Handle, Position } from '@xyflow/react';
 import { useEffect, useState, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
 import type { NodePropertiesProps } from './registry';
-import { DEVICE_CARD_DARK } from './schematic';
+import { DEVICE_CARD_DARK, pinRow } from './schematic';
 
 export function SevenSegmentProperties(_props: NodePropertiesProps) {
   return (
@@ -56,8 +56,8 @@ export const SevenSegmentNode = memo(function SevenSegmentNode({ data }: any) {
     <div className={`${DEVICE_CARD_DARK} p-1.5 w-16 h-20 flex flex-col items-center justify-center relative`}>
       {segs.map((s, i) => (
         <span key={s}>
-          <Handle type="target" position={Position.Left} id={s} className={`w-2.5 h-2.5 ${SEG_COLORS[s]}`} style={{ top: `${12 + i * 12}%` }} />
-          <Handle type="source" position={Position.Left} id={s} className={`w-2.5 h-2.5 ${SEG_COLORS[s]}`} style={{ top: `${12 + i * 12}%` }} />
+          <Handle type="target" position={Position.Left} id={s} className={`w-2.5 h-2.5 ${SEG_COLORS[s]}`} style={{ top: pinRow(12 + i * 12) }} />
+          <Handle type="source" position={Position.Left} id={s} className={`w-2.5 h-2.5 ${SEG_COLORS[s]}`} style={{ top: pinRow(12 + i * 12) }} />
         </span>
       ))}
       <Handle type="target" position={Position.Bottom} id="common" className="w-3 h-3 bg-gray-400" />

@@ -186,14 +186,14 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
         position={isHorizontal ? (isLeft ? Position.Right : Position.Left) : (isUp ? Position.Bottom : Position.Top)} 
         id="anode" 
         className="w-2 h-2 bg-emerald-500 !border-0" 
-        style={isHorizontal ? { top: '50%', left: isLeft ? '100%' : '0%' } : { left: '50%', top: isUp ? '100%' : '0%' }}
+        style={isHorizontal ? { top: '50%' } : { left: '50%' }}
       />
       <Handle 
         type="source" 
         position={isHorizontal ? (isLeft ? Position.Right : Position.Left) : (isUp ? Position.Bottom : Position.Top)} 
         id="anode" 
         className="w-2 h-2 bg-emerald-500 !border-0" 
-        style={isHorizontal ? { top: '50%', left: isLeft ? '100%' : '0%' } : { left: '50%', top: isUp ? '100%' : '0%' }}
+        style={isHorizontal ? { top: '50%' } : { left: '50%' }}
       />
       
       {/* Glow Halo behind SVG */}
@@ -283,14 +283,14 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
         position={isHorizontal ? (isLeft ? Position.Left : Position.Right) : (isUp ? Position.Top : Position.Bottom)} 
         id="cathode" 
         className="w-2 h-2 bg-emerald-500 !border-0" 
-        style={isHorizontal ? { top: '50%', left: isLeft ? '0%' : '100%' } : { left: '50%', top: isUp ? '0%' : '100%' }}
+        style={isHorizontal ? { top: '50%' } : { left: '50%' }}
       />
       <Handle 
         type="target" 
         position={isHorizontal ? (isLeft ? Position.Left : Position.Right) : (isUp ? Position.Top : Position.Bottom)} 
         id="cathode" 
         className="w-2 h-2 bg-emerald-500 !border-0" 
-        style={isHorizontal ? { top: '50%', left: isLeft ? '0%' : '100%' } : { left: '50%', top: isUp ? '0%' : '100%' }}
+        style={isHorizontal ? { top: '50%' } : { left: '50%' }}
       />
     </div>
   );

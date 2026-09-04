@@ -44,6 +44,21 @@ export const DEVICE_CARD =
   'rounded-md border border-slate-300 dark:border-slate-600 ' +
   'bg-white dark:bg-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.06)]';
 
+/** The card chrome's border width, in px. */
+export const CARD_BORDER_PX = 1;
+
+/**
+ * Vertical offset for a pin row, measured from the card's *outer* edge.
+ *
+ * An absolutely positioned handle is placed against its container's padding
+ * box, so the card's border shifts every row inward by that much. Left
+ * uncorrected a row asked for at 48px renders at 49 — a pixel off the 4px snap
+ * grid, and a pin off the grid can never be met by a neighbour's however either
+ * part is dragged. Callers give the offset they mean; the border is taken off
+ * here, in one place.
+ */
+export const pinRow = (fromOuterEdgePx: number) => `${fromOuterEdgePx - CARD_BORDER_PX}px`;
+
 /** Same chrome for devices drawn as dark instrument bodies (scope, 555, meter). */
 export const DEVICE_CARD_DARK =
   'rounded-md border border-slate-700 bg-slate-800 ' +

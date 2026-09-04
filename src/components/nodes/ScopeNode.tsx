@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { computeFFT } from '../../utils/fft';
 import { detectPeriod } from '../../utils/periodDetect';
 import type { NodePropertiesProps } from './registry';
-import { DEVICE_CARD_DARK } from './schematic';
+import { DEVICE_CARD_DARK, pinRow } from './schematic';
 import { NumberInput } from '../NumberInput';
 
 export function ScopeProperties({ node, updateData }: NodePropertiesProps) {
@@ -211,12 +211,17 @@ export function ScopeNode({ data, selected }: any) {
       </div>
 
       {/* Handles */}
-      <Handle type="target" position={Position.Left} id="ch1" className="w-3 h-3 bg-yellow-400" style={{ top: '30%' }} />
-      <Handle type="source" position={Position.Left} id="ch1" className="w-3 h-3 bg-yellow-400" style={{ top: '30%' }} />
-      <Handle type="target" position={Position.Left} id="ch2" className="w-3 h-3 bg-cyan-400" style={{ top: '60%' }} />
-      <Handle type="source" position={Position.Left} id="ch2" className="w-3 h-3 bg-cyan-400" style={{ top: '60%' }} />
-      <Handle type="target" position={Position.Left} id="gnd" className="w-3 h-3 bg-gray-500" style={{ top: '90%' }} />
-      <Handle type="source" position={Position.Left} id="gnd" className="w-3 h-3 bg-gray-500" style={{ top: '90%' }} />
+      {/*
+        Pin rows are placed in pixels, not percentages. The card's height is
+        content-driven and not a round number, so `30%` resolved to 48.39px —
+        off the 4px snap grid, and impossible for a neighbour's pin to meet.
+      */}
+      <Handle type="target" position={Position.Left} id="ch1" className="w-3 h-3 bg-yellow-400" style={{ top: pinRow(48) }} />
+      <Handle type="source" position={Position.Left} id="ch1" className="w-3 h-3 bg-yellow-400" style={{ top: pinRow(48) }} />
+      <Handle type="target" position={Position.Left} id="ch2" className="w-3 h-3 bg-cyan-400" style={{ top: pinRow(96) }} />
+      <Handle type="source" position={Position.Left} id="ch2" className="w-3 h-3 bg-cyan-400" style={{ top: pinRow(96) }} />
+      <Handle type="target" position={Position.Left} id="gnd" className="w-3 h-3 bg-gray-500" style={{ top: pinRow(144) }} />
+      <Handle type="source" position={Position.Left} id="gnd" className="w-3 h-3 bg-gray-500" style={{ top: pinRow(144) }} />
     </div>
   );
 }

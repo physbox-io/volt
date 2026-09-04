@@ -102,7 +102,13 @@ export function MicrophoneNode({ id, data }: any) {
   };
 
   return (
-    <div className={`${DEVICE_CARD} px-1.5 py-1 w-16 flex flex-col items-center justify-center gap-0.5 relative`}>
+    /*
+     * Height fixed at a multiple of 8 so the side pin, which sits at the card's
+     * vertical centre, lands on the 4px snap grid. At its natural 53px the pin
+     * sat at 26.5 — half a pixel off every other part's, and unreachable by
+     * dragging, so a wire into it could never be made straight.
+     */
+    <div className={`${DEVICE_CARD} px-1.5 py-1 w-16 h-[56px] flex flex-col items-center justify-center gap-0.5 relative`}>
       <button
         onClick={toggleRecord}
         className={`w-6 h-6 rounded-full flex items-center justify-center text-white ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-slate-700 dark:bg-slate-600'}`}

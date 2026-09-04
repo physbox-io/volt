@@ -392,7 +392,7 @@ export function MicrocontrollerNode({ data, selected }: any) {
       className={`${DEVICE_CARD_DARK} flex flex-col relative select-none ${selected ? '!border-emerald-500 shadow-lg shadow-emerald-500/20' : ''}`}
     >
       {/* Top Header */}
-      <div className="bg-gray-900 text-white text-[9px] font-bold text-center py-1 uppercase tracking-wider rounded-t border-b border-gray-800 flex items-center justify-center px-1 truncate">
+      <div className="bg-gray-900 text-white text-[9px] font-bold text-center h-5 uppercase tracking-wider rounded-t border-b border-gray-800 flex items-center justify-center px-1 truncate">
         {displayName}
       </div>
 
@@ -417,11 +417,11 @@ export function MicrocontrollerNode({ data, selected }: any) {
       )}
 
       {/* Center Body (Left and Right Pins) */}
-      <div className="flex-1 flex justify-between py-1 relative">
+      <div className="flex-1 flex justify-between pt-[3px] pb-[5px] relative">
         {/* Left Side Pins */}
-        <div className="flex flex-col justify-around h-full items-start pl-1 z-10">
+        <div className="flex flex-col justify-start h-full items-start pl-1 z-10">
           {leftPins.map(pin => (
-            <div key={pin.id} className="relative flex items-center my-0.5">
+            <div key={pin.id} className="relative flex items-center h-6">
               <span className={`text-[8px] font-mono font-semibold mr-1 ${getPinTextColor(pin)}`}>
                 {pin.label || pin.id}
               </span>
@@ -430,7 +430,13 @@ export function MicrocontrollerNode({ data, selected }: any) {
                 position={Position.Left}
                 id={pin.id}
                 className={`w-2 h-2 ${getPinHandleColor(pin)} !border-gray-900 -ml-2`}
-                style={{ top: 'auto' }}
+                /*
+                 * No `top: auto`. That cancels React Flow's own centring, so the
+                 * pin took its static position in the flex row and the centring
+                 * transform then pulled it off the row's middle — landing at
+                 * 9.5px into a 24px row, which is off the 4px snap grid and so
+                 * unreachable by any neighbour's pin.
+                 */
               />
             </div>
           ))}
@@ -447,15 +453,14 @@ export function MicrocontrollerNode({ data, selected }: any) {
         </div>
 
         {/* Right Side Pins */}
-        <div className="flex flex-col justify-around h-full items-end pr-1 z-10">
+        <div className="flex flex-col justify-start h-full items-end pr-1 z-10">
           {rightPins.map(pin => (
-            <div key={pin.id} className="relative flex items-center justify-end my-0.5">
+            <div key={pin.id} className="relative flex items-center justify-end h-6">
               <Handle
                 type="source"
                 position={Position.Right}
                 id={pin.id}
                 className={`w-2 h-2 ${getPinHandleColor(pin)} !border-gray-900 -mr-2`}
-                style={{ top: 'auto' }}
               />
               <span className={`text-[8px] font-mono font-semibold ml-1 ${getPinTextColor(pin)}`}>
                 {pin.label || pin.id}
