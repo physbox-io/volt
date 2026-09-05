@@ -1870,16 +1870,17 @@ export default function App() {
           <div className="flex items-center shrink-0 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
             <button 
               onClick={() => {
-                if (selectedPreset && userPresets[selectedPreset]) {
-                  const name = userPresets[selectedPreset].name.replace(/^User:\s*/, '');
-                  savePresetByName(name);
-                } else {
-                  setSaveDialogName('');
-                  setIsSaveDialogOpen(true);
-                }
+                // Always "Save As": the preset dropdown's disk icon is the one that
+                // overwrites the selected preset in place.
+                setSaveDialogName(
+                  selectedPreset && userPresets[selectedPreset]
+                    ? userPresets[selectedPreset].name.replace(/^User:\s*/, '')
+                    : ''
+                );
+                setIsSaveDialogOpen(true);
               }}
               className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-650 dark:text-slate-300 transition-colors focus:outline-none cursor-pointer"
-              title={selectedPreset && userPresets[selectedPreset] ? `Save "${userPresets[selectedPreset].name.replace(/^User:\s*/, '')}"` : 'Save circuit preset'}
+              title="Save circuit preset as…"
             >
               <Save className="w-3.5 h-3.5" />
             </button>

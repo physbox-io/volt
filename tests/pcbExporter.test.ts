@@ -12,6 +12,7 @@ import {
   padPolygon,
   boardOriginOffsetMm,
   generateAirCutGcode,
+  generateAirCutPerimeterGcode,
   sortPathsNearestNeighbor,
   groupDrillsByBit,
   DEFAULT_PCB_OPTIONS,
@@ -179,6 +180,59 @@ describe('generateAirCutGcode', () => {
   it('preserves X and Y untouched', () => {
     const air = generateAirCutGcode(program, 20);
     expect(air).toContain('X10.000 Y10.000');
+  });
+});
+
+describe('generateAirCutPerimeterGcode', () => {
+  const layout = {
+    boardOriginMm: 5,
+    boardWidthMm: 40,
+    boardHeightMm: 30,
+  } as any;
+  const options = { ...DEFAULT_PCB_OPTIONS, safeZ: 2 };
+
+  /** Every absolute Z the program commands while G90 is in force. */
+  const absoluteZs = (gcode: string): number[] => {
+    let absolute = true;
+    const zs: number[] = [];
+    for (const line of gcode.split('\n')) {
+      const code = line.indexOf(';') !== -1 ? line.slice(0, line.indexOf(';')) : line;
+      if (/\bG91\b/.test(code)) absolute = false;
+      if (/\bG90\b/.test(code)) absolute = true;
+      const z = /\bZ(-?[\d.]+)/.exec(code);
+      if (z && absolute) zs.push(parseFloat(z[1]));
+    }
+    return zs;
+  };
+
+  it('flies at safe Z plus the offset when the tool is below it', () => {
+    const zs = absoluteZs(generateAirCutPerimeterGcode(layout, options, 20, 0));
+    expect(zs.length).toBeGreaterThan(0);
+    expect(new Set(zs)).toEqual(new Set([22]));
+  });
+
+  it('never commands a Z below where the tool already is', () => {
+    // A Z0 left over from a thicker blank puts the tool above the clearance
+    // height the offset asks for; dropping to it would drive the bit into the
+    // work and then drag it around the outline.
+    const gcode = generateAirCutPerimeterGcode(layout, options, 20, 60);
+    for (const z of absoluteZs(gcode)) expect(z).toBeGreaterThanOrEqual(60);
+  });
+
+  it('lifts relatively when the current Z is unknown', () => {
+    const gcode = generateAirCutPerimeterGcode(layout, options, 20);
+    expect(gcode).toMatch(/G91 G0 Z20\.000/);
+    expect(absoluteZs(gcode)).toEqual([]);
+  });
+
+  it('still cannot start the spindle at any height', () => {
+    for (const z of [undefined, 0, 60]) {
+      const gcode = generateAirCutPerimeterGcode(layout, options, 20, z);
+      for (const line of gcode.split('\n')) {
+        const code = line.indexOf(';') !== -1 ? line.slice(0, line.indexOf(';')) : line;
+        expect(/\bM[34]\b/.test(code)).toBe(false);
+      }
+    }
   });
 });
 

@@ -663,8 +663,13 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       // No probe and no height map either. The map compensates depth, and there
       // is no depth here; needing one would only stop an air cut being the
       // quick check it is supposed to be.
+      // Read where the tool actually is first. The offset is what says the work
+      // frame is pinned down; without it `wpos` is a guess, and the generator
+      // would rather lift relative than trust one.
+      const live = await webSerialManager.refreshPosition();
+      const currentZ = live.workOffset ? live.wpos.z : undefined;
       await webSerialManager.startJob(
-        generateAirCutPerimeterGcode(result, options, airCutZOffset)
+        generateAirCutPerimeterGcode(result, options, airCutZOffset, currentZ)
       );
     } catch (e: any) {
       setMachineError(e?.message || 'Framing failed');

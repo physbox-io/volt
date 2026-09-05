@@ -57,19 +57,60 @@ export function getPinHeaderHandles(data?: any): string[] {
   return Array.from({ length: rows * cols }, (_, i) => String(i + 1));
 }
 
+/**
+ * Whether the header is stood on end.
+ *
+ * A header is a strip, and which way the strip runs is a placement decision as
+ * ordinary as it is for a resistor: 'vertical' transposes the pad matrix on the
+ * canvas so a 1x8 runs down the board instead of across it. Same field, same
+ * two values the rest of the parts use, which is also what makes the board
+ * exporter rotate the footprint to match without knowing anything about
+ * headers.
+ *
+ * The pad *numbering* does not change — pin 1 stays pin 1 — so nothing wired to
+ * the header moves, and the footprint keeps its row-major order.
+ */
+export function isPinHeaderVertical(data?: any): boolean {
+  return data?.orientation === 'vertical' || data?.orientation === 'up';
+}
+
 /** On-canvas pixel size. Kept in one place so edge routing can agree with it. */
 export const PIN_HEADER_CELL_PX = 16;
 export function getPinHeaderSize(data?: any): { width: number; height: number } {
   const { rows, cols } = getPinHeaderGeometry(data);
+  const across = isPinHeaderVertical(data) ? rows : cols;
+  const down = isPinHeaderVertical(data) ? cols : rows;
   return {
-    width: cols * PIN_HEADER_CELL_PX + 8,
-    height: rows * PIN_HEADER_CELL_PX + 8,
+    width: across * PIN_HEADER_CELL_PX + 8,
+    height: down * PIN_HEADER_CELL_PX + 8,
+  };
+}
+
+/**
+ * Where pad `pin` sits inside the header body, in pixels from its top-left.
+ * The single definition of the layout: the node draws from it and edge routing
+ * measures from it, so a rotated header cannot end up with its wires landing
+ * where the pads used to be.
+ */
+export function pinHeaderPadOffset(
+  data: any,
+  pin: number
+): { dx: number; dy: number } | null {
+  const { rows, cols } = getPinHeaderGeometry(data);
+  if (!(pin >= 1 && pin <= rows * cols)) return null;
+  const r = Math.floor((pin - 1) / cols);
+  const c = (pin - 1) % cols;
+  const [across, down] = isPinHeaderVertical(data) ? [r, c] : [c, r];
+  return {
+    dx: 4 + across * PIN_HEADER_CELL_PX + PIN_HEADER_CELL_PX / 2,
+    dy: 4 + down * PIN_HEADER_CELL_PX + PIN_HEADER_CELL_PX / 2,
   };
 }
 
 export function PinHeaderNode({ data }: { data?: any }) {
   const { rows, cols } = getPinHeaderGeometry(data);
   const { width, height } = getPinHeaderSize(data);
+  const vertical = isPinHeaderVertical(data);
 
   return (
     <div
@@ -79,11 +120,13 @@ export function PinHeaderNode({ data }: { data?: any }) {
       {Array.from({ length: rows }).map((_, r) =>
         Array.from({ length: cols }).map((_, c) => {
           const pin = r * cols + c + 1;
-          const left = 4 + c * PIN_HEADER_CELL_PX + PIN_HEADER_CELL_PX / 2;
-          const top = 4 + r * PIN_HEADER_CELL_PX + PIN_HEADER_CELL_PX / 2;
-          // Pins on the top row face up, everything else faces down, so wires
-          // leave the header on the nearest side.
-          const side = r === 0 ? Position.Top : Position.Bottom;
+          const { dx: left, dy: top } = pinHeaderPadOffset(data, pin)!;
+          // The first row faces out of the near edge and everything else out of
+          // the far one, so wires leave the header on the nearest side — the
+          // edges being the long ones, which swap when the strip is stood up.
+          const side = vertical
+            ? (r === 0 ? Position.Left : Position.Right)
+            : (r === 0 ? Position.Top : Position.Bottom);
           return (
             <div key={pin}>
               {/* Pad graphic: square for pin 1, the usual polarity mark. */}

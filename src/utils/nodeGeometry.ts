@@ -54,7 +54,8 @@ import { getEffectiveMcuConfig } from './mcuConfig';
 import {
   getPinHeaderGeometry,
   getPinHeaderHandles,
-  PIN_HEADER_CELL_PX,
+  isPinHeaderVertical,
+  pinHeaderPadOffset,
 } from '../components/nodes/PinHeaderNode';
 
 export function getHandlesForNode(node: Node): string[] {
@@ -157,18 +158,11 @@ export function getHandleCoord(node: any, handleId: string): { x: number; y: num
     return { x: x + w / 2, y: y + h };
   }
 
-  // Header pads sit on a fixed grid, matching PinHeaderNode's own layout.
+  // Header pads sit on a fixed grid, read from PinHeaderNode's own layout so a
+  // rotated header's wires land on the pads rather than beside them.
   if (node.type === 'pinheader') {
-    const { rows, cols } = getPinHeaderGeometry(node.data);
-    const pin = parseInt(handleId, 10);
-    if (pin >= 1 && pin <= rows * cols) {
-      const r = Math.floor((pin - 1) / cols);
-      const c = (pin - 1) % cols;
-      return {
-        x: x + 4 + c * PIN_HEADER_CELL_PX + PIN_HEADER_CELL_PX / 2,
-        y: y + 4 + r * PIN_HEADER_CELL_PX + PIN_HEADER_CELL_PX / 2,
-      };
-    }
+    const offset = pinHeaderPadOffset(node.data, parseInt(handleId, 10));
+    if (offset) return { x: x + offset.dx, y: y + offset.dy };
   }
   if (node.type === 'via') {
     return { x: x + w / 2, y: y + h / 2 };
@@ -442,11 +436,14 @@ export const getHandlePosition = (node: any, handleId: string): string => {
   if (node.type === 'junction') {
     return 'left';
   }
-  // Top row of a header faces up, the rest face down.
+  // The header's first row faces out of the near long edge, the rest out of the
+  // far one — which pair of edges those are depends on which way it is stood.
   if (node.type === 'pinheader') {
     const { cols } = getPinHeaderGeometry(node.data);
     const pin = parseInt(handleId, 10);
-    return pin >= 1 && pin <= cols ? 'top' : 'bottom';
+    const firstRow = pin >= 1 && pin <= cols;
+    if (isPinHeaderVertical(node.data)) return firstRow ? 'left' : 'right';
+    return firstRow ? 'top' : 'bottom';
   }
   if (node.type === 'via') {
     return 'top';

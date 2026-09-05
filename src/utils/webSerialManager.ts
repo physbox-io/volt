@@ -1177,6 +1177,17 @@ class WebSerialManager {
     await fresh;
   }
 
+  /**
+   * Asks the controller where it is and waits for the answer, so a caller that
+   * is about to reason about the tool's height reads a position from now rather
+   * than from up to a poll interval ago. Resolves on timeout like `awaitStatus`;
+   * the caller sees a stale reading, not a hang.
+   */
+  public async refreshPosition(): Promise<MachineState> {
+    if (this.state.connected) await this.awaitStatus();
+    return this.getState();
+  }
+
   /** Index into jobLayers of the operation currently being streamed, or -1. */
   private currentLayerIndex(): number {
     if (!this.gcodeQueue.length || !this.jobLayers.length) return -1;

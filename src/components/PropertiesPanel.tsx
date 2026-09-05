@@ -17,7 +17,12 @@ import { minPadGapMm } from '../utils/pcbTooling';
 import { nodeRegistry } from './nodes/registry';
 import { getBjtModel, getMosfetModel, getOpAmpModel } from '../utils/deviceModels';
 
-const ORIENTATION_SELECTABLE_TYPES = ['resistor', 'capacitor', 'inductor', 'diode', 'zener', 'led', 'switch', 'voltage', 'acvoltage', 'currentsource'];
+// A header is a strip, and which way it runs is a placement decision like any
+// other. It is deliberately *not* in ORIENTABLE_NODE_TYPES: the flipped
+// 'left'/'up' variants and the handle remap that goes with them are for
+// two-lead parts with a polarity to reverse, and a header's numbered pads have
+// no such pairing to swap.
+const ORIENTATION_SELECTABLE_TYPES = ['resistor', 'capacitor', 'inductor', 'diode', 'zener', 'led', 'switch', 'voltage', 'acvoltage', 'currentsource', 'pinheader'];
 const PASSIVE_NAMED_TYPES = ['resistor', 'capacitor', 'inductor'];
 
 /** Sentinel package id that switches the node over to `data.footprintParams`. */

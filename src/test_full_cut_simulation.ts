@@ -914,6 +914,20 @@ check(
       `vs lap ${airBox.minX.toFixed(2)}..${airBox.maxX.toFixed(2)} x ${airBox.minY.toFixed(2)}..${airBox.maxY.toFixed(2)}`
     : ''
 );
+// The same rehearsal against a Z0 left over from a thicker blank: work Z2 is
+// now 30mm *below* the tool, and an air cut that obeyed it would open with a
+// 30mm plunge and then drag the bit around the outline of the board.
+const staleZeroProgram = generateAirCutPerimeterGcode(layout, options, 20, 30);
+const staleZeroDescends = staleZeroProgram
+  .split('\n')
+  .map(l => /\bZ(-?[\d.]+)/.exec(l.split(';')[0]))
+  .filter((m): m is RegExpExecArray => !!m)
+  .filter(m => parseFloat(m[1]) < 30);
+check(
+  'an air cut never drops below the tool it starts under',
+  staleZeroDescends.length === 0,
+  staleZeroDescends.length ? `commands Z${staleZeroDescends[0]![1]} with the tool at Z30` : ''
+);
 console.log(`  air cut: ${airProgram.split('\n').length} lines vs ${warped.split('\n').length} for the job`);
 
 // --- 8. Control: the same board with levelling off -------------------------

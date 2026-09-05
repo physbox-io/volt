@@ -1561,18 +1561,43 @@ const f3 = (n: number) => n.toFixed(3);
 export function generateAirCutPerimeterGcode(
   result: PcbLayoutResult,
   options: PcbOptions,
-  zOffsetMm = 20
+  zOffsetMm = 20,
+  currentZMm?: number
 ): string {
   const { corners } = profileToolpath(result, options);
-  const z = f3(options.safeZ + Math.abs(zOffsetMm));
+  const lift = Math.abs(zOffsetMm);
+  const requestedZ = options.safeZ + lift;
+
+  // The clearance height is in *work* coordinates, so `safeZ + offset` is only
+  // "20mm up" when Z0 belongs to the stock that is clamped down right now. With
+  // a zero left over from an earlier job — a thicker blank, a longer bit — that
+  // same number can sit below the tool, and the first move of a check that is
+  // supposed to prove nothing can crash drives the bit down into the work and
+  // then drags it across. An air cut must only ever move Z away from the stock.
+  const knownZ =
+    typeof currentZMm === 'number' && Number.isFinite(currentZMm) ? currentZMm : undefined;
+  const targetZ = knownZ !== undefined ? Math.max(requestedZ, knownZ) : undefined;
+  const z = f3(targetZ ?? requestedZ);
   const g: string[] = [];
 
-  g.push(`; --- AIR CUT: board outline only, ${f3(Math.abs(zOffsetMm))}mm above safe Z ---`);
+  g.push(`; --- AIR CUT: board outline only, ${f3(lift)}mm above safe Z ---`);
   g.push(`; Bounds the whole job: every cut lies inside this rectangle.`);
   g.push(`; No spindle and no tool changes — this program cannot cut.`);
   g.push(`G90 G21`);
   g.push(`G17`);
-  g.push(`G0 Z${z}`);
+  if (targetZ === undefined) {
+    // Where the tool is now is unknown, so there is no absolute height that can
+    // be proven safe. A relative lift can only go up, and the laps then run from
+    // wherever that leaves the tool — higher than asked for, never lower.
+    g.push(`; Current Z unknown — lifting relative, so this can only move away from the stock.`);
+    g.push(`G91 G0 Z${f3(lift)}`);
+    g.push(`G90`);
+  } else {
+    if (targetZ > requestedZ) {
+      g.push(`; Tool is already above the requested clearance — holding Z${z} rather than dropping.`);
+    }
+    g.push(`G0 Z${z}`);
+  }
 
   for (let lap = 1; lap <= 2; lap++) {
     g.push(`; --- lap ${lap} of 2 ---`);
@@ -1582,7 +1607,7 @@ export function generateAirCutPerimeterGcode(
     }
   }
 
-  g.push(`G0 Z${z}`);
+  if (targetZ !== undefined) g.push(`G0 Z${z}`);
   g.push(`G0 X0 Y0`);
   g.push(`M30 ; End`);
   return g.join('\n');
