@@ -3,6 +3,7 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { getStoredAuthToken } from '../utils/apiClient';
 import { getNodesBounds, getViewportForBounds, type Node, type Edge } from '@xyflow/react';
 import { toPng } from 'html-to-image';
 import { presets as builtinPresets } from '../utils/presets';
@@ -131,7 +132,23 @@ export function useMCPBridge(props: BridgeProps) {
       ws = new WebSocket(`ws://localhost:${wsPort}`);
 
       ws.onopen = () =>
-        ws!.send(JSON.stringify({ event: 'HELLO', app: 'circuit', port: location.port }));
+        /*
+         * The handshake also offers this tab's session, as a fallback
+         * credential for the MCP server's cloud tools — the ones that read the
+         * run archive over HTTPS rather than driving this tab. It means an
+         * agent can answer a question about last month's job with no setup at
+         * all, as long as the app is open.
+         *
+         * The server treats it as a last resort behind PHYSBOX_API_TOKEN and its
+         * config file, because this socket has no origin check. It is localhost
+         * only, and the server binds loopback.
+         */
+        ws!.send(JSON.stringify({
+          event: 'HELLO',
+          app: 'circuit',
+          port: location.port,
+          token: getStoredAuthToken() ?? undefined,
+        }));
 
       ws.onmessage = (evt) => {
         let msg: any;

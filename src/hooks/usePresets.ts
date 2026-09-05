@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 import { presets, DEFAULT_PRESET_KEY } from '../utils/presets';
 import {
@@ -10,6 +10,8 @@ import {
   saveMachiningSettings,
   type CircuitPreset,
 } from '../utils/storage';
+import { PRESETS_UPDATED_EVENT } from '../utils/cloudSync';
+import { cloudAutosave } from '../utils/cloudDocuments';
 
 interface UsePresetsArgs {
   nodes: Node[];
@@ -27,6 +29,17 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
   const [userPresets, setUserPresets] = useState<Record<string, CircuitPreset>>(() => loadUserPresets());
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [saveDialogName, setSaveDialogName] = useState('');
+
+  /*
+   * Presets are seeded from localStorage once, so a sign-in that merges the
+   * account's circuits in behind this state would change nothing on screen until a
+   * reload. `mergePulledPresets` announces itself; this is the ear.
+   */
+  useEffect(() => {
+    const reread = () => setUserPresets(loadUserPresets());
+    window.addEventListener(PRESETS_UPDATED_EVENT, reread);
+    return () => window.removeEventListener(PRESETS_UPDATED_EVENT, reread);
+  }, []);
 
   const allPresets: Record<string, CircuitPreset> = useMemo(
     () => ({ ...presets, ...userPresets }),
@@ -74,6 +87,9 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     };
     const updated = addUserPreset(key, preset);
     setUserPresets(updated);
+    // A deliberate save is also a named revision of the cloud document, which the
+    // pruner never discards — unlike the automatic checkpoints.
+    void cloudAutosave.saveExplicit(trimmed, preset, `Saved as “${trimmed}”`);
     setSelectedPreset(key);
     setIsSaveDialogOpen(false);
     setSaveDialogName('');
@@ -97,6 +113,7 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     };
     const updated = addUserPreset(key, preset);
     setUserPresets(updated);
+    void cloudAutosave.saveExplicit(trimmed, preset, `Saved as “${trimmed}”`);
     setSelectedPreset(key);
   }, [nodes, edges]);
 

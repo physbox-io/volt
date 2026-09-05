@@ -60,7 +60,12 @@ export const GuestListModal: React.FC<GuestListModalProps> = ({ isOpen, onClose,
         <div className="space-y-2.5 text-left bg-slate-950/40 p-4 rounded-xl border border-slate-800 text-xs text-slate-300 mb-6">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>Auto-save and parameter sync configured</span>
+            {/* Was "Auto-save and parameter sync configured", which promised one
+                thing that was true and one that was not: settings and presets do
+                sync, and the open document was never saved anywhere. Document
+                auto-save is real now, and it is part of Pro — so say which is
+                which rather than implying both come with signing in. */}
+            <span>Settings and saved presets sync across your devices</span>
           </div>
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />

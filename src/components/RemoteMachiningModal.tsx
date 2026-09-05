@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { X, Radio, Clock, AlertTriangle, RefreshCw, Cpu } from 'lucide-react';
-import { fetchLatestTelemetry } from '../utils/apiClient';
+import { X, Radio, Clock, AlertTriangle, RefreshCw, Cpu, Star } from 'lucide-react';
+import { fetchLatestTelemetry, isProAccount } from '../utils/apiClient';
 import type { MachiningTelemetry } from '../utils/apiClient';
 
 interface RemoteMachiningModalProps {
@@ -82,7 +82,28 @@ export const RemoteMachiningModal: React.FC<RemoteMachiningModalProps> = ({ isOp
         </div>
 
         <div className="p-6 flex-1 overflow-y-auto space-y-4">
-          {telemetry.length === 0 ? (
+          {/* Watching a job from another device is the account layer's whole point,
+              so it is Pro. Free accounts get told what it does rather than an empty
+              panel that looks like a machine failing to report. */}
+          {!isProAccount() ? (
+            <div className="text-center py-10 bg-slate-50 dark:bg-slate-950/40 rounded-xl border border-slate-200 dark:border-slate-800 px-6">
+              <Star className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
+              <p className="text-slate-700 dark:text-slate-300 font-medium">Remote monitoring is part of PhysBox Pro</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-md mx-auto leading-relaxed">
+                Driving your machine from this browser works exactly as it does now. Pro adds
+                watching it from somewhere else &mdash; progress, position, feed and faults on your
+                phone while a four-hour job runs &mdash; and keeps every finished run afterwards.
+              </p>
+              <a
+                href="https://physbox.io/pro.html"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-block mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-xs"
+              >
+                See PhysBox Pro
+              </a>
+            </div>
+          ) : telemetry.length === 0 ? (
             <div className="text-center py-12 bg-slate-50 dark:bg-slate-950/40 rounded-xl border border-slate-200 dark:border-slate-800">
               <Cpu className="w-12 h-12 text-slate-400 dark:text-slate-600 mx-auto mb-3 opacity-60" />
               <p className="text-slate-700 dark:text-slate-300 font-medium">No Active Remote Telemetry</p>

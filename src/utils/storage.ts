@@ -1,5 +1,6 @@
 import type { PcbOptions } from './pcbExporter';
 import { type Node, type Edge } from '@xyflow/react';
+import { saveCloudPreset, removeCloudPreset, PRESETS_UPDATED_EVENT } from './cloudSync';
 
 export interface CircuitPreset {
   name: string;
@@ -73,10 +74,21 @@ export function saveUserPresets(presets: Record<string, CircuitPreset>): void {
   }
 }
 
+/*
+ * Saving and deleting also push to the account, fire-and-forget.
+ *
+ * These two functions are the only places a user preset is written in this app,
+ * which is what makes them the seam to hang cloud sync on — the same reason Mesh
+ * consolidated its four hand-rolled localStorage calls into one module before it
+ * could sync anything. The local write is what the user is waiting on, so a failed
+ * upload must never be able to lose it, and `cloudSync` no-ops when signed out.
+ */
+
 export function addUserPreset(key: string, preset: CircuitPreset): Record<string, CircuitPreset> {
   const existing = loadUserPresets();
   const updated = { ...existing, [key]: preset };
   saveUserPresets(updated);
+  void saveCloudPreset(key, preset);
   return updated;
 }
 
@@ -85,7 +97,30 @@ export function removeUserPreset(key: string): Record<string, CircuitPreset> {
   const updated = { ...existing };
   delete updated[key];
   saveUserPresets(updated);
+  void removeCloudPreset(key);
   return updated;
+}
+
+/**
+ * Folds presets pulled from the account into the local set.
+ *
+ * Additive: a key already saved in this browser is left alone — see the note in
+ * `cloudSync.pullCloudPresets`. Returns how many were new, and announces the change
+ * so the preset list on screen picks it up.
+ */
+export function mergePulledPresets(pulled: Record<string, CircuitPreset>): number {
+  const existing = loadUserPresets();
+  let added = 0;
+  const updated = { ...existing };
+  for (const [key, preset] of Object.entries(pulled)) {
+    if (key in updated) continue;
+    updated[key] = preset;
+    added += 1;
+  }
+  if (added === 0) return 0;
+  saveUserPresets(updated);
+  window.dispatchEvent(new Event(PRESETS_UPDATED_EVENT));
+  return added;
 }
 
 /** Derive a safe localStorage key from a user-supplied name */

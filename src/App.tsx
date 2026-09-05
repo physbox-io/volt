@@ -26,7 +26,8 @@ import { presets, DEFAULT_PRESET_KEY } from './utils/presets';
 import { EdgePathProvider } from './components/AuraEdge';
 import { SettingsModal } from './components/SettingsModal';
 import { UserProfileButton } from './components/UserProfileButton';
-import { loadSettings, saveSettings } from './utils/storage';
+import { loadSettings, saveSettings, loadMachiningSettings } from './utils/storage';
+import { cloudAutosave } from './utils/cloudDocuments';
 import { useMCPBridge } from './hooks/useMCPBridge';
 import { usePresets } from './hooks/usePresets';
 import { useCircuitHistory } from './hooks/useCircuitHistory';
@@ -353,6 +354,35 @@ export default function App() {
       );
     });
   }, [simLength, setNodes]);
+
+  /*
+   * Cloud auto-save.
+   *
+   * Below is the app's existing settings autosave — preferences, kept locally. This
+   * is the circuit itself, which has never been persisted anywhere: presets are
+   * saved on purpose, and closing the tab has always lost whatever was on the
+   * canvas.
+   *
+   * Serialised in the same `CircuitPreset` shape `usePresets.savePreset` builds, so
+   * an auto-saved circuit and a hand-saved one are the same thing — including the
+   * CAM settings, because a board is milled with the trace width it was routed for.
+   *
+   * `cloudAutosave` does nothing unless the account is signed in with Pro, it
+   * coalesces and debounces, and every local path is untouched — so nothing here is
+   * load-bearing for keeping work.
+   */
+  useEffect(() => {
+    const name = userPresets[selectedPreset]?.name?.replace(/^User:\s*/, '') || 'Untitled circuit';
+    cloudAutosave.schedule(name, {
+      name: `User: ${name}`,
+      nodes: nodes.map((n) => ({ ...n, selected: false })),
+      edges: edges.map((e) => ({
+        ...e,
+        data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined,
+      })),
+      pcbOptions: loadMachiningSettings(),
+    });
+  }, [nodes, edges, selectedPreset, userPresets]);
 
   // ── Auto-save settings ──────────────────────────────────────────────────────
   useEffect(() => { saveSettings({ showAura }); }, [showAura]);

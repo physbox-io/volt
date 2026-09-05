@@ -10,6 +10,7 @@
 // ---------------------------------------------------------------------------
 
 import { postMachineTelemetry } from './apiClient';
+import { cloudAutosave } from './cloudDocuments';
 import {
   warpGcode,
   gridFromPoints,
@@ -562,6 +563,9 @@ class WebSerialManager {
    * another device. `postMachineTelemetry` is a no-op unless the user is signed
    * in, so this costs nothing for a local-only user.
    */
+  /** Set while a telemetry post is outstanding — see `reportTelemetry`. */
+  private telemetryInFlight = false;
+
   private reportTelemetry(state: MachineState) {
     if (!state.connected) return;
 
@@ -571,6 +575,10 @@ class WebSerialManager {
 
     this.lastTelemetryAt = now;
     this.lastTelemetryStatus = state.status;
+    // One at a time: a stalled network would otherwise queue a backlog of stale
+    // positions that all land at once when it recovers.
+    if (this.telemetryInFlight) return;
+    this.telemetryInFlight = true;
 
     void postMachineTelemetry('circuit', {
       status: this.telemetryStatus(state.status),
@@ -579,6 +587,12 @@ class WebSerialManager {
       totalLines: state.totalLines,
       xyz: { ...state.wpos },
       lastError: state.lastError ?? null,
+      // Which cloud document this browser is working on, so an archived run points
+      // back at the circuit that produced it.
+      documentId: cloudAutosave.getStatus().documentId,
+      documentRevision: cloudAutosave.getStatus().revision,
+    }).finally(() => {
+      this.telemetryInFlight = false;
     });
   }
 

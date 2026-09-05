@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { User, LogOut, Radio, Sparkles, ShieldCheck, CheckCircle } from 'lucide-react';
+import { User, LogOut, Radio, Sparkles, ShieldCheck, CheckCircle, History } from 'lucide-react';
 import { getStoredUser, clearStoredAuth, loginWithGoogle, fetchCurrentUser } from '../utils/apiClient';
 import { renderGoogleSignInButton, disableGoogleAutoSelect } from '../utils/googleAuth';
 import type { PhysBoxUser } from '../utils/apiClient';
 import { RemoteMachiningModal } from './RemoteMachiningModal';
+import { JobHistoryModal } from './JobHistoryModal';
+import { CloudSaveStatus } from './CloudSaveStatus';
 import { GuestListModal } from './GuestListModal';
 import { restoreLlmSettingsFromCloud } from '../utils/llmSettings';
+import { pullCloudPresets } from '../utils/cloudSync';
+import { mergePulledPresets } from '../utils/storage';
 
 export const UserProfileButton: React.FC = () => {
   const [user, setUser] = useState<PhysBoxUser | null>(getStoredUser());
@@ -14,6 +18,7 @@ export const UserProfileButton: React.FC = () => {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const [showRemoteModal, setShowRemoteModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showGuestModal, setShowGuestModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -44,9 +49,12 @@ export const UserProfileButton: React.FC = () => {
     setIsLoading(true);
     setLoginError(null);
     try {
-      const res = await loginWithGoogle({ credential });
+      const res = await loginWithGoogle(credential);
       setUser(res.user);
       void restoreLlmSettingsFromCloud();
+      // Circuits saved on another machine, folded in additively. Until now this app
+      // uploaded presets to nothing and never asked for them back.
+      void pullCloudPresets().then(mergePulledPresets);
       setShowLoginModal(false);
       setDropdownOpen(false);
       if (!res.is_admin) {
@@ -171,6 +179,20 @@ export const UserProfileButton: React.FC = () => {
                   <span>View Remote Machining Telemetry</span>
                 </button>
 
+                {/* The live view above is what a machine is doing now; this is what
+                    it has already done. Available to every signed-in account —
+                    what a free account sees inside is the offer, not an error. */}
+                <button
+                  onClick={() => {
+                    setDropdownOpen(false);
+                    setShowHistoryModal(true);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                >
+                  <History className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>Job History</span>
+                </button>
+
                 <div className="px-3 py-1.5 text-[10px] text-slate-500 flex items-center gap-1.5">
                   <CheckCircle className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
                   <span>Cloud Parameter & Preset Auto-Sync Active</span>
@@ -257,6 +279,14 @@ export const UserProfileButton: React.FC = () => {
         )}
 
       <RemoteMachiningModal isOpen={showRemoteModal} onClose={() => setShowRemoteModal(false)} />
+
+      {/* Job History Modal */}
+      <JobHistoryModal isOpen={showHistoryModal} onClose={() => setShowHistoryModal(false)} />
+
+      {/* Cloud auto-save status. Renders nothing unless there is something to say,
+          and mounted here only because this component is always on screen — it
+          paints itself into a corner through a portal. */}
+      <CloudSaveStatus />
       <GuestListModal
         isOpen={showGuestModal}
         onClose={() => setShowGuestModal(false)}
