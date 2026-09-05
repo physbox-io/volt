@@ -197,6 +197,14 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [activeTab, setActiveTab] = useState<'layout' | 'cam' | 'serial'>('layout');
+  /**
+   * A single-sided board is milled copper-up and assembled from the other face,
+   * so the two jobs need mirror-image pictures. Defaulting to the copper side
+   * keeps the preview matching the blank on the bed; the component side is what
+   * you hold a module against to check which hole is pin 1.
+   */
+  const [viewSide, setViewSide] = useState<'copper' | 'component'>('copper');
+  const [showPadNumbers, setShowPadNumbers] = useState(true);
   const [serialState, setSerialState] = useState(webSerialManager.getState());
   /**
    * Off by default: a mesh probe is minutes of machine time and needs the
@@ -1021,10 +1029,47 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                   </span>
                 </div>
 
+                {/* Which face you are looking at. Named after the face rather
+                    than "front/back" or "flipped", because the only reading of
+                    this control that matters is "is this the picture I check the
+                    toolpath against, or the one I seat the parts against". */}
+                <div className="w-full flex items-center justify-between mb-2 text-[11px]">
+                  <div className="inline-flex rounded-md border border-slate-300 dark:border-slate-700 overflow-hidden">
+                    {([
+                      ['copper', 'Copper side', 'The board as milled, seen from the spindle. Matches the toolpath and the blank on the bed.'],
+                      ['component', 'Component side', 'Seen through the board from the face the parts sit on — the view you assemble against.'],
+                    ] as const).map(([side, label, title]) => (
+                      <button
+                        key={side}
+                        title={title}
+                        onClick={() => setViewSide(side)}
+                        className={`px-2.5 py-1 font-semibold transition-colors cursor-pointer ${
+                          viewSide === side
+                            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                            : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800/60'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-500 dark:text-slate-400">
+                    <input
+                      type="checkbox"
+                      checked={showPadNumbers}
+                      onChange={e => setShowPadNumbers(e.target.checked)}
+                      className="accent-emerald-500 cursor-pointer"
+                    />
+                    Pin numbers
+                  </label>
+                </div>
+
                 <div className="w-full aspect-[4/3] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-2 shadow-inner flex items-center justify-center overflow-hidden">
                   <div
-                    className="w-full h-full"
-                    dangerouslySetInnerHTML={{ __html: result.svg }}
+                    className={`w-full h-full ${showPadNumbers ? '' : '[&_.pcb-pad-numbers]:hidden'}`}
+                    dangerouslySetInnerHTML={{
+                      __html: viewSide === 'component' ? result.svgComponentSide : result.svg,
+                    }}
                   />
                 </div>
 
@@ -1193,6 +1238,25 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       </button>
                     )}
                   </div>
+
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={options.isolateUnusedPads !== false}
+                      onChange={e => setOptions({ ...options, isolateUnusedPads: e.target.checked })}
+                      className="cursor-pointer"
+                    />
+                    <span className="text-slate-600 dark:text-slate-300 font-semibold">Isolate unused pins</span>
+                    <InfoTip>
+                      Cuts a ring around every pad with nothing wired to it. The board is
+                      isolation-milled, so copper the toolpath never encircles stays on the blank —
+                      an unconnected pin then pokes through leftover foil and makes an intermittent
+                      connection to whatever that foil touches, usually the ground pour. Ringed, the
+                      pad is an isolated island: still solderable for mechanical strength, but on its
+                      own electrically. Leave this on unless you want those pins tied to the pour.
+                    </InfoTip>
+                  </label>
+
 
                   <div>
                     <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">

@@ -10,6 +10,19 @@ export interface McuPinDef {
   voltage?: number;        // Default voltage for power pins (e.g. 5 or 3.3)
 }
 
+/**
+ * Which end of the right-hand column pin numbering starts from.
+ *
+ * A DIP chip and a Raspberry Pi Pico number their pads counter-clockwise: down
+ * the left column, then back up the right, so the lowest right-hand number sits
+ * at the bottom. A Nano, an ESP32 DevKit or a Heltec numbers both columns
+ * downward from the top instead. The difference reverses one row of holes
+ * against the other, and a module whose footprint has it backwards cannot be
+ * seated in any orientation - flipping it over mirrors both rows together and
+ * so does not undo it.
+ */
+export type McuPinNumbering = 'dual-column' | 'counterclockwise';
+
 export type McuPackageStyle =
   | 'dip'             // Dual in-line package (left & right rows)
   | 'header_1x'       // Single inline pin header (1xN)
@@ -31,6 +44,25 @@ export interface McuGeometryConfig {
   padWidthMm: number;     // Copper pad width in mm (e.g. 1.8mm)
   padHeightMm: number;    // Copper pad height in mm (e.g. 1.8mm)
   pins: McuPinDef[];      // Pin definitions
+  /** Right-column numbering direction. Defaults to counter-clockwise for DIP, top-down otherwise. */
+  pinNumbering?: McuPinNumbering;
+}
+
+/**
+ * Resolve {@link McuPinNumbering} for a config. Both the schematic symbol and
+ * the PCB footprint read this, so the drawing and the drilled holes agree.
+ */
+export function mcuPinNumbering(
+  config: Pick<McuGeometryConfig, 'style'> & { pinNumbering?: McuPinNumbering }
+): McuPinNumbering {
+  return config.pinNumbering ?? (config.style === 'dip' ? 'counterclockwise' : 'dual-column');
+}
+
+/** True when the right-hand column is ordered bottom-to-top. */
+export function rightColumnRunsUp(
+  config: Pick<McuGeometryConfig, 'style'> & { pinNumbering?: McuPinNumbering }
+): boolean {
+  return mcuPinNumbering(config) === 'counterclockwise';
 }
 
 /** Standard default 8-pin MCU configuration (backwards compatible with existing circuits) */
@@ -264,6 +296,9 @@ export const MCU_PRESETS: McuPreset[] = [
     config: {
       presetKey: 'pico_rp2040',
       style: 'header_2x',
+      // The Pico is the odd module out: its 1-40 numbering runs counter-clockwise
+      // like a DIP, so pin 21 (GP16) is at the bottom of the right column.
+      pinNumbering: 'counterclockwise',
       pinCount: 40,
       widthMm: 21.0,
       heightMm: 51.0,
@@ -490,6 +525,10 @@ export function getEffectiveMcuConfig(data?: any): McuGeometryConfig {
     padWidthMm: cfg.padWidthMm || (cfg.isSmd ? 1.5 : 1.8),
     padHeightMm: cfg.padHeightMm || (cfg.isSmd ? 0.8 : 1.8),
     pins: cfg.pins && cfg.pins.length > 0 ? cfg.pins : DEFAULT_MCU_CONFIG.pins,
+    // Carried through rather than defaulted here: a part saved as
+    // counter-clockwise has to stay that way, and mcuPinNumbering() already
+    // knows what an absent value means for each style.
+    pinNumbering: cfg.pinNumbering,
   };
 }
 

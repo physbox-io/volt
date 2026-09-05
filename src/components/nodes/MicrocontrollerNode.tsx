@@ -6,6 +6,7 @@ import {
   getEffectiveMcuConfig,
   createCustomMcuConfig,
   MCU_PRESETS,
+  rightColumnRunsUp,
   type McuGeometryConfig,
   type McuPinDef,
   type McuPinSide,
@@ -358,7 +359,11 @@ export function MicrocontrollerNode({ data, selected }: any) {
   const { pins } = config;
 
   const leftPins = pins.filter(p => p.side === 'left');
-  const rightPins = pins.filter(p => p.side === 'right');
+  // A counter-clockwise part (DIP, Pico) numbers the right column from the
+  // bottom up, so it is drawn that way too - the symbol has to read the same
+  // way round as the footprint that gets drilled, or a module seats reversed.
+  const rightColumn = pins.filter(p => p.side === 'right');
+  const rightPins = rightColumnRunsUp(config) ? [...rightColumn].reverse() : rightColumn;
   const topPins = pins.filter(p => p.side === 'top');
   const bottomPins = pins.filter(p => p.side === 'bottom');
 

@@ -151,6 +151,17 @@ export interface PcbOptions {
    */
   copperFloodMm?: number;
   /**
+   * Cut an isolation ring around every pad that carries no net.
+   *
+   * The board is isolation-milled, so copper the toolpath never encircles stays
+   * on the blank. A drilled hole for an unconnected pin therefore passes
+   * straight through that leftover foil, and the pin poking through it makes an
+   * intermittent connection to whatever the foil is touching - usually the
+   * ground pour. Ringing the pad leaves it as an isolated island instead, still
+   * solderable for mechanical strength but electrically on its own.
+   */
+  isolateUnusedPads?: boolean;
+  /**
    * Extra clearance kept on *each* side of the isolation channel when copper is
    * flooded, in mm. This is the flood's safety margin against an unlevelled
    * board and against Clipper's own rounding: at 0 the pass-0 ring would touch
@@ -200,6 +211,7 @@ export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   drillConsolidationMm: 0.3,
   boardMarginMm: 1.5,
   copperFloodMm: 0.6,
+  isolateUnusedPads: true,
   channelMarginMm: 0.05,
 };
 
@@ -348,7 +360,10 @@ export interface PcbLayoutResult {
   cycleTimeSec: number;
   travelDistanceMm: number;
   cutDistanceMm: number;
+  /** Board preview drawn from the copper face, as the mill sees it. */
   svg: string;
+  /** The same board mirrored, as seen from the face the parts sit on. */
+  svgComponentSide: string;
   gcode: string;
   error?: string;
 }
@@ -1107,6 +1122,22 @@ export function generatePcbLayout(
     appliedFloodMm = flooded.appliedMm;
   }
 
+  // 5c. Unused pads ----------------------------------------------------
+  // Added after the flood so they are never grown - they were blockers to it -
+  // but before the isolation pass, which is what actually cuts them free of the
+  // surrounding foil. Keyed apart from real nets so the DRC below reports a
+  // clash against one by name.
+  if (options.isolateUnusedPads !== false) {
+    for (const pad of pads) {
+      if (pad.netId) continue;
+      const comp = compById.get(pad.componentId);
+      if (!comp) continue;
+      copperByNet.set(`unused:${pad.componentId}-${pad.pinNumber}`, [
+        padPolygon(pad, comp.rotationDeg, effectivePadMarginMm(comp.footprint, padMargin)),
+      ]);
+    }
+  }
+
   // 6. Design rule check: no two nets' copper may touch.
   const netIdList = [...copperByNet.keys()];
   for (let i = 0; i < netIdList.length; i++) {
@@ -1247,10 +1278,12 @@ export function generatePcbLayout(
     travelDistanceMm: 0,
     cutDistanceMm: 0,
     svg: '',
+    svgComponentSide: '',
     gcode: '',
   };
 
-  result.svg = renderPcbSvg(result, copperByNet, options);
+  result.svg = renderPcbSvg(result, copperByNet, options, 'copper');
+  result.svgComponentSide = renderPcbSvg(result, copperByNet, options, 'component');
   result.gcode = generatePcbGcode(result, options);
   const metrics = estimatePcbMachiningMetrics(result.gcode, options);
   result.cycleTimeSec = metrics.cycleTimeSec;
@@ -1427,6 +1460,9 @@ export function emptyPcbLayout(
 }
 
 function emptyResult(options: PcbOptions, error: string): PcbLayoutResult {
+  const emptySvg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${options.boardWidthMm} ` +
+    `${options.boardHeightMm}" width="100%" height="100%"></svg>`;
   return {
     success: false,
     boardWidthMm: options.boardWidthMm,
@@ -1448,9 +1484,8 @@ function emptyResult(options: PcbOptions, error: string): PcbLayoutResult {
     cycleTimeSec: 0,
     travelDistanceMm: 0,
     cutDistanceMm: 0,
-    svg:
-      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${options.boardWidthMm} ` +
-      `${options.boardHeightMm}" width="100%" height="100%"></svg>`,
+    svg: emptySvg,
+    svgComponentSide: emptySvg,
     gcode: `; ${error}\n`,
     error,
   };
@@ -1465,14 +1500,29 @@ const NET_COLORS = [
   '#81c784', '#f06292', '#9575cd', '#4db6ac',
 ];
 
+/**
+ * Which face of the finished board the preview is drawn from.
+ *
+ * The mill cuts a single-sided board copper-up, and the parts go in from the
+ * other face - so the picture you check the toolpath against and the picture
+ * you assemble against are mirror images of each other. Keeping both available,
+ * clearly labelled, is the point: a footprint that only looks right from the
+ * side you never checked is how a board reaches the soldering iron wrong.
+ */
+export type PcbViewSide = 'copper' | 'component';
+
 export function renderPcbSvg(
   result: PcbLayoutResult,
   copperByNet: Map<string, Poly[]>,
-  options: PcbOptions
+  options: PcbOptions,
+  view: PcbViewSide = 'copper'
 ): string {
   const w = result.boardWidthMm;
   const h = result.boardHeightMm;
   const colorFor = (netId: string) => {
+    // Isolated islands are not a net; showing them in a net colour would read
+    // as a connection that is not there.
+    if (netId.startsWith('unused:')) return '#9e9e9e';
     if (netId === 'GND') return '#8d6e63';
     const idx = result.nets.findIndex(n => n.id === netId);
     return NET_COLORS[(idx < 0 ? 0 : idx) % NET_COLORS.length];
@@ -1482,43 +1532,70 @@ export function renderPcbSvg(
   // inset from the origin so the profile pass starts on X0Y0. The view has to
   // start at the origin too, or the outline falls outside it.
   const o = result.boardOriginMm;
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w + o * 2} ${h + o * 2}" width="100%" height="100%">\n`;
+  const vw = w + o * 2;
+  const vh = h + o * 2;
+
+  // Machine Y climbs away from the operator; SVG Y climbs down the screen.
+  // Drawing program coordinates straight into the viewBox therefore published
+  // a picture that was a *reflection* of the board on the bed - the far edge
+  // drawn nearest. Every coordinate goes through here instead, so the copper
+  // view matches the blank as clamped, and the component view is its mirror.
+  const flipX = view === 'component';
+  const px = (x: number) => (flipX ? vw - x : x);
+  const py = (y: number) => vh - y;
+  const pt = (p: Pt): Pt => ({ x: px(p.x), y: py(p.y) });
+  const mapPolys = (polys: Poly[]): Poly[] => polys.map(poly => poly.map(pt));
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${vw} ${vh}" width="100%" height="100%">\n`;
   svg += `  <rect x="${o}" y="${o}" width="${w}" height="${h}" fill="#1b4d2e" stroke="#2e7d42" stroke-width="0.4" rx="1.5" />\n`;
 
   // Copper, per net, with holes honoured.
   for (const [netId, polys] of copperByNet) {
-    const d = polysToSvgPath(polys);
+    const d = polysToSvgPath(mapPolys(polys));
     if (!d) continue;
     svg += `  <path d="${d}" fill="${colorFor(netId)}" fill-rule="evenodd" opacity="0.95" />\n`;
   }
 
   // Isolation toolpaths.
   for (const path of result.isolationPaths) {
-    const pts = path.points.map(p => `${p.x.toFixed(3)},${p.y.toFixed(3)}`).join(' ');
+    const pts = path.points.map(p => `${px(p.x).toFixed(3)},${py(p.y).toFixed(3)}`).join(' ');
     svg += `  <polyline points="${pts}" fill="none" stroke="#ff5252" stroke-width="0.08" stroke-dasharray="0.5,0.35" opacity="0.85" />\n`;
   }
 
   // Drill holes.
   for (const d of result.drills) {
-    svg += `  <circle cx="${d.x.toFixed(3)}" cy="${d.y.toFixed(3)}" r="${(d.diameter / 2).toFixed(3)}" fill="#0d0d0d" />\n`;
+    svg += `  <circle cx="${px(d.x).toFixed(3)}" cy="${py(d.y).toFixed(3)}" r="${(d.diameter / 2).toFixed(3)}" fill="#0d0d0d" />\n`;
   }
 
   // Courtyards and reference designators.
   for (const comp of result.components) {
     const hw = comp.widthMm / 2;
     const hh = comp.heightMm / 2;
-    svg += `  <rect x="${(comp.x - hw).toFixed(3)}" y="${(comp.y - hh).toFixed(3)}" width="${comp.widthMm.toFixed(3)}" height="${comp.heightMm.toFixed(3)}" fill="none" stroke="#ffffff" stroke-width="0.15" opacity="0.55" rx="0.4" />\n`;
+    svg += `  <rect x="${px(comp.x + (flipX ? hw : -hw)).toFixed(3)}" y="${py(comp.y + hh).toFixed(3)}" width="${comp.widthMm.toFixed(3)}" height="${comp.heightMm.toFixed(3)}" fill="none" stroke="#ffffff" stroke-width="0.15" opacity="0.55" rx="0.4" />\n`;
     const label = String(comp.name).replace(/[<>&]/g, '');
-    svg += `  <text x="${comp.x.toFixed(3)}" y="${(comp.y - hh - 0.4).toFixed(3)}" fill="#ffffff" font-size="1.4" font-family="monospace" text-anchor="middle">${label}</text>\n`;
+    svg += `  <text x="${px(comp.x).toFixed(3)}" y="${py(comp.y + hh + 0.4).toFixed(3)}" fill="#ffffff" font-size="1.4" font-family="monospace" text-anchor="middle">${label}</text>\n`;
   }
+
+  // Pad numbers. Grouped and class-tagged so the viewer can switch them off:
+  // on a dense board they are noise, and on the board you are checking a module
+  // footprint against they are the only thing that answers the question.
+  // paint-order puts the dark stroke behind the glyph, so a number stays
+  // readable over both the copper and the drilled hole it sits on.
+  svg += `  <g class="pcb-pad-numbers" font-family="monospace" font-size="0.9" text-anchor="middle" fill="#ffffff" stroke="#0d0d0d" stroke-width="0.22" paint-order="stroke" stroke-linejoin="round">\n`;
+  for (const pad of result.pads) {
+    const n = String(pad.pinNumber).replace(/[<>&]/g, '');
+    if (!n) continue;
+    svg += `    <text x="${px(pad.x).toFixed(3)}" y="${(py(pad.y) + 0.32).toFixed(3)}">${n}</text>\n`;
+  }
+  svg += `  </g>\n`;
 
   // Cutouts: milled clean through, so show them as holes in the substrate.
   for (const cut of result.cutouts) {
     if (cut.shape === 'circle') {
-      svg += `  <circle cx="${cut.x}" cy="${cut.y}" r="${Math.max(cut.widthMm, cut.heightMm) / 2}" ` +
+      svg += `  <circle cx="${px(cut.x).toFixed(3)}" cy="${py(cut.y).toFixed(3)}" r="${Math.max(cut.widthMm, cut.heightMm) / 2}" ` +
         `fill="#0b0f14" stroke="#ef5350" stroke-width="0.15" stroke-dasharray="0.8,0.5" />\n`;
     } else {
-      svg += `  <rect x="${cut.x - cut.widthMm / 2}" y="${cut.y - cut.heightMm / 2}" ` +
+      svg += `  <rect x="${px(cut.x + (flipX ? cut.widthMm / 2 : -cut.widthMm / 2)).toFixed(3)}" y="${py(cut.y + cut.heightMm / 2).toFixed(3)}" ` +
         `width="${cut.widthMm}" height="${cut.heightMm}" ` +
         `fill="#0b0f14" stroke="#ef5350" stroke-width="0.15" stroke-dasharray="0.8,0.5" />\n`;
     }

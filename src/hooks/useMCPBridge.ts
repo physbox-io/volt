@@ -8,6 +8,7 @@ import { getNodesBounds, getViewportForBounds, type Node, type Edge } from '@xyf
 import { toPng } from 'html-to-image';
 import { presets as builtinPresets } from '../utils/presets';
 import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey, loadMachiningSettings } from '../utils/storage';
+import { generatePcbLayout, type PcbOptions } from '../utils/pcbExporter';
 
 interface BridgeProps {
   nodes: Node[];
@@ -535,6 +536,133 @@ export function useMCPBridge(props: BridgeProps) {
               restorePaint();
             }
             return { ok: true, dataUrl, width, height };
+          } catch (e) {
+            return { ok: false, error: String(e) };
+          }
+        }
+
+        /**
+         * The board as the CAM engine sees it, without going through the
+         * export dialog. This exists because the only way to answer "why will
+         * this net not route" or "which pad is pin 1 actually on" used to be
+         * to import the layout code into a script and run it by hand - the
+         * board was the one part of Volt an agent could not look at.
+         *
+         * Geometry is opt-in: pads and traces are the bulky fields and most
+         * questions are answered by the placement, the nets and the unrouted
+         * list alone.
+         */
+        case 'GET_PCB_LAYOUT': {
+          if (nodes.length === 0) return { ok: false, error: 'The canvas is empty — there is no board to lay out' };
+          const overrides = (msg.options ?? {}) as Partial<PcbOptions>;
+          const result = generatePcbLayout(nodes, edges, { ...loadMachiningSettings(), ...overrides });
+          if (result.error) return { ok: false, error: result.error };
+
+          const wanted = String(msg.component || '').trim();
+          const padsOf = (id: string) => result.pads.filter(p => p.componentId === id);
+
+          const out: Record<string, unknown> = {
+            ok: true,
+            board: {
+              widthMm: result.boardWidthMm,
+              heightMm: result.boardHeightMm,
+              originMm: result.boardOriginMm,
+            },
+            // The number to read first: 1 means every connection made it.
+            completion: result.completion,
+            counts: {
+              components: result.components.length,
+              nets: result.nets.length,
+              pads: result.pads.length,
+              drills: result.drills.length,
+              traces: result.traces.length,
+            },
+            components: result.components.map(c => ({
+              id: c.id,
+              name: c.name,
+              type: c.type,
+              x: c.x,
+              y: c.y,
+              rotationDeg: c.rotationDeg,
+              widthMm: c.widthMm,
+              heightMm: c.heightMm,
+              packageId: c.footprint.packageId,
+              padCount: c.footprint.pads.length,
+            })),
+            nets: result.nets.map(n => ({
+              id: n.id,
+              name: n.name,
+              isGround: n.isGround,
+              ports: n.ports.map(port => port.key),
+              traceCount: result.traces.filter(t => t.netId === n.id).length,
+            })),
+            // Every reason a board is not finished, in the order you want them:
+            // what failed to route, what breaks a rule, what was adjusted.
+            unrouted: result.unrouted,
+            violations: result.violations,
+            warnings: result.warnings,
+            cycleTimeSec: result.cycleTimeSec,
+          };
+
+          if (msg.includePads) {
+            out.pads = (wanted ? padsOf(wanted) : result.pads).map(p => ({
+              componentId: p.componentId,
+              handleId: p.handleId,
+              pinNumber: p.pinNumber,
+              netId: p.netId,
+              x: p.x,
+              y: p.y,
+            }));
+          }
+          if (msg.includeTraces) {
+            out.traces = result.traces.map(t => ({ netId: t.netId, width: t.width, points: t.points }));
+          }
+          return out;
+        }
+
+        /**
+         * A picture of the board, rendered from whichever face was asked for.
+         * A single-sided board is milled copper-up and assembled from the other
+         * face, so the two views are mirror images and the wrong one will
+         * happily look correct.
+         */
+        case 'GET_PCB_PREVIEW': {
+          if (nodes.length === 0) return { ok: false, error: 'The canvas is empty — there is no board to photograph' };
+          const view = msg.view === 'component' ? 'component' : 'copper';
+          const overrides = (msg.options ?? {}) as Partial<PcbOptions>;
+          const result = generatePcbLayout(nodes, edges, { ...loadMachiningSettings(), ...overrides });
+          if (result.error) return { ok: false, error: result.error };
+
+          let svg = view === 'component' ? result.svgComponentSide : result.svg;
+          if (msg.padNumbers === false) svg = svg.replace(/<g class="pcb-pad-numbers"[\s\S]*?<\/g>\n/, '');
+
+          // The SVG sizes itself to its container, so it has to be given
+          // explicit pixels before a canvas will rasterise it at all.
+          const pxPerMm = Math.max(2, Math.min(30, Number(msg.pxPerMm) || 12));
+          const vw = result.boardWidthMm + result.boardOriginMm * 2;
+          const vh = result.boardHeightMm + result.boardOriginMm * 2;
+          const width = Math.round(Math.min(2000, vw * pxPerMm));
+          const height = Math.round(Math.min(2000, vh * pxPerMm));
+          const sized = svg.replace('width="100%" height="100%"', `width="${width}" height="${height}"`);
+
+          try {
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return reject(new Error('2D canvas is unavailable'));
+                ctx.fillStyle = '#0b0f14';
+                ctx.fillRect(0, 0, width, height);
+                ctx.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/png'));
+              };
+              img.onerror = () => reject(new Error('The board SVG could not be rasterised'));
+              img.src = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(sized)))}`;
+            });
+            return { ok: true, dataUrl, width, height, view, completion: result.completion };
           } catch (e) {
             return { ok: false, error: String(e) };
           }

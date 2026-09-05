@@ -12,7 +12,12 @@ import type { Node, Edge } from '@xyflow/react';
 import { executeMcuCode } from '../src/utils/mcu';
 import { generateSpiceNetlist } from '../src/utils/spice';
 import { generateCustomMcuFootprint } from '../src/utils/pcbFootprints';
-import { MCU_PRESETS, createCustomMcuConfig } from '../src/utils/mcuConfig';
+import {
+  MCU_PRESETS,
+  createCustomMcuConfig,
+  getEffectiveMcuConfig,
+  rightColumnRunsUp,
+} from '../src/utils/mcuConfig';
 
 describe('running MCU code against arbitrary pin names', () => {
   const script = `
@@ -110,5 +115,63 @@ describe('footprints for each module form factor', () => {
   it('builds an arbitrary pin count from a custom config', () => {
     const custom = createCustomMcuConfig(12, 'quad', { widthMm: 22, heightMm: 22, isSmd: true });
     expect(generateCustomMcuFootprint(custom).pads.length).toBe(12);
+  });
+});
+
+describe('right column numbering direction', () => {
+  const padFor = (key: string, pinId: string) => {
+    const preset = MCU_PRESETS.find(p => p.key === key)!;
+    const fp = generateCustomMcuFootprint(preset.config);
+    const pin = preset.config.pins.find(p => p.id === pinId)!;
+    return fp.pads.find(pad => pad.pinNumber === String(pin.pinNumber))!;
+  };
+
+  // The bug this guards: a module whose right row is milled end-for-end against
+  // its left row cannot be seated in ANY orientation. Flipping the part to the
+  // reverse face mirrors both rows together, so it does not undo the reversal -
+  // the first symptom is pin 1 of the module landing in the last hole of the
+  // row. Found the hard way on a soldered Heltec carrier.
+  it('runs a Heltec V4 down both columns, so 3V3 faces 5V/VIN', () => {
+    const p1 = padFor('heltec_v4', '3V3');
+    const p19 = padFor('heltec_v4', 'VIN');
+    expect(p19.y).toBeCloseTo(p1.y, 3);
+    expect(p19.x).toBeGreaterThan(p1.x);
+
+    // ...and the far end of each row lines up too.
+    expect(padFor('heltec_v4', 'RST').y).toBeCloseTo(padFor('heltec_v4', 'GPIO_18').y, 3);
+  });
+
+  it('runs a Nano and an ESP32 DevKit down both columns', () => {
+    expect(padFor('arduino_nano', 'D13').y).toBeCloseTo(padFor('arduino_nano', 'TX').y, 3);
+    expect(padFor('esp32_devkit', '3V3').y).toBeCloseTo(padFor('esp32_devkit', 'EN').y, 3);
+  });
+
+  it('keeps counter-clockwise numbering for a Pico and a DIP', () => {
+    // Pico pin 21 (GP16) genuinely sits at the bottom of the right column,
+    // opposite pin 20 rather than pin 1.
+    expect(padFor('pico_rp2040', 'GP16').y).toBeCloseTo(padFor('pico_rp2040', 'GP15').y, 3);
+    expect(padFor('pico_rp2040', 'GP16').y).toBeLessThan(padFor('pico_rp2040', 'GP0').y);
+
+    const dip = MCU_PRESETS.find(p => p.key === 'dip8_standard')!;
+    const dipPads = generateCustomMcuFootprint(dip.config).pads;
+    const pad = (n: string) => dipPads.find(p => p.pinNumber === n)!;
+    expect(pad('5').y).toBeCloseTo(pad('4').y, 3);
+    expect(pad('8').y).toBeCloseTo(pad('1').y, 3);
+  });
+});
+
+describe('pin numbering survives a round trip through node data', () => {
+  it('keeps an explicit counter-clockwise setting off a saved node', () => {
+    const preset = MCU_PRESETS.find(p => p.key === 'pico_rp2040')!;
+    const roundTripped = getEffectiveMcuConfig({ mcuConfig: preset.config });
+    expect(roundTripped.pinNumbering).toBe('counterclockwise');
+    expect(rightColumnRunsUp(roundTripped)).toBe(true);
+  });
+
+  it('leaves an unset value to the per-style default', () => {
+    const preset = MCU_PRESETS.find(p => p.key === 'heltec_v4')!;
+    const roundTripped = getEffectiveMcuConfig({ mcuConfig: preset.config });
+    expect(roundTripped.pinNumbering).toBeUndefined();
+    expect(rightColumnRunsUp(roundTripped)).toBe(false);
   });
 });

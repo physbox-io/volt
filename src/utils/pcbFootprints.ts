@@ -538,7 +538,12 @@ export function defaultPackageForType(componentType?: string): string | undefine
   return DEFAULT_PACKAGE_BY_TYPE[(componentType || '').toLowerCase()];
 }
 
-import { getEffectiveMcuConfig, type McuGeometryConfig, type McuPinDef } from './mcuConfig';
+import {
+  getEffectiveMcuConfig,
+  rightColumnRunsUp,
+  type McuGeometryConfig,
+  type McuPinDef,
+} from './mcuConfig';
 
 export function generateHeaderFootprint(pinCount: number, pitch = 2.54): ComponentFootprint {
   const count = Math.max(1, pinCount);
@@ -1498,11 +1503,15 @@ export function generateCustomMcuFootprint(config: McuGeometryConfig): Component
         });
       });
 
+      // Counter-clockwise parts (DIP, Pico) climb the right column from the
+      // bottom; a Nano/DevKit/Heltec runs it downward alongside the left one.
+      const runsUp = rightColumnRunsUp(config);
+
       rightPins.forEach((pin, i) => {
         pads.push({
           pinNumber: pin.pinNumber !== undefined ? String(pin.pinNumber) : pin.id,
           x: rightX,
-          y: -startY + i * pitchMm,
+          y: runsUp ? -startY + i * pitchMm : startY - i * pitchMm,
           padWidth: padWidthMm,
           padHeight: padHeightMm,
           shape: shape,

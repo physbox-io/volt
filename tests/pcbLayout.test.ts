@@ -181,3 +181,79 @@ describe('the Heltec + CC1101 board', () => {
     expect(heltec!.footprint.pads.length).toBe(36);
   });
 });
+
+describe('the board preview', () => {
+  const hasCircle = (svg: string, x: number, y: number) =>
+    svg.includes(`<circle cx="${x.toFixed(3)}" cy="${y.toFixed(3)}"`);
+
+  it('draws the copper view with machine +Y up the screen', () => {
+    const r = layout('heltecCc1101');
+    const vh = r.boardHeightMm + r.boardOriginMm * 2;
+    const far = r.drills.reduce((a, b) => (b.y > a.y ? b : a));
+    const near = r.drills.reduce((a, b) => (b.y < a.y ? b : a));
+
+    // Emitting program coordinates straight into the viewBox reflected the
+    // whole picture, so the preview disagreed with the board on the bed. The
+    // hole furthest from the operator must draw above the nearest one.
+    expect(hasCircle(r.svg, far.x, vh - far.y), 'far hole is transformed').toBe(true);
+    expect(hasCircle(r.svg, near.x, vh - near.y), 'near hole is transformed').toBe(true);
+    expect(vh - far.y).toBeLessThan(vh - near.y);
+  });
+
+  it('mirrors X but not Y for the component side', () => {
+    const r = layout('heltecCc1101');
+    const vw = r.boardWidthMm + r.boardOriginMm * 2;
+    const vh = r.boardHeightMm + r.boardOriginMm * 2;
+    const d = r.drills.reduce((a, b) => (b.x > a.x ? b : a));
+    expect(hasCircle(r.svgComponentSide, vw - d.x, vh - d.y)).toBe(true);
+  });
+
+  it('labels every pad with its pin number, in a group the viewer can hide', () => {
+    const r = layout('heltecCc1101');
+    const group = r.svg.match(/<g class="pcb-pad-numbers"[\s\S]*?<\/g>/)?.[0];
+    expect(group, 'pad numbers are grouped').toBeTruthy();
+    expect((group!.match(/<text /g) || []).length).toBe(r.pads.length);
+    // The number that would have caught the reversed Heltec row.
+    expect(group).toContain('>19<');
+  });
+});
+
+describe('isolating unused pins', () => {
+  // An isolation-milled board keeps every scrap of copper the toolpath does not
+  // encircle. A hole drilled for an unconnected pin therefore goes through that
+  // leftover foil, and the pin poking out the far side makes an intermittent
+  // connection to whatever the foil touches - in practice the ground pour.
+  const board = (isolateUnusedPads: boolean) =>
+    generatePcbLayout(
+      presets.heltecCc1101.nodes as never,
+      presets.heltecCc1101.edges as never,
+      { ...OPTS, isolateUnusedPads }
+    );
+
+  it('rings every pad that carries no net, and only those', () => {
+    const r = board(true);
+    const unconnected = r.pads.filter(p => !p.netId);
+    expect(unconnected.length).toBeGreaterThan(0);
+
+    const ringed = new Set(
+      r.isolationPaths.filter(p => p.netId.startsWith('unused:')).map(p => p.netId)
+    );
+    expect(ringed.size).toBe(unconnected.length);
+    for (const pad of unconnected) {
+      expect(ringed.has(`unused:${pad.componentId}-${pad.pinNumber}`)).toBe(true);
+    }
+  });
+
+  it('cuts no such rings when switched off', () => {
+    const r = board(false);
+    expect(r.isolationPaths.some(p => p.netId.startsWith('unused:'))).toBe(false);
+  });
+
+  it('leaves the islands isolated rather than shorted to a net', () => {
+    const r = board(true);
+    const shorts = r.violations.filter(
+      v => v.severity === 'error' && v.message.startsWith('Short circuit')
+    );
+    expect(shorts).toEqual([]);
+  });
+});
