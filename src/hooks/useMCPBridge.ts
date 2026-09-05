@@ -51,6 +51,50 @@ function clearStalePresetCard() {
   if (kept.length !== cards.length) setter(kept);
 }
 
+/**
+ * Paint properties that a wire gets from the stylesheet rather than from its
+ * own attributes, stamped onto the element for the duration of a capture.
+ *
+ * html-to-image inlines the computed style of every HTML element it clones,
+ * but an SVG subtree is deep-cloned as-is: its children arrive carrying only
+ * their class names, and the stylesheet they were painted by is not part of the
+ * cloned document. Wire strokes come from `.react-flow .react-flow__edge-path`
+ * in index.css — a rule that needs an ancestor two levels above the captured
+ * viewport — so every wire in a screenshot came out with SVG's default `stroke:
+ * none`: a picture of the components with no connections between them.
+ *
+ * Writing the value the element already computes to changes nothing on screen;
+ * it just survives the clone. Restored in a `finally` either way.
+ */
+const CAPTURED_SVG_PAINT = [
+  'fill', 'stroke', 'stroke-width', 'stroke-dasharray', 'stroke-linecap',
+  'stroke-linejoin', 'opacity', 'color',
+] as const;
+
+function inlineSvgPaint(root: HTMLElement): () => void {
+  const touched: { el: SVGElement; prev: string | null }[] = [];
+  root.querySelectorAll<SVGElement>('svg *').forEach(el => {
+    if (!(el instanceof SVGElement)) return;
+    const computed = getComputedStyle(el);
+    const prev = el.getAttribute('style');
+    let extra = '';
+    for (const prop of CAPTURED_SVG_PAINT) {
+      const value = computed.getPropertyValue(prop);
+      if (value) extra += `${prop}:${value};`;
+    }
+    if (!extra) return;
+    touched.push({ el, prev });
+    // Its own inline style stays last, so anything set there still wins.
+    el.setAttribute('style', `${extra}${prev ?? ''}`);
+  });
+  return () => {
+    for (const { el, prev } of touched) {
+      if (prev === null) el.removeAttribute('style');
+      else el.setAttribute('style', prev);
+    }
+  };
+}
+
 function getSpeakerAudio(
   voltageData: { t: number; v: number }[],
   sampleRate: number,
@@ -259,7 +303,9 @@ export function useMCPBridge(props: BridgeProps) {
           waveform sitting next to it.
         */
         case 'UPDATE_COMPONENT': {
-          const id = msg.id || msg.nodeId;
+          // nodeId first: 'id' is also the request envelope's own key, and a
+          // payload that carried one used to overwrite it.
+          const id = msg.nodeId || msg.id;
           if (typeof id !== 'string' || !id) return { ok: false, error: 'id is required' };
           const updates = msg.updates;
           if (!updates || typeof updates !== 'object') {
@@ -464,19 +510,25 @@ export function useMCPBridge(props: BridgeProps) {
             const height = Math.round(Math.min(1800, Math.max(240, bounds.height + PAD * 2)));
             const { x, y, zoom } = getViewportForBounds(bounds, width, height, 0.2, 2, PAD_CSS);
 
-            const dataUrl = await toPng(viewportEl, {
-              backgroundColor: dark ? '#0f172a' : '#f8fafc',
-              width,
-              height,
-              // The live element keeps its own pan/zoom transform. Overriding it
-              // for the capture is what fits the circuit to the frame; the
-              // element on screen is untouched.
-              style: {
-                width: `${width}px`,
-                height: `${height}px`,
-                transform: `translate(${x}px, ${y}px) scale(${zoom})`,
-              },
-            });
+            const restorePaint = inlineSvgPaint(viewportEl);
+            let dataUrl: string;
+            try {
+              dataUrl = await toPng(viewportEl, {
+                backgroundColor: dark ? '#0f172a' : '#f8fafc',
+                width,
+                height,
+                // The live element keeps its own pan/zoom transform. Overriding it
+                // for the capture is what fits the circuit to the frame; the
+                // element on screen is untouched.
+                style: {
+                  width: `${width}px`,
+                  height: `${height}px`,
+                  transform: `translate(${x}px, ${y}px) scale(${zoom})`,
+                },
+              });
+            } finally {
+              restorePaint();
+            }
             return { ok: true, dataUrl, width, height };
           } catch (e) {
             return { ok: false, error: String(e) };
