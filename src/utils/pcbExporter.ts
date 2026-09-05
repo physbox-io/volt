@@ -454,7 +454,12 @@ function placeComponents(
   // `spreadScale` loosens it on later attempts, when a tighter packing turned
   // out to leave the router nowhere to go.
   const gap = Math.max(3.5, opts.traceWidthMm + opts.clearanceMm * 5) * spreadScale;
-  const edge = Math.max(7.0, opts.profileToolDiaMm + 4.5);
+  // Rim keep-out: what the profile pass and the router actually need — the
+  // same figure routeBoard is handed below — plus the blank border the user
+  // asked for. A flat 7mm floor here was handling slop, and on a fixed-size
+  // board, where nothing crops it back off afterwards, it surfaced as a wide
+  // dead perimeter around the copper.
+  const edge = Math.max(1.0, opts.profileToolDiaMm) + Math.max(0, opts.boardMarginMm ?? 1.5);
 
   // Auto-sizing on: the board is cropped to whatever the parts actually occupy,
   // but never shrinks below the requested dimensions — so the requested size

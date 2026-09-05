@@ -413,13 +413,13 @@ export const MCU_PRESETS: McuPreset[] = [
   {
     key: 'heltec_v4',
     name: 'Heltec WiFi LoRa 32 V4 (Dual Header Board)',
-    description: 'Heltec WiFi LoRa 32 V4 dual header board module (36 pins / 18 pins per side, 28x58mm)',
+    description: 'Heltec WiFi LoRa 32 V4 dual header board module (36 pins / 18 pins per side, 25.5x47.88mm)',
     config: {
       presetKey: 'heltec_v4',
       style: 'header_2x',
       pinCount: 36,
-      widthMm: 28.0,
-      heightMm: 58.0,
+      widthMm: 25.5,
+      heightMm: 47.88,
       pitchMm: 2.54,
       rowSpacingMm: 22.86,
       isSmd: false,

@@ -7,7 +7,7 @@ import { getStoredAuthToken } from '../utils/apiClient';
 import { getNodesBounds, getViewportForBounds, type Node, type Edge } from '@xyflow/react';
 import { toPng } from 'html-to-image';
 import { presets as builtinPresets } from '../utils/presets';
-import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey } from '../utils/storage';
+import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey, loadMachiningSettings } from '../utils/storage';
 
 interface BridgeProps {
   nodes: Node[];
@@ -428,6 +428,11 @@ export function useMCPBridge(props: BridgeProps) {
             edges,
             recommendedSimLength: msg.recommendedSimLength,
             noteCard: msg.noteCard,
+            // The board is milled with the trace width and clearance it was
+            // routed for, so the CAM settings travel with the circuit — the
+            // same as the in-app save. Leaving them off here meant an agent
+            // re-saving a board silently dropped how it was set up to cut.
+            pcbOptions: loadMachiningSettings(),
           };
           addUserPreset(key, presetObj);
           return { ok: true, name, key };

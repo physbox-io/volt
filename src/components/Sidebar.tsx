@@ -1,16 +1,19 @@
 import type { DragEvent } from 'react';
-import { X } from 'lucide-react';
+import { X, StickyNote } from 'lucide-react';
 import { useCoarsePointer } from '../hooks/useCoarsePointer';
 
 export function Sidebar({
   isOpen,
   onClose,
   onPickPart,
+  onAddNoteCard,
 }: {
   isOpen: boolean;
   onClose: () => void;
   /** Place a part without dragging it — see `partProps` below. */
   onPickPart?: (nodeType: string, label?: string) => void;
+  /** Put a blank note card on the canvas. */
+  onAddNoteCard?: () => void;
 }) {
   const coarsePointer = useCoarsePointer();
 
@@ -76,6 +79,24 @@ export function Sidebar({
           <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">
             Tap a part to drop it on the canvas.
           </p>
+        )}
+
+        {onAddNoteCard && (
+          <>
+            <div className={sectionTitleClass}>Annotation</div>
+            {/* Not a part: a note card is a canvas overlay, not a node, so it
+                is placed on click rather than dragged onto a position. */}
+            <button
+              type="button"
+              className={itemClass + ' w-full cursor-pointer'}
+              onClick={() => { onAddNoteCard(); onClose(); }}
+            >
+              <div className={iconClass}>
+                <StickyNote size={22} strokeWidth={1.8} />
+              </div>
+              <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">Note Card</span>
+            </button>
+          </>
         )}
 
         <div className={sectionTitleClass}>Transistors</div>

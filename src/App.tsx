@@ -300,7 +300,7 @@ export default function App() {
   const selectedPresetRef = useRef(selectedPreset);
   selectedPresetRef.current = selectedPreset;
 
-  const { noteCards, editingCardId, toggleEdit, toggleMinimize, updateMarkdown, closeCard, moveCard } = useNoteCards({ selectedPreset, userPresets });
+  const { noteCards, editingCardId, toggleEdit, toggleMinimize, updateMarkdown, closeCard, moveCard, addCard } = useNoteCards({ selectedPreset, userPresets });
 
   // Scope resize handler — inject into every scope node's data
   const scopeResizeHandler = useCallback((nodeId: string, w: number, h: number) => {
@@ -2027,6 +2027,7 @@ export default function App() {
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
           onPickPart={(type, label) => setPickedPart(prev => ({ type, label, seq: (prev?.seq ?? 0) + 1 }))}
+          onAddNoteCard={addCard}
         />
         
         {/* Floating Status Indicators */}

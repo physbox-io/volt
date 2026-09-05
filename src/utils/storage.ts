@@ -88,6 +88,12 @@ export function addUserPreset(key: string, preset: CircuitPreset): Record<string
   const existing = loadUserPresets();
   const updated = { ...existing, [key]: preset };
   saveUserPresets(updated);
+  // Callers that hold the preset list in React state get it back from the
+  // return value, but a writer outside React — the MCP bridge — has nowhere to
+  // put it, so the copy on screen would go on serving the version it was
+  // seeded with. Loading the preset back then returned the *old* circuit and
+  // the old note card, with the new one sitting correctly in localStorage.
+  window.dispatchEvent(new Event(PRESETS_UPDATED_EVENT));
   void saveCloudPreset(key, preset);
   return updated;
 }
@@ -97,6 +103,7 @@ export function removeUserPreset(key: string): Record<string, CircuitPreset> {
   const updated = { ...existing };
   delete updated[key];
   saveUserPresets(updated);
+  window.dispatchEvent(new Event(PRESETS_UPDATED_EVENT));
   void removeCloudPreset(key);
   return updated;
 }

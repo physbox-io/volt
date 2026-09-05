@@ -12,6 +12,59 @@ import { restoreLlmSettingsFromCloud } from '../utils/llmSettings';
 import { pullCloudPresets } from '../utils/cloudSync';
 import { mergePulledPresets } from '../utils/storage';
 
+/**
+ * How long to leave between automatic pulls of the account's circuits.
+ *
+ * `visibilitychange` and `focus` fire far more often than a preset list can
+ * meaningfully change — alt-tabbing twice should not mean two round trips.
+ */
+const PRESET_SYNC_INTERVAL_MS = 30_000;
+
+let lastPresetSyncAt = 0;
+let presetSyncInFlight: Promise<void> | null = null;
+
+/**
+ * Pulls the account's circuits and folds them into this browser's set.
+ *
+ * Presets used to be pulled in exactly one place — the moment a Google credential
+ * came back from sign-in. A machine that was *already* signed in restored its
+ * session from localStorage and never asked the server for anything, so a circuit
+ * saved on one machine stayed invisible on the other until the user happened to
+ * sign out and back in. Uploads were fine the whole time; only the download was
+ * missing, which is what made it look like the save had failed.
+ *
+ * The throttle state is at module scope rather than in a ref because it guards a
+ * shared resource — the account's preset list — rather than anything belonging to
+ * a particular mount. `pullCloudPresets` already no-ops when signed out, so there
+ * is no token check here.
+ */
+function syncPresetsFromCloud(force = false): Promise<void> {
+  // A second tab-focus arriving while the first pull is still outstanding joins
+  // it rather than starting a race whose two merges interleave.
+  if (presetSyncInFlight) return presetSyncInFlight;
+  if (!force && Date.now() - lastPresetSyncAt < PRESET_SYNC_INTERVAL_MS) {
+    return Promise.resolve();
+  }
+
+  const run = pullCloudPresets()
+    .then((pulled) => {
+      // Additive: anything already saved in this browser is left alone, and the
+      // preset list is only told to re-read when something was actually new.
+      mergePulledPresets(pulled);
+    })
+    .catch(() => {
+      // Offline, signed out or refused — keep what is local and try again on the
+      // next focus. A failed pull must never be able to disturb local presets.
+    })
+    .finally(() => {
+      lastPresetSyncAt = Date.now();
+      presetSyncInFlight = null;
+    });
+
+  presetSyncInFlight = run;
+  return run;
+}
+
 export const UserProfileButton: React.FC = () => {
   const [user, setUser] = useState<PhysBoxUser | null>(getStoredUser());
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -32,7 +85,32 @@ export const UserProfileButton: React.FC = () => {
       // Copilot keys live under the account's `global` namespace, shared with
       // the other Physbox apps; pull down anything this browser is missing.
       void restoreLlmSettingsFromCloud();
+      // ...and the account's circuits, which until now were only ever asked for
+      // during the sign-in handshake itself — never on a restored session.
+      void syncPresetsFromCloud();
     });
+  }, []);
+
+  /*
+   * A circuit saved on another machine turns up here without a reload.
+   *
+   * Cheaper than it looks: the pull is throttled, and the merge only touches
+   * storage — and only re-renders the preset list — when something was new. Both
+   * events are listened for because they answer different questions.
+   * `visibilitychange` covers coming back to a backgrounded tab; `focus` covers
+   * coming back to the window with the tab already visible.
+   */
+  useEffect(() => {
+    const resync = () => {
+      if (document.visibilityState !== 'visible') return;
+      void syncPresetsFromCloud();
+    };
+    document.addEventListener('visibilitychange', resync);
+    window.addEventListener('focus', resync);
+    return () => {
+      document.removeEventListener('visibilitychange', resync);
+      window.removeEventListener('focus', resync);
+    };
   }, []);
 
   useEffect(() => {
@@ -52,9 +130,9 @@ export const UserProfileButton: React.FC = () => {
       const res = await loginWithGoogle(credential);
       setUser(res.user);
       void restoreLlmSettingsFromCloud();
-      // Circuits saved on another machine, folded in additively. Until now this app
-      // uploaded presets to nothing and never asked for them back.
-      void pullCloudPresets().then(mergePulledPresets);
+      // Circuits saved on another machine, folded in additively. Forced past the
+      // throttle: signing in is an explicit "this is me, catch me up".
+      void syncPresetsFromCloud(true);
       setShowLoginModal(false);
       setDropdownOpen(false);
       if (!res.is_admin) {

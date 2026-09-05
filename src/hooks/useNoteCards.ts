@@ -28,17 +28,24 @@ export function useNoteCards({ selectedPreset, userPresets }: UseNoteCardsArgs) 
   const [noteCards, setNoteCards] = useState<NoteCard[]>([]);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
 
-  // Which preset the cards on screen were spawned for. `userPresets` is a fresh
-  // object on every save, so without this the effect below re-ran and reset the
-  // cards while the selection sat still — which would wipe a card the MCP
-  // bridge had just written the moment anything touched the preset list.
+  // Which preset — and which card text — the cards on screen were spawned for.
+  // `userPresets` is a fresh object on every save, so without this the effect
+  // below re-ran and reset the cards while the selection sat still, which would
+  // wipe a card the MCP bridge had just written the moment anything touched the
+  // preset list.
   const spawnedFor = useRef<string | null>(null);
 
   useEffect(() => {
-    if (spawnedFor.current === selectedPreset) return;
-    spawnedFor.current = selectedPreset;
     const allPresets = { ...presetsMap, ...userPresets };
     const preset = allPresets[selectedPreset];
+    // Keyed on the card's text as well as the preset, so re-saving the preset
+    // under its own name — which is how the MCP bridge updates one — puts the
+    // new card up instead of leaving the old one standing. A card the bridge
+    // wrote directly still survives, because that changes `noteCards` without
+    // touching `preset.noteCard`.
+    const spawnKey = `${selectedPreset}\u0000${preset?.noteCard ?? ''}`;
+    if (spawnedFor.current === spawnKey) return;
+    spawnedFor.current = spawnKey;
     if (preset && preset.noteCard) {
       const defaultX = Math.max(20, window.innerWidth - 300 - 256 - 20);
       setNoteCards([{
@@ -77,6 +84,25 @@ export function useNoteCards({ selectedPreset, userPresets }: UseNoteCardsArgs) 
     setNoteCards(prev => prev.map(c => c.id === id ? { ...c, x, y } : c));
   }, []);
 
+  /*
+   * Cards could only arrive with a preset or through the MCP bridge, so once a
+   * card was closed — or on a circuit built from scratch — there was no way
+   * back to one from the app itself. Opens straight into edit mode, since an
+   * empty card has nothing to read.
+   */
+  const addCard = useCallback(() => {
+    const id = `note_${Date.now()}`;
+    setNoteCards(prev => [...prev, {
+      id,
+      markdown: '# Note\n\n',
+      minimized: false,
+      // Offset per card so a second one does not land exactly on the first.
+      x: Math.max(20, window.innerWidth - 300 - 256 - 20) - prev.length * 24,
+      y: 20 + prev.length * 24,
+    }]);
+    setEditingCardId(id);
+  }, []);
+
   // Reachable by the MCP bridge, the same way Mesh exposes its cards. Without
   // this an agent could only describe a circuit by saving it as a preset —
   // there was no way to card the circuit actually on the canvas.
@@ -89,5 +115,5 @@ export function useNoteCards({ selectedPreset, userPresets }: UseNoteCardsArgs) 
     };
   }, [noteCards]);
 
-  return { noteCards, editingCardId, toggleEdit, toggleMinimize, updateMarkdown, closeCard, moveCard };
+  return { noteCards, editingCardId, toggleEdit, toggleMinimize, updateMarkdown, closeCard, moveCard, addCard };
 }
