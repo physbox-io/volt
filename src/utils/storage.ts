@@ -9,6 +9,15 @@ export interface CircuitPreset {
   recommendedSimLength?: number;
   noteCard?: string;
   /**
+   * When this preset was last saved, as epoch ms, stamped by `addUserPreset`.
+   *
+   * The merge needs some way to tell two copies of the same preset apart. It
+   * travels inside the preset rather than beside it so the value the server
+   * hands back is the one the saving machine wrote, not a row timestamp that
+   * changes whenever anything touches the record.
+   */
+  savedAt?: number;
+  /**
    * The CAM settings the board was set up with — trace width, clearances,
    * feeds, depths, tabs.
    *
@@ -86,7 +95,10 @@ export function saveUserPresets(presets: Record<string, CircuitPreset>): void {
 
 export function addUserPreset(key: string, preset: CircuitPreset): Record<string, CircuitPreset> {
   const existing = loadUserPresets();
-  const updated = { ...existing, [key]: preset };
+  // Stamped here rather than at each call site so every save is dated, whether
+  // it came from the dialog, the toolbar button or the MCP bridge.
+  const stamped: CircuitPreset = { ...preset, savedAt: Date.now() };
+  const updated = { ...existing, [key]: stamped };
   saveUserPresets(updated);
   // Callers that hold the preset list in React state get it back from the
   // return value, but a writer outside React — the MCP bridge — has nowhere to
@@ -94,7 +106,7 @@ export function addUserPreset(key: string, preset: CircuitPreset): Record<string
   // seeded with. Loading the preset back then returned the *old* circuit and
   // the old note card, with the new one sitting correctly in localStorage.
   window.dispatchEvent(new Event(PRESETS_UPDATED_EVENT));
-  void saveCloudPreset(key, preset);
+  void saveCloudPreset(key, stamped);
   return updated;
 }
 
@@ -111,16 +123,26 @@ export function removeUserPreset(key: string): Record<string, CircuitPreset> {
 /**
  * Folds presets pulled from the account into the local set.
  *
- * Additive: a key already saved in this browser is left alone — see the note in
- * `cloudSync.pullCloudPresets`. Returns how many were new, and announces the change
- * so the preset list on screen picks it up.
+ * Adds anything new, and takes the cloud copy of a preset this browser already
+ * has only when it was saved later. Purely additive was the old rule, on the
+ * reasoning that an offline edit is newer than what the account holds — but it
+ * also meant an *update* could never cross machines at all. Saving a corrected
+ * board on one machine and opening it on another gave the old one back, with
+ * nothing on screen to say why. Comparing `savedAt` keeps the case that rule
+ * was protecting, since a local edit made later still wins.
+ *
+ * An undated copy counts as older, so a preset saved before dating existed
+ * never overwrites a dated one, and two undated copies leave the local one
+ * alone exactly as before. Returns how many were added or refreshed, and
+ * announces the change so the preset list on screen picks it up.
  */
 export function mergePulledPresets(pulled: Record<string, CircuitPreset>): number {
   const existing = loadUserPresets();
   let added = 0;
   const updated = { ...existing };
   for (const [key, preset] of Object.entries(pulled)) {
-    if (key in updated) continue;
+    const local = updated[key];
+    if (local && (preset.savedAt ?? 0) <= (local.savedAt ?? 0)) continue;
     updated[key] = preset;
     added += 1;
   }
