@@ -381,6 +381,9 @@ export default function App() {
         data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined,
       })),
       pcbOptions: loadMachiningSettings(),
+      // Carried through for the same reason the hand-save carries it: a circuit
+      // restored from the account should still explain itself.
+      noteCard: userPresets[selectedPreset]?.noteCard,
     });
   }, [nodes, edges, selectedPreset, userPresets]);
 

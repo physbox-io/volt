@@ -84,6 +84,10 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
       // for, so the CAM settings travel with the circuit rather than being
       // re-derived every time it is opened.
       pcbOptions: loadMachiningSettings(),
+      // Saving over a preset keeps its note card. There is no way to write one
+      // from this dialog, so rebuilding the preset without it meant pressing
+      // Save silently threw away the card the preset opened with.
+      noteCard: loadUserPresets()[key]?.noteCard,
     };
     const updated = addUserPreset(key, preset);
     setUserPresets(updated);
@@ -110,6 +114,10 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
       // for, so the CAM settings travel with the circuit rather than being
       // re-derived every time it is opened.
       pcbOptions: loadMachiningSettings(),
+      // Saving over a preset keeps its note card. There is no way to write one
+      // from this dialog, so rebuilding the preset without it meant pressing
+      // Save silently threw away the card the preset opened with.
+      noteCard: loadUserPresets()[key]?.noteCard,
     };
     const updated = addUserPreset(key, preset);
     setUserPresets(updated);
