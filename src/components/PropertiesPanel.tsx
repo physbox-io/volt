@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Node, Edge } from '@xyflow/react';
-import { X, Trash2 } from 'lucide-react';
-import { ORIENTABLE_NODE_TYPES, remapHandleForFlip } from '../utils/nodeGeometry';
+import { X, Trash2, RotateCw, ArrowLeftRight } from 'lucide-react';
+import {
+  ORIENTABLE_NODE_TYPES,
+  canReverseLeads,
+  orientationQuarterTurns,
+  remapHandleForReverse,
+  reverseOrientation,
+  rotateOrientation,
+} from '../utils/nodeGeometry';
 import { getNodeDefaultName } from '../utils/nodeNaming';
 import { datasheets } from '../utils/datasheets';
 import {
@@ -17,12 +24,6 @@ import { minPadGapMm } from '../utils/pcbTooling';
 import { nodeRegistry } from './nodes/registry';
 import { getBjtModel, getMosfetModel, getOpAmpModel } from '../utils/deviceModels';
 
-// A header is a strip, and which way it runs is a placement decision like any
-// other. It is deliberately *not* in ORIENTABLE_NODE_TYPES: the flipped
-// 'left'/'up' variants and the handle remap that goes with them are for
-// two-lead parts with a polarity to reverse, and a header's numbered pads have
-// no such pairing to swap.
-const ORIENTATION_SELECTABLE_TYPES = ['resistor', 'capacitor', 'inductor', 'diode', 'zener', 'led', 'switch', 'voltage', 'acvoltage', 'currentsource', 'pinheader'];
 const PASSIVE_NAMED_TYPES = ['resistor', 'capacitor', 'inductor'];
 
 /** Sentinel package id that switches the node over to `data.footprintParams`. */
@@ -141,30 +142,6 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
       return { ...n, data: newData };
     }));
 
-    if (key === 'orientation' && selectedNode && ORIENTABLE_NODE_TYPES.includes(selectedNode.type || '')) {
-      const prevOrientation = selectedNode.data.orientation || 'horizontal';
-      const newOrientation = value;
-      const isPrevFlipped = prevOrientation === 'left' || prevOrientation === 'up';
-      const isNewFlipped = newOrientation === 'left' || newOrientation === 'up';
-
-      if (isPrevFlipped !== isNewFlipped) {
-        setEdges((eds: Edge[]) => eds.map(e => {
-          let updated = { ...e };
-          let changed = false;
-          const type = selectedNode.type || '';
-          if (e.source === selectedNode.id && e.sourceHandle) {
-            const next = remapHandleForFlip(type, e.sourceHandle);
-            if (next) { updated.sourceHandle = next; changed = true; }
-          }
-          if (e.target === selectedNode.id && e.targetHandle) {
-            const next = remapHandleForFlip(type, e.targetHandle);
-            if (next) { updated.targetHandle = next; changed = true; }
-          }
-          return changed ? updated : e;
-        }));
-      }
-    }
-
     if (isSimulating) {
       if (simDebounceTimerRef.current) {
         clearTimeout(simDebounceTimerRef.current);
@@ -173,6 +150,31 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
         runSimulation();
       }, 150);
     }
+  };
+
+  /**
+   * Turn the selected part end-for-end: the symbol makes a half turn while its
+   * wires stay where they are, so the two leads trade places and the netlist
+   * reverses with them. Rotating twice does not do this - that turns the pins
+   * round with the body, wires and all, and leaves the circuit unchanged.
+   */
+  const reverseLeads = () => {
+    if (!selectedNode) return;
+    const type = selectedNode.type || '';
+    updateData('orientation', reverseOrientation(selectedNode.data.orientation));
+    setEdges((eds: Edge[]) => eds.map(e => {
+      const updated = { ...e };
+      let changed = false;
+      if (e.source === selectedNode.id && e.sourceHandle) {
+        const next = remapHandleForReverse(type, e.sourceHandle);
+        if (next) { updated.sourceHandle = next; changed = true; }
+      }
+      if (e.target === selectedNode.id && e.targetHandle) {
+        const next = remapHandleForReverse(type, e.targetHandle);
+        if (next) { updated.targetHandle = next; changed = true; }
+      }
+      return changed ? updated : e;
+    }));
   };
 
   const startWebcam = async () => {
@@ -548,45 +550,32 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
         </div>
       )}
 
-      {ORIENTATION_SELECTABLE_TYPES.includes(selectedNode.type || '') && (
+      {ORIENTABLE_NODE_TYPES.includes(selectedNode.type || '') && (
         <div className="mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Orientation</label>
-          <select
-            value={(selectedNode.data.orientation as string) || 'horizontal'}
-            onChange={e => updateData('orientation', e.target.value)}
-            className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-emerald-500 focus:outline-none mb-2"
+          <button
+            onClick={() => updateData(
+              'orientation',
+              rotateOrientation(selectedNode.type || '', selectedNode.data.orientation)
+            )}
+            className="w-full flex items-center justify-center gap-2 text-xs px-2 py-1.5 rounded border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+            title="Turn the part a quarter turn clockwise; its wires come with it"
           >
-            <option value="horizontal">Horizontal</option>
-            {ORIENTABLE_NODE_TYPES.includes(selectedNode.type || '') && (
-              <option value="left">Horizontal (Left)</option>
-            )}
-            <option value="vertical">Vertical</option>
-            {ORIENTABLE_NODE_TYPES.includes(selectedNode.type || '') && (
-              <option value="up">Vertical (Up)</option>
-            )}
-          </select>
-          {ORIENTABLE_NODE_TYPES.includes(selectedNode.type || '') && (
-            <div className="flex items-center gap-2 mt-2">
-              <input
-                type="checkbox"
-                id="node-flip"
-                checked={['left', 'up'].includes((selectedNode.data.orientation as string) || 'horizontal')}
-                onChange={e => {
-                  const current = (selectedNode.data.orientation as string) || 'horizontal';
-                  if (e.target.checked) {
-                    if (current === 'horizontal') updateData('orientation', 'left');
-                    if (current === 'vertical') updateData('orientation', 'up');
-                  } else {
-                    if (current === 'left') updateData('orientation', 'horizontal');
-                    if (current === 'up') updateData('orientation', 'vertical');
-                  }
-                }}
-                className="cursor-pointer"
-              />
-              <label htmlFor="node-flip" className="text-xs text-gray-750 dark:text-slate-300 select-none cursor-pointer">
-                Flip Direction
-              </label>
-            </div>
+            <RotateCw size={13} />
+            Rotate 90° right
+            <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
+              {orientationQuarterTurns(selectedNode.data.orientation) * 90}°
+            </span>
+          </button>
+          {canReverseLeads(selectedNode.type || '') && (
+            <button
+              onClick={reverseLeads}
+              className="mt-1.5 w-full flex items-center justify-center gap-2 text-xs px-2 py-1.5 rounded border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+              title="Turn the part end-for-end: the wires stay put and the two leads trade places, so the polarity in the circuit reverses"
+            >
+              <ArrowLeftRight size={13} />
+              Reverse leads
+            </button>
           )}
         </div>
       )}

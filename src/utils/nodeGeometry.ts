@@ -1,13 +1,11 @@
 import type { Node, Edge } from '@xyflow/react';
 import { getNodeDimensions, getSchematicPath } from '../components/AuraEdge';
 
-// Two-terminal component types whose orientation can be flipped, and whose
-// handle ids get remapped (anode<->cathode, in<->out) when that happens.
-// Every part with exactly two leads, plus the potentiometer. The list gates
-// the orientation control in the properties panel, so a type missing from it
-// could not be rotated from the UI however well its symbol supported it -
-// which is why the potentiometer, the sources and the instruments all drew
-// themselves correctly when rotated and yet offered no way to do so.
+// Component types the rotate control is offered for: every part whose symbol
+// and handle geometry follow `data.orientation`. Two-terminal passives and
+// semiconductors, the sources, the instruments, the jumper, the potentiometer,
+// and the pin header - a header is a strip, and which way the strip runs is a
+// placement decision as ordinary as it is for a resistor.
 export const ORIENTABLE_NODE_TYPES = [
   // Two-terminal passives and semiconductors.
   'resistor', 'capacitor', 'inductor', 'diode', 'zener', 'led', 'switch', 'ldr',
@@ -19,9 +17,42 @@ export const ORIENTABLE_NODE_TYPES = [
   'jumper',
   // Three terminals, but the wiper is the odd one out and rides along.
   'potentiometer',
+  // Numbered pads rather than leads, but it rotates like anything else.
+  'pinheader',
 ];
 
-export const ORIENTATION_HANDLE_REMAP: Record<string, string> = {
+/**
+ * The four orientations in clockwise order, which is what makes them a cycle:
+ * a two-lead part lying with its 'in' on the left faces 'in' up when turned a
+ * quarter turn right ('vertical'), right again ('left'), then down ('up').
+ *
+ * Rotation replaced a pair of orientation controls - a horizontal/vertical
+ * picker plus a flip checkbox - that between them could reach the same four
+ * states but only by mirroring, which moves a part's terminals out from under
+ * the wires already tied to them. Turning the body carries the pins with it,
+ * so the wiring survives the rotation and no edge has to be remapped.
+ */
+export const ORIENTATION_CYCLE = ['horizontal', 'vertical', 'left', 'up'] as const;
+
+/**
+ * Parts drawn with only two distinct poses: flat or on end. Their symbols are
+ * bodies with leads hanging off, not a shape with a direction - a speaker
+ * rotated 180 degrees is the same speaker with its ground still underneath -
+ * so they turn between two states rather than round all four.
+ */
+const TWO_POSE_TYPES = ['speaker', 'microphone', 'signalgen', 'multimeter', 'potentiometer'];
+
+/**
+ * Types whose two leads are a mirrorable pair, and the handle each lead trades
+ * places with when the part is turned end-for-end.
+ *
+ * The instruments are left out on purpose: they have one signal lead and a
+ * ground that stays underneath whichever way the body faces, and the
+ * potentiometer's wiper has no opposite number, so remapping by handle id
+ * alone would rewrite a speaker's 'in' to an 'out' it does not have and
+ * silently disconnect it.
+ */
+export const LEAD_PAIR_REMAP: Record<string, string> = {
   anode: 'cathode',
   cathode: 'anode',
   in: 'out',
@@ -32,30 +63,60 @@ export const ORIENTATION_HANDLE_REMAP: Record<string, string> = {
   b: 'a',
 };
 
-/**
- * Types whose two leads are NOT a mirrorable pair, so flipping must leave
- * their edges alone.
- *
- * The instruments have one signal lead and a ground that stays on the bottom
- * edge whichever way the part faces, and the potentiometer's wiper has no
- * opposite number. Remapping by handle id alone would rewrite a speaker's
- * 'in' to an 'out' it does not have, silently disconnecting it.
- */
-const FLIP_EXEMPT_TYPES = ['speaker', 'microphone', 'signalgen', 'multimeter', 'potentiometer'];
+const REVERSIBLE_TYPES = [
+  'resistor', 'capacitor', 'inductor', 'diode', 'zener', 'led', 'switch', 'ldr',
+  'voltage', 'acvoltage', 'currentsource', 'jumper',
+];
 
-/** The handle an edge should move to when `nodeType` is mirrored, if any. */
-export function remapHandleForFlip(nodeType: string, handleId: string): string | null {
-  if (FLIP_EXEMPT_TYPES.includes(nodeType)) return null;
-  const next = ORIENTATION_HANDLE_REMAP[handleId];
+/** Whether `nodeType` has two leads that can trade places. */
+export function canReverseLeads(nodeType: string): boolean {
+  return REVERSIBLE_TYPES.includes(nodeType);
+}
+
+/** The handle an edge moves to when the part is turned end-for-end, if any. */
+export function remapHandleForReverse(nodeType: string, handleId: string): string | null {
+  if (!canReverseLeads(nodeType)) return null;
+  const next = LEAD_PAIR_REMAP[handleId];
   return next && next !== handleId ? next : null;
+}
+
+/**
+ * Turning a part end-for-end: half a turn of the body, with the two leads
+ * trading places under wires that do not move.
+ *
+ * This is a different operation from two presses of rotate, and both are worth
+ * having. Rotation is rigid - the pins go round with the body, carrying their
+ * wires - so a half turn re-routes the wiring round the part and leaves the
+ * netlist exactly as it was: an LED turned twice is still forward biased, and
+ * still lights. Reversing keeps the wires where they are and swaps which
+ * terminal each one lands on, which is what a person means when they turn a
+ * diode round in a circuit they have already drawn: the netlist reverses, and
+ * the LED goes dark.
+ */
+export function reverseOrientation(orientation: unknown): string {
+  return ORIENTATION_CYCLE[(orientationQuarterTurns(orientation) + 2) % 4];
+}
+
+/** Quarter turns clockwise from the default pose, 0-3. */
+export function orientationQuarterTurns(orientation: unknown): 0 | 1 | 2 | 3 {
+  const i = (ORIENTATION_CYCLE as readonly string[]).indexOf(String(orientation));
+  return (i < 0 ? 0 : i) as 0 | 1 | 2 | 3;
+}
+
+/** The orientation `nodeType` lands on after one quarter turn to the right. */
+export function rotateOrientation(nodeType: string, orientation: unknown): string {
+  const cycle: readonly string[] = TWO_POSE_TYPES.includes(nodeType)
+    ? ['horizontal', 'vertical']
+    : ORIENTATION_CYCLE;
+  const i = cycle.indexOf(String(orientation));
+  return cycle[(i < 0 ? 0 : i + 1) % cycle.length];
 }
 
 import { getEffectiveMcuConfig } from './mcuConfig';
 import {
-  getPinHeaderGeometry,
   getPinHeaderHandles,
-  isPinHeaderVertical,
   pinHeaderPadOffset,
+  pinHeaderPadSide,
 } from '../components/nodes/PinHeaderNode';
 
 export function getHandlesForNode(node: Node): string[] {
@@ -437,13 +498,9 @@ export const getHandlePosition = (node: any, handleId: string): string => {
     return 'left';
   }
   // The header's first row faces out of the near long edge, the rest out of the
-  // far one — which pair of edges those are depends on which way it is stood.
+  // far one — which pair of edges those are depends on how it has been turned.
   if (node.type === 'pinheader') {
-    const { cols } = getPinHeaderGeometry(node.data);
-    const pin = parseInt(handleId, 10);
-    const firstRow = pin >= 1 && pin <= cols;
-    if (isPinHeaderVertical(node.data)) return firstRow ? 'left' : 'right';
-    return firstRow ? 'top' : 'bottom';
+    return pinHeaderPadSide(node.data, parseInt(handleId, 10));
   }
   if (node.type === 'via') {
     return 'top';

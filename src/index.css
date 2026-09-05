@@ -327,7 +327,13 @@ aside.glass-panel h3:hover {
   border: none !important;
   box-shadow: none !important;
   opacity: 0 !important;
-  transition: opacity 0.15s ease, transform 0.15s ease !important;
+  /* Not `transform`: React Flow puts each pin on its edge with a positional
+     translate, so transitioning transform animates a pin *sliding* to its new
+     side whenever a part is turned - and React Flow measures handle bounds the
+     moment it re-renders, catching that slide part-way through. The wires then
+     met the symbol a few pixels beside its leads and stayed there. Hovering
+     grows a pin through `scale`, which is its own property. */
+  transition: opacity 0.15s ease, scale 0.15s ease !important;
 }
 
 .dark .react-flow__handle {

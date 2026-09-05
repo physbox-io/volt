@@ -58,20 +58,26 @@ export function getPinHeaderHandles(data?: any): string[] {
 }
 
 /**
- * Whether the header is stood on end.
+ * How far the header has been turned, in quarter turns clockwise.
  *
  * A header is a strip, and which way the strip runs is a placement decision as
- * ordinary as it is for a resistor: 'vertical' transposes the pad matrix on the
- * canvas so a 1x8 runs down the board instead of across it. Same field, same
- * two values the rest of the parts use, which is also what makes the board
- * exporter rotate the footprint to match without knowing anything about
- * headers.
+ * ordinary as it is for a resistor: the same `orientation` field, the same four
+ * values the rest of the parts use. Two turns is not the same as none — the pad
+ * grid is reversed, so a strip whose pins faced the top faces the bottom — which
+ * is the whole point of turning it: the pins end up on the side the wiring is
+ * on, instead of every wire having to travel round the body to reach them.
  *
- * The pad *numbering* does not change — pin 1 stays pin 1 — so nothing wired to
- * the header moves, and the footprint keeps its row-major order.
+ * The pad *numbering* never changes — pin 1 stays pin 1 — so nothing wired to
+ * the header comes loose, and the footprint keeps its row-major order.
  */
+export function pinHeaderQuarterTurns(data?: any): 0 | 1 | 2 | 3 {
+  const i = ['horizontal', 'vertical', 'left', 'up'].indexOf(data?.orientation);
+  return (i < 0 ? 0 : i) as 0 | 1 | 2 | 3;
+}
+
+/** True when the strip runs down the canvas rather than across it. */
 export function isPinHeaderVertical(data?: any): boolean {
-  return data?.orientation === 'vertical' || data?.orientation === 'up';
+  return pinHeaderQuarterTurns(data) % 2 === 1;
 }
 
 /** On-canvas pixel size. Kept in one place so edge routing can agree with it. */
@@ -100,17 +106,42 @@ export function pinHeaderPadOffset(
   if (!(pin >= 1 && pin <= rows * cols)) return null;
   const r = Math.floor((pin - 1) / cols);
   const c = (pin - 1) % cols;
-  const [across, down] = isPinHeaderVertical(data) ? [r, c] : [c, r];
+  // The pad matrix turned clockwise about the body: column-across and row-down
+  // trade places on the odd turns, and each turn puts one of them in reverse.
+  const [across, down] = ([
+    [c, r],
+    [rows - 1 - r, c],
+    [cols - 1 - c, rows - 1 - r],
+    [r, cols - 1 - c],
+  ] as const)[pinHeaderQuarterTurns(data)];
   return {
     dx: 4 + across * PIN_HEADER_CELL_PX + PIN_HEADER_CELL_PX / 2,
     dy: 4 + down * PIN_HEADER_CELL_PX + PIN_HEADER_CELL_PX / 2,
   };
 }
 
+/**
+ * Which edge of the body pad `pin` faces out of: the first row leaves by the
+ * near long edge and every other row by the far one, turned along with the body.
+ */
+export function pinHeaderPadSide(
+  data: any,
+  pin: number
+): 'top' | 'bottom' | 'left' | 'right' {
+  const { cols } = getPinHeaderGeometry(data);
+  const firstRow = pin >= 1 && pin <= cols;
+  const sides = ([
+    ['top', 'bottom'],
+    ['right', 'left'],
+    ['bottom', 'top'],
+    ['left', 'right'],
+  ] as const)[pinHeaderQuarterTurns(data)];
+  return firstRow ? sides[0] : sides[1];
+}
+
 export function PinHeaderNode({ data }: { data?: any }) {
   const { rows, cols } = getPinHeaderGeometry(data);
   const { width, height } = getPinHeaderSize(data);
-  const vertical = isPinHeaderVertical(data);
 
   return (
     <div
@@ -121,12 +152,14 @@ export function PinHeaderNode({ data }: { data?: any }) {
         Array.from({ length: cols }).map((_, c) => {
           const pin = r * cols + c + 1;
           const { dx: left, dy: top } = pinHeaderPadOffset(data, pin)!;
-          // The first row faces out of the near edge and everything else out of
-          // the far one, so wires leave the header on the nearest side — the
-          // edges being the long ones, which swap when the strip is stood up.
-          const side = vertical
-            ? (r === 0 ? Position.Left : Position.Right)
-            : (r === 0 ? Position.Top : Position.Bottom);
+          // Wires leave the header by the nearest long edge, which is a
+          // different edge of the canvas depending on how the strip is turned.
+          const side = {
+            top: Position.Top,
+            bottom: Position.Bottom,
+            left: Position.Left,
+            right: Position.Right,
+          }[pinHeaderPadSide(data, pin)];
           return (
             <div key={pin}>
               {/* Pad graphic: square for pin 1, the usual polarity mark. */}

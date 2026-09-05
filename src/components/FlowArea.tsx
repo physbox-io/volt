@@ -7,6 +7,7 @@ import {
   type Node,
   type Edge,
   useReactFlow,
+  useUpdateNodeInternals,
   ConnectionMode,
   getNodesBounds,
 } from '@xyflow/react';
@@ -136,6 +137,41 @@ export function FlowArea({
     }
     return getHandleCoord(node, handleId);
   }, [getInternalNode]);
+  /*
+    React Flow measures a node's handles once and caches the result, so a part
+    that moves its pins - a resistor turned on end, a header rotated so its pads
+    face the other way, a header given another column - kept drawing its wires
+    to where the pins used to be: the symbol turned and the wires stayed put.
+    Re-measure whenever the layout inputs of a node change; `updateNodeInternals`
+    is the only way to tell React Flow its cached bounds are stale.
+  */
+  const updateNodeInternals = useUpdateNodeInternals();
+  const handleLayoutRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const seen: Record<string, string> = {};
+    const stale: string[] = [];
+    for (const n of nodes as Node[]) {
+      const d = n.data as Record<string, unknown> | undefined;
+      // Everything a node's handle positions are computed from.
+      const layout = JSON.stringify([d?.orientation ?? null, d?.rows ?? null, d?.cols ?? null, d?.mcuConfig ?? null]);
+      seen[n.id] = layout;
+      const prev = handleLayoutRef.current[n.id];
+      if (prev !== undefined && prev !== layout) stale.push(n.id);
+    }
+    handleLayoutRef.current = seen;
+    if (!stale.length) return;
+    /*
+      The pins must not be mid-animation when this runs: React Flow measures
+      them where it finds them, so a transition on the handles' transform gets
+      photographed part-way and the wires settle beside the leads. index.css
+      keeps `transform` out of the handle transition for that reason.
+      Measuring here read a half-turned node - bounds five pixels out, which is
+      exactly the width of a handle - and the wires met the symbol just beside
+      its leads. By the next frame the node has re-rendered.
+    */
+    updateNodeInternals(stale);
+  }, [nodes, updateNodeInternals]);
+
   // Supplied by App so FlowArea doesn't need to know how note cards are rendered.
   const cardRectRef = useRef<(() => DOMRect | null) | null>(null);
   cardRectRef.current = noteCardRect ?? null;
