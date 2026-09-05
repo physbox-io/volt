@@ -16,7 +16,12 @@
 // ---------------------------------------------------------------------------
 
 import type { Node, Edge } from '@xyflow/react';
-import { resolveFootprint, type ComponentFootprint, type PadSpec } from './pcbFootprints';
+import {
+  resolveFootprint,
+  generateJumperFootprint,
+  type ComponentFootprint,
+  type PadSpec,
+} from './pcbFootprints';
 import { extractNets, isPhysical, resolveHandleToPin, type PcbNet } from './pcbNets';
 import { minPadGapMm } from './pcbTooling';
 import {
@@ -162,6 +167,41 @@ export interface PcbOptions {
    */
   isolateUnusedPads?: boolean;
   /**
+   * Let the router solve a crossing by dropping in a wire jumper.
+   *
+   * A single-layer board cannot route one net across another, and no amount of
+   * trace width, clearance or search budget changes that - the honest answers
+   * are a different placement or a wire soldered over the top. With this on,
+   * the layout will place jumper pads itself and route to them, up to
+   * {@link maxAutoJumpers}. Off by default: a jumper is a part someone has to
+   * fit by hand after the board comes off the machine, so it should be a choice
+   * rather than something a board quietly acquires.
+   */
+  /**
+   * Search for a placement that routes, instead of only ever trying the one the
+   * schematic implies.
+   *
+   * Placement is otherwise the schematic normalised into the board rectangle
+   * and then de-overlapped - connectivity never enters into it - so whether a
+   * single-layer board routes comes down to how the schematic happened to be
+   * drawn. On a real 4-part board only 7 of 108 hand-tried arrangements routed
+   * without overlapping something.
+   *
+   * Runs only when the straightforward attempt has failed, so a board that
+   * already routes costs nothing. Cheap proxy scoring shortlists candidates
+   * (wirelength, and crossings between nets - the thing that actually stops a
+   * single layer), then the shortlist is genuinely routed and the best kept, so
+   * the answer is verified rather than predicted.
+   */
+  placementSearch?: boolean;
+  /** Candidates to score cheaply before shortlisting. Defaults to 240. */
+  placementCandidates?: number;
+  /** How many of the shortlist to actually route. Defaults to 3. */
+  placementRouteTop?: number;
+  autoJumpers?: boolean;
+  /** Ceiling on jumpers the layout may add for itself. Defaults to 4. */
+  maxAutoJumpers?: number;
+  /**
    * Extra clearance kept on *each* side of the isolation channel when copper is
    * flooded, in mm. This is the flood's safety margin against an unlevelled
    * board and against Clipper's own rounding: at 0 the pass-0 ring would touch
@@ -212,6 +252,11 @@ export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   boardMarginMm: 1.5,
   copperFloodMm: 0.6,
   isolateUnusedPads: true,
+  placementSearch: true,
+  placementCandidates: 240,
+  placementRouteTop: 3,
+  autoJumpers: false,
+  maxAutoJumpers: 4,
   channelMarginMm: 0.05,
 };
 
@@ -459,12 +504,23 @@ interface PlacementInput {
  * Seeds positions from the schematic layout (so the board resembles what the
  * user drew), then relaxes overlaps by pushing colliding courtyards apart.
  */
+/**
+ * A candidate arrangement, independent of board size: where each part starts as
+ * a fraction of the usable area, and which way round it sits. The schematic
+ * supplies the first one; the placement search invents the rest.
+ */
+export interface PlacementSeed {
+  norm: { x: number; y: number }[];
+  rotations: (0 | 90)[];
+}
+
 function placeComponents(
   inputs: PlacementInput[],
   opts: PcbOptions,
   warnings: string[],
-  spreadScale = 1
-): { placed: PlacedComponent[]; boardWidthMm: number; boardHeightMm: number } {
+  spreadScale = 1,
+  seed?: PlacementSeed
+): { placed: PlacedComponent[]; boardWidthMm: number; boardHeightMm: number; overlaps: number } {
   // Gap between courtyards: room for at least one trace plus clearances.
   // `spreadScale` loosens it on later attempts, when a tighter packing turned
   // out to leave the router nowhere to go.
@@ -513,8 +569,12 @@ function placeComponents(
     if (inputs.length === 1) return { x: boardW / 2, y: boardH / 2 };
     const usableW = Math.max(1, boardW - edge * 2 - c.widthMm);
     const usableH = Math.max(1, boardH - edge * 2 - c.heightMm);
-    const normX = maxX > minX ? (c.schematicX - minX) / (maxX - minX) : 0.5;
-    const normY = maxY > minY ? (c.schematicY - minY) / (maxY - minY) : 0.5;
+    const normX = seed
+      ? seed.norm[i].x
+      : maxX > minX ? (c.schematicX - minX) / (maxX - minX) : 0.5;
+    const normY = seed
+      ? seed.norm[i].y
+      : maxY > minY ? (c.schematicY - minY) / (maxY - minY) : 0.5;
     return {
       x: edge + c.widthMm / 2 + normX * usableW,
       y: edge + c.heightMm / 2 + normY * usableH + (i % 2) * 0.01,
@@ -620,7 +680,11 @@ function placeComponents(
     }
   }
 
-  // Report any collision the relaxation could not resolve.
+  // Report any collision the relaxation could not resolve. Counted as well as
+  // reported: an attempt that leaves two courtyards on top of each other is not
+  // a board that can be built, however well it routed, so the caller ranks on
+  // this before it looks at completion.
+  let overlaps = 0;
   for (let i = 0; i < placed.length; i++) {
     for (let j = i + 1; j < placed.length; j++) {
       const a = placed[i];
@@ -629,6 +693,7 @@ function placeComponents(
         Math.abs(a.x - b.x) < (a.widthMm + b.widthMm) / 2 - 0.01 &&
         Math.abs(a.y - b.y) < (a.heightMm + b.heightMm) / 2 - 0.01
       ) {
+        overlaps++;
         warnings.push(
           `Footprints for ${a.name} and ${b.name} overlap — board is too small.`
         );
@@ -636,7 +701,94 @@ function placeComponents(
     }
   }
 
-  return { placed, boardWidthMm: boardW, boardHeightMm: boardH };
+  return { placed, boardWidthMm: boardW, boardHeightMm: boardH, overlaps };
+}
+
+/**
+ * Cheap routability proxy for a candidate placement. Lower is better.
+ *
+ * Wirelength alone is a poor predictor for a single-layer board: what stops one
+ * routing is not length but nets having to cross each other. So the dominant
+ * term is an estimated crossing count - each net reduced to a spanning tree
+ * over the parts it touches, then segments of different nets tested for
+ * intersection - with half-perimeter wirelength only breaking ties between
+ * placements that cross equally badly.
+ *
+ * Part centres stand in for pad positions. That is coarse, but this score only
+ * has to rank candidates well enough to put a routable one in the shortlist;
+ * the shortlist is then actually routed, so a mistake here costs a wasted
+ * routing pass rather than a wrong answer.
+ */
+export function scorePlacement(placed: PlacedComponent[], nets: PcbNet[]): number {
+  const compById = new Map(placed.map(c => [c.id, c]));
+  // Pad positions, not part centres. Nearly every net on a carrier board runs
+  // from the module to something else, so at part-centre resolution they all
+  // radiate from one point and no two of them can ever be found to cross -
+  // which silently reduced this whole score to wirelength.
+  const portAt = (nodeId: string, handleId: string): { x: number; y: number } | null => {
+    const comp = compById.get(nodeId);
+    if (!comp) return null;
+    const mapping = resolveHandleToPin(comp.type, handleId, comp.footprint, comp.data);
+    if (!mapping) return { x: comp.x, y: comp.y };
+    const spec = comp.footprint.pads[mapping.padIndex];
+    if (!spec) return { x: comp.x, y: comp.y };
+    const o = padOffset(spec, comp.rotationDeg);
+    return { x: comp.x + o.dx, y: comp.y + o.dy };
+  };
+  const segments: { netId: string; ax: number; ay: number; bx: number; by: number }[] = [];
+  let hpwl = 0;
+
+  for (const net of nets) {
+    const pts: { x: number; y: number }[] = [];
+    for (const port of net.ports) {
+      const at = portAt(port.nodeId, port.handleId);
+      if (at) pts.push(at);
+    }
+    if (pts.length < 2) continue;
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of pts) {
+      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+      minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+    }
+    hpwl += maxX - minX + (maxY - minY);
+
+    // Prim's, on points rather than pins — the same tree the router will have
+    // to realise in copper.
+    const inTree = [true, ...new Array(pts.length - 1).fill(false)];
+    for (let added = 1; added < pts.length; added++) {
+      let bi = -1, bj = -1, bd = Infinity;
+      for (let i = 0; i < pts.length; i++) {
+        if (!inTree[i]) continue;
+        for (let j = 0; j < pts.length; j++) {
+          if (inTree[j]) continue;
+          const d = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
+          if (d < bd) { bd = d; bi = i; bj = j; }
+        }
+      }
+      if (bj < 0) break;
+      inTree[bj] = true;
+      segments.push({ netId: net.id, ax: pts[bi].x, ay: pts[bi].y, bx: pts[bj].x, by: pts[bj].y });
+    }
+  }
+
+  const side = (ax: number, ay: number, bx: number, by: number, px: number, py: number) =>
+    Math.sign((bx - ax) * (py - ay) - (by - ay) * (px - ax));
+
+  let crossings = 0;
+  for (let i = 0; i < segments.length; i++) {
+    for (let j = i + 1; j < segments.length; j++) {
+      const a = segments[i], b = segments[j];
+      if (a.netId === b.netId) continue;
+      const d1 = side(a.ax, a.ay, a.bx, a.by, b.ax, b.ay);
+      const d2 = side(a.ax, a.ay, a.bx, a.by, b.bx, b.by);
+      const d3 = side(b.ax, b.ay, b.bx, b.by, a.ax, a.ay);
+      const d4 = side(b.ax, b.ay, b.bx, b.by, a.bx, a.by);
+      if (d1 !== d2 && d3 !== d4) crossings++;
+    }
+  }
+
+  return crossings * 1000 + hpwl;
 }
 
 /**
@@ -993,12 +1145,112 @@ export function generatePcbLayout(
         : undefined,
       spreadScale
     );
-    // A later attempt only wins if it routes strictly more; an equally complete
-    // but larger board is a worse board.
-    if (!best || candidate.routing.completion > best.routing.completion) {
-      best = candidate;
+    // Overlapping courtyards outrank everything: a board with two parts sitting
+    // on top of each other cannot be built at all, so a fully routed overlapping
+    // attempt is worse than a partly routed clean one. Ranked on that first,
+    // then on completion — an equally complete but larger board is a worse board.
+    const beats =
+      !best ||
+      candidate.overlaps < best.overlaps ||
+      (candidate.overlaps === best.overlaps &&
+        candidate.routing.completion > best.routing.completion);
+    if (beats) best = candidate;
+    if (best.overlaps === 0 && best.routing.completion >= 1) break;
+  }
+
+  // Placement search. Everything above only ever tries the arrangement the
+  // schematic implies, at three different spreads. When that cannot be routed,
+  // shortlist other arrangements on the cheap proxy and actually route the best
+  // few - so the board is judged on a real routing pass, not on the score.
+  if (
+    options.placementSearch !== false &&
+    best &&
+    (best.overlaps > 0 || best.routing.completion < 1) &&
+    physicalNodes.length > 1
+  ) {
+    const candidateCount = Math.max(0, Math.round(options.placementCandidates ?? 240));
+    const routeTop = Math.max(1, Math.round(options.placementRouteTop ?? 3));
+
+    // Deterministic, so the same circuit always produces the same board.
+    let rngState = 0x2f6e2b1;
+    const rng = () => {
+      rngState = (rngState * 1103515245 + 12345) & 0x7fffffff;
+      return rngState / 0x7fffffff;
+    };
+
+    const rotate = (c: PlacementInput, rot: 0 | 90): PlacementInput => ({
+      ...c,
+      rotationDeg: rot,
+      widthMm: rot === 90 ? c.footprint.heightMm : c.footprint.widthMm,
+      heightMm: rot === 90 ? c.footprint.widthMm : c.footprint.heightMm,
+    });
+
+    const shortlist: { seed: PlacementSeed; trial: PlacementInput[]; score: number }[] = [];
+    for (let k = 0; k < candidateCount; k++) {
+      const seed: PlacementSeed = {
+        norm: inputs.map(() => ({ x: rng(), y: rng() })),
+        rotations: inputs.map(c => (rng() < 0.5 ? c.rotationDeg : c.rotationDeg === 90 ? 0 : 90)),
+      };
+      const trial = inputs.map((c, i) => rotate(c, seed.rotations[i]));
+      // Warnings are thrown away here: these are hypotheticals, and only the
+      // arrangement that actually gets used should have anything to say.
+      const probe = placeComponents(trial, options, [], 1, seed);
+      if (probe.overlaps > 0) continue;
+      shortlist.push({ seed, trial, score: scorePlacement(probe.placed, nets) });
     }
-    if (best.routing.completion >= 1) break;
+    shortlist.sort((a, b) => a.score - b.score);
+
+    // Random seeds alone almost never land on a good arrangement - the good
+    // ones are structured, and uniform noise is not. Refine the best few by
+    // hill-climbing instead: move one part at a time and keep the move if the
+    // score improves. Scoring is cheap next to routing, so this buys a much
+    // better shortlist for a fraction of one routing pass.
+    const refineDeadline = Date.now() + 1500;
+    const refined: typeof shortlist = [];
+    for (const start of shortlist.slice(0, routeTop * 2)) {
+      let cur = start;
+      while (Date.now() < refineDeadline) {
+        const i = Math.floor(rng() * inputs.length);
+        const seed: PlacementSeed = {
+          norm: cur.seed.norm.map((n, k) => (k === i ? { x: rng(), y: rng() } : n)),
+          rotations: cur.seed.rotations.map((r, k) =>
+            k === i && rng() < 0.4 ? (r === 90 ? 0 : 90) : r
+          ),
+        };
+        const trial = inputs.map((c, k) => rotate(c, seed.rotations[k]));
+        const probe = placeComponents(trial, options, [], 1, seed);
+        if (probe.overlaps > 0) continue;
+        const score = scorePlacement(probe.placed, nets);
+        if (score < cur.score) cur = { seed, trial, score };
+      }
+      refined.push(cur);
+    }
+    refined.sort((a, b) => a.score - b.score);
+    shortlist.length = 0;
+    shortlist.push(...refined);
+
+    // Each shortlisted candidate is routed on the same budget the baseline had,
+    // for the same reason the jumper search is: a candidate scored on a shorter
+    // run is being measured on its budget, not its placement.
+    const searchDeadline = Date.now() + Math.max(0, options.routingBudgetMs) * routeTop;
+    for (const cand of shortlist.slice(0, routeTop)) {
+      if (Date.now() > searchDeadline) break;
+      const attempt = placeAndRoute(
+        cand.trial,
+        nets,
+        options,
+        Math.max(0, options.routingBudgetMs),
+        undefined,
+        1,
+        cand.seed
+      );
+      const beats =
+        attempt.overlaps < best.overlaps ||
+        (attempt.overlaps === best.overlaps &&
+          attempt.routing.completion > best.routing.completion);
+      if (beats) best = attempt;
+      if (best.overlaps === 0 && best.routing.completion >= 1) break;
+    }
   }
 
   const { placed, pads, cutouts, routing } = best!;
@@ -1296,6 +1548,8 @@ interface LayoutAttempt {
   placed: PlacedComponent[];
   boardWidthMm: number;
   boardHeightMm: number;
+  /** Pairs of courtyards the relaxation could not pull apart. */
+  overlaps: number;
   pads: PlacedPad[];
   cutouts: BoardCutout[];
   routing: ReturnType<typeof routeBoard>;
@@ -1314,7 +1568,8 @@ function placeAndRoute(
   opts: PcbOptions,
   budgetMs?: number,
   onProgress?: (p: RouteProgress) => void,
-  spreadScale = 1
+  spreadScale = 1,
+  seed?: PlacementSeed
 ): LayoutAttempt {
   const violations: DrcViolation[] = [];
   const warnings: string[] = [];
@@ -1322,8 +1577,8 @@ function placeAndRoute(
   // through the annulus the margin just added.
   const padMargin = Math.max(0, opts.padMarginMm ?? 0);
 
-  const { placed, boardWidthMm, boardHeightMm } =
-    placeComponents(inputs, opts, warnings, spreadScale);
+  const { placed, boardWidthMm, boardHeightMm, overlaps } =
+    placeComponents(inputs, opts, warnings, spreadScale, seed);
   const compById = new Map(placed.map(c => [c.id, c]));
 
   // Pads, each bound to its net via the handle -> pin mapping.
@@ -1435,7 +1690,7 @@ function placeAndRoute(
     }
   }
 
-  const routing = routeBoard(routePins, {
+  const routerOpts = {
     obstacles,
     boardWidthMm,
     boardHeightMm,
@@ -1446,9 +1701,211 @@ function placeAndRoute(
     bendPenalty: 1.5,
     budgetMs,
     onProgress,
-  });
+  };
 
-  return { placed, boardWidthMm, boardHeightMm, pads, cutouts, routing, violations, warnings };
+  let routing = routeBoard(routePins, routerOpts);
+
+  // Auto-jumpers. A single layer cannot carry one net across another, so once
+  // the router has genuinely run out of options the only remaining moves are a
+  // different placement or a wire soldered over the top. This is the wire: pads
+  // are placed for it, both halves are routed to them, and the link between
+  // them is declared to the router rather than cut in copper.
+  const linkedPairs: [string, string][] = [];
+  if (opts.autoJumpers && routing.unrouted.length > 0) {
+    const maxJumpers = Math.max(0, Math.round(opts.maxAutoJumpers ?? 4));
+    const edge = Math.max(1.0, opts.profileToolDiaMm) + Math.max(0, opts.boardMarginMm ?? 1.5);
+    // Jumper search gets its own budget rather than eating the router's, and
+    // every candidate is routed with the SAME budget the baseline had. Scoring
+    // a candidate on a shorter run than the result it is being compared
+    // against measures the budget, not the placement.
+    const candidateBudgetMs = Math.max(1000, budgetMs ?? DEFAULT_ROUTING_BUDGET_MS);
+    const deadline = Date.now() + candidateBudgetMs * 2;
+    const MAX_CANDIDATES = 10;
+    const livePins = [...routePins];
+
+    for (let added = 0; added < maxJumpers; added++) {
+      if (routing.unrouted.length === 0 || Date.now() > deadline) break;
+      const fail = routing.unrouted[0];
+      const from = livePins.find(p => p.key === fail.from);
+      const to = livePins.find(p => p.key === fail.to);
+      if (!from || !to) break;
+
+      const footprint = generateJumperFootprint(
+        Math.max(5.08, opts.traceWidthMm * 4 + opts.clearanceMm * 8),
+        Math.max(0.8, opts.traceWidthMm * 2)
+      );
+      // Where to put it, and which net it belongs to.
+      //
+      // Jumpering the blocked net is the obvious move and usually the wrong
+      // one: if its pad is fenced in by other traces, a wire from outside the
+      // fence still cannot reach it. The move that works is to jumper whatever
+      // is IN THE WAY - lift a segment of the blocking net onto a wire, and the
+      // blocked net routes through the gap left underneath. So blocking nets
+      // are tried first, at the point where they cross the run that failed.
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const perp = { x: -dy / len, y: dx / len };
+
+      type Plan = { netId: string; x: number; y: number; along: { x: number; y: number } };
+      const plans: Plan[] = [];
+
+      const cross = (
+        p1: Pt, p2: Pt, p3: Pt, p4: Pt
+      ): Pt | null => {
+        const d = (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x);
+        if (Math.abs(d) < 1e-9) return null;
+        const t = ((p3.x - p1.x) * (p4.y - p3.y) - (p3.y - p1.y) * (p4.x - p3.x)) / d;
+        const u = ((p3.x - p1.x) * (p2.y - p1.y) - (p3.y - p1.y) * (p2.x - p1.x)) / d;
+        if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+        return { x: p1.x + t * (p2.x - p1.x), y: p1.y + t * (p2.y - p1.y) };
+      };
+
+      for (const tr of routing.traces) {
+        if (tr.netId === fail.netId) continue;
+        for (let i = 0; i < tr.points.length - 1; i++) {
+          const hit = cross(from, to, tr.points[i], tr.points[i + 1]);
+          if (!hit) continue;
+          const sx = tr.points[i + 1].x - tr.points[i].x;
+          const sy = tr.points[i + 1].y - tr.points[i].y;
+          const sl = Math.hypot(sx, sy) || 1;
+          // Pads sit along the blocking trace, so the gap between them lies
+          // across the path that could not get through.
+          plans.push({ netId: tr.netId, x: hit.x, y: hit.y, along: { x: sx / sl, y: sy / sl } });
+        }
+      }
+
+      // Failing back: hop the blocked net itself out of wherever it is stuck.
+      for (const anchor of [to, from]) {
+        for (const r of [4, 7]) {
+          for (let a = 0; a < 4; a++) {
+            const th = (a * Math.PI) / 2;
+            plans.push({
+              netId: fail.netId,
+              x: anchor.x + Math.cos(th) * r,
+              y: anchor.y + Math.sin(th) * r,
+              along: { x: dx / len, y: dy / len },
+            });
+          }
+        }
+      }
+      for (const t of [0.5, 0.3, 0.7]) {
+        plans.push({
+          netId: fail.netId,
+          x: from.x + dx * t,
+          y: from.y + dy * t,
+          along: perp,
+        });
+      }
+
+      let bestTry: { res: typeof routing; comp: PlacedComponent; jpads: PlacedPad[] } | null = null;
+      let tried = 0;
+      for (const plan of plans) {
+        if (tried >= MAX_CANDIDATES || Date.now() > deadline) break;
+        // The pads straddle along `along`, so the footprint lies that way too.
+        const rot: 0 | 90 = Math.abs(plan.along.x) >= Math.abs(plan.along.y) ? 0 : 90;
+        const cw = rot === 90 ? footprint.heightMm : footprint.widthMm;
+        const ch = rot === 90 ? footprint.widthMm : footprint.heightMm;
+        const { x, y } = plan;
+        if (
+          x - cw / 2 < edge || x + cw / 2 > boardWidthMm - edge ||
+          y - ch / 2 < edge || y + ch / 2 > boardHeightMm - edge
+        ) continue;
+        // Never on top of a part that is already placed.
+        if (placed.some(c =>
+          Math.abs(c.x - x) < (c.widthMm + cw) / 2 + 0.5 &&
+          Math.abs(c.y - y) < (c.heightMm + ch) / 2 + 0.5
+        )) continue;
+
+        const comp: PlacedComponent = {
+          id: `autojumper_${added + 1}`,
+          name: `JP${added + 1}`,
+          type: 'jumper',
+          x, y,
+          rotationDeg: rot,
+          footprint,
+          widthMm: cw,
+          heightMm: ch,
+          data: { autoJumper: true, netId: plan.netId },
+        };
+        const jpads: PlacedPad[] = footprint.pads.map(spec => {
+          const o = padOffset(spec, rot);
+          return {
+            componentId: comp.id,
+            handleId: String(spec.pinNumber),
+            pinNumber: spec.pinNumber,
+            netId: plan.netId,
+            x: x + o.dx,
+            y: y + o.dy,
+            spec,
+          };
+        });
+        const jpins: RoutePin[] = jpads.map(pad => {
+          const o = padOffset(pad.spec, rot);
+          return {
+            netId: plan.netId,
+            key: `${comp.id}-${pad.pinNumber}`,
+            componentId: comp.id,
+            x: pad.x,
+            y: pad.y,
+            padRadiusMm: Math.max(o.w, o.h) / 2 + effectivePadMarginMm(footprint, padMargin),
+          };
+        });
+
+        tried++;
+        const res = routeBoard([...livePins, ...jpins], {
+          ...routerOpts,
+          budgetMs: candidateBudgetMs,
+          onProgress: undefined,
+          linkedPairs: [...linkedPairs, [jpins[0].key, jpins[1].key] as [string, string]],
+        });
+
+        // Judged on how many connections still fail, not on the completion
+        // percentage: adding a jumper adds a connection, so the percentage
+        // moves for reasons that have nothing to do with whether the board got
+        // closer to being buildable.
+        const better =
+          res.unrouted.length < routing.unrouted.length &&
+          (!bestTry || res.unrouted.length < bestTry.res.unrouted.length);
+        if (better) {
+          bestTry = { res, comp, jpads };
+          if (res.unrouted.length === 0) break;
+        }
+      }
+
+      // No position helped, so another jumper for the same crossing will not
+      // help either — stop rather than burn the budget proving it again.
+      if (!bestTry) break;
+
+      placed.push(bestTry.comp);
+      pads.push(...bestTry.jpads);
+      livePins.push(
+        ...bestTry.jpads.map(pad => {
+          const o = padOffset(pad.spec, bestTry!.comp.rotationDeg);
+          return {
+            netId: pad.netId!,
+            key: `${bestTry!.comp.id}-${pad.pinNumber}`,
+            componentId: bestTry!.comp.id,
+            x: pad.x,
+            y: pad.y,
+            padRadiusMm:
+              Math.max(o.w, o.h) / 2 + effectivePadMarginMm(bestTry!.comp.footprint, padMargin),
+          };
+        })
+      );
+      linkedPairs.push([
+        `${bestTry.comp.id}-${bestTry.jpads[0].pinNumber}`,
+        `${bestTry.comp.id}-${bestTry.jpads[1].pinNumber}`,
+      ]);
+      routing = bestTry.res;
+      warnings.push(
+        `Added wire jumper ${bestTry.comp.name} for ${fail.netId} (${fail.from} to ${fail.to}) — ` +
+        `solder a link across its two pads after milling.`
+      );
+    }
+  }
+
+  return { placed, boardWidthMm, boardHeightMm, overlaps, pads, cutouts, routing, violations, warnings };
 }
 
 /** A well-formed but empty layout, used for errors and as a placeholder. */

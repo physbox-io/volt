@@ -50,6 +50,12 @@ export interface RouterOptions {
    * straight through a hole, or shorts against an unused header pin.
    */
   obstacles?: RouteObstacle[];
+  /**
+   * Pairs of pin keys already joined by something that is not copper - a wire
+   * jumper soldered across the board. The MST is free to use such a pair to
+   * connect its two halves, and no trace is planned or required for it.
+   */
+  linkedPairs?: [string, string][];
 }
 
 /**
@@ -478,7 +484,12 @@ function simplifyPath(grid: Grid, cells: number[]): Pt[] {
 }
 
 /** Minimum spanning tree over pins, returned as index pairs (Prim's). */
-function buildMst(pins: RoutePin[]): [number, number][] {
+/** Canonical key for an unordered pin pair. */
+export function linkPairKey(a: string, b: string): string {
+  return a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`;
+}
+
+function buildMst(pins: RoutePin[], links?: Set<string>): [number, number][] {
   const n = pins.length;
   if (n < 2) return [];
   const inTree = new Array(n).fill(false);
@@ -496,7 +507,12 @@ function buildMst(pins: RoutePin[]): [number, number][] {
     if (parent[u] !== -1) edges.push([parent[u], u]);
     for (let v = 0; v < n; v++) {
       if (inTree[v]) continue;
-      const d = Math.hypot(pins[u].x - pins[v].x, pins[u].y - pins[v].y);
+      // A linked pair costs nothing to join, so the tree always takes it in
+      // preference to copper - which is the point of soldering the wire on.
+      const d =
+        links && links.has(linkPairKey(pins[u].key, pins[v].key))
+          ? 0
+          : Math.hypot(pins[u].x - pins[v].x, pins[u].y - pins[v].y);
       if (d < best[v]) {
         best[v] = d;
         parent[v] = u;
@@ -575,10 +591,11 @@ function singlePassRoute(
   const reachScratch = new Uint8Array(cellCount);
   const reachQueue = new Int32Array(cellCount);
 
+  const links = new Set((opts.linkedPairs ?? []).map(([a, b]) => linkPairKey(a, b)));
+
   for (const [netId, netPins] of order) {
     const net = netIndex.get(netId)!;
-    const mst = buildMst(netPins);
-    required += mst.length;
+    const mst = buildMst(netPins, links);
 
     const reached = new Set<number>();
 
@@ -587,6 +604,16 @@ function singlePassRoute(
       const b = netPins[j];
       const startIdx = padCell.get(a.key)!;
       const goalIdx = padCell.get(b.key)!;
+
+      // The wire already joins these two, so there is nothing to route and
+      // nothing to count as a failure if it could not have been routed. Both
+      // ends become live for the rest of the tree.
+      if (links.has(linkPairKey(a.key, b.key))) {
+        reached.add(startIdx);
+        reached.add(goalIdx);
+        continue;
+      }
+      required++;
 
       const startSet = new Set<number>([startIdx, ...reached]);
 

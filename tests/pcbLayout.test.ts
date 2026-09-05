@@ -9,8 +9,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import { presets } from '../src/utils/presets';
+import { routeBoard, type RoutePin, type RouteObstacle } from '../src/utils/pcbRouter';
 import {
   generatePcbLayout,
+  scorePlacement,
   generatePcbGcode,
   generateAirCutGcode,
   groupDrillsByBit,
@@ -36,8 +38,12 @@ const KNOWN_SHORTED = new Set<string>([]);
 /**
  * Presets the router cannot finish on a single layer at the default clearance.
  * It says so — a jumper is the honest answer for these, not a silent drop.
+ *
+ * Empty since the placement search landed. `heltecLightToFreqHIL` sat here for
+ * as long as placement was "normalise the schematic and de-overlap it": there
+ * was a routable arrangement all along, and nothing ever looked for it.
  */
-const KNOWN_INCOMPLETE = new Set(['heltecLightToFreqHIL']);
+const KNOWN_INCOMPLETE = new Set<string>([]);
 
 const layouts = new Map<string, PcbLayoutResult>();
 function layout(key: string): PcbLayoutResult {
@@ -255,5 +261,73 @@ describe('isolating unused pins', () => {
       v => v.severity === 'error' && v.message.startsWith('Short circuit')
     );
     expect(shorts).toEqual([]);
+  });
+});
+
+describe('non-copper links between pads', () => {
+  // What a wire jumper is, as far as the router is concerned: two pads that
+  // count as connected without a trace between them. Tested directly, because
+  // the jumper search on top of it is expensive and heuristic, and a failure
+  // there should not be confusable with a failure here.
+  const barrier = (): RouteObstacle[] =>
+    Array.from({ length: 21 }, (_, i) => ({ x: 20, y: i, radiusMm: 1.2 }));
+
+  const pins: RoutePin[] = [
+    { netId: 'N1', key: 'a-1', componentId: 'a', x: 5, y: 10, padRadiusMm: 0.9 },
+    { netId: 'N1', key: 'b-1', componentId: 'b', x: 35, y: 10, padRadiusMm: 0.9 },
+  ];
+
+  const opts = {
+    boardWidthMm: 40,
+    boardHeightMm: 20,
+    gridMm: 0.5,
+    traceWidthMm: 0.4,
+    clearanceMm: 0.4,
+    edgeClearanceMm: 1,
+    bendPenalty: 1.5,
+    budgetMs: 2000,
+    obstacles: barrier(),
+  };
+
+  it('cannot route through a solid barrier', () => {
+    const r = routeBoard(pins, opts);
+    expect(r.unrouted).toHaveLength(1);
+    expect(r.completion).toBeLessThan(1);
+  });
+
+  it('needs no trace at all once the pair is linked', () => {
+    const r = routeBoard(pins, { ...opts, linkedPairs: [['a-1', 'b-1']] });
+    expect(r.unrouted).toHaveLength(0);
+    expect(r.completion).toBe(1);
+    // The wire does the work, so no copper is planned for it.
+    expect(r.traces).toHaveLength(0);
+  });
+});
+
+describe('the placement search', () => {
+  const p = presets.heltecLightToFreqHIL;
+  const run = (placementSearch: boolean) =>
+    generatePcbLayout(p.nodes as never, p.edges as never, { ...OPTS, placementSearch });
+
+  it("finds a routable arrangement where the schematic's own is not", () => {
+    // Placement used to be the schematic normalised into the board and then
+    // de-overlapped, with connectivity never consulted — so whether a
+    // single-layer board routed came down to how the schematic happened to be
+    // drawn. This preset was unroutable for exactly that long.
+    expect(run(false).completion).toBeLessThan(1);
+    expect(run(true).completion).toBe(1);
+  });
+
+  it('picks the arrangement its own proxy scores better', () => {
+    // Guards the proxy against the outcome. If a searched placement routes
+    // better but scores worse, the shortlist is being ordered by something that
+    // does not predict single-layer routability, and the search would be
+    // spending its routing budget on the wrong candidates — as it was when this
+    // score was computed over part centres, where nets sharing a module all
+    // radiate from one point and no two of them can ever be found to cross.
+    const base = run(false);
+    const searched = run(true);
+    expect(scorePlacement(searched.components, searched.nets))
+      .toBeLessThan(scorePlacement(base.components, base.nets));
   });
 });
