@@ -1,10 +1,10 @@
-# Circuit Expt: Knowledge Base & Developer Guide
+# PhysBox: Volt: Knowledge Base & Developer Guide
 
-This document is the source of truth for the **Circuit Expt** electronics playground. It contains architectural patterns, technical state management details, and user design preferences.
+This document is the source of truth for the **PhysBox: Volt** electronics playground. It contains architectural patterns, technical state management details, and user design preferences.
 
 ## 🚀 Project Overview
 - **Core Identity**: An experimental electronics playground for discovery and learning.
-- **Domain**: `circuit.expt.in`
+- **Domain**: `volt.physbox.io`
 - **Tech Stack**: React, React Flow (Canvas), `@tscircuit/ngspice-spice-engine` (WASM-based ngspice), Vite, Vanilla CSS.
 - **Font**: Outfit (Google Fonts).
 

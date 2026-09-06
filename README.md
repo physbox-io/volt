@@ -1,4 +1,4 @@
-# Circuit Expt (Electronics Playground)
+# PhysBox: Volt (Electronics Playground)
 
 A high-fidelity, interactive electronics playground built with React and powered by an optimized Ngspice WebAssembly engine.
 

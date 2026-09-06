@@ -155,9 +155,9 @@ export function DocsModal({ onClose }: DocsModalProps) {
           <div className="flex-1 p-8 overflow-y-auto bg-white dark:bg-slate-900 transition-colors">
             {activeTab === 'about' && (
               <div className="prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 leading-relaxed">
-                <h3 className="text-2xl font-bold mb-4">About Circuit Expt</h3>
+                <h3 className="text-2xl font-bold mb-4">About PhysBox: Volt</h3>
                 <p className="mb-4">
-                  Circuit Expt is an interactive, browser-based electronics playground and simulation tool. 
+                  PhysBox: Volt is an interactive, browser-based electronics playground and simulation tool. 
                   It allows users to design, test, and learn about electronic circuits in real-time through a 
                   visual drag-and-drop interface.
                 </p>
@@ -211,7 +211,7 @@ export function DocsModal({ onClose }: DocsModalProps) {
               <div className="prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 leading-relaxed">
                 <h3 className="text-2xl font-bold mb-4">How Simulation Works</h3>
                 <p className="mb-4">
-                  Circuit Expt utilizes a hybrid simulation approach to seamlessly blend continuous analog components with discrete digital logic and scriptable microcontrollers. Here's how the different simulation domains operate and interact:
+                  PhysBox: Volt utilizes a hybrid simulation approach to seamlessly blend continuous analog components with discrete digital logic and scriptable microcontrollers. Here's how the different simulation domains operate and interact:
                 </p>
                 <h4 className="text-xl font-semibold mb-2 mt-6">Analog Simulation (SPICE)</h4>
                 <p className="mb-4">
@@ -244,7 +244,7 @@ export function DocsModal({ onClose }: DocsModalProps) {
               <div className="prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 leading-relaxed">
                 <h3 className="text-2xl font-bold mb-4">Audio & Signal Processing</h3>
                 <p className="mb-4">
-                  Circuit Expt supports high-fidelity audio interaction by bridging the browser's Web Audio API with the SPICE simulation engine.
+                  PhysBox: Volt supports high-fidelity audio interaction by bridging the browser's Web Audio API with the SPICE simulation engine.
                 </p>
                 
                 <h4 className="text-xl font-semibold mb-2 mt-6">Microphone Input</h4>
