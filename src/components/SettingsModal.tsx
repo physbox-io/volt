@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X, Settings, Trash2, Key } from 'lucide-react';
 import type { CircuitPreset } from '../utils/storage';
-import { listClaudeModels, listGeminiModels } from '../utils/llmClient';
+import { listClaudeModels, listGeminiModels, type ModelListing } from '../utils/llmClient';
 import {
   FALLBACK_MODELS,
   MAX_MAX_TOKENS,
@@ -31,8 +31,8 @@ export function SettingsModal({ onClose, showAura, setShowAura, userPresets, onD
   const [anthropicApiKey, setAnthropicApiKey] = useState(readAnthropicKey);
   const [model, setModel] = useState(readModel);
   const [maxTokens, setMaxTokens] = useState(readMaxTokens);
-  const [claudeModels, setClaudeModels] = useState<{ id: string; name: string }[]>([]);
-  const [geminiModels, setGeminiModels] = useState<{ id: string; name: string }[]>([]);
+  const [claudeListing, setClaudeListing] = useState<ModelListing>({ models: [] });
+  const [geminiListing, setGeminiListing] = useState<ModelListing>({ models: [] });
   const userPresetKeys = Object.keys(userPresets);
 
   // The copilot panel reads these from localStorage, so it has to be told when
@@ -45,19 +45,31 @@ export function SettingsModal({ onClose, showAura, setShowAura, userPresets, onD
   // list rather than showing nothing.
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      const [claude, gemini] = await Promise.all([listClaudeModels(), listGeminiModels()]);
-      if (cancelled) return;
-      setClaudeModels(claude);
-      setGeminiModels(gemini);
-    })();
+    // Delayed, because the keys are re-read as they are typed: without this
+    // every keystroke in a key field starts a paged fetch that can only fail.
+    const timer = setTimeout(() => {
+      void (async () => {
+        const [claude, gemini] = await Promise.all([listClaudeModels(), listGeminiModels()]);
+        if (cancelled) return;
+        setClaudeListing(claude);
+        setGeminiListing(gemini);
+      })();
+    }, 500);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [anthropicApiKey, geminiApiKey]);
 
-  const claudeOptions = claudeModels.length ? claudeModels : FALLBACK_MODELS.filter((m) => isClaudeModel(m.id));
-  const geminiOptions = geminiModels.length ? geminiModels : FALLBACK_MODELS.filter((m) => !isClaudeModel(m.id));
+  const claudeOptions = claudeListing.models.length
+    ? claudeListing.models
+    : FALLBACK_MODELS.filter((m) => isClaudeModel(m.id));
+  const geminiOptions = geminiListing.models.length
+    ? geminiListing.models
+    : FALLBACK_MODELS.filter((m) => !isClaudeModel(m.id));
+  // Named so the picker never looks merely out of date when it is actually
+  // showing the built-in list because a key was missing or rejected.
+  const listingProblems = [claudeListing.error, geminiListing.error].filter(Boolean) as string[];
   const isKnownModel = [...claudeOptions, ...geminiOptions].some((m) => m.id === model);
 
   const fieldClass =
@@ -194,6 +206,11 @@ export function SettingsModal({ onClose, showAura, setShowAura, userPresets, onD
                     ))}
                   </optgroup>
                 </select>
+                {listingProblems.length > 0 && (
+                  <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-normal mt-1">
+                    Showing the built-in list: {listingProblems.join(' ')}
+                  </p>
+                )}
               </div>
 
               <div>

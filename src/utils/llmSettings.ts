@@ -26,10 +26,11 @@ export const MAX_MAX_TOKENS = 64000;
 
 /** Shown until the provider's own model list arrives. */
 export const FALLBACK_MODELS: { id: string; name: string }[] = [
+  { id: 'claude-fable-5-1', name: 'Claude Fable 5.1' },
   { id: 'claude-opus-5', name: 'Claude Opus 5' },
   { id: 'claude-sonnet-5', name: 'Claude Sonnet 5' },
   { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
-  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash' },
+  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' },
 ];
 
 export const isClaudeModel = (model: string) => model.startsWith('claude');

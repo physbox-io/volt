@@ -49,9 +49,14 @@ import {
   type UnroutedConnection,
   type RouteProgress,
   type RouterOptions,
+  type RouteVia,
 } from './pcbRouter';
 
 export interface PcbOptions {
+  layers?: 1 | 2;              // 1 = single-sided (default), 2 = double-sided
+  viaPadMm?: number;           // Via pad diameter in mm (default 1.4)
+  viaDrillMm?: number;         // Via drill diameter in mm (default 0.8)
+  spoilboardRegistrationDepthMm?: number; // Extra depth into spoilboard for registration pins in mm (default 2.0)
   boardWidthMm: number;        // Board width, or minimum width when auto-sizing
   boardHeightMm: number;       // Board height, or minimum height when auto-sizing
   traceWidthMm: number;        // Target trace width in mm (default 0.4)
@@ -216,6 +221,15 @@ export interface PcbOptions {
   channelMarginMm?: number;
 }
 
+/**
+ * Extra stock left on every side of a double-sided board, so the two
+ * registration pin holes have material to sit in outside the profile cut.
+ */
+export const REGISTRATION_MARGIN_MM = 6.0;
+
+/** How far outside the finished board edge the registration pins are drilled. */
+export const REGISTRATION_PIN_OFFSET_MM = 3.0;
+
 export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   // A floor, not a target: with auto-size on the board shrinks to the parts, so
   // this is deliberately small enough not to pad a simple board out.
@@ -263,6 +277,10 @@ export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   autoJumpers: false,
   maxAutoJumpers: 4,
   channelMarginMm: 0.05,
+  layers: 1 as 1 | 2,
+  viaPadMm: 1.4,
+  viaDrillMm: 0.8,
+  spoilboardRegistrationDepthMm: 2.0,
 };
 
 /**
@@ -343,6 +361,7 @@ export interface TraceSegment {
   netId: string;
   points: Pt[];
   width: number;
+  layer?: 'top' | 'bottom';
 }
 
 export interface IsolationPath {
@@ -357,6 +376,8 @@ export interface DrillPoint {
   diameter: number;
   componentId: string;
   pinNumber: string | number;
+  isVia?: boolean;
+  isRegistration?: boolean;
 }
 
 /** A region milled clean through the board by the profile tool. */
@@ -416,6 +437,24 @@ export interface PcbLayoutResult {
   svgComponentSide: string;
   gcode: string;
   error?: string;
+  /** 2-layer board outputs */
+  layers?: 1 | 2;
+  vias?: RouteVia[];
+  topTraces?: TraceSegment[];
+  bottomTraces?: TraceSegment[];
+  topIsolationPaths?: IsolationPath[];
+  bottomIsolationPaths?: IsolationPath[];
+  svgBottomSide?: string;
+  svgComposite?: string;
+  /**
+   * The copper each net occupies after flooding, keyed by net id — the exact
+   * polygons the isolation toolpaths were offset from and the SVG previews
+   * were drawn from. Exposed so a fab-house (Gerber) export renders the same
+   * copper a mill would cut, rather than re-deriving it from traces/pads and
+   * risking drift from what {@link svg} actually shows.
+   */
+  copperByNet: Map<string, Poly[]>;
+  bottomCopperByNet?: Map<string, Poly[]>;
 }
 
 /**
@@ -789,6 +828,9 @@ function coarseRouterOptions(
     clearanceMm: opts.clearanceMm,
     edgeClearanceMm: Math.max(1.0, opts.profileToolDiaMm),
     bendPenalty: 1.5,
+    layers: opts.layers ?? 1,
+    viaPadMm: opts.viaPadMm,
+    viaDrillMm: opts.viaDrillMm,
   };
 }
 
@@ -839,7 +881,11 @@ function translateLayout(
  * corner of the stock.
  */
 export function boardOriginOffsetMm(opts: PcbOptions): number {
-  return opts.profileToolDiaMm / 2;
+  const base = opts.profileToolDiaMm / 2;
+  // A double-sided board also drills two registration pin holes into the
+  // margin stock, 3mm outside the finished edge. Without room for them the
+  // holes land off the blank, so the inset grows to keep them in material.
+  return opts.layers === 2 ? base + REGISTRATION_MARGIN_MM : base;
 }
 
 function cropBoardToContent(
@@ -1479,10 +1525,12 @@ export function generatePcbLayout(
     );
   }
 
+  const isTwoLayer = options.layers === 2;
   const traces: TraceSegment[] = routing.traces.map((t: RoutedTrace) => ({
     netId: t.netId,
     points: t.points,
     width: t.widthMm,
+    layer: t.layer ?? 'top',
   }));
 
   for (const u of routing.unrouted) {
@@ -1490,7 +1538,7 @@ export function generatePcbLayout(
       severity: 'error',
       message:
         `Net ${u.netId}: could not route ${u.from} to ${u.to} — ${u.reason}. ` +
-        `A single-layer board may need a wire jumper here.`,
+        (isTwoLayer ? '' : `A single-layer board may need a wire jumper here.`),
     });
   }
 
@@ -1503,22 +1551,49 @@ export function generatePcbLayout(
     options.isolationDepthZ
   );
   let copperByNet = new Map<string, Poly[]>();
-  const addCopper = (netId: string, polys: Poly[]) => {
+  let copperByNetBottom = new Map<string, Poly[]>();
+  const addCopperTop = (netId: string, polys: Poly[]) => {
     copperByNet.set(netId, (copperByNet.get(netId) || []).concat(polys));
+  };
+  const addCopperBottom = (netId: string, polys: Poly[]) => {
+    copperByNetBottom.set(netId, (copperByNetBottom.get(netId) || []).concat(polys));
   };
 
   for (const pad of pads) {
     if (!pad.netId) continue;
     const comp = compById.get(pad.componentId)!;
-    addCopper(pad.netId, [
-      padPolygon(pad, comp.rotationDeg, effectivePadMarginMm(comp.footprint, padMargin)),
-    ]);
+    const poly = padPolygon(pad, comp.rotationDeg, effectivePadMarginMm(comp.footprint, padMargin));
+    const isTht = pad.spec.drillDiameter && pad.spec.drillDiameter > 0;
+    addCopperTop(pad.netId, [poly]);
+    if (isTwoLayer && isTht) {
+      addCopperBottom(pad.netId, [poly]);
+    }
   }
   for (const trace of traces) {
-    addCopper(trace.netId, strokeToPoly(trace.points, trace.width));
+    const polys = strokeToPoly(trace.points, trace.width);
+    if (isTwoLayer && trace.layer === 'bottom') {
+      addCopperBottom(trace.netId, polys);
+    } else {
+      addCopperTop(trace.netId, polys);
+    }
   }
+
+  if (isTwoLayer && routing.vias) {
+    const viaPadR = (options.viaPadMm ?? 1.4) / 2;
+    for (const v of routing.vias) {
+      const poly = circlePoly(v.x, v.y, viaPadR);
+      addCopperTop(v.netId, [poly]);
+      addCopperBottom(v.netId, [poly]);
+    }
+  }
+
   for (const [netId, polys] of copperByNet) {
     copperByNet.set(netId, unionPolys(polys));
+  }
+  if (isTwoLayer) {
+    for (const [netId, polys] of copperByNetBottom) {
+      copperByNetBottom.set(netId, unionPolys(polys));
+    }
   }
 
   // 5b. Copper flood ----------------------------------------------------
@@ -1529,22 +1604,24 @@ export function generatePcbLayout(
   if (floodBudgetMm > 0 && copperByNet.size > 0) {
     // A pad with no net is never isolated, so it is not copper to grow — but
     // flooding across one would bury a hole that still has to be soldered.
-    const blockers: Poly[] = [];
+    const blockersTop: Poly[] = [];
+    const blockersBottom: Poly[] = [];
     for (const pad of pads) {
       if (pad.netId) continue;
       const comp = compById.get(pad.componentId);
       if (!comp) continue;
-      blockers.push(
-        padPolygon(pad, comp.rotationDeg, effectivePadMarginMm(comp.footprint, padMargin))
-      );
+      const poly = padPolygon(pad, comp.rotationDeg, effectivePadMarginMm(comp.footprint, padMargin));
+      const isTht = pad.spec.drillDiameter && pad.spec.drillDiameter > 0;
+      blockersTop.push(poly);
+      if (isTwoLayer && isTht) blockersBottom.push(poly);
     }
     // Copper over a cutout would be milled off with the slug it sits on.
     for (const co of cutouts) {
-      blockers.push(
-        co.shape === 'circle'
-          ? circlePoly(co.x, co.y, Math.max(co.widthMm, co.heightMm) / 2)
-          : rectPoly(co.x, co.y, co.widthMm, co.heightMm)
-      );
+      const poly = co.shape === 'circle'
+        ? circlePoly(co.x, co.y, Math.max(co.widthMm, co.heightMm) / 2)
+        : rectPoly(co.x, co.y, co.widthMm, co.heightMm);
+      blockersTop.push(poly);
+      if (isTwoLayer) blockersBottom.push(poly);
     }
 
     // Copper may not run out past the room the isolation passes need inside the
@@ -1565,11 +1642,22 @@ export function generatePcbLayout(
       maxFloodMm: floodBudgetMm,
       channelMm: effectiveToolDiaMm,
       channelMarginMm: Math.max(0, options.channelMarginMm ?? 0.05),
-      blockers,
+      blockers: blockersTop,
       bounds,
     });
     copperByNet = flooded.copper;
     appliedFloodMm = flooded.appliedMm;
+
+    if (isTwoLayer && copperByNetBottom.size > 0) {
+      const floodedBottom = floodCopperByNet(copperByNetBottom, {
+        maxFloodMm: floodBudgetMm,
+        channelMm: effectiveToolDiaMm,
+        channelMarginMm: Math.max(0, options.channelMarginMm ?? 0.05),
+        blockers: blockersBottom,
+        bounds,
+      });
+      copperByNetBottom = floodedBottom.copper;
+    }
   }
 
   // 5c. Unused pads ----------------------------------------------------
@@ -1582,24 +1670,31 @@ export function generatePcbLayout(
       if (pad.netId) continue;
       const comp = compById.get(pad.componentId);
       if (!comp) continue;
-      copperByNet.set(`unused:${pad.componentId}-${pad.pinNumber}`, [
-        padPolygon(pad, comp.rotationDeg, effectivePadMarginMm(comp.footprint, padMargin)),
-      ]);
-    }
-  }
-
-  // 6. Design rule check: no two nets' copper may touch.
-  const netIdList = [...copperByNet.keys()];
-  for (let i = 0; i < netIdList.length; i++) {
-    for (let j = i + 1; j < netIdList.length; j++) {
-      if (polysOverlap(copperByNet.get(netIdList[i])!, copperByNet.get(netIdList[j])!, 1e-5)) {
-        violations.push({
-          severity: 'error',
-          message: `Short circuit: copper for ${netIdList[i]} touches ${netIdList[j]}.`,
-        });
+      const poly = padPolygon(pad, comp.rotationDeg, effectivePadMarginMm(comp.footprint, padMargin));
+      const isTht = pad.spec.drillDiameter && pad.spec.drillDiameter > 0;
+      copperByNet.set(`unused:${pad.componentId}-${pad.pinNumber}`, [poly]);
+      if (isTwoLayer && isTht) {
+        copperByNetBottom.set(`unused:${pad.componentId}-${pad.pinNumber}`, [poly]);
       }
     }
   }
+
+  // 6. Design rule check: no two nets' copper may touch, on either layer.
+  const checkOverlaps = (copperMap: Map<string, Poly[]>, layerLabel: string) => {
+    const list = [...copperMap.keys()];
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        if (polysOverlap(copperMap.get(list[i])!, copperMap.get(list[j])!, 1e-5)) {
+          violations.push({
+            severity: 'error',
+            message: `Short circuit on ${layerLabel}: copper for ${list[i]} touches ${list[j]}.`,
+          });
+        }
+      }
+    }
+  };
+  checkOverlaps(copperByNet, isTwoLayer ? 'Top Layer' : 'board');
+  if (isTwoLayer) checkOverlaps(copperByNetBottom, 'Bottom Layer');
 
   // 7. Isolation toolpaths ---------------------------------------------
   const toolRadius = effectiveToolDiaMm / 2;
@@ -1667,28 +1762,34 @@ export function generatePcbLayout(
     }
   }
 
-  const isolationPaths: IsolationPath[] = [];
-  const stepover = effectiveToolDiaMm * 0.8;
-  const passes = Math.max(1, Math.min(3, options.isolationPasses));
+  const computePassesFor = (copperMap: Map<string, Poly[]>): IsolationPath[] => {
+    const paths: IsolationPath[] = [];
+    const stepover = effectiveToolDiaMm * 0.8;
+    const passes = Math.max(1, Math.min(3, options.isolationPasses));
 
-  for (const [netId, copper] of copperByNet) {
-    // Copper belonging to every other net, grown by a tool radius. The cutter
-    // centre may never enter this region or it would bite into a live trace.
-    const others: Poly[] = [];
-    for (const [otherId, otherCopper] of copperByNet) {
-      if (otherId !== netId) others.push(...otherCopper);
-    }
-    const forbidden = others.length > 0 ? offsetPolys(unionPolys(others), toolRadius) : [];
+    for (const [netId, copper] of copperMap) {
+      // Copper belonging to every other net, grown by a tool radius. The cutter
+      // centre may never enter this region or it would bite into a live trace.
+      const others: Poly[] = [];
+      for (const [otherId, otherCopper] of copperMap) {
+        if (otherId !== netId) others.push(...otherCopper);
+      }
+      const forbidden = others.length > 0 ? offsetPolys(unionPolys(others), toolRadius) : [];
 
-    for (let pass = 0; pass < passes; pass++) {
-      const loop = offsetPolys(copper, toolRadius + pass * stepover);
-      const safe = forbidden.length > 0 ? differencePolys(loop, forbidden) : loop;
-      for (const ring of safe) {
-        if (ring.length < 3) continue;
-        isolationPaths.push({ netId, pass, points: [...ring, ring[0]] });
+      for (let pass = 0; pass < passes; pass++) {
+        const loop = offsetPolys(copper, toolRadius + pass * stepover);
+        const safe = forbidden.length > 0 ? differencePolys(loop, forbidden) : loop;
+        for (const ring of safe) {
+          if (ring.length < 3) continue;
+          paths.push({ netId, pass, points: [...ring, ring[0]] });
+        }
       }
     }
-  }
+    return sortPathsNearestNeighbor(paths);
+  };
+
+  const topIsolationPaths = computePassesFor(copperByNet);
+  const bottomIsolationPaths = isTwoLayer ? computePassesFor(copperByNetBottom) : [];
 
   // 8. Drills -----------------------------------------------------------
   const drills: DrillPoint[] = [];
@@ -1704,7 +1805,30 @@ export function generatePcbLayout(
     }
   }
 
-  const sortedIsolationPaths = sortPathsNearestNeighbor(isolationPaths);
+  if (isTwoLayer) {
+    if (routing.vias) {
+      for (let i = 0; i < routing.vias.length; i++) {
+        const v = routing.vias[i];
+        drills.push({
+          x: v.x,
+          y: v.y,
+          diameter: v.drillMm,
+          componentId: 'via',
+          pinNumber: `${i + 1}`,
+          isVia: true,
+        });
+      }
+    }
+
+    const xMid = boardOriginMm + boardWidthMm / 2;
+    const yMid = boardOriginMm + boardHeightMm / 2;
+    const xSpan = boardWidthMm / 2 + REGISTRATION_PIN_OFFSET_MM;
+    const regDrillMm = options.viaDrillMm ?? 0.8;
+    drills.push(
+      { x: xMid - xSpan, y: yMid, diameter: regDrillMm, componentId: 'align_pin_1', pinNumber: '1', isRegistration: true },
+      { x: xMid + xSpan, y: yMid, diameter: regDrillMm, componentId: 'align_pin_2', pinNumber: '2', isRegistration: true }
+    );
+  }
 
   const result: PcbLayoutResult = {
     success: violations.filter(v => v.severity === 'error').length === 0,
@@ -1715,7 +1839,7 @@ export function generatePcbLayout(
     pads,
     nets,
     traces,
-    isolationPaths: sortedIsolationPaths,
+    isolationPaths: topIsolationPaths,
     drills,
     cutouts,
     unrouted: routing.unrouted,
@@ -1730,10 +1854,22 @@ export function generatePcbLayout(
     svg: '',
     svgComponentSide: '',
     gcode: '',
+    layers: options.layers ?? 1,
+    vias: routing.vias,
+    topTraces: traces.filter(t => t.layer !== 'bottom'),
+    bottomTraces: traces.filter(t => t.layer === 'bottom'),
+    topIsolationPaths,
+    bottomIsolationPaths,
+    copperByNet,
+    bottomCopperByNet: isTwoLayer ? copperByNetBottom : undefined,
   };
 
   result.svg = renderPcbSvg(result, copperByNet, options, 'copper');
   result.svgComponentSide = renderPcbSvg(result, copperByNet, options, 'component');
+  if (isTwoLayer) {
+    result.svgBottomSide = renderPcbSvg(result, copperByNetBottom, options, 'bottom');
+    result.svgComposite = renderPcbSvg(result, copperByNet, options, 'composite', copperByNetBottom);
+  }
   result.gcode = generatePcbGcode(result, options);
   const metrics = estimatePcbMachiningMetrics(result.gcode, options);
   result.cycleTimeSec = metrics.cycleTimeSec;
@@ -1831,6 +1967,7 @@ function routingProblem(
       if (!pad) continue;
       const comp = compById.get(pad.componentId)!;
       const { w, h } = padOffset(pad.spec, comp.rotationDeg);
+      const isTht = pad.spec.drillDiameter && pad.spec.drillDiameter > 0;
       routePins.push({
         netId: net.id,
         key: port.key,
@@ -1839,6 +1976,7 @@ function routingProblem(
         y: pad.y,
         padRadiusMm:
           Math.max(w, h) / 2 + effectivePadMarginMm(comp.footprint, padMargin),
+        layer: isTht ? 'both' : 'top',
       });
     }
   }
@@ -1850,12 +1988,14 @@ function routingProblem(
     .map(p => {
       const comp = compById.get(p.componentId)!;
       const { w, h } = padOffset(p.spec, comp.rotationDeg);
+      const isTht = p.spec.drillDiameter && p.spec.drillDiameter > 0;
       // Same margin the copper is grown by, or the router would happily run a
       // trace through the annulus this pad just gained.
       return {
         x: p.x,
         y: p.y,
         radiusMm: Math.max(w, h) / 2 + effectivePadMarginMm(comp.footprint, padMargin),
+        layer: isTht ? 'both' : 'top',
       };
     });
 
@@ -1948,6 +2088,9 @@ function placeAndRoute(
     bendPenalty: 1.5,
     budgetMs,
     onProgress,
+    layers: opts.layers ?? 1,
+    viaPadMm: opts.viaPadMm,
+    viaDrillMm: opts.viaDrillMm,
   };
 
   let routing = routeBoard(routePins, routerOpts);
@@ -2202,6 +2345,7 @@ function emptyResult(options: PcbOptions, error: string): PcbLayoutResult {
     svgComponentSide: emptySvg,
     gcode: `; ${error}\n`,
     error,
+    copperByNet: new Map(),
   };
 }
 
@@ -2223,22 +2367,27 @@ const NET_COLORS = [
  * clearly labelled, is the point: a footprint that only looks right from the
  * side you never checked is how a board reaches the soldering iron wrong.
  */
-export type PcbViewSide = 'copper' | 'component';
+export type PcbViewSide = 'copper' | 'component' | 'bottom' | 'composite';
 
 export function renderPcbSvg(
   result: PcbLayoutResult,
   copperByNet: Map<string, Poly[]>,
   options: PcbOptions,
-  view: PcbViewSide = 'copper'
+  view: PcbViewSide = 'copper',
+  copperByNetBottom?: Map<string, Poly[]>
 ): string {
   const w = result.boardWidthMm;
   const h = result.boardHeightMm;
-  const colorFor = (netId: string) => {
+  const colorFor = (netId: string, isBottom = false) => {
     // Isolated islands are not a net; showing them in a net colour would read
     // as a connection that is not there.
     if (netId.startsWith('unused:')) return '#9e9e9e';
-    if (netId === 'GND') return '#8d6e63';
+    if (netId === 'GND') return isBottom ? '#0284c7' : '#8d6e63';
     const idx = result.nets.findIndex(n => n.id === netId);
+    if (isBottom) {
+      const BOTTOM_COLORS = ['#0284c7', '#06b6d4', '#3b82f6', '#6366f1', '#14b8a6', '#0ea5e9'];
+      return BOTTOM_COLORS[(idx < 0 ? 0 : idx) % BOTTOM_COLORS.length];
+    }
     return NET_COLORS[(idx < 0 ? 0 : idx) % NET_COLORS.length];
   };
 
@@ -2254,7 +2403,9 @@ export function renderPcbSvg(
   // a picture that was a *reflection* of the board on the bed - the far edge
   // drawn nearest. Every coordinate goes through here instead, so the copper
   // view matches the blank as clamped, and the component view is its mirror.
-  const flipX = view === 'component';
+  // The bottom view is looked at through the board the same way, so it mirrors
+  // X too.
+  const flipX = view === 'component' || view === 'bottom';
   const px = (x: number) => (flipX ? vw - x : x);
   const py = (y: number) => vh - y;
   const pt = (p: Pt): Pt => ({ x: px(p.x), y: py(p.y) });
@@ -2264,21 +2415,81 @@ export function renderPcbSvg(
   svg += `  <rect x="${o}" y="${o}" width="${w}" height="${h}" fill="#1b4d2e" stroke="#2e7d42" stroke-width="0.4" rx="1.5" />\n`;
 
   // Copper, per net, with holes honoured.
-  for (const [netId, polys] of copperByNet) {
-    const d = polysToSvgPath(mapPolys(polys));
-    if (!d) continue;
-    svg += `  <path d="${d}" fill="${colorFor(netId)}" fill-rule="evenodd" opacity="0.95" />\n`;
+  if (view === 'composite') {
+    // 1. Bottom copper layer
+    const bMap = copperByNetBottom || new Map();
+    for (const [netId, polys] of bMap) {
+      const d = polysToSvgPath(mapPolys(polys));
+      if (!d) continue;
+      svg += `  <path d="${d}" fill="${colorFor(netId, true)}" fill-rule="evenodd" opacity="0.65" />\n`;
+    }
+    // Bottom isolation toolpaths
+    if (result.bottomIsolationPaths) {
+      for (const path of result.bottomIsolationPaths) {
+        const pts = path.points.map(p => `${px(p.x).toFixed(3)},${py(p.y).toFixed(3)}`).join(' ');
+        svg += `  <polyline points="${pts}" fill="none" stroke="#38bdf8" stroke-width="0.08" stroke-dasharray="0.5,0.35" opacity="0.6" />\n`;
+      }
+    }
+
+    // 2. Top copper layer
+    for (const [netId, polys] of copperByNet) {
+      const d = polysToSvgPath(mapPolys(polys));
+      if (!d) continue;
+      svg += `  <path d="${d}" fill="${colorFor(netId, false)}" fill-rule="evenodd" opacity="0.8" />\n`;
+    }
+    // Top isolation toolpaths
+    const topPaths = result.topIsolationPaths || result.isolationPaths;
+    for (const path of topPaths) {
+      const pts = path.points.map(p => `${px(p.x).toFixed(3)},${py(p.y).toFixed(3)}`).join(' ');
+      svg += `  <polyline points="${pts}" fill="none" stroke="#ef4444" stroke-width="0.08" stroke-dasharray="0.5,0.35" opacity="0.85" />\n`;
+    }
+  } else if (view === 'bottom') {
+    for (const [netId, polys] of copperByNet) {
+      const d = polysToSvgPath(mapPolys(polys));
+      if (!d) continue;
+      svg += `  <path d="${d}" fill="${colorFor(netId, true)}" fill-rule="evenodd" opacity="0.95" />\n`;
+    }
+    const bPaths = result.bottomIsolationPaths || result.isolationPaths;
+    for (const path of bPaths) {
+      const pts = path.points.map(p => `${px(p.x).toFixed(3)},${py(p.y).toFixed(3)}`).join(' ');
+      svg += `  <polyline points="${pts}" fill="none" stroke="#0ea5e9" stroke-width="0.08" stroke-dasharray="0.5,0.35" opacity="0.85" />\n`;
+    }
+  } else {
+    for (const [netId, polys] of copperByNet) {
+      const d = polysToSvgPath(mapPolys(polys));
+      if (!d) continue;
+      svg += `  <path d="${d}" fill="${colorFor(netId)}" fill-rule="evenodd" opacity="${view === 'component' ? '0.35' : '0.95'}" />\n`;
+    }
+    const tPaths = result.topIsolationPaths || result.isolationPaths;
+    for (const path of tPaths) {
+      const pts = path.points.map(p => `${px(p.x).toFixed(3)},${py(p.y).toFixed(3)}`).join(' ');
+      svg += `  <polyline points="${pts}" fill="none" stroke="#ff5252" stroke-width="0.08" stroke-dasharray="0.5,0.35" opacity="${view === 'component' ? '0.3' : '0.85'}" />\n`;
+    }
   }
 
-  // Isolation toolpaths.
-  for (const path of result.isolationPaths) {
-    const pts = path.points.map(p => `${px(p.x).toFixed(3)},${py(p.y).toFixed(3)}`).join(' ');
-    svg += `  <polyline points="${pts}" fill="none" stroke="#ff5252" stroke-width="0.08" stroke-dasharray="0.5,0.35" opacity="0.85" />\n`;
+  // Via pads: the same copper ring on both faces, so they show on every view.
+  if (result.vias && result.vias.length > 0) {
+    for (const v of result.vias) {
+      const padR = ((v.padMm || options.viaPadMm || 1.4) / 2).toFixed(3);
+      svg += `  <circle cx="${px(v.x).toFixed(3)}" cy="${py(v.y).toFixed(3)}" r="${padR}" fill="#eab308" stroke="#ca8a04" stroke-width="0.1" opacity="0.9" />\n`;
+    }
   }
 
   // Drill holes.
   for (const d of result.drills) {
-    svg += `  <circle cx="${px(d.x).toFixed(3)}" cy="${py(d.y).toFixed(3)}" r="${(d.diameter / 2).toFixed(3)}" fill="#0d0d0d" />\n`;
+    if (d.isRegistration) {
+      const r = (d.diameter / 2).toFixed(3);
+      const cx = px(d.x).toFixed(3);
+      const cy = py(d.y).toFixed(3);
+      svg += `  <g class="pcb-registration-pin">\n`;
+      svg += `    <circle cx="${cx}" cy="${cy}" r="${r}" fill="#06b6d4" stroke="#0891b2" stroke-width="0.15" />\n`;
+      svg += `    <line x1="${(px(d.x) - 1.6).toFixed(3)}" y1="${cy}" x2="${(px(d.x) + 1.6).toFixed(3)}" y2="${cy}" stroke="#06b6d4" stroke-width="0.18" />\n`;
+      svg += `    <line x1="${cx}" y1="${(py(d.y) - 1.6).toFixed(3)}" x2="${cx}" y2="${(py(d.y) + 1.6).toFixed(3)}" stroke="#06b6d4" stroke-width="0.18" />\n`;
+      svg += `    <text x="${cx}" y="${(py(d.y) - 2.2).toFixed(3)}" fill="#06b6d4" font-size="1.1" font-family="monospace" font-weight="bold" text-anchor="middle">PIN ${d.pinNumber}</text>\n`;
+      svg += `  </g>\n`;
+    } else {
+      svg += `  <circle cx="${px(d.x).toFixed(3)}" cy="${py(d.y).toFixed(3)}" r="${(d.diameter / 2).toFixed(3)}" fill="#0d0d0d" />\n`;
+    }
   }
 
   // Courtyards and reference designators.
@@ -2318,6 +2529,21 @@ export function renderPcbSvg(
   // Profile cut path (tool centreline).
   const profR = options.profileToolDiaMm / 2;
   svg += `  <rect x="${o - profR}" y="${o - profR}" width="${w + options.profileToolDiaMm}" height="${h + options.profileToolDiaMm}" fill="none" stroke="#64b5f6" stroke-width="0.1" stroke-dasharray="1,0.6" opacity="0.7" />\n`;
+
+  // Composite legend
+  if (view === 'composite') {
+    svg += `  <g class="pcb-legend" font-family="monospace" font-size="1.1" transform="translate(${o + 1}, ${o + 2.5})">\n`;
+    svg += `    <rect x="-0.5" y="-1.8" width="50" height="3.5" fill="#0d1117" opacity="0.85" rx="0.6" />\n`;
+    svg += `    <circle cx="2" cy="0" r="0.8" fill="#ea580c" />\n`;
+    svg += `    <text x="3.5" y="0.4" fill="#fed7aa">Top (F.Cu)</text>\n`;
+    svg += `    <circle cx="16" cy="0" r="0.8" fill="#0284c7" />\n`;
+    svg += `    <text x="17.5" y="0.4" fill="#bae6fd">Bottom (B.Cu)</text>\n`;
+    svg += `    <circle cx="32" cy="0" r="0.8" fill="#eab308" />\n`;
+    svg += `    <text x="33.5" y="0.4" fill="#fef08a">Via</text>\n`;
+    svg += `    <circle cx="40" cy="0" r="0.8" fill="#06b6d4" />\n`;
+    svg += `    <text x="41.5" y="0.4" fill="#a5f3fc">Pin</text>\n`;
+    svg += `  </g>\n`;
+  }
 
   svg += `</svg>`;
   return svg;
@@ -2692,15 +2918,19 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
     g.push(`G0 Z${f3(options.safeZ)} ; Back down to travel height`);
   };
 
+  const isTwoLayer = options.layers === 2;
+  const totalOps = isTwoLayer ? 5 : 3;
+
   // --- Operation 1: isolation ---
   g.push(``);
   g.push(`; ==================================================`);
-  g.push(`; OP 1/3: Isolation routing (${options.vBitAngleDeg}deg V-bit, ${options.vBitTipMm}mm tip)`);
+  g.push(`; OP 1/${totalOps}: ${isTwoLayer ? 'Top ' : ''}Isolation routing (${options.vBitAngleDeg}deg V-bit, ${options.vBitTipMm}mm tip)`);
   g.push(`; ==================================================`);
   toolChange(`T1 M6 ; Tool 1: V-bit`);
 
+  const topPaths = (isTwoLayer && result.topIsolationPaths) ? result.topIsolationPaths : result.isolationPaths;
   let lastNet = '';
-  for (const path of result.isolationPaths) {
+  for (const path of topPaths) {
     if (path.points.length < 2) continue;
     if (path.netId !== lastNet) {
       g.push(`; --- net ${path.netId} ---`);
@@ -2735,7 +2965,7 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   if (result.drills.length > 0) {
     g.push(``);
     g.push(`; ==================================================`);
-    g.push(`; OP 2/3: Through-hole drilling (${result.drills.length} holes)`);
+    g.push(`; OP 2/${totalOps}: ${isTwoLayer ? 'Drilling' : 'Through-hole drilling'} (${result.drills.length} holes${isTwoLayer ? ': THT, vias & registration pins' : ''})`);
     g.push(`; ==================================================`);
 
     const groups = groupDrillsByBit(
@@ -2765,9 +2995,12 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
       const depth = options.drillDepthZ;
 
       if (interpolated) {
-        const path = helicalHoleToolpath(holeMm, bitMm, depth, options.zStepdown);
         for (const hole of holes) {
-          g.push(`; ${hole.componentId} pin ${hole.pinNumber}`);
+          const holeDepth = hole.isRegistration
+            ? options.drillDepthZ - Math.abs(options.spoilboardRegistrationDepthMm ?? 2.0)
+            : depth;
+          const path = helicalHoleToolpath(holeMm, bitMm, holeDepth, options.zStepdown);
+          g.push(`; ${hole.componentId} pin ${hole.pinNumber}${hole.isRegistration ? ' [Registration Pin]' : ''}`);
           g.push(`G0 X${f3(hole.x + path[0].x)} Y${f3(hole.y + path[0].y)}`);
           g.push(`G1 Z0 F${options.plungeFeedrate}`);
           for (const pt of path) {
@@ -2782,13 +3015,16 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
       }
 
       for (const hole of holes) {
-        g.push(`; ${hole.componentId} pin ${hole.pinNumber}`);
+        const holeDepth = hole.isRegistration
+          ? options.drillDepthZ - Math.abs(options.spoilboardRegistrationDepthMm ?? 2.0)
+          : depth;
+        g.push(`; ${hole.componentId} pin ${hole.pinNumber}${hole.isRegistration ? ' [Registration Pin - Spoilboard Depth]' : ''}`);
         g.push(`G0 X${f3(hole.x)} Y${f3(hole.y)}`);
         // Peck drill so swarf clears instead of binding the bit.
-        const peck = Math.max(0.4, Math.abs(depth) / 3);
+        const peck = Math.max(0.4, Math.abs(holeDepth) / 3);
         let z = 0;
-        while (z > depth) {
-          z = Math.max(depth, z - peck);
+        while (z > holeDepth) {
+          z = Math.max(holeDepth, z - peck);
           g.push(`G1 Z${f3(z)} F${options.drillFeedrate}`);
           g.push(`G0 Z${f3(options.safeZ)}`);
         }
@@ -2797,14 +3033,85 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
     g.push(`G0 Z${f3(options.safeZ)}`);
   }
 
-  // --- Operation 3: profile ---
+  if (isTwoLayer) {
+    // --- Operation 3: flip the board onto the registration pins ---
+    g.push(``);
+    g.push(`; ==================================================`);
+    g.push(`; OP 3/5: Flip Board & Register with Alignment Pins`);
+    g.push(`; 1. Spindle stopped. Clear clamps.`);
+    g.push(`; 2. Insert two alignment pins into spoilboard holes.`);
+    g.push(`; 3. Flip board horizontally (left-to-right) onto pins.`);
+    g.push(`; 4. Re-clamp board securely; re-zero Z on top copper surface.`);
+    g.push(`; 5. Press Cycle Start / Resume.`);
+    g.push(`; ==================================================`);
+    g.push(`G0 Z${f3(options.toolChangeZ)} ; Safe park height clear of clamps`);
+    g.push(`M5 ; Spindle off before touching board`);
+    g.push(`G0 X0 Y0 ; Move machine clear for operator access`);
+    g.push(`M0 ; PAUSE: Flip board horizontally onto registration pins`);
+    if (!options.pauseOnToolChange) {
+      g.push(`M3 S${options.spindleRpm} ; Spindle back on`);
+      g.push(`G4 P2 ; Dwell for spin-up`);
+    }
+
+    // --- Operation 4: Bottom isolation ---
+    g.push(``);
+    g.push(`; ==================================================`);
+    g.push(`; OP 4/5: Bottom Isolation routing (${options.vBitAngleDeg}deg V-bit, mirrored horizontally)`);
+    g.push(`; ==================================================`);
+    toolChange(`T1 M6 ; Tool 1: V-bit`);
+
+    const xMid = result.boardOriginMm + result.boardWidthMm / 2;
+    const mx = (x: number) => 2 * xMid - x;
+
+    const bPaths = result.bottomIsolationPaths || [];
+    let lastBNet = '';
+    for (const path of bPaths) {
+      if (path.points.length < 2) continue;
+      if (path.netId !== lastBNet) {
+        g.push(`; --- net ${path.netId} (bottom) ---`);
+        lastBNet = path.netId;
+      }
+      const p0 = path.points[0];
+      const p1 = path.points[1];
+      g.push(`G0 Z${f3(options.safeZ)}`);
+      g.push(`G0 X${f3(mx(p0.x))} Y${f3(p0.y)}`);
+
+      const segLen = p1 ? Math.hypot(p1.x - p0.x, p1.y - p0.y) : 0;
+      if (options.rampedPlunge !== false && p1 && segLen > 0.4) {
+        const rampLen = Math.min(1.2, segLen * 0.8);
+        const t = rampLen / segLen;
+        const rx = p0.x + (p1.x - p0.x) * t;
+        const ry = p0.y + (p1.y - p0.y) * t;
+        g.push(`G1 X${f3(mx(rx))} Y${f3(ry)} Z${f3(options.isolationDepthZ)} F${options.plungeFeedrate}`);
+        g.push(`G1 X${f3(mx(p1.x))} Y${f3(p1.y)} Z${f3(options.isolationDepthZ)} F${options.cutFeedrate}`);
+        for (let i = 2; i < path.points.length; i++) {
+          g.push(`G1 X${f3(mx(path.points[i].x))} Y${f3(path.points[i].y)} F${options.cutFeedrate}`);
+        }
+      } else {
+        g.push(`G1 Z${f3(options.isolationDepthZ)} F${options.plungeFeedrate}`);
+        for (let i = 1; i < path.points.length; i++) {
+          g.push(`G1 X${f3(mx(path.points[i].x))} Y${f3(path.points[i].y)} F${options.cutFeedrate}`);
+        }
+      }
+    }
+    g.push(`G0 Z${f3(options.safeZ)}`);
+  }
+
+  // --- Profile operation ---
   g.push(``);
   g.push(`; ==================================================`);
-  g.push(`; OP 3/3: Board edge profile (${options.profileToolDiaMm}mm end mill)`);
+  g.push(`; OP ${totalOps}/${totalOps}: Board edge profile (${options.profileToolDiaMm}mm end mill)`);
   g.push(`; Tool centre runs ${(options.profileToolDiaMm / 2).toFixed(3)}mm outside the`);
   g.push(`; finished edge. ${options.tabCount} holding tab(s) keep the board captive.`);
   g.push(`; ==================================================`);
   toolChange(`T99 M6 ; Tool 99: ${options.profileToolDiaMm}mm end mill`);
+
+  // A double-sided board is cut from its flipped side, so an internal cutout
+  // that was at X is now mirrored across the board centreline. The outside
+  // profile is a rectangle centred on that same line, so it maps onto itself
+  // and needs no mirroring.
+  const profileXMid = result.boardOriginMm + result.boardWidthMm / 2;
+  const mx = (x: number) => (isTwoLayer ? 2 * profileXMid - x : x);
 
   // Internal features first: the board is still fully captive, so the cutout
   // slugs come free while the outside edge is still uncut.
@@ -2825,13 +3132,13 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
       `${cut.widthMm.toFixed(1)}x${cut.heightMm.toFixed(1)}mm) ---`
     );
     g.push(`G0 Z${f3(options.safeZ)}`);
-    g.push(`G0 X${f3(path[0].x)} Y${f3(path[0].y)}`);
+    g.push(`G0 X${f3(mx(path[0].x))} Y${f3(path[0].y)}`);
     let cz = 0;
     while (cz > options.profileDepthZ) {
       cz = Math.max(options.profileDepthZ, cz - stepDown);
       g.push(`G1 Z${f3(cz)} F${options.plungeFeedrate}`);
       for (let i = 1; i < path.length; i++) {
-        g.push(`G1 X${f3(path[i].x)} Y${f3(path[i].y)} F${options.cutFeedrate}`);
+        g.push(`G1 X${f3(mx(path[i].x))} Y${f3(path[i].y)} F${options.cutFeedrate}`);
       }
     }
     g.push(`G0 Z${f3(options.safeZ)}`);

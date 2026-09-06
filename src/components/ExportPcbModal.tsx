@@ -19,6 +19,8 @@ import {
   Box,
   Scissors,
   Layers2,
+  Archive,
+  Star,
 } from 'lucide-react';
 import {
   generateAirCutPerimeterGcode,
@@ -27,6 +29,8 @@ import {
   DEFAULT_PCB_OPTIONS,
   type PcbOptions,
 } from '../utils/pcbExporter';
+import { generateGerberZip } from '../utils/gerberExporter';
+import { isProAccount } from '../utils/apiClient';
 import {
   PCB_TOOL_PRESETS,
   PCB_MATERIAL_PRESETS,
@@ -65,6 +69,7 @@ import {
 import { PcbToolpathPreview } from './PcbToolpathPreview';
 import { InfoTip } from './InfoTip';
 import { JobPauseModal } from './JobPauseModal';
+import { PanZoomContainer } from './PanZoomContainer';
 
 /**
  * Wall-clock budgets offered for the maze router. Most boards finish in well
@@ -203,7 +208,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * keeps the preview matching the blank on the bed; the component side is what
    * you hold a module against to check which hole is pin 1.
    */
-  const [viewSide, setViewSide] = useState<'copper' | 'component'>('copper');
+  const [viewSide, setViewSide] = useState<'copper' | 'component' | 'bottom' | 'composite'>('copper');
   const [showPadNumbers, setShowPadNumbers] = useState(true);
   const [serialState, setSerialState] = useState(webSerialManager.getState());
   /**
@@ -233,6 +238,17 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const [machineError, setMachineError] = useState<string | null>(null);
   /** Last word from the stencil export — the file written, or why not. */
   const [stencilNote, setStencilNote] = useState<string | null>(null);
+  /** Last word from the Gerber export — the zip written, or the Pro upsell. */
+  const [gerberNote, setGerberNote] = useState<string | null>(null);
+  const [showGerberUpsell, setShowGerberUpsell] = useState(false);
+  /**
+   * Which footer button is currently hovered/focused, so its one-line
+   * explanation can fill the fixed-height status slot next to the buttons.
+   * The row's own height never changes with this — a message replacing the
+   * message above it, not new height appearing under the buttons — which is
+   * the whole reason the slot has a fixed height rather than growing to fit.
+   */
+  const [hoveredFooterHint, setHoveredFooterHint] = useState<string | null>(null);
   const [heightmap, setHeightmap] = useState<ProbeGrid | null>(null);
 
   const [selectedToolId, setSelectedToolId] = useState<string>('t1_vbit_30');
@@ -751,6 +767,37 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   };
 
   /**
+   * Bundles the routed board as Gerber (RS-274X) + Excellon, for a fab house
+   * rather than the mill sitting on the bench. Pro-only in the web app: the
+   * desktop build exports the same files for free, since it carries none of
+   * the cloud costs a subscription recovers here. See `isProAccount` in
+   * `utils/apiClient.ts` for why this is a client-side hint rather than an
+   * authority — a free account is never allowed to attempt the export at all,
+   * so there is nothing here for a server to refuse.
+   */
+  const handleExportGerber = async () => {
+    if (!result.success) return;
+    if (!isProAccount()) {
+      setShowGerberUpsell(true);
+      return;
+    }
+    setShowGerberUpsell(false);
+    setGerberNote(null);
+    try {
+      const zip = await generateGerberZip(result);
+      const url = URL.createObjectURL(zip);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `pcb-gerbers-${Math.round(result.boardWidthMm)}x${Math.round(result.boardHeightMm)}.zip`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setGerberNote(`Gerber package written: ${result.drills.length} drills, ${result.layers ?? 1} layer(s).`);
+    } catch (e: any) {
+      setGerberNote(e?.message || 'Could not build the Gerber package.');
+    }
+  };
+
+  /**
    * Downloads the blank shim the stencil gets cut out of.
    *
    * No layout geometry in it at all — it is stock, sized to the job. The
@@ -1022,10 +1069,11 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                 <div className="w-full flex items-center justify-between mb-2 text-xs text-slate-500 dark:text-slate-400">
                   <span className="flex items-center gap-1.5 font-mono">
                     <Layers className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                    {result.boardWidthMm}mm × {result.boardHeightMm}mm PCB Board
+                    {options.layers === 2 ? '2-Layer' : '1-Layer'} PCB Board: {result.boardWidthMm}mm × {result.boardHeightMm}mm
                   </span>
                   <span className="text-emerald-600 dark:text-emerald-400 font-mono">
                     {result.components.length} Parts | {result.nets.length} Nets | {result.drills.length} Drills
+                    {options.layers === 2 && result.vias ? ` | ${result.vias.length} Vias` : ''}
                   </span>
                 </div>
 
@@ -1035,10 +1083,19 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     toolpath against, or the one I seat the parts against". */}
                 <div className="w-full flex items-center justify-between mb-2 text-[11px]">
                   <div className="inline-flex rounded-md border border-slate-300 dark:border-slate-700 overflow-hidden">
-                    {([
-                      ['copper', 'Copper side', 'The board as milled, seen from the spindle. Matches the toolpath and the blank on the bed.'],
-                      ['component', 'Component side', 'Seen through the board from the face the parts sit on — the view you assemble against.'],
-                    ] as const).map(([side, label, title]) => (
+                    {(
+                      (options.layers === 2
+                        ? [
+                            ['copper', 'Top (F.Cu)', 'Top copper layer (milled first).'],
+                            ['bottom', 'Bottom (B.Cu)', 'Bottom copper layer (milled after flip).'],
+                            ['composite', 'Both (Composite)', 'Both copper layers, vias, and alignment pins.'],
+                            ['component', 'Parts', 'Component placement outline.'],
+                          ]
+                        : [
+                            ['copper', 'Copper side', 'The board as milled, seen from the spindle. Matches the toolpath and the blank on the bed.'],
+                            ['component', 'Component side', 'Seen through the board from the face the parts sit on — the view you assemble against.'],
+                          ]) as [typeof viewSide, string, string][]
+                    ).map(([side, label, title]) => (
                       <button
                         key={side}
                         title={title}
@@ -1064,13 +1121,22 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                   </label>
                 </div>
 
-                <div className="w-full aspect-[4/3] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-2 shadow-inner flex items-center justify-center overflow-hidden">
-                  <div
-                    className={`w-full h-full ${showPadNumbers ? '' : '[&_.pcb-pad-numbers]:hidden'}`}
-                    dangerouslySetInnerHTML={{
-                      __html: viewSide === 'component' ? result.svgComponentSide : result.svg,
-                    }}
-                  />
+                <div className="w-full aspect-[4/3] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-2 shadow-inner flex items-center justify-center overflow-hidden relative">
+                  <PanZoomContainer resetKey={`${viewSide}_${options.layers}_${result.boardWidthMm}_${result.boardHeightMm}`}>
+                    <div
+                      className={`w-full h-full flex items-center justify-center ${showPadNumbers ? '' : '[&_.pcb-pad-numbers]:hidden'}`}
+                      dangerouslySetInnerHTML={{
+                        __html:
+                          viewSide === 'component'
+                            ? result.svgComponentSide
+                            : viewSide === 'bottom'
+                            ? (result.svgBottomSide || result.svg)
+                            : viewSide === 'composite'
+                            ? (result.svgComposite || result.svg)
+                            : result.svg,
+                      }}
+                    />
+                  </PanZoomContainer>
                 </div>
 
                 <div className="w-full mt-2 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-mono">
@@ -1161,7 +1227,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
           </div>
 
           {/* Settings & Machine Control Panel */}
-          <div className="md:col-span-5 bg-white/70 dark:bg-slate-900/60 flex flex-col justify-between overflow-y-auto">
+          <div className="md:col-span-5 bg-white/70 dark:bg-slate-900/60 flex flex-col justify-between overflow-hidden">
             <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-950/40 text-slate-500 dark:text-slate-400 text-xs">
               <button
                 onClick={() => setActiveTab('layout')}
@@ -1195,9 +1261,99 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
               </button>
             </div>
 
-            <div className="p-4 flex-1 space-y-3 text-xs">
+            <div className="p-4 flex-1 space-y-3 text-xs overflow-y-auto">
               {activeTab === 'layout' && (
                 <div className="space-y-3">
+                  {/* Board Layers (1-Sided vs 2-Sided) - First Setting */}
+                  <div className="p-2.5 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-200 dark:border-slate-800">
+                    <label className="flex items-center justify-between text-slate-700 dark:text-slate-200 font-semibold mb-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-emerald-500" />
+                        Board Layers
+                      </span>
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                        {options.layers === 2 ? '2-Sided (Double)' : '1-Sided (Single)'}
+                      </span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-200 dark:bg-slate-950 rounded-md">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOptions({ ...options, layers: 1 });
+                          if (viewSide === 'bottom' || viewSide === 'composite') {
+                            setViewSide('copper');
+                          }
+                        }}
+                        className={`py-1.5 px-2 text-xs font-semibold rounded transition-colors cursor-pointer text-center ${
+                          (options.layers ?? 1) === 1
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                        }`}
+                      >
+                        1 Layer (Single)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOptions({ ...options, layers: 2 })}
+                        className={`py-1.5 px-2 text-xs font-semibold rounded transition-colors cursor-pointer text-center ${
+                          options.layers === 2
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                        }`}
+                      >
+                        2 Layer (Double)
+                      </button>
+                    </div>
+                    {options.layers === 2 && (
+                      <div className="mt-2.5 pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 font-semibold mb-0.5">
+                              Via Pad (mm)
+                              <InfoTip>Copper ring diameter around drilled vias.</InfoTip>
+                            </label>
+                            <NumberInput
+                              step="0.1"
+                              min={0.8}
+                              value={options.viaPadMm ?? 1.4}
+                              onChange={v => setOptions({ ...options, viaPadMm: v })}
+                              className="w-full px-2 py-1 text-xs bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                            />
+                          </div>
+                          <div>
+                            <label className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 font-semibold mb-0.5">
+                              Via Drill (mm)
+                              <InfoTip>Hole diameter for vias and alignment pins.</InfoTip>
+                            </label>
+                            <NumberInput
+                              step="0.1"
+                              min={0.4}
+                              value={options.viaDrillMm ?? 0.8}
+                              onChange={v => setOptions({ ...options, viaDrillMm: v })}
+                              className="w-full px-2 py-1 text-xs bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 font-semibold mb-0.5">
+                            Pin Registration Depth in Spoilboard (mm)
+                            <InfoTip>Extra plunge depth into spoilboard for alignment pin holes.</InfoTip>
+                          </label>
+                          <NumberInput
+                            step="0.5"
+                            min={0.5}
+                            value={options.spoilboardRegistrationDepthMm ?? 2.0}
+                            onChange={v => setOptions({ ...options, spoilboardRegistrationDepthMm: v })}
+                            className="w-full px-2 py-1 text-xs bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                          />
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          Alignment holes use the via drill bit ({options.viaDrillMm ?? 0.8}mm). Drop in resistor legs or header pins to register the flipped board.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="flex items-center justify-between">
                     <label className="flex items-center gap-1.5 cursor-pointer select-none">
                       <input
@@ -2298,27 +2454,49 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                         Start Milling
                       </button>
                     </div>
+
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Bottom Action Footer */}
-            <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-950/60 flex items-center justify-between gap-2">
-              {/* Whatever the last export had to say — a file written, or why
-                  the mask is not worth printing for this board. */}
-              <div className="flex flex-1 items-center gap-2 min-w-0">
-                {stencilNote && (
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate" title={stencilNote}>
-                    {stencilNote}
+            {/* Bottom Action Footer — pinned outside the scrolling tab
+                content above (see the column wrapper's overflow-hidden), so
+                these buttons never move under the pointer. The status line
+                is a fixed height for the same reason: it swaps its one line
+                of text between the Pro upsell, the last export's result, and
+                a hovered button's explanation, but never grows the footer to
+                fit any of them. */}
+            <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-950/60">
+              <div className="px-4 pt-2.5 h-8 flex items-center text-[11px] text-slate-500 dark:text-slate-400">
+                {showGerberUpsell ? (
+                  <span className="truncate flex items-center gap-1">
+                    <Star className="w-3 h-3 shrink-0 text-emerald-500" />
+                    Gerber export is part of PhysBox Pro —{' '}
+                    <a
+                      href="https://physbox.io/pro.html"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-emerald-600 dark:text-emerald-400 hover:underline font-semibold shrink-0"
+                    >
+                      See PhysBox Pro
+                    </a>
+                  </span>
+                ) : (
+                  <span className="truncate" title={gerberNote || stencilNote || hoveredFooterHint || undefined}>
+                    {gerberNote || stencilNote || hoveredFooterHint || ''}
                   </span>
                 )}
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="p-4 pt-1.5 flex flex-wrap items-center justify-end gap-2">
                 <button
                   onClick={handleFrameBoard}
                   disabled={!result.success || machineBusy}
+                  onMouseEnter={() => setHoveredFooterHint('Trace the board outline live with the spindle off, to check the blank before cutting.')}
+                  onMouseLeave={() => setHoveredFooterHint(null)}
+                  onFocus={() => setHoveredFooterHint('Trace the board outline live with the spindle off, to check the blank before cutting.')}
+                  onBlur={() => setHoveredFooterHint(null)}
                   className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm whitespace-nowrap"
                   title={`Trace the board outline live, ${airCutZOffset}mm above safe Z, with no spindle and no plunges — checks the blank is where the job thinks it is`}
                 >
@@ -2329,16 +2507,23 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                 <button
                   onClick={handleExportPasteStencil}
                   disabled={!result.success}
-                  className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs whitespace-nowrap"
+                  onMouseEnter={() => setHoveredFooterHint('Download a printable solder paste stencil for the SMD pads on this board.')}
+                  onMouseLeave={() => setHoveredFooterHint(null)}
+                  onFocus={() => setHoveredFooterHint('Download a printable solder paste stencil for the SMD pads on this board.')}
+                  onBlur={() => setHoveredFooterHint(null)}
+                  className="px-2 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 font-bold rounded flex items-center cursor-pointer text-xs"
                   title={PASTE_STENCIL_HINT}
                 >
-                  <Box className="w-3.5 h-3.5 shrink-0" />
-                  Export Paste Stencil
+                  <Box className="w-3.5 h-3.5" />
                 </button>
 
                 <button
                   onClick={handleExportShim}
                   disabled={!result.success}
+                  onMouseEnter={() => setHoveredFooterHint('Download the blank shim to laser the stencil out of.')}
+                  onMouseLeave={() => setHoveredFooterHint(null)}
+                  onFocus={() => setHoveredFooterHint('Download the blank shim to laser the stencil out of.')}
+                  onBlur={() => setHoveredFooterHint(null)}
                   className="px-2 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 font-bold rounded flex items-center cursor-pointer text-xs"
                   title={SHIM_HINT}
                 >
@@ -2348,6 +2533,10 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                 <button
                   onClick={handleStencilToEtch}
                   disabled={!result.success}
+                  onMouseEnter={() => setHoveredFooterHint('Send the stencil to Physbox Etch as vector artwork, to laser cut.')}
+                  onMouseLeave={() => setHoveredFooterHint(null)}
+                  onFocus={() => setHoveredFooterHint('Send the stencil to Physbox Etch as vector artwork, to laser cut.')}
+                  onBlur={() => setHoveredFooterHint(null)}
                   className="px-2 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 font-bold rounded flex items-center cursor-pointer text-xs"
                   title={ETCH_HINT}
                 >
@@ -2355,8 +2544,38 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                 </button>
 
                 <button
+                  onClick={() => void handleExportGerber()}
+                  disabled={!result.success}
+                  onMouseEnter={() =>
+                    setHoveredFooterHint(
+                      isProAccount()
+                        ? 'Export Gerber (RS-274X) + Excellon drill files, zipped, for a fab house like JLCPCB.'
+                        : 'Gerber export for JLCPCB and other fab houses — part of PhysBox Pro.'
+                    )
+                  }
+                  onMouseLeave={() => setHoveredFooterHint(null)}
+                  onFocus={() =>
+                    setHoveredFooterHint(
+                      isProAccount()
+                        ? 'Export Gerber (RS-274X) + Excellon drill files, zipped, for a fab house like JLCPCB.'
+                        : 'Gerber export for JLCPCB and other fab houses — part of PhysBox Pro.'
+                    )
+                  }
+                  onBlur={() => setHoveredFooterHint(null)}
+                  className="px-2 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 font-bold rounded flex items-center gap-1 cursor-pointer text-xs"
+                  title="Export Gerber (RS-274X) + Excellon drill files, zipped, for a fab house like JLCPCB"
+                >
+                  <Archive className="w-3.5 h-3.5" />
+                  {!isProAccount() && <Star className="w-2.5 h-2.5 text-emerald-500" />}
+                </button>
+
+                <button
                   onClick={handleMillBoard}
                   disabled={!result.success || machineBusy}
+                  onMouseEnter={() => setHoveredFooterHint('Start live isolation milling on the CNC machine over WebSerial.')}
+                  onMouseLeave={() => setHoveredFooterHint(null)}
+                  onFocus={() => setHoveredFooterHint('Start live isolation milling on the CNC machine over WebSerial.')}
+                  onBlur={() => setHoveredFooterHint(null)}
                   className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm whitespace-nowrap"
                   title="Start live isolation milling on CNC machine via Web Serial"
                 >

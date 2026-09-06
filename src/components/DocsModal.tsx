@@ -270,7 +270,7 @@ export function DocsModal({ onClose }: DocsModalProps) {
               <div className="prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 leading-relaxed">
                 <h3 className="text-2xl font-bold mb-4">PCB Milling &amp; Auto-Levelling</h3>
                 <p className="mb-4">
-                  <strong>Export &rarr; PCB Milling</strong> turns your schematic into a single-sided copper board:
+                  <strong>Export &rarr; PCB Milling</strong> turns your schematic into a single- or double-sided copper board:
                   it places footprints, routes traces, and generates isolation, drilling, and profile toolpaths.
                   The board is carved straight from the browser: the toolpaths are streamed to a GRBL machine
                   over WebSerial rather than saved out for another sender. The only file this app writes is the
@@ -348,6 +348,23 @@ export function DocsModal({ onClose }: DocsModalProps) {
                   &mdash; a new tool is a different length, so the old Z0 no longer means anything &mdash; and
                   press <strong>Resume</strong>. The heightmap itself stays valid across tool changes, because
                   the board has not moved.
+                </p>
+
+                <h4 className="text-xl font-semibold mb-2 mt-6">Double-Sided (2-Layer) Boards &amp; Alignment</h4>
+                <p className="mb-4">
+                  Select <strong>2 Layer (Double)</strong> at the top of the Layout tab to route traces across both Top (F.Cu) and Bottom (B.Cu) layers connected with vias. Double-sided milling uses physical alignment pins drilled directly into your spoilboard:
+                </p>
+                <ol className="list-decimal pl-6 mb-4 space-y-1">
+                  <li><strong>OP 1 &mdash; Top isolation:</strong> Routes top copper traces and SMD pads.</li>
+                  <li><strong>OP 2 &mdash; Drilling:</strong> Drills all through-holes, vias, and two alignment pin holes that plunge 2&nbsp;mm into the spoilboard using the existing via drill bit.</li>
+                  <li><strong>OP 3 &mdash; Flip pause:</strong> Machine parks and spindle stops. Insert two pins (e.g. 0.8&nbsp;mm resistor leg clippings or 0.64&nbsp;mm pin headers) into the spoilboard holes, flip the blank left-to-right onto the pins, re-clamp, re-zero Z on the fresh copper surface, and press Resume.</li>
+                  <li><strong>OP 4 &mdash; Bottom isolation:</strong> Routes bottom copper traces, automatically mirrored horizontally.</li>
+                  <li><strong>OP 5 &mdash; Profile cutout:</strong> Cuts the board perimeter to free the finished board.</li>
+                </ol>
+
+                <h4 className="text-xl font-semibold mb-2 mt-6">Pan &amp; Zoom Preview</h4>
+                <p className="mb-4">
+                  The board preview graphic supports interactive navigation: drag to pan, scroll the mouse wheel to zoom into traces and pads (anchored to your cursor), pinch-to-zoom on touchscreens, and double-click or use the floating controls to reset to fit. Use the layer buttons to toggle between Top (F.Cu), Bottom (B.Cu), and Both (Composite) views.
                 </p>
 
                 <h4 className="text-xl font-semibold mb-2 mt-6">Things that catch people out</h4>
