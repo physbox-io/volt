@@ -6,6 +6,7 @@ import {
   getEffectiveMcuConfig,
   createCustomMcuConfig,
   MCU_PRESETS,
+  mcuPackageId,
   rightColumnRunsUp,
   type McuGeometryConfig,
   type McuPinDef,
@@ -15,17 +16,46 @@ import {
 import { Plus, Trash2, Cpu, Wrench } from 'lucide-react';
 import { NumberInput } from '../NumberInput';
 
+/**
+ * Reads the pad-number field. Kept as a number when it is one, so a part typed
+ * in by hand matches the 1..N pads a generated footprint numbers, and as text
+ * when it is a designator such as `J2-12`. Blank clears it, which puts the pin
+ * back on its position in the list.
+ */
+function parsePinNumber(raw: string): number | string | undefined {
+  const text = raw.trim();
+  if (text === '') return undefined;
+  return /^\d+$/.test(text) ? parseInt(text, 10) : text;
+}
+
+/**
+ * Column widths, shared by the header strip and the pin rows below it. The
+ * three names a pin carries are easy to mix up, so the list is headed rather
+ * than left to tooltips — which means the two have to be laid out from the
+ * same numbers or the headings drift off their fields.
+ */
+const PIN_COL = {
+  // Two lines per pin: names on the first, placement on the second. One line
+  // did fit, but only by abbreviating the dropdowns down to single letters.
+  // `shrink-0` throughout, so a long label cannot squeeze a fixed column out
+  // from under its heading.
+  number: 'w-12 shrink-0',
+  id: 'w-16 shrink-0',
+  label: 'flex-1 min-w-0',
+  remove: 'w-6 shrink-0',
+  side: 'w-24 shrink-0',
+  type: 'flex-1 min-w-0',
+};
+
 export function MicrocontrollerProperties({ node, updateData }: NodePropertiesProps) {
   const config = getEffectiveMcuConfig(node.data);
   const [activeTab, setActiveTab] = useState<'code' | 'pins' | 'geometry'>('code');
 
   const setConfig = (newConfig: McuGeometryConfig) => {
     updateData('mcuConfig', newConfig);
-    // Also update packageId on the node so PCB exporter uses the matching footprint
-    updateData('packageId', newConfig.presetKey && newConfig.presetKey !== 'custom'
-      ? `MCU-${newConfig.presetKey.toUpperCase()}`
-      : `MCU-CUSTOM-${newConfig.pins.length}P`
-    );
+    // Also update packageId on the node so PCB exporter uses the matching
+    // footprint. Shared with the MCP bridge, which has to write the same pair.
+    updateData('packageId', mcuPackageId(newConfig));
   };
 
   const handlePresetChange = (presetKey: string) => {
@@ -209,50 +239,102 @@ export function MicrocontrollerProperties({ node, updateData }: NodePropertiesPr
               </button>
             </div>
 
+            {/*
+              A pin carries three names and they are not interchangeable: one
+              is milled onto the copper, one is what the rest of the app calls
+              the pin, one is only ever drawn. Saying so once here beats three
+              tooltips nobody hovers.
+            */}
+            <p className="text-[10px] text-gray-400 dark:text-slate-500 mb-1.5 leading-snug">
+              <span className="font-semibold text-gray-500 dark:text-slate-400">Pad</span> is the
+              number stamped on the PCB pad,{' '}
+              <span className="font-semibold text-gray-500 dark:text-slate-400">ID</span> is what
+              wires and your code address, and{' '}
+              <span className="font-semibold text-gray-500 dark:text-slate-400">Label</span> is the
+              name drawn beside the pin on the schematic. Leave Pad or Label blank to fall back to
+              the list position and the ID.
+            </p>
+
             <div className="max-h-64 overflow-y-auto border border-gray-200 dark:border-slate-800 rounded divide-y divide-gray-100 dark:divide-slate-800">
+              {/*
+                Sticky, because the list runs to 36 rows on a module like the
+                Heltec and a heading that scrolls away is no heading at all.
+              */}
+              <div className="sticky top-0 z-10 flex flex-col gap-1 p-1.5 bg-gray-50 dark:bg-slate-950 border-b border-gray-200 dark:border-slate-800 text-[9px] uppercase tracking-wide font-semibold text-gray-500 dark:text-slate-400">
+                <div className="flex items-center gap-1">
+                  <span className={PIN_COL.number} title="Pad number on the PCB">Pad</span>
+                  <span className={PIN_COL.id} title="What wires connect to and code addresses">ID</span>
+                  <span className={PIN_COL.label} title="Name drawn beside the pin on the schematic">Label</span>
+                  <span className={PIN_COL.remove} />
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className={PIN_COL.side}>Side</span>
+                  <span className={PIN_COL.type}>Type</span>
+                </div>
+              </div>
               {config.pins.map((pin, idx) => (
-                <div key={idx} className="p-1.5 flex items-center gap-1 text-xs bg-white dark:bg-slate-900">
-                  <div className="w-5 text-center text-[10px] font-mono text-gray-400">
-                    {idx + 1}
+                <div key={idx} className="p-1.5 flex flex-col gap-1 text-xs bg-white dark:bg-slate-900">
+                  <div className="flex items-center gap-1">
+                    {/* Physical pin number — what the pad is stamped with on the board. */}
+                    <input
+                      type="text"
+                      value={pin.pinNumber ?? ''}
+                      onChange={e => handleUpdatePin(idx, { pinNumber: parsePinNumber(e.target.value) })}
+                      placeholder={String(idx + 1)}
+                      title="Pad number on the PCB (blank = position in this list)"
+                      className={`${PIN_COL.number} text-[10px] font-mono px-1 py-0.5 border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400`}
+                    />
+                    {/* Pin ID */}
+                    <input
+                      type="text"
+                      value={pin.id}
+                      onChange={e => handleUpdatePin(idx, { id: e.target.value.trim() })}
+                      placeholder="ID"
+                      title="Handle id — what wires connect to and what code addresses"
+                      className={`${PIN_COL.id} text-xs font-mono font-bold px-1.5 py-0.5 border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200`}
+                    />
+                    {/* Schematic label */}
+                    <input
+                      type="text"
+                      value={pin.label ?? ''}
+                      onChange={e => handleUpdatePin(idx, { label: e.target.value })}
+                      placeholder={pin.id || 'Label'}
+                      title="Name drawn beside the pin on the schematic (blank = the id)"
+                      className={`${PIN_COL.label} text-xs font-mono px-1.5 py-0.5 border border-gray-200 dark:border-slate-700 rounded bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300`}
+                    />
+                    {/* Remove Pin Button */}
+                    <button
+                      onClick={() => handleRemovePin(idx)}
+                      title="Remove Pin"
+                      className={`${PIN_COL.remove} flex justify-center text-gray-400 hover:text-red-500 rounded transition-colors`}
+                    >
+                      <Trash2 size={12} />
+                    </button>
                   </div>
-                  {/* Pin ID */}
-                  <input
-                    type="text"
-                    value={pin.id}
-                    onChange={e => handleUpdatePin(idx, { id: e.target.value.trim() })}
-                    placeholder="ID"
-                    className="w-14 text-xs font-mono font-bold px-1.5 py-0.5 border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200"
-                  />
-                  {/* Side */}
-                  <select
-                    value={pin.side}
-                    onChange={e => handleUpdatePin(idx, { side: e.target.value as McuPinSide })}
-                    className="text-[11px] px-1 py-0.5 border border-gray-200 dark:border-slate-700 rounded bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 cursor-pointer"
-                  >
-                    <option value="left">Left</option>
-                    <option value="right">Right</option>
-                    <option value="top">Top</option>
-                    <option value="bottom">Bottom</option>
-                  </select>
-                  {/* Type */}
-                  <select
-                    value={pin.type}
-                    onChange={e => handleUpdatePin(idx, { type: e.target.value as McuPinType })}
-                    className="text-[11px] px-1 py-0.5 border border-gray-200 dark:border-slate-700 rounded bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 cursor-pointer flex-1"
-                  >
-                    <option value="io">IO</option>
-                    <option value="analog">Analog</option>
-                    <option value="power">Power</option>
-                    <option value="ground">GND</option>
-                  </select>
-                  {/* Remove Pin Button */}
-                  <button
-                    onClick={() => handleRemovePin(idx)}
-                    title="Remove Pin"
-                    className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"
-                  >
-                    <Trash2 size={12} />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {/* Side */}
+                    <select
+                      value={pin.side}
+                      onChange={e => handleUpdatePin(idx, { side: e.target.value as McuPinSide })}
+                      className={`${PIN_COL.side} text-[11px] px-1 py-0.5 border border-gray-200 dark:border-slate-700 rounded bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 cursor-pointer`}
+                    >
+                      <option value="left">Left</option>
+                      <option value="right">Right</option>
+                      <option value="top">Top</option>
+                      <option value="bottom">Bottom</option>
+                    </select>
+                    {/* Type */}
+                    <select
+                      value={pin.type}
+                      onChange={e => handleUpdatePin(idx, { type: e.target.value as McuPinType })}
+                      className={`${PIN_COL.type} text-[11px] px-1 py-0.5 border border-gray-200 dark:border-slate-700 rounded bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 cursor-pointer`}
+                    >
+                      <option value="io">IO</option>
+                      <option value="analog">Analog</option>
+                      <option value="power">Power</option>
+                      <option value="ground">GND</option>
+                    </select>
+                  </div>
                 </div>
               ))}
             </div>

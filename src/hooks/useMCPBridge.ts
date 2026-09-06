@@ -9,6 +9,16 @@ import { toPng } from 'html-to-image';
 import { presets as builtinPresets } from '../utils/presets';
 import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey, loadMachiningSettings } from '../utils/storage';
 import { generatePcbLayout, type PcbOptions } from '../utils/pcbExporter';
+import {
+  MCU_PACKAGE_STYLES,
+  MCU_PIN_SIDES,
+  MCU_PIN_TYPES,
+  MCU_PRESETS,
+  getEffectiveMcuConfig,
+  mcuPackageId,
+  validateMcuConfig,
+  type McuGeometryConfig,
+} from '../utils/mcuConfig';
 
 interface BridgeProps {
   nodes: Node[];
@@ -332,6 +342,143 @@ export function useMCPBridge(props: BridgeProps) {
               : n
           ));
           return { ok: true, id };
+        }
+
+        /*
+          The MCU presets, so a caller can start from a real part rather than
+          assembling 36 pins by hand.
+        */
+        case 'LIST_MCU_PRESETS':
+          return MCU_PRESETS.map(p => ({
+            key: p.key,
+            name: p.name,
+            description: p.description,
+            style: p.config.style,
+            pinCount: p.config.pins.length,
+            isSmd: p.config.isSmd,
+            pins: p.config.pins.map(pin => pin.id),
+          }));
+
+        /*
+          A microcontroller, defined outright: its pins, its package geometry
+          and its program, in one call.
+
+          UPDATE_COMPONENT can already merge an `mcuConfig` into a node's data,
+          but doing it that way asks the caller to get three things right that
+          are not obvious and fail quietly when they are wrong. The packageId
+          has to be rewritten alongside the config, or the footprint resolver
+          keeps milling the old package. The pin ids are the handles every wire
+          is attached by, so renaming one strands its edge on a handle that no
+          longer exists. And nothing validated the config at all: a repeated
+          pinNumber puts two nets on one hole, a missing rowSpacingMm mills a
+          dual-row part at the wrong pitch.
+
+          So this call: starts from a preset or from what the node already has,
+          applies pins/geometry/code over it, refuses a config that will not
+          work and says why, writes the packageId to match, and reports any
+          wire left dangling by a renamed pin.
+        */
+        case 'DEFINE_MCU': {
+          const id = msg.nodeId || msg.id;
+          if (typeof id !== 'string' || !id) return { ok: false, error: 'nodeId is required' };
+          const existing = nodes.find(n => n.id === id);
+          if (!existing) return { ok: false, error: `No component with id '${id}'` };
+          if (existing.type !== 'mcu') {
+            return {
+              ok: false,
+              error: `'${id}' is a ${existing.type}, not an mcu — a type cannot be changed in place, so add an mcu node and delete this one`,
+            };
+          }
+
+          // A preset is a starting point, not a filter: pins and geometry are
+          // applied over it, and any of them makes the part a custom one.
+          let base: McuGeometryConfig;
+          if (msg.presetKey !== undefined) {
+            const preset = MCU_PRESETS.find(p => p.key === msg.presetKey);
+            if (!preset) {
+              return {
+                ok: false,
+                error: `Unknown presetKey '${msg.presetKey}'`,
+                presetKeys: MCU_PRESETS.map(p => p.key),
+              };
+            }
+            base = { ...preset.config, pins: preset.config.pins.map(p => ({ ...p })) };
+          } else {
+            base = getEffectiveMcuConfig(existing.data);
+          }
+
+          const geometry = (msg.geometry ?? {}) as Partial<McuGeometryConfig>;
+          if (typeof geometry !== 'object' || Array.isArray(geometry)) {
+            return { ok: false, error: 'geometry must be an object of McuGeometryConfig fields' };
+          }
+          if (msg.pins !== undefined && !Array.isArray(msg.pins)) {
+            return { ok: false, error: 'pins must be an array of { id, label, type, side, pinNumber? }' };
+          }
+          const pins = (msg.pins ?? base.pins) as McuGeometryConfig['pins'];
+          const customised = msg.pins !== undefined || Object.keys(geometry).length > 0;
+
+          const config: McuGeometryConfig = {
+            ...base,
+            ...geometry,
+            pins,
+            pinCount: pins.length,
+            presetKey: customised ? 'custom' : (msg.presetKey ?? base.presetKey),
+          };
+
+          const { errors, warnings } = validateMcuConfig(config);
+          if (errors.length > 0) {
+            return {
+              ok: false,
+              error: `mcuConfig is not usable: ${errors[0]}`,
+              errors,
+              warnings,
+              pinSides: MCU_PIN_SIDES,
+              pinTypes: MCU_PIN_TYPES,
+              styles: MCU_PACKAGE_STYLES,
+            };
+          }
+
+          const packageId = mcuPackageId(config);
+          const pinIds = new Set(pins.map(p => p.id));
+          const dangling = edges
+            .filter(e =>
+              (e.source === id && e.sourceHandle != null && !pinIds.has(e.sourceHandle)) ||
+              (e.target === id && e.targetHandle != null && !pinIds.has(e.targetHandle))
+            )
+            .map(e => ({
+              id: e.id,
+              handle: e.source === id ? e.sourceHandle : e.targetHandle,
+              otherEnd: e.source === id ? e.target : e.source,
+            }));
+
+          setNodes(nds => nds.map(n =>
+            n.id === id
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    mcuConfig: config,
+                    packageId,
+                    ...(typeof msg.code === 'string' ? { code: msg.code } : {}),
+                    ...(typeof msg.label === 'string' ? { label: msg.label } : {}),
+                  },
+                }
+              : n
+          ));
+
+          return {
+            ok: true,
+            id,
+            presetKey: config.presetKey,
+            style: config.style,
+            pinCount: pins.length,
+            packageId,
+            pins: pins.map(p => p.id),
+            warnings,
+            // Named rather than counted: each one is a wire the caller now has
+            // to re-attach, and it cannot do that without knowing which.
+            danglingEdges: dangling,
+          };
         }
 
         /*

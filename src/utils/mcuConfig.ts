@@ -90,6 +90,141 @@ export const DEFAULT_MCU_CONFIG: McuGeometryConfig = {
   ],
 };
 
+/** Every value {@link McuPinDef.type} accepts. */
+export const MCU_PIN_TYPES: McuPinType[] = ['io', 'digital', 'analog', 'power', 'ground'];
+/** Every value {@link McuPinDef.side} accepts. */
+export const MCU_PIN_SIDES: McuPinSide[] = ['left', 'right', 'top', 'bottom'];
+/** Every value {@link McuGeometryConfig.style} accepts. */
+export const MCU_PACKAGE_STYLES: McuPackageStyle[] = [
+  'dip', 'header_1x', 'header_2x', 'header_matrix', 'quad', 'custom',
+];
+
+/**
+ * The `packageId` that belongs with a config.
+ *
+ * It has to be written whenever the config is, because `resolveFootprint`
+ * consults packageId first: a part left carrying `DIP-8` from before its pins
+ * were redefined keeps being milled as a DIP-8, silently, however many pads it
+ * now declares. Both the properties panel and the MCP bridge go through here so
+ * there is one answer rather than two.
+ */
+export function mcuPackageId(config: McuGeometryConfig): string {
+  return config.presetKey && config.presetKey !== 'custom'
+    ? `MCU-${config.presetKey.toUpperCase()}`
+    : `MCU-CUSTOM-${config.pins.length}P`;
+}
+
+export interface McuConfigCheck {
+  /** Reasons the config cannot be used. Empty means it is safe to apply. */
+  errors: string[];
+  /** Things that are legal but probably not meant. */
+  warnings: string[];
+}
+
+/**
+ * Checks a config before it is written to a node.
+ *
+ * The properties panel cannot produce most of these — its inputs are typed and
+ * its pins come from a preset — but a config posted over the MCP bridge is
+ * whatever the caller assembled, and a bad one fails late and quietly: pins
+ * dropped for want of a pad, two nets landing on one hole, a footprint milled
+ * at the wrong pitch. Cheaper to refuse it here and say why.
+ */
+export function validateMcuConfig(config: McuGeometryConfig): McuConfigCheck {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!Array.isArray(config.pins) || config.pins.length === 0) {
+    errors.push('pins must be a non-empty array — a part with no pins has nothing to wire to');
+    return { errors, warnings };
+  }
+
+  if (!MCU_PACKAGE_STYLES.includes(config.style)) {
+    errors.push(`style '${config.style}' is not one of: ${MCU_PACKAGE_STYLES.join(', ')}`);
+  }
+
+  // Handles are matched case-insensitively when a pin is mapped onto its pad,
+  // so ids that differ only in case are a collision even though the edges that
+  // carry them are distinct.
+  const seenId = new Map<string, number>();
+  const seenPin = new Map<string, number>();
+  config.pins.forEach((pin, i) => {
+    const where = `pins[${i}]`;
+    if (typeof pin?.id !== 'string' || pin.id.trim() === '') {
+      errors.push(`${where}.id is required — it is the handle wires connect to and the name code addresses`);
+    } else {
+      const key = pin.id.trim().toLowerCase();
+      const first = seenId.get(key);
+      if (first !== undefined) {
+        errors.push(`${where}.id '${pin.id}' repeats pins[${first}].id — pin ids must be unique`);
+      } else {
+        seenId.set(key, i);
+      }
+    }
+    if (pin?.label !== undefined && typeof pin.label !== 'string') {
+      errors.push(`${where}.label must be a string`);
+    }
+    if (!MCU_PIN_SIDES.includes(pin?.side)) {
+      errors.push(`${where}.side '${pin?.side}' is not one of: ${MCU_PIN_SIDES.join(', ')}`);
+    }
+    if (!MCU_PIN_TYPES.includes(pin?.type)) {
+      errors.push(`${where}.type '${pin?.type}' is not one of: ${MCU_PIN_TYPES.join(', ')}`);
+    }
+    if (pin?.pinNumber !== undefined) {
+      const num = String(pin.pinNumber).trim();
+      if (num === '') {
+        errors.push(`${where}.pinNumber is empty — omit it to fall back to the pin's position`);
+      } else {
+        const first = seenPin.get(num);
+        if (first !== undefined) {
+          errors.push(
+            `${where}.pinNumber '${num}' repeats pins[${first}].pinNumber — two pins on one pad short together`
+          );
+        } else {
+          seenPin.set(num, i);
+        }
+      }
+    }
+  });
+
+  const positive: (keyof McuGeometryConfig)[] = [
+    'widthMm', 'heightMm', 'pitchMm', 'padWidthMm', 'padHeightMm',
+  ];
+  for (const key of positive) {
+    const value = config[key] as number;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      errors.push(`${String(key)} must be a positive number, got ${JSON.stringify(value)}`);
+    }
+  }
+  if (config.drillDiaMm !== undefined && (!Number.isFinite(config.drillDiaMm) || config.drillDiaMm < 0)) {
+    errors.push(`drillDiaMm must be zero or more, got ${JSON.stringify(config.drillDiaMm)}`);
+  }
+
+  const dualRow = config.style === 'dip' || config.style === 'header_2x' || config.style === 'header_matrix';
+  if (dualRow && !(typeof config.rowSpacingMm === 'number' && config.rowSpacingMm > 0)) {
+    errors.push(`rowSpacingMm is required for a '${config.style}' part — it is the distance between the two rows`);
+  }
+  if (!config.isSmd && (config.drillDiaMm ?? 0) <= 0) {
+    errors.push('a through-hole part needs drillDiaMm above zero — set isSmd for a part with no holes');
+  }
+  if (config.isSmd && (config.drillDiaMm ?? 0) > 0) {
+    warnings.push('isSmd is set but drillDiaMm is not zero; the pads will be drilled');
+  }
+  if (config.pinCount !== undefined && config.pinCount !== config.pins.length) {
+    warnings.push(
+      `pinCount (${config.pinCount}) disagrees with pins.length (${config.pins.length}); pins.length wins`
+    );
+  }
+  if (config.style !== 'quad' && config.pins.some(p => p.side === 'top' || p.side === 'bottom')) {
+    warnings.push(`pins on the top or bottom edge are only laid out for style 'quad'`);
+  }
+  if (config.pinNumbering !== undefined && !['dual-column', 'counterclockwise'].includes(config.pinNumbering)) {
+    errors.push(`pinNumbering must be 'dual-column' or 'counterclockwise'`);
+  }
+
+  return { errors, warnings };
+}
+
 export interface McuPreset {
   key: string;
   name: string;

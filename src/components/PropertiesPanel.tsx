@@ -352,7 +352,7 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
       At `lg` this is a permanent column (`lg:relative`), where neither applies.
     */
     <aside
-      className={`absolute inset-y-0 right-0 w-64 max-lg:max-w-[80vw] glass-panel border-l border-slate-200 dark:border-slate-800 p-4 bg-white/95 dark:bg-slate-900/95 shadow-xl lg:shadow-none z-40 max-lg:z-[110] lg:relative lg:z-10 overflow-y-auto transition-colors max-lg:transition-transform max-lg:duration-200 ${
+      className={`absolute inset-y-0 right-0 w-88 max-lg:max-w-[80vw] glass-panel border-l border-slate-200 dark:border-slate-800 p-4 bg-white/95 dark:bg-slate-900/95 shadow-xl lg:shadow-none z-40 max-lg:z-[110] lg:relative lg:z-10 overflow-y-auto transition-colors max-lg:transition-transform max-lg:duration-200 ${
         // Below `lg` the drawer waits off the right-hand edge until it is asked
         // for. `pointer-events-none` as well as the translate, so that a panel
         // parked off screen cannot swallow taps meant for the canvas.
