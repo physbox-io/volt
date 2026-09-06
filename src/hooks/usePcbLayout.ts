@@ -60,6 +60,27 @@ const projectEdges = (edges: Edge[]) =>
   );
 
 /**
+ * Completed layouts, keyed by the inputs that produced them.
+ *
+ * Module-level, because the hook unmounts with the export dialog: without this
+ * a user who closes the panel and reopens it pays for a full place-and-route
+ * again to look at the same board. A handful of entries is enough to cover
+ * flipping a setting and flipping it back; the oldest is dropped past that.
+ */
+const layoutCache = new Map<string, PcbLayoutResult>();
+// A result carries its G-code with it, so these are not small. Four is enough
+// to hold the board either side of a setting the user is toggling.
+const LAYOUT_CACHE_LIMIT = 4;
+
+function rememberLayout(key: string, result: PcbLayoutResult) {
+  layoutCache.delete(key);
+  layoutCache.set(key, result);
+  while (layoutCache.size > LAYOUT_CACHE_LIMIT) {
+    layoutCache.delete(layoutCache.keys().next().value as string);
+  }
+}
+
+/**
  * Runs `generatePcbLayout` in a worker, keeping the UI responsive while a dense
  * board is routed. Falls back to a synchronous layout where workers are not
  * available.
@@ -76,28 +97,43 @@ export function usePcbLayout(
   // fields — a full re-place-and-route is far too expensive to run per keystroke.
   debounceMs = 450
 ): PcbLayoutState {
-  const [state, setState] = useState<PcbLayoutState>(() => ({
-    result: emptyPcbLayout(options, 'Routing…'),
-    isRouting: true,
-    progress: null,
-    hasResult: false,
-  }));
-
-  const workerRef = useRef<Worker | null>(null);
-  const supported = useRef(typeof Worker !== 'undefined');
-
   // A stable key for the inputs, so unrelated re-renders do not re-route.
   const payload = useMemo(
     () => ({ nodes: projectNodes(nodes), edges: projectEdges(edges), options }),
     [nodes, edges, options]
   );
+  const cacheKey = useMemo(() => JSON.stringify(payload), [payload]);
+
+  const [state, setState] = useState<PcbLayoutState>(() => {
+    const cached = layoutCache.get(cacheKey);
+    return cached
+      ? { result: cached, isRouting: false, progress: null, hasResult: true }
+      : {
+          result: emptyPcbLayout(options, 'Routing…'),
+          isRouting: true,
+          progress: null,
+          hasResult: false,
+        };
+  });
+
+  const workerRef = useRef<Worker | null>(null);
+  const supported = useRef(typeof Worker !== 'undefined');
 
   useEffect(() => {
     let cancelled = false;
 
+    // Already routed these exact inputs — show that result rather than paying
+    // for the same search again.
+    const cached = layoutCache.get(cacheKey);
+    if (cached) {
+      setState({ result: cached, isRouting: false, progress: null, hasResult: true });
+      return;
+    }
+
     const runSync = () => {
       try {
         const result = generatePcbLayout(payload.nodes as never, payload.edges as never, options);
+        rememberLayout(cacheKey, result);
         if (cancelled) return;
         setState({ result, isRouting: false, progress: null, hasResult: true });
       } catch (err) {
@@ -146,6 +182,7 @@ export function usePcbLayout(
           return;
         }
         if (msg.ok === true) {
+          rememberLayout(cacheKey, msg.result as PcbLayoutResult);
           setState({
             result: msg.result as PcbLayoutResult,
             isRouting: false,
@@ -192,7 +229,7 @@ export function usePcbLayout(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [payload, debounceMs]);
+  }, [payload, cacheKey, debounceMs]);
 
   useEffect(() => () => workerRef.current?.terminate(), []);
 
