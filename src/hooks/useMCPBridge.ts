@@ -334,6 +334,44 @@ export function useMCPBridge(props: BridgeProps) {
           return { ok: true, id };
         }
 
+        /*
+          One component, removed, with the wires that ran to it.
+
+          Deleting used to mean sending the whole canvas back through
+          SET_NODES minus one entry — the same stale-copy problem
+          UPDATE_COMPONENT exists to avoid, and worse here: dropping a part
+          from that list leaves every wire that ran to it behind, dangling
+          from a node that is no longer there. Those orphans still carry
+          connectivity, so a board keeps routing to a part nobody can see.
+        */
+        case 'DELETE_COMPONENT': {
+          // nodeId first, for the same reason UPDATE_COMPONENT does it.
+          const raw = msg.nodeIds ?? msg.nodeId ?? msg.id;
+          const ids = (Array.isArray(raw) ? raw : [raw])
+            .filter((v): v is string => typeof v === 'string' && v.length > 0);
+          if (ids.length === 0) {
+            return { ok: false, error: 'nodeId (or nodeIds) is required' };
+          }
+
+          // Every id is checked before anything is removed: a request naming
+          // one part that does not exist is a mistake worth reporting, not a
+          // reason to half-apply the rest of it.
+          const missing = ids.filter(id => !nodes.some(n => n.id === id));
+          if (missing.length > 0) {
+            return { ok: false, error: `No component with id ${missing.map(m => `'${m}'`).join(', ')}` };
+          }
+
+          const doomed = new Set(ids);
+          const removedEdges = edges
+            .filter(e => doomed.has(e.source) || doomed.has(e.target))
+            .map(e => e.id);
+
+          setNodes(nds => nds.filter(n => !doomed.has(n.id)));
+          setEdges(eds => eds.filter(e => !doomed.has(e.source) && !doomed.has(e.target)));
+          clearStalePresetCard();
+          return { ok: true, deleted: ids, removedEdges };
+        }
+
         case 'SET_EDGES':
           if (!Array.isArray(msg.edges)) return { ok: false, error: 'edges must be array' };
           setEdges(msg.edges);
