@@ -744,14 +744,45 @@ export function scorePlacement(
     const o = padOffset(spec, comp.rotationDeg);
     return { x: comp.x + o.dx, y: comp.y + o.dy };
   };
+
+  /**
+   * Where a pad's trace can actually get to, which is not "straight at the
+   * other pad".
+   *
+   * On a 2.54mm header with 1.8mm pads, a trace plus its clearances is wider
+   * than the gap between neighbours, so nothing can leave sideways: every pin
+   * in a row escapes outward, away from the part, and anything else it needs to
+   * reach it reaches by going around. Modelling nets as straight pad-to-pad
+   * lines misses that completely - it has traces passing through the middle of
+   * a module where no copper can go - and the score built on it preferred
+   * exactly the tight placements that leave no room to go around.
+   */
+  const escapeFrom = (nodeId: string, at: { x: number; y: number }) => {
+    const comp = compById.get(nodeId);
+    if (!comp) return at;
+    const hw = comp.widthMm / 2;
+    const hh = comp.heightMm / 2;
+    const dx = at.x - comp.x;
+    const dy = at.y - comp.y;
+    // Out through whichever edge the pad is nearest.
+    const outX = hw - Math.abs(dx);
+    const outY = hh - Math.abs(dy);
+    const clear = 1.0;
+    return outX < outY
+      ? { x: comp.x + Math.sign(dx || 1) * (hw + clear), y: at.y }
+      : { x: at.x, y: comp.y + Math.sign(dy || 1) * (hh + clear) };
+  };
   const segments: { netId: string; ax: number; ay: number; bx: number; by: number }[] = [];
   let hpwl = 0;
 
   for (const net of nets) {
     const pts: { x: number; y: number }[] = [];
+    const escapes: { x: number; y: number }[] = [];
     for (const port of net.ports) {
       const at = portAt(port.nodeId, port.handleId);
-      if (at) pts.push(at);
+      if (!at) continue;
+      pts.push(at);
+      escapes.push(escapeFrom(port.nodeId, at));
     }
     if (pts.length < 2) continue;
 
@@ -777,7 +808,12 @@ export function scorePlacement(
       }
       if (bj < 0) break;
       inTree[bj] = true;
-      segments.push({ netId: net.id, ax: pts[bi].x, ay: pts[bi].y, bx: pts[bj].x, by: pts[bj].y });
+      // pad -> its escape point -> the other escape point -> that pad.
+      const ea = escapes[bi];
+      const eb = escapes[bj];
+      segments.push({ netId: net.id, ax: pts[bi].x, ay: pts[bi].y, bx: ea.x, by: ea.y });
+      segments.push({ netId: net.id, ax: ea.x, ay: ea.y, bx: eb.x, by: eb.y });
+      segments.push({ netId: net.id, ax: eb.x, ay: eb.y, bx: pts[bj].x, by: pts[bj].y });
     }
   }
 
@@ -1246,12 +1282,66 @@ export function generatePcbLayout(
       heightMm: rot === 90 ? c.footprint.widthMm : c.footprint.heightMm,
     });
 
+    // The arrangement the schematic implies, in the same normalised form the
+    // placer derives internally — the origin for every structured variant.
+    let sMinX = Infinity, sMaxX = -Infinity, sMinY = Infinity, sMaxY = -Infinity;
+    for (const c of inputs) {
+      sMinX = Math.min(sMinX, c.schematicX); sMaxX = Math.max(sMaxX, c.schematicX);
+      sMinY = Math.min(sMinY, c.schematicY); sMaxY = Math.max(sMaxY, c.schematicY);
+    }
+    const baseNorm = inputs.map(c => ({
+      x: sMaxX > sMinX ? (c.schematicX - sMinX) / (sMaxX - sMinX) : 0.5,
+      y: sMaxY > sMinY ? (c.schematicY - sMinY) / (sMaxY - sMinY) : 0.5,
+    }));
+
+    // Structured candidates first. The arrangements that route are structured -
+    // a connector moved to the other side of the module, the whole layout
+    // turned - and uniform noise is a poor way to look for those. So the search
+    // starts from the schematic's own arrangement and walks its neighbourhood:
+    // the eight reflections and quarter turns of the layout as a whole, each
+    // combined with swapping any two parts between their slots.
+    const dihedral: ((p: { x: number; y: number }) => { x: number; y: number })[] = [
+      p => p,
+      p => ({ x: 1 - p.x, y: p.y }),
+      p => ({ x: p.x, y: 1 - p.y }),
+      p => ({ x: 1 - p.x, y: 1 - p.y }),
+      p => ({ x: p.y, y: p.x }),
+      p => ({ x: 1 - p.y, y: p.x }),
+      p => ({ x: p.y, y: 1 - p.x }),
+      p => ({ x: 1 - p.y, y: 1 - p.x }),
+    ];
+    const swaps: [number, number][] = [];
+    for (let i = 0; i < inputs.length; i++) {
+      for (let j = i + 1; j < inputs.length; j++) swaps.push([i, j]);
+    }
+
+    const structured: PlacementSeed[] = [];
+    for (const d of dihedral) {
+      for (const swap of [null, ...swaps]) {
+        const norm = baseNorm.map(d);
+        if (swap) {
+          const [i, j] = swap;
+          [norm[i], norm[j]] = [norm[j], norm[i]];
+        }
+        structured.push({ norm, rotations: inputs.map(c => c.rotationDeg) });
+        // The same arrangement with every part turned a quarter turn: on a
+        // board this size which way a connector faces decides whether its pins
+        // escape towards what they connect to or away from it.
+        structured.push({
+          norm: norm.map(n => ({ ...n })),
+          rotations: inputs.map(c => (c.rotationDeg === 90 ? 0 : 90)),
+        });
+      }
+    }
+
     const shortlist: { seed: PlacementSeed; trial: PlacementInput[]; score: number }[] = [];
-    for (let k = 0; k < candidateCount; k++) {
-      const seed: PlacementSeed = {
-        norm: inputs.map(() => ({ x: rng(), y: rng() })),
-        rotations: inputs.map(c => (rng() < 0.5 ? c.rotationDeg : c.rotationDeg === 90 ? 0 : 90)),
-      };
+    for (let k = 0; k < candidateCount + structured.length; k++) {
+      const seed: PlacementSeed = k < structured.length
+        ? structured[k]
+        : {
+            norm: inputs.map(() => ({ x: rng(), y: rng() })),
+            rotations: inputs.map(c => (rng() < 0.5 ? c.rotationDeg : c.rotationDeg === 90 ? 0 : 90)),
+          };
       const trial = inputs.map((c, i) => rotate(c, seed.rotations[i]));
       // Warnings are thrown away here: these are hypotheticals, and only the
       // arrangement that actually gets used should have anything to say.
@@ -1829,30 +1919,40 @@ function placeAndRoute(
       type Plan = { netId: string; x: number; y: number; along: { x: number; y: number } };
       const plans: Plan[] = [];
 
-      const cross = (
-        p1: Pt, p2: Pt, p3: Pt, p4: Pt
-      ): Pt | null => {
-        const d = (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x);
-        if (Math.abs(d) < 1e-9) return null;
-        const t = ((p3.x - p1.x) * (p4.y - p3.y) - (p3.y - p1.y) * (p4.x - p3.x)) / d;
-        const u = ((p3.x - p1.x) * (p2.y - p1.y) - (p3.y - p1.y) * (p2.x - p1.x)) / d;
-        if (t < 0 || t > 1 || u < 0 || u > 1) return null;
-        return { x: p1.x + t * (p2.x - p1.x), y: p1.y + t * (p2.y - p1.y) };
-      };
 
+      // Every segment of every other net is a candidate to lift onto a wire,
+      // not only the ones that cross the straight line between the two pads.
+      // That line is a poor guide here: a pin in the middle of an 18-pin row
+      // cannot escape sideways at all - the gap between adjacent pads is
+      // narrower than a trace plus its clearances - so the run that failed was
+      // never going to be straight, and what blocks it is whatever wraps around
+      // the module, which the straight line misses entirely.
+      const midX = (from.x + to.x) / 2;
+      const midY = (from.y + to.y) / 2;
+      const ranked: { plan: Plan; rank: number }[] = [];
       for (const tr of routing.traces) {
         if (tr.netId === fail.netId) continue;
         for (let i = 0; i < tr.points.length - 1; i++) {
-          const hit = cross(from, to, tr.points[i], tr.points[i + 1]);
-          if (!hit) continue;
-          const sx = tr.points[i + 1].x - tr.points[i].x;
-          const sy = tr.points[i + 1].y - tr.points[i].y;
-          const sl = Math.hypot(sx, sy) || 1;
-          // Pads sit along the blocking trace, so the gap between them lies
-          // across the path that could not get through.
-          plans.push({ netId: tr.netId, x: hit.x, y: hit.y, along: { x: sx / sl, y: sy / sl } });
+          const p0 = tr.points[i], p1 = tr.points[i + 1];
+          const cx = (p0.x + p1.x) / 2, cy = (p0.y + p1.y) / 2;
+          const sx = p1.x - p0.x, sy = p1.y - p0.y;
+          const sl = Math.hypot(sx, sy);
+          // A jumper has to span the pad pitch to be worth fitting, so a stub
+          // shorter than the footprint cannot usefully be broken here.
+          if (sl < footprint.widthMm) continue;
+          // Prefer segments between the two ends that could not be joined, and
+          // near the midpoint of the run rather than out at the board edge.
+          const rank =
+            Math.hypot(cx - midX, cy - midY) +
+            0.5 * Math.min(Math.hypot(cx - from.x, cy - from.y), Math.hypot(cx - to.x, cy - to.y));
+          ranked.push({
+            plan: { netId: tr.netId, x: cx, y: cy, along: { x: sx / sl, y: sy / sl } },
+            rank,
+          });
         }
       }
+      ranked.sort((a, b) => a.rank - b.rank);
+      plans.push(...ranked.map(r => r.plan));
 
       // Failing back: hop the blocked net itself out of wherever it is stuck.
       for (const anchor of [to, from]) {
