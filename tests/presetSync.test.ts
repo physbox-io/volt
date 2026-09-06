@@ -24,7 +24,7 @@ vi.mock('../src/utils/cloudSync', () => ({
   removeCloudPreset: vi.fn(),
 }));
 
-import { addUserPreset, mergePulledPresets, loadUserPresets, type CircuitPreset } from '../src/utils/storage';
+import { addUserPreset, mergePulledPresets, loadUserPresets, nameToKey, type CircuitPreset } from '../src/utils/storage';
 
 const preset = (label: string, savedAt?: number): CircuitPreset => ({
   name: label,
@@ -90,5 +90,21 @@ describe('addUserPreset', () => {
     addUserPreset('user_a', preset('local'));
     expect(mergePulledPresets({ user_a: preset('cloud', 1000) })).toBe(0);
     expect(labelOf('user_a')).toBe('local');
+  });
+});
+
+describe('nameToKey', () => {
+  it('prefixes a plain name', () => {
+    expect(nameToKey('TeknoBox Final')).toBe('user_teknobox_final');
+  });
+
+  it('is idempotent, so saving over a listed preset overwrites it', () => {
+    // Presets are listed by key, so the obvious thing to do with a name read
+    // off that list is pass it back to save over it. Prefixing unconditionally
+    // turned user_teknobox_fixed into user_user_teknobox_fixed and forked a
+    // second preset, leaving the first looking as though it had been reverted.
+    const key = nameToKey('teknobox_final');
+    expect(nameToKey(key)).toBe(key);
+    expect(nameToKey('user_teknobox_fixed')).toBe('user_teknobox_fixed');
   });
 });

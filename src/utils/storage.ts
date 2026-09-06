@@ -153,8 +153,23 @@ export function mergePulledPresets(pulled: Record<string, CircuitPreset>): numbe
 }
 
 /** Derive a safe localStorage key from a user-supplied name */
+/**
+ * Storage key for a user preset, from its display name.
+ *
+ * Idempotent on purpose. Presets are *listed* by key, so the obvious thing to
+ * do with a name read off that list is pass it straight back to save over it -
+ * and prefixing unconditionally turned `user_teknobox_fixed` into
+ * `user_user_teknobox_fixed`, quietly forking a second preset instead of
+ * overwriting the first. The original then looked as though something had
+ * reverted it, which is a genuinely hard thing to diagnose from the outside.
+ *
+ * The cost is that a preset a person deliberately names "user something"
+ * cannot have its own `user_user_` key. That is a far smaller problem than a
+ * save that silently goes somewhere else.
+ */
 export function nameToKey(name: string): string {
-  return 'user_' + name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  return slug.startsWith('user_') ? slug : 'user_' + slug;
 }
 
 // ─── Machining settings ──────────────────────────────────────────────────────
