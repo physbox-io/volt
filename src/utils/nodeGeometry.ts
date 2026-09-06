@@ -68,16 +68,49 @@ const REVERSIBLE_TYPES = [
   'voltage', 'acvoltage', 'currentsource', 'jumper',
 ];
 
-/** Whether `nodeType` has two leads that can trade places. */
-export function canReverseLeads(nodeType: string): boolean {
+/**
+ * Whether the part's terminals can trade places under wires that stay put.
+ *
+ * A pin header qualifies too, and for the same reason a diode does: its pads
+ * are an ordered sequence, and which end of the strip pin 1 sits at is a real
+ * decision that rotation cannot make. Turning a header round carries the
+ * numbering with it, so the wire on pin 1 is still on pin 1 - it has merely
+ * walked to the other end of the body. Reversing is the other thing a person
+ * means when they turn a header round: the wires stay where they are and the
+ * numbering runs the other way, which is what happens when a ribbon cable is
+ * seated from the opposite end. A 1x1 header has nothing to reverse.
+ */
+export function canReverseLeads(nodeType: string, data?: unknown): boolean {
+  if (nodeType === 'pinheader') return pinHeaderPadCount(data) > 1;
   return REVERSIBLE_TYPES.includes(nodeType);
 }
 
 /** The handle an edge moves to when the part is turned end-for-end, if any. */
-export function remapHandleForReverse(nodeType: string, handleId: string): string | null {
-  if (!canReverseLeads(nodeType)) return null;
+export function remapHandleForReverse(
+  nodeType: string,
+  handleId: string,
+  data?: unknown
+): string | null {
+  if (!canReverseLeads(nodeType, data)) return null;
+  if (nodeType === 'pinheader') {
+    // Half a turn of the pad grid is a point reflection, so pad n's opposite
+    // number is the nth pad counted from the far end - which for two rows
+    // swaps the rows as well as the ends, exactly as the body's own half turn
+    // does. Pairing them that way is what keeps every wire on the copper it
+    // was already on.
+    const count = pinHeaderPadCount(data);
+    const n = Number(handleId);
+    if (!Number.isInteger(n) || n < 1 || n > count) return null;
+    const next = String(count + 1 - n);
+    return next !== handleId ? next : null;
+  }
   const next = LEAD_PAIR_REMAP[handleId];
   return next && next !== handleId ? next : null;
+}
+
+function pinHeaderPadCount(data?: unknown): number {
+  const { rows, cols } = getPinHeaderGeometry(data);
+  return rows * cols;
 }
 
 /**
@@ -114,6 +147,7 @@ export function rotateOrientation(nodeType: string, orientation: unknown): strin
 
 import { getEffectiveMcuConfig } from './mcuConfig';
 import {
+  getPinHeaderGeometry,
   getPinHeaderHandles,
   pinHeaderPadOffset,
   pinHeaderPadSide,

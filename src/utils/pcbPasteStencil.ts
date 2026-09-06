@@ -32,8 +32,7 @@ import {
   effectivePadMarginMm,
   padPolygon,
   type PcbLayoutResult,
-  type PcbOptions,
-} from './pcbExporter';
+  type PcbOptions, type Rotation } from './pcbExporter';
 
 export interface PasteStencilOptions {
   /**
@@ -176,7 +175,7 @@ function apertures(
   options: PcbOptions,
   stencil: PasteStencilOptions
 ): { list: Aperture[]; skippedTht: number } {
-  const rotationById = new Map<string, 0 | 90>();
+  const rotationById = new Map<string, Rotation>();
   const footprintById = new Map<string, (typeof result.components)[number]['footprint']>();
   for (const comp of result.components) {
     rotationById.set(comp.id, comp.rotationDeg);

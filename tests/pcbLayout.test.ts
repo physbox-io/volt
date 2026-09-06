@@ -18,6 +18,8 @@ import {
   groupDrillsByBit,
   DEFAULT_PCB_OPTIONS,
   type PcbLayoutResult,
+  layoutArrangement,
+  coarseRoutability,
 } from '../src/utils/pcbExporter';
 
 const OPTS = { ...DEFAULT_PCB_OPTIONS, autoGrowBoard: true };
@@ -317,23 +319,98 @@ describe('the placement search', () => {
     expect(run(false).completion).toBeLessThan(1);
     expect(run(true).completion).toBe(1);
   });
+});
 
-  it('picks the arrangement its own proxy scores better', () => {
-    // Guards the proxy against the outcome. If a searched placement routes
-    // better but scores worse, the shortlist is being ordered by something that
-    // does not predict single-layer routability, and the search would be
-    // spending its routing budget on the wrong candidates — as it was when this
-    // score was computed over part centres, where nets sharing a module all
-    // radiate from one point and no two of them can ever be found to cross.
-    const base = run(false);
-    const searched = run(true);
-    const score = (r: PcbLayoutResult) =>
-      scorePlacement(r.components, r.nets, {
-        traceWidthMm: OPTS.traceWidthMm,
-        clearanceMm: OPTS.clearanceMm,
-        boardWidthMm: r.boardWidthMm,
-        boardHeightMm: r.boardHeightMm,
-      });
-    expect(score(searched)).toBeLessThan(score(base));
+describe('the placement search, on arrangements of known routability', () => {
+  // Two arrangements of the same carrier board, measured by actually routing
+  // them: BREAKOUT-R below the Heltec routes completely, to its right leaves
+  // GPIO41 unroutable. The search's two ranking stages have to agree. For a
+  // long time nothing did — scored on straight pad-to-pad lines the unroutable
+  // one won by an order of magnitude, because a compact placement has short
+  // lines that seldom cross while the real router needs long detours around
+  // pad rows that do.
+  const J2 = ['GND1', 'VIN', 'VE1', 'VE2', 'GPIO_44', 'GPIO_43', 'RST', 'GPIO_0', 'GPIO_36',
+    'GPIO_35', 'GPIO_34', 'GPIO_33', 'GPIO_47', 'GPIO_48', 'GPIO_26', 'GPIO_21', 'GPIO_20', 'GPIO_19'];
+  const J3 = ['GND2', '3V3', '3V3_2', 'GPIO_37', 'GPIO_46', 'GPIO_45', 'GPIO_42', 'GPIO_41', 'GPIO_40',
+    'GPIO_39', 'GPIO_38', 'GPIO_1', 'GPIO_2', 'GPIO_3', 'GPIO_4', 'GPIO_5', 'GPIO_6', 'GPIO_7'];
+  const pins = [
+    ...J2.map((id, i) => ({ id, label: id, type: 'io', side: 'left', pinNumber: `J2-${i + 1}` })),
+    ...J3.map((id, i) => ({ id, label: id, type: 'io', side: 'right', pinNumber: `J3-${i + 1}` })),
+  ];
+
+  const board = (boRightAt: { x: number; y: number }) => ({
+    nodes: [
+      { id: 'heltec1', type: 'mcu', position: { x: 300, y: 240 }, data: { label: 'Heltec', mcuConfig: {
+        presetKey: 'heltec_v4', style: 'header_2x', pinCount: 36, widthMm: 25.5, heightMm: 47.88,
+        pitchMm: 2.54, rowSpacingMm: 22.86, isSmd: false, drillDiaMm: 1,
+        padWidthMm: 1.8, padHeightMm: 1.8, pins } } },
+      { id: 'bo_left', type: 'pinheader', position: { x: 60, y: 300 }, data: { rows: 1, cols: 5, pitchMm: 2.54 } },
+      { id: 'bo_right', type: 'pinheader', position: boRightAt, data: { rows: 1, cols: 4, pitchMm: 2.54, orientation: 'vertical' } },
+      { id: 'bme280', type: 'pinheader', position: { x: 1000, y: 260 }, data: { rows: 1, cols: 4, pitchMm: 2.54 } },
+      { id: 'gnd1', type: 'ground', position: { x: 300, y: 780 }, data: {} },
+    ],
+    edges: ([
+      ['e1', 'bme280', '3V3', '1'], ['e2', 'bme280', 'GND1', '2'],
+      ['e3', 'bme280', 'GPIO_7', '3'], ['e4', 'bme280', 'GPIO_6', '4'],
+      ['e5', 'gnd1', 'GND1', 'in'],
+      ['e6', 'bo_left', 'GPIO_1', '1'], ['e7', 'bo_left', 'GPIO_2', '2'], ['e8', 'bo_left', 'GPIO_3', '3'],
+      ['e9', 'bo_left', 'GPIO_4', '4'], ['e10', 'bo_left', 'GPIO_5', '5'],
+      ['e11', 'bo_right', 'VIN', '1'], ['e12', 'bo_right', 'GND2', '2'],
+      ['e13', 'bo_right', 'GPIO_33', '3'], ['e14', 'bo_right', 'GPIO_41', '4'],
+    ] as [string, string, string, string][]).map(([id, target, sourceHandle, targetHandle]) =>
+      ({ id, source: 'heltec1', target, sourceHandle, targetHandle, type: 'smoothstep' })),
+  });
+
+  const BELOW = { x: 420, y: 700 };
+  const RIGHT = { x: 700, y: 300 };
+
+  // The board the search sees: placed as a candidate would be, at the tightest
+  // spread that fits, before any crop. A token routing budget is enough to get
+  // the arrangement out — these assert the ranking stages, not the route.
+  const arrangement = (boRightAt: { x: number; y: number }) => {
+    const b = board(boRightAt);
+    return layoutArrangement(b.nodes as never, b.edges as never, { ...OPTS, routingBudgetMs: 50 });
+  };
+  const scoreOf = (boRightAt: { x: number; y: number }) => {
+    const r = arrangement(boRightAt);
+    return scorePlacement(r.components, r.nets, {
+      ...OPTS,
+      boardWidthMm: r.boardWidthMm,
+      boardHeightMm: r.boardHeightMm,
+    });
+  };
+  const coarseOf = (boRightAt: { x: number; y: number }) => {
+    const r = arrangement(boRightAt);
+    // A generous budget: the pass stops as soon as the board routes, and the
+    // point is what it finds, not how fast the machine running the tests is.
+    return coarseRoutability(r.components, r.boardWidthMm, r.boardHeightMm, r.nets, OPTS, 3000);
+  };
+
+  it('is not thrown away as an overlap before it is scored', () => {
+    // The seed board is sized from the parts, and at the tightest spread it
+    // cannot hold the connector on the far side of the module. Every candidate
+    // that put it there was discarded as overlapping — the arrangement the
+    // search exists to find, never once scored — until candidates were allowed
+    // the wider spreads the main attempts already use.
+    expect(arrangement(BELOW).overlaps).toBe(0);
+  });
+
+  it('scores the arrangement that actually routes better', () => {
+    expect(scoreOf(BELOW)).toBeLessThan(scoreOf(RIGHT));
+  });
+
+  it('routes the arrangement that actually routes, coarsely, and not the other', () => {
+    expect(coarseOf(BELOW).completion).toBe(1);
+    expect(coarseOf(RIGHT).completion).toBeLessThan(1);
+  });
+
+  it('finds an arrangement that routes, from the one that does not', () => {
+    // The TeknoBox carrier as drawn: 7 of 108 hand-tried arrangements routed,
+    // and the schematic's own is not one of them.
+    const b = board(RIGHT);
+    const r = generatePcbLayout(b.nodes as never, b.edges as never,
+      { ...OPTS, placementSearch: true, routingBudgetMs: 3000 });
+    expect(r.completion).toBe(1);
+    expect(r.warnings.some(w => /overlap/i.test(w))).toBe(false);
   });
 });

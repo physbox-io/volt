@@ -97,6 +97,37 @@ describe('reverse leads', () => {
     expect(remapHandleForReverse('voltage', 'pos')).toBe('neg');
   });
 
+  it('runs a header\'s pad numbering the other way', () => {
+    const data = header('horizontal', 1, 5).data;
+    expect(canReverseLeads('pinheader', data)).toBe(true);
+    expect(remapHandleForReverse('pinheader', '1', data)).toBe('5');
+    expect(remapHandleForReverse('pinheader', '5', data)).toBe('1');
+    // The middle pad of an odd strip is its own opposite: nothing to rewrite.
+    expect(remapHandleForReverse('pinheader', '3', data)).toBeNull();
+    // Two rows reverse as one grid, so pin 1 pairs with the far corner.
+    const dual = header('horizontal', 2, 3).data;
+    expect(remapHandleForReverse('pinheader', '1', dual)).toBe('6');
+    expect(remapHandleForReverse('pinheader', '4', dual)).toBe('3');
+  });
+
+  it('leaves every header pad where its opposite number was', () => {
+    // What makes the swap safe: after the body's half turn, pad n+1-p sits
+    // exactly where pad p was, so no wire has to move.
+    for (const [rows, cols] of [[1, 5], [2, 3]] as const) {
+      const before = header('horizontal', rows, cols).data;
+      const after = header(reverseOrientation('horizontal'), rows, cols).data;
+      for (let p = 1; p <= rows * cols; p++) {
+        expect(pinHeaderPadOffset(after, rows * cols + 1 - p))
+          .toEqual(pinHeaderPadOffset(before, p));
+      }
+    }
+  });
+
+  it('offers nothing to reverse on a single-pad header', () => {
+    expect(canReverseLeads('pinheader', header('horizontal', 1, 1).data)).toBe(false);
+    expect(remapHandleForReverse('pinheader', '1', header('horizontal', 1, 1).data)).toBeNull();
+  });
+
   it('will not rewrite a lead that has no opposite number', () => {
     // A speaker's ground stays underneath whichever way the body faces, and
     // 'out' is not a terminal it has at all.

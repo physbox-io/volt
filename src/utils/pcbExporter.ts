@@ -48,6 +48,7 @@ import {
   type RoutedTrace,
   type UnroutedConnection,
   type RouteProgress,
+  type RouterOptions,
 } from './pcbRouter';
 
 export interface PcbOptions {
@@ -188,13 +189,17 @@ export interface PcbOptions {
    * without overlapping something.
    *
    * Runs only when the straightforward attempt has failed, so a board that
-   * already routes costs nothing. Cheap proxy scoring shortlists candidates
-   * (wirelength, and crossings between nets - the thing that actually stops a
-   * single layer), then the shortlist is genuinely routed and the best kept, so
-   * the answer is verified rather than predicted.
+   * already routes costs nothing. Candidates are ranked by the router itself
+   * on a coarse grid - one pass to shortlist, a short budgeted run to order
+   * the shortlist - then the best few are genuinely routed and the best kept,
+   * so the answer is verified rather than predicted.
    */
   placementSearch?: boolean;
-  /** Candidates to score cheaply before shortlisting. Defaults to 240. */
+  /**
+   * Random candidates to score after the structured ones, at most. The
+   * scoring stage is also bounded by half the routing budget, so a large
+   * board may not get through them all. Defaults to 240.
+   */
   placementCandidates?: number;
   /** How many of the shortlist to actually route. Defaults to 3. */
   placementRouteTop?: number;
@@ -316,7 +321,7 @@ export interface PlacedComponent {
   type: string;
   x: number;                 // Board absolute X of the footprint origin (mm)
   y: number;                 // Board absolute Y of the footprint origin (mm)
-  rotationDeg: 0 | 90;
+  rotationDeg: Rotation;
   footprint: ComponentFootprint;
   widthMm: number;           // Courtyard after rotation
   heightMm: number;
@@ -449,14 +454,32 @@ export function effectivePadMarginMm(footprint: ComponentFootprint, requestedMm:
 }
 
 /** Applies a footprint's pad offset, honouring 90-degree rotation. */
+/**
+ * A footprint's orientation on the board, in quarter turns. The half turns
+ * matter as much as the quarter turns for a connector: pin 1 at one end of the
+ * strip or the other decides which way its traces have to wrap.
+ */
+export type Rotation = 0 | 90 | 180 | 270;
+
 function padOffset(
   spec: PadSpec,
-  rotationDeg: 0 | 90
+  rotationDeg: Rotation
 ): { dx: number; dy: number; w: number; h: number } {
-  if (rotationDeg === 90) {
-    return { dx: -spec.y, dy: spec.x, w: spec.padHeight, h: spec.padWidth };
+  switch (rotationDeg) {
+    case 90: return { dx: -spec.y, dy: spec.x, w: spec.padHeight, h: spec.padWidth };
+    case 180: return { dx: -spec.x, dy: -spec.y, w: spec.padWidth, h: spec.padHeight };
+    case 270: return { dx: spec.y, dy: -spec.x, w: spec.padHeight, h: spec.padWidth };
+    default: return { dx: spec.x, dy: spec.y, w: spec.padWidth, h: spec.padHeight };
   }
-  return { dx: spec.x, dy: spec.y, w: spec.padWidth, h: spec.padHeight };
+}
+
+/** Courtyard size of a footprint turned by `rot`. */
+function turnedSize(footprint: ComponentFootprint, rot: Rotation): { widthMm: number; heightMm: number } {
+  const swap = rot === 90 || rot === 270;
+  return {
+    widthMm: swap ? footprint.heightMm : footprint.widthMm,
+    heightMm: swap ? footprint.widthMm : footprint.heightMm,
+  };
 }
 
 /**
@@ -467,7 +490,7 @@ function padOffset(
  * an annulus that the drill removes entirely, leaving the joint with nothing to
  * solder to.
  */
-export function padPolygon(pad: PlacedPad, rotationDeg: 0 | 90, marginMm = 0): Poly {
+export function padPolygon(pad: PlacedPad, rotationDeg: Rotation, marginMm = 0): Poly {
   const { w: rawW, h: rawH } = padOffset(pad.spec, rotationDeg);
   const drill = pad.spec.drillDiameter || 0;
   const grow = Math.max(marginMm, 0);
@@ -493,7 +516,7 @@ interface PlacementInput {
   type: string;
   schematicX: number;
   schematicY: number;
-  rotationDeg: 0 | 90;
+  rotationDeg: Rotation;
   footprint: ComponentFootprint;
   widthMm: number;
   heightMm: number;
@@ -511,7 +534,7 @@ interface PlacementInput {
  */
 export interface PlacementSeed {
   norm: { x: number; y: number }[];
-  rotations: (0 | 90)[];
+  rotations: Rotation[];
 }
 
 function placeComponents(
@@ -705,19 +728,23 @@ function placeComponents(
 }
 
 /**
- * Cheap routability proxy for a candidate placement. Lower is better.
+ * Cheap routability score for a candidate placement. Lower is better.
  *
- * Wirelength alone is a poor predictor for a single-layer board: what stops one
- * routing is not length but nets having to cross each other. So the dominant
- * term is an estimated crossing count - each net reduced to a spanning tree
- * over the parts it touches, then segments of different nets tested for
- * intersection - with half-perimeter wirelength only breaking ties between
- * placements that cross equally badly.
+ * It is the real router, run once: a single net ordering on a grid one track
+ * pitch wide, no rip-up, no budget. Every formula tried before it rewarded
+ * compactness - short straight lines seldom cross, but the router cannot go
+ * through a pad row, and the detours it takes are what collide - and a
+ * hand-built negotiated router at the same cost still deadlocked on nets that
+ * have to move together. One pass of the router itself sees the same board the
+ * full pass will (the space under a dual-row module included, which is
+ * routable and which the earlier courtyard-blocking grids walled off), at a
+ * tenth of the cells, in about the time the formula took. Measured on fifteen
+ * arrangements of one carrier board it ranked them at a Kendall tau of 0.61
+ * against the full routing pass, with both routable arrangements first; the
+ * best hand-built score managed 0.26 and ranked them fifth.
  *
- * Part centres stand in for pad positions. That is coarse, but this score only
- * has to rank candidates well enough to put a routable one in the shortlist;
- * the shortlist is then actually routed, so a mistake here costs a wasted
- * routing pass rather than a wrong answer.
+ * Unrouted connections lead; trace length only breaks ties between placements
+ * that route equally well, never a reason to prefer one that routes worse.
  */
 export function scorePlacement(
   placed: PlacedComponent[],
@@ -727,165 +754,42 @@ export function scorePlacement(
     clearanceMm: number;
     boardWidthMm: number;
     boardHeightMm: number;
+    routingGridMm?: number;
+    profileToolDiaMm?: number;
+    padMarginMm?: number;
   }
 ): number {
-  const compById = new Map(placed.map(c => [c.id, c]));
-  // Pad positions, not part centres. Nearly every net on a carrier board runs
-  // from the module to something else, so at part-centre resolution they all
-  // radiate from one point and no two of them can ever be found to cross -
-  // which silently reduced this whole score to wirelength.
-  const portAt = (nodeId: string, handleId: string): { x: number; y: number } | null => {
-    const comp = compById.get(nodeId);
-    if (!comp) return null;
-    const mapping = resolveHandleToPin(comp.type, handleId, comp.footprint, comp.data);
-    if (!mapping) return { x: comp.x, y: comp.y };
-    const spec = comp.footprint.pads[mapping.padIndex];
-    if (!spec) return { x: comp.x, y: comp.y };
-    const o = padOffset(spec, comp.rotationDeg);
-    return { x: comp.x + o.dx, y: comp.y + o.dy };
+  const full: PcbOptions = { ...DEFAULT_PCB_OPTIONS, ...opts };
+  const { routePins, obstacles } = routingProblem(placed, nets, full, []);
+  const r = routeBoard(routePins, {
+    ...coarseRouterOptions(full, opts.boardWidthMm, opts.boardHeightMm),
+    obstacles,
+    budgetMs: 0,
+  });
+  let lengthMm = 0;
+  for (const t of r.traces) {
+    for (let i = 0; i + 1 < t.points.length; i++) {
+      lengthMm += Math.hypot(t.points[i + 1].x - t.points[i].x, t.points[i + 1].y - t.points[i].y);
+    }
+  }
+  return r.unrouted.length * 1000 + lengthMm * 0.05;
+}
+
+/** Router settings for a pass at one cell per track pitch. */
+function coarseRouterOptions(
+  opts: PcbOptions,
+  boardWidthMm: number,
+  boardHeightMm: number
+): Omit<RouterOptions, 'obstacles' | 'budgetMs'> {
+  return {
+    boardWidthMm,
+    boardHeightMm,
+    gridMm: Math.max(opts.routingGridMm, opts.traceWidthMm + opts.clearanceMm),
+    traceWidthMm: opts.traceWidthMm,
+    clearanceMm: opts.clearanceMm,
+    edgeClearanceMm: Math.max(1.0, opts.profileToolDiaMm),
+    bendPenalty: 1.5,
   };
-
-  /**
-   * Where a pad's trace can actually get to, which is not "straight at the
-   * other pad".
-   *
-   * On a 2.54mm header with 1.8mm pads, a trace plus its clearances is wider
-   * than the gap between neighbours, so nothing can leave sideways: every pin
-   * in a row escapes outward, away from the part, and anything else it needs to
-   * reach it reaches by going around. Modelling nets as straight pad-to-pad
-   * lines misses that completely - it has traces passing through the middle of
-   * a module where no copper can go - and the score built on it preferred
-   * exactly the tight placements that leave no room to go around.
-   */
-  const escapeFrom = (nodeId: string, at: { x: number; y: number }) => {
-    const comp = compById.get(nodeId);
-    if (!comp) return at;
-    const hw = comp.widthMm / 2;
-    const hh = comp.heightMm / 2;
-    const dx = at.x - comp.x;
-    const dy = at.y - comp.y;
-    // Out through whichever edge the pad is nearest.
-    const outX = hw - Math.abs(dx);
-    const outY = hh - Math.abs(dy);
-    const clear = 1.0;
-    return outX < outY
-      ? { x: comp.x + Math.sign(dx || 1) * (hw + clear), y: at.y }
-      : { x: at.x, y: comp.y + Math.sign(dy || 1) * (hh + clear) };
-  };
-  const segments: { netId: string; ax: number; ay: number; bx: number; by: number }[] = [];
-  let hpwl = 0;
-
-  for (const net of nets) {
-    const pts: { x: number; y: number }[] = [];
-    const escapes: { x: number; y: number }[] = [];
-    for (const port of net.ports) {
-      const at = portAt(port.nodeId, port.handleId);
-      if (!at) continue;
-      pts.push(at);
-      escapes.push(escapeFrom(port.nodeId, at));
-    }
-    if (pts.length < 2) continue;
-
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const p of pts) {
-      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
-      minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
-    }
-    hpwl += maxX - minX + (maxY - minY);
-
-    // Prim's, on points rather than pins — the same tree the router will have
-    // to realise in copper.
-    const inTree = [true, ...new Array(pts.length - 1).fill(false)];
-    for (let added = 1; added < pts.length; added++) {
-      let bi = -1, bj = -1, bd = Infinity;
-      for (let i = 0; i < pts.length; i++) {
-        if (!inTree[i]) continue;
-        for (let j = 0; j < pts.length; j++) {
-          if (inTree[j]) continue;
-          const d = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
-          if (d < bd) { bd = d; bi = i; bj = j; }
-        }
-      }
-      if (bj < 0) break;
-      inTree[bj] = true;
-      // pad -> its escape point -> the other escape point -> that pad.
-      const ea = escapes[bi];
-      const eb = escapes[bj];
-      segments.push({ netId: net.id, ax: pts[bi].x, ay: pts[bi].y, bx: ea.x, by: ea.y });
-      segments.push({ netId: net.id, ax: ea.x, ay: ea.y, bx: eb.x, by: eb.y });
-      segments.push({ netId: net.id, ax: eb.x, ay: eb.y, bx: pts[bj].x, by: pts[bj].y });
-    }
-  }
-
-  const side = (ax: number, ay: number, bx: number, by: number, px: number, py: number) =>
-    Math.sign((bx - ax) * (py - ay) - (by - ay) * (px - ax));
-
-  let crossings = 0;
-  for (let i = 0; i < segments.length; i++) {
-    for (let j = i + 1; j < segments.length; j++) {
-      const a = segments[i], b = segments[j];
-      if (a.netId === b.netId) continue;
-      const d1 = side(a.ax, a.ay, a.bx, a.by, b.ax, b.ay);
-      const d2 = side(a.ax, a.ay, a.bx, a.by, b.bx, b.by);
-      const d3 = side(b.ax, b.ay, b.bx, b.by, a.ax, a.ay);
-      const d4 = side(b.ax, b.ay, b.bx, b.by, a.bx, a.by);
-      if (d1 !== d2 && d3 !== d4) crossings++;
-    }
-  }
-
-  // Congestion. Crossings and wirelength together still prefer the tightest
-  // packing available, and a tight packing is exactly what leaves the router
-  // nowhere to work: the shortlist filled up with compact placements that
-  // routed no better than the schematic's. So demand is binned over a coarse
-  // grid and measured against what each bin can physically carry - a cell of
-  // side s fits s/(trace+clearance) parallel tracks of length s - and only the
-  // overflow is charged for. Under capacity this term is silent, which is what
-  // keeps it from re-introducing a bias towards sprawl.
-  const BINS = 8;
-  const cellW = Math.max(1e-6, opts.boardWidthMm / BINS);
-  const cellH = Math.max(1e-6, opts.boardHeightMm / BINS);
-  const pitch = Math.max(1e-6, opts.traceWidthMm + opts.clearanceMm);
-  const demand = new Float64Array(BINS * BINS);
-
-  // Capacity is the FREE area of a cell, not its area. Counting the whole cell
-  // treats the ground under a module as routable, so every cell came out under
-  // capacity and the term never fired at all - which is precisely the case it
-  // exists to catch, since packing parts together is what removes the room the
-  // router needs.
-  const capacity = new Float64Array(BINS * BINS);
-  for (let gy = 0; gy < BINS; gy++) {
-    for (let gx = 0; gx < BINS; gx++) {
-      const x0 = gx * cellW, x1 = x0 + cellW;
-      const y0 = gy * cellH, y1 = y0 + cellH;
-      let occupied = 0;
-      for (const c of placed) {
-        const ox = Math.max(0, Math.min(x1, c.x + c.widthMm / 2) - Math.max(x0, c.x - c.widthMm / 2));
-        const oy = Math.max(0, Math.min(y1, c.y + c.heightMm / 2) - Math.max(y0, c.y - c.heightMm / 2));
-        occupied += ox * oy;
-      }
-      const free = Math.max(0, cellW * cellH - occupied);
-      capacity[gy * BINS + gx] = free / pitch;
-    }
-  }
-
-  for (const seg of segments) {
-    const dist = Math.hypot(seg.bx - seg.ax, seg.by - seg.ay);
-    const steps = Math.max(1, Math.ceil(dist / Math.min(cellW, cellH)));
-    const per = dist / steps;
-    for (let k = 0; k < steps; k++) {
-      const f = (k + 0.5) / steps;
-      const gx = Math.min(BINS - 1, Math.max(0, Math.floor((seg.ax + (seg.bx - seg.ax) * f) / cellW)));
-      const gy = Math.min(BINS - 1, Math.max(0, Math.floor((seg.ay + (seg.by - seg.ay) * f) / cellH)));
-      demand[gy * BINS + gx] += per;
-    }
-  }
-
-  let overflow = 0;
-  for (let i = 0; i < demand.length; i++) {
-    if (demand[i] > capacity[i]) overflow += demand[i] - capacity[i];
-  }
-
-  return crossings * 1000 + overflow * 20 + hpwl;
 }
 
 /**
@@ -1169,6 +1073,76 @@ export interface LayoutProgress extends RouteProgress {
   totalAttempts: number;
 }
 
+/** One placement input per physical node: footprint, size and orientation. */
+function placementInputs(physicalNodes: Node[]): PlacementInput[] {
+  return physicalNodes.map((node, idx) => {
+    const data = (node.data ?? {}) as {
+      orientation?: string;
+      packageId?: string;
+      pins?: number;
+      label?: string;
+      name?: string;
+    };
+    const orientation = data.orientation;
+    const rotationDeg: Rotation =
+      orientation === 'vertical' || orientation === 'up' ? 90 : 0;
+    const footprint = resolveFootprint(data.packageId, node.type, data.pins || 2, node.data);
+    return {
+      id: node.id || `comp_${idx}`,
+      name: data.label || data.name || node.id || `C${idx + 1}`,
+      type: node.type || 'unknown',
+      schematicX: node.position?.x ?? 0,
+      schematicY: node.position?.y ?? 0,
+      rotationDeg,
+      footprint,
+      ...turnedSize(footprint, rotationDeg),
+      data: node.data,
+    };
+  });
+}
+
+/**
+ * One arrangement, placed and routed exactly as the placement search would
+ * evaluate it: at the tightest spread that fits, on the placement board,
+ * before any crop. This exists for the harness in src/test_placement_proxy.ts, which
+ * measures the search's ranking stages against the truth of a full routing
+ * pass, and needs both to see the same board.
+ */
+export function layoutArrangement(
+  circuitNodes: Node[],
+  circuitEdges: Edge[],
+  userOptions?: Partial<PcbOptions>,
+  seed?: PlacementSeed
+): {
+  components: PlacedComponent[];
+  boardWidthMm: number;
+  boardHeightMm: number;
+  nets: PcbNet[];
+  overlaps: number;
+  completion: number;
+  unrouted: number;
+} {
+  const options: PcbOptions = { ...DEFAULT_PCB_OPTIONS, ...userOptions };
+  const physicalNodes = (circuitNodes || []).filter(n => isPhysical(n.type));
+  const { nets } = extractNets(circuitNodes || [], circuitEdges || []);
+  const inputs = placementInputs(physicalNodes);
+  // The tightest spread whose courtyards do not collide, as the search does.
+  let attempt: LayoutAttempt | null = null;
+  for (const spread of [1, 1.4, 1.8]) {
+    attempt = placeAndRoute(inputs, nets, options, Math.max(0, options.routingBudgetMs), undefined, spread, seed);
+    if (attempt.overlaps === 0) break;
+  }
+  return {
+    components: attempt!.placed,
+    boardWidthMm: attempt!.boardWidthMm,
+    boardHeightMm: attempt!.boardHeightMm,
+    nets,
+    overlaps: attempt!.overlaps,
+    completion: attempt!.routing.completion,
+    unrouted: attempt!.routing.unrouted.length,
+  };
+}
+
 export function generatePcbLayout(
   circuitNodes: Node[],
   circuitEdges: Edge[],
@@ -1194,31 +1168,7 @@ export function generatePcbLayout(
   const { nets, warnings: netWarnings } = extractNets(nodes, edges);
   warnings.push(...netWarnings);
 
-  const inputs: PlacementInput[] = physicalNodes.map((node, idx) => {
-    const data = (node.data ?? {}) as {
-      orientation?: string;
-      packageId?: string;
-      pins?: number;
-      label?: string;
-      name?: string;
-    };
-    const orientation = data.orientation;
-    const rotationDeg: 0 | 90 =
-      orientation === 'vertical' || orientation === 'up' ? 90 : 0;
-    const footprint = resolveFootprint(data.packageId, node.type, data.pins || 2, node.data);
-    return {
-      id: node.id || `comp_${idx}`,
-      name: data.label || data.name || node.id || `C${idx + 1}`,
-      type: node.type || 'unknown',
-      schematicX: node.position?.x ?? 0,
-      schematicY: node.position?.y ?? 0,
-      rotationDeg,
-      footprint,
-      widthMm: rotationDeg === 90 ? footprint.heightMm : footprint.widthMm,
-      heightMm: rotationDeg === 90 ? footprint.widthMm : footprint.heightMm,
-      data: node.data,
-    };
-  });
+  const inputs = placementInputs(physicalNodes);
 
   // 2-4. Place and route. An unroutable net is usually a space problem, so
   // retry on a progressively larger board and keep the best attempt.
@@ -1275,12 +1225,30 @@ export function generatePcbLayout(
       return rngState / 0x7fffffff;
     };
 
-    const rotate = (c: PlacementInput, rot: 0 | 90): PlacementInput => ({
+    const rotate = (c: PlacementInput, rot: Rotation): PlacementInput => ({
       ...c,
       rotationDeg: rot,
-      widthMm: rot === 90 ? c.footprint.heightMm : c.footprint.widthMm,
-      heightMm: rot === 90 ? c.footprint.widthMm : c.footprint.heightMm,
+      ...turnedSize(c.footprint, rot),
     });
+    const ROTATIONS: Rotation[] = [0, 90, 180, 270];
+
+    // Place a candidate at the tightest spread whose courtyards do not
+    // collide. The seed board is sized from the parts' areas, and at the
+    // tightest spread it cannot hold a connector moved to the far side of a
+    // long module - the one arrangement the search exists to find. It was
+    // being discarded here as an overlap, before it was ever scored. Board
+    // area is cheap: with auto-sizing on, the crop takes the blank laminate
+    // back off afterwards.
+    const SPREADS = [1, 1.4, 1.8];
+    const placeCandidate = (trial: PlacementInput[], seed: PlacementSeed) => {
+      for (const spread of SPREADS) {
+        const probe = placeComponents(trial, options, [], spread, seed);
+        if (probe.overlaps === 0) return { probe, spread };
+      }
+      return null;
+    };
+    const turned = (r: Rotation, quarters: number): Rotation =>
+      ROTATIONS[(ROTATIONS.indexOf(r) + quarters) % 4];
 
     // The arrangement the schematic implies, in the same normalised form the
     // placer derives internally — the origin for every structured variant.
@@ -1294,12 +1262,11 @@ export function generatePcbLayout(
       y: sMaxY > sMinY ? (c.schematicY - sMinY) / (sMaxY - sMinY) : 0.5,
     }));
 
-    // Structured candidates first. The arrangements that route are structured -
-    // a connector moved to the other side of the module, the whole layout
-    // turned - and uniform noise is a poor way to look for those. So the search
-    // starts from the schematic's own arrangement and walks its neighbourhood:
-    // the eight reflections and quarter turns of the layout as a whole, each
-    // combined with swapping any two parts between their slots.
+    // Structured candidates first, most useful first, because the scoring
+    // stage is bounded by time and a large board does not get through them
+    // all. The arrangements that route are structured - a connector moved to
+    // the other side of the module, a header turned end-for-end - and uniform
+    // noise is a poor way to look for those.
     const dihedral: ((p: { x: number; y: number }) => { x: number; y: number })[] = [
       p => p,
       p => ({ x: 1 - p.x, y: p.y }),
@@ -1314,45 +1281,89 @@ export function generatePcbLayout(
     for (let i = 0; i < inputs.length; i++) {
       for (let j = i + 1; j < inputs.length; j++) swaps.push([i, j]);
     }
-
+    const baseRotations = inputs.map(c => c.rotationDeg);
     const structured: PlacementSeed[] = [];
-    for (const d of dihedral) {
-      for (const swap of [null, ...swaps]) {
-        const norm = baseNorm.map(d);
-        if (swap) {
-          const [i, j] = swap;
-          [norm[i], norm[j]] = [norm[j], norm[i]];
+
+    // 1. One part moved on its own into open board area - each cell of a 3x3
+    // grid over the board, each way round - with the rest left where they
+    // are. Reflections, turns and swaps rearrange the parts among the slots
+    // the schematic already uses; none of them can express this, and it is
+    // the move that fixes a connector sitting on the wrong side of a module.
+    for (let i = 0; i < inputs.length; i++) {
+      for (let gy = 0; gy < 3; gy++) {
+        for (let gx = 0; gx < 3; gx++) {
+          const at = { x: gx / 2, y: gy / 2 };
+          if (Math.abs(at.x - baseNorm[i].x) < 0.05 && Math.abs(at.y - baseNorm[i].y) < 0.05) continue;
+          for (const rot of ROTATIONS) {
+            structured.push({
+              norm: baseNorm.map((n, k) => (k === i ? at : { ...n })),
+              rotations: baseRotations.map((r, k) => (k === i ? rot : r)),
+            });
+          }
         }
-        structured.push({ norm, rotations: inputs.map(c => c.rotationDeg) });
-        // The same arrangement with every part turned a quarter turn: on a
-        // board this size which way a connector faces decides whether its pins
-        // escape towards what they connect to or away from it.
+      }
+    }
+    // 2. One part turned in place. A quarter turn decides whether a
+    // connector's pins escape towards what they connect to or away from it;
+    // a half turn puts pin 1 at the other end of the strip, which decides
+    // which way its traces have to wrap.
+    for (let i = 0; i < inputs.length; i++) {
+      for (let q = 1; q < 4; q++) {
         structured.push({
-          norm: norm.map(n => ({ ...n })),
-          rotations: inputs.map(c => (c.rotationDeg === 90 ? 0 : 90)),
+          norm: baseNorm.map(n => ({ ...n })),
+          rotations: baseRotations.map((r, k) => (k === i ? turned(r, q) : r)),
         });
       }
     }
+    // 3. Two parts swapped between their slots.
+    for (const [i, j] of swaps) {
+      const norm = baseNorm.map(n => ({ ...n }));
+      [norm[i], norm[j]] = [norm[j], norm[i]];
+      structured.push({ norm, rotations: [...baseRotations] });
+    }
+    // 4. The whole layout reflected or turned, with and without every part
+    // turned a quarter turn along with it, then combined with the swaps.
+    for (const d of dihedral.slice(1)) {
+      for (let q = 0; q < 4; q++) {
+        structured.push({ norm: baseNorm.map(d), rotations: baseRotations.map(r => turned(r, q)) });
+      }
+    }
+    for (const d of dihedral.slice(1)) {
+      for (const [i, j] of swaps) {
+        const norm = baseNorm.map(d);
+        [norm[i], norm[j]] = [norm[j], norm[i]];
+        structured.push({ norm, rotations: [...baseRotations] });
+      }
+    }
 
-    const shortlist: { seed: PlacementSeed; trial: PlacementInput[]; score: number }[] = [];
+    // Scoring is one pass of the router on a coarse grid, so it is cheap next
+    // to the real thing but not free, and its cost grows with the board. The
+    // stage is bounded by a share of the routing budget: a small board gets
+    // through every structured candidate and a few hundred random ones, a
+    // large one gets the structured candidates it has time for, in the order
+    // above, and the preview stays responsive either way.
+    const scoreDeadline = Date.now() + Math.max(1000, Math.max(0, options.routingBudgetMs) * 0.5);
+    const shortlist: { seed: PlacementSeed; trial: PlacementInput[]; spread: number; score: number }[] = [];
     for (let k = 0; k < candidateCount + structured.length; k++) {
+      if (Date.now() > scoreDeadline) break;
       const seed: PlacementSeed = k < structured.length
         ? structured[k]
         : {
             norm: inputs.map(() => ({ x: rng(), y: rng() })),
-            rotations: inputs.map(c => (rng() < 0.5 ? c.rotationDeg : c.rotationDeg === 90 ? 0 : 90)),
+            rotations: inputs.map(c => turned(c.rotationDeg, Math.floor(rng() * 4))),
           };
       const trial = inputs.map((c, i) => rotate(c, seed.rotations[i]));
       // Warnings are thrown away here: these are hypotheticals, and only the
       // arrangement that actually gets used should have anything to say.
-      const probe = placeComponents(trial, options, [], 1, seed);
-      if (probe.overlaps > 0) continue;
+      const placedAt = placeCandidate(trial, seed);
+      if (!placedAt) continue;
+      const { probe, spread } = placedAt;
       shortlist.push({
         seed,
         trial,
+        spread,
         score: scorePlacement(probe.placed, nets, {
-          traceWidthMm: options.traceWidthMm,
-          clearanceMm: options.clearanceMm,
+          ...options,
           boardWidthMm: probe.boardWidthMm,
           boardHeightMm: probe.boardHeightMm,
         }),
@@ -1360,11 +1371,8 @@ export function generatePcbLayout(
     }
     shortlist.sort((a, b) => a.score - b.score);
 
-    // Random seeds alone almost never land on a good arrangement - the good
-    // ones are structured, and uniform noise is not. Refine the best few by
-    // hill-climbing instead: move one part at a time and keep the move if the
-    // score improves. Scoring is cheap next to routing, so this buys a much
-    // better shortlist for a fraction of one routing pass.
+    // Refine the best few by hill-climbing: move one part at a time, keep the
+    // move if the score improves. Scoring is cheap next to routing.
     const refined: typeof shortlist = [];
     const refineEachMs = 1500 / Math.max(1, routeTop * 2);
     for (const start of shortlist.slice(0, routeTop * 2)) {
@@ -1378,25 +1386,46 @@ export function generatePcbLayout(
         const seed: PlacementSeed = {
           norm: cur.seed.norm.map((n, k) => (k === i ? { x: rng(), y: rng() } : n)),
           rotations: cur.seed.rotations.map((r, k) =>
-            k === i && rng() < 0.4 ? (r === 90 ? 0 : 90) : r
+            k === i && rng() < 0.4 ? turned(r, 1 + Math.floor(rng() * 3)) : r
           ),
         };
         const trial = inputs.map((c, k) => rotate(c, seed.rotations[k]));
-        const probe = placeComponents(trial, options, [], 1, seed);
-        if (probe.overlaps > 0) continue;
+        const placedAt = placeCandidate(trial, seed);
+        if (!placedAt) continue;
+        const { probe, spread } = placedAt;
         const score = scorePlacement(probe.placed, nets, {
-          traceWidthMm: options.traceWidthMm,
-          clearanceMm: options.clearanceMm,
+          ...options,
           boardWidthMm: probe.boardWidthMm,
           boardHeightMm: probe.boardHeightMm,
         });
-        if (score < cur.score) cur = { seed, trial, score };
+        if (score < cur.score) cur = { seed, trial, spread, score };
       }
       refined.push(cur);
     }
     refined.sort((a, b) => a.score - b.score);
+
+    // Second stage: route the best of the shortlist coarsely with the real
+    // router, and rank on that. The cheap score has done its job by now -
+    // rejected the packings with no room and put the plausible ones first -
+    // but it cannot separate a board that routes from one that nearly does,
+    // and a wrong pick here costs a full routing pass.
+    // The refined few, then the best of the rest of the shortlist as scored.
+    const coarsePool = [...refined, ...shortlist.slice(refined.length, routeTop * 4)];
+    const coarseBudget = Math.max(100, Math.min(400, options.routingBudgetMs / 20));
+    const ranked = coarsePool.map(cand => {
+      const probe = placeComponents(cand.trial, options, [], cand.spread, cand.seed);
+      const coarse = coarseRoutability(
+        probe.placed, probe.boardWidthMm, probe.boardHeightMm, nets, options, coarseBudget
+      );
+      return { ...cand, coarse };
+    });
+    ranked.sort((a, b) =>
+      b.coarse.completion - a.coarse.completion ||
+      a.coarse.unrouted - b.coarse.unrouted ||
+      a.score - b.score
+    );
     shortlist.length = 0;
-    shortlist.push(...refined);
+    shortlist.push(...ranked);
 
     // Each shortlisted candidate is routed on the same budget the baseline had,
     // for the same reason the jumper search is: a candidate scored on a shorter
@@ -1410,7 +1439,7 @@ export function generatePcbLayout(
         options,
         Math.max(0, options.routingBudgetMs),
         undefined,
-        1,
+        cand.spread,
         cand.seed
       );
       const beats =
@@ -1727,28 +1756,21 @@ interface LayoutAttempt {
 }
 
 /**
- * One placement + routing attempt at a given board size. Pure with respect to
- * the caller, so attempts at different board sizes can be compared and the
- * losing ones discarded without leaking warnings into the result.
+ * Everything the router needs to know about a placed board: each pad bound to
+ * its net, the pins to join, and the copper that belongs to no net and must
+ * be kept clear of. Shared by the real routing pass and the coarse one the
+ * placement search uses to rank its shortlist, so the two see the same board.
  */
-function placeAndRoute(
-  inputs: PlacementInput[],
+function routingProblem(
+  placed: PlacedComponent[],
   nets: PcbNet[],
   opts: PcbOptions,
-  budgetMs?: number,
-  onProgress?: (p: RouteProgress) => void,
-  spreadScale = 1,
-  seed?: PlacementSeed
-): LayoutAttempt {
-  const violations: DrcViolation[] = [];
-  const warnings: string[] = [];
+  violations: DrcViolation[]
+): { pads: PlacedPad[]; routePins: RoutePin[]; obstacles: RouteObstacle[]; cutouts: BoardCutout[] } {
+  const compById = new Map(placed.map(c => [c.id, c]));
   // Grown pad copper has to reach the router too, or a trace gets planned
   // through the annulus the margin just added.
   const padMargin = Math.max(0, opts.padMarginMm ?? 0);
-
-  const { placed, boardWidthMm, boardHeightMm, overlaps } =
-    placeComponents(inputs, opts, warnings, spreadScale, seed);
-  const compById = new Map(placed.map(c => [c.id, c]));
 
   // Pads, each bound to its net via the handle -> pin mapping.
   const pads: PlacedPad[] = [];
@@ -1802,7 +1824,6 @@ function placeAndRoute(
     }
   }
 
-  // Routing.
   const routePins: RoutePin[] = [];
   for (const net of nets) {
     for (const port of net.ports) {
@@ -1858,6 +1879,63 @@ function placeAndRoute(
       obstacles.push({ x: comp.x, y: comp.y, widthMm: comp.widthMm, heightMm: comp.heightMm });
     }
   }
+
+  return { pads, routePins, obstacles, cutouts };
+}
+
+/**
+ * The real router, run coarsely: a grid one track pitch wide and a budget of
+ * a fraction of a second. This is the second stage of the placement search,
+ * between the cheap score and the full routing pass.
+ *
+ * The cheap score is one ordering pass, and one pass cannot tell a board that
+ * routes from one that very nearly does - the difference is often one net
+ * that needs several others to move first, which is what the router's other
+ * orderings and its rip-up passes are for. At one cell per track it sees the
+ * same corridors the full pass will, at a tenth of the cells. Measured on
+ * fifteen arrangements of one carrier board it put the two that route at the
+ * top, both at a completion of exactly 1, where one pass had them at 0.846.
+ */
+export function coarseRoutability(
+  placed: PlacedComponent[],
+  boardWidthMm: number,
+  boardHeightMm: number,
+  nets: PcbNet[],
+  opts: PcbOptions,
+  budgetMs: number
+): { completion: number; unrouted: number } {
+  const { routePins, obstacles } = routingProblem(placed, nets, opts, []);
+  const r = routeBoard(routePins, {
+    ...coarseRouterOptions(opts, boardWidthMm, boardHeightMm),
+    obstacles,
+    budgetMs,
+  });
+  return { completion: r.completion, unrouted: r.unrouted.length };
+}
+
+/**
+ * One placement + routing attempt at a given board size. Pure with respect to
+ * the caller, so attempts at different board sizes can be compared and the
+ * losing ones discarded without leaking warnings into the result.
+ */
+function placeAndRoute(
+  inputs: PlacementInput[],
+  nets: PcbNet[],
+  opts: PcbOptions,
+  budgetMs?: number,
+  onProgress?: (p: RouteProgress) => void,
+  spreadScale = 1,
+  seed?: PlacementSeed
+): LayoutAttempt {
+  const violations: DrcViolation[] = [];
+  const warnings: string[] = [];
+  // Grown pad copper has to reach the router too, or a trace gets planned
+  // through the annulus the margin just added.
+  const padMargin = Math.max(0, opts.padMarginMm ?? 0);
+
+  const { placed, boardWidthMm, boardHeightMm, overlaps } =
+    placeComponents(inputs, opts, warnings, spreadScale, seed);
+  const { pads, routePins, obstacles, cutouts } = routingProblem(placed, nets, opts, violations);
 
   const routerOpts = {
     obstacles,

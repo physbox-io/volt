@@ -157,6 +157,10 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
    * wires stay where they are, so the two leads trade places and the netlist
    * reverses with them. Rotating twice does not do this - that turns the pins
    * round with the body, wires and all, and leaves the circuit unchanged.
+   *
+   * A pin header reverses on the same terms, only with a whole strip of pads
+   * trading places rather than a pair of leads: pin 1 ends up at the far end,
+   * under whatever was wired to the pad that used to be there.
    */
   const reverseLeads = () => {
     if (!selectedNode) return;
@@ -166,11 +170,11 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
       const updated = { ...e };
       let changed = false;
       if (e.source === selectedNode.id && e.sourceHandle) {
-        const next = remapHandleForReverse(type, e.sourceHandle);
+        const next = remapHandleForReverse(type, e.sourceHandle, selectedNode.data);
         if (next) { updated.sourceHandle = next; changed = true; }
       }
       if (e.target === selectedNode.id && e.targetHandle) {
-        const next = remapHandleForReverse(type, e.targetHandle);
+        const next = remapHandleForReverse(type, e.targetHandle, selectedNode.data);
         if (next) { updated.targetHandle = next; changed = true; }
       }
       return changed ? updated : e;
@@ -567,14 +571,16 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
               {orientationQuarterTurns(selectedNode.data.orientation) * 90}°
             </span>
           </button>
-          {canReverseLeads(selectedNode.type || '') && (
+          {canReverseLeads(selectedNode.type || '', selectedNode.data) && (
             <button
               onClick={reverseLeads}
               className="mt-1.5 w-full flex items-center justify-center gap-2 text-xs px-2 py-1.5 rounded border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-              title="Turn the part end-for-end: the wires stay put and the two leads trade places, so the polarity in the circuit reverses"
+              title={selectedNode.type === 'pinheader'
+                ? 'Turn the header end-for-end: the wires stay put and the pad numbering runs the other way, so pin 1 moves to the far end of the strip'
+                : 'Turn the part end-for-end: the wires stay put and the two leads trade places, so the polarity in the circuit reverses'}
             >
               <ArrowLeftRight size={13} />
-              Reverse leads
+              {selectedNode.type === 'pinheader' ? 'Reverse pin order' : 'Reverse leads'}
             </button>
           )}
         </div>
