@@ -327,7 +327,13 @@ describe('the placement search', () => {
     // radiate from one point and no two of them can ever be found to cross.
     const base = run(false);
     const searched = run(true);
-    expect(scorePlacement(searched.components, searched.nets))
-      .toBeLessThan(scorePlacement(base.components, base.nets));
+    const score = (r: PcbLayoutResult) =>
+      scorePlacement(r.components, r.nets, {
+        traceWidthMm: OPTS.traceWidthMm,
+        clearanceMm: OPTS.clearanceMm,
+        boardWidthMm: r.boardWidthMm,
+        boardHeightMm: r.boardHeightMm,
+      });
+    expect(score(searched)).toBeLessThan(score(base));
   });
 });

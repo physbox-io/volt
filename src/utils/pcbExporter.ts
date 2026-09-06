@@ -719,7 +719,16 @@ function placeComponents(
  * the shortlist is then actually routed, so a mistake here costs a wasted
  * routing pass rather than a wrong answer.
  */
-export function scorePlacement(placed: PlacedComponent[], nets: PcbNet[]): number {
+export function scorePlacement(
+  placed: PlacedComponent[],
+  nets: PcbNet[],
+  opts: {
+    traceWidthMm: number;
+    clearanceMm: number;
+    boardWidthMm: number;
+    boardHeightMm: number;
+  }
+): number {
   const compById = new Map(placed.map(c => [c.id, c]));
   // Pad positions, not part centres. Nearly every net on a carrier board runs
   // from the module to something else, so at part-centre resolution they all
@@ -788,7 +797,59 @@ export function scorePlacement(placed: PlacedComponent[], nets: PcbNet[]): numbe
     }
   }
 
-  return crossings * 1000 + hpwl;
+  // Congestion. Crossings and wirelength together still prefer the tightest
+  // packing available, and a tight packing is exactly what leaves the router
+  // nowhere to work: the shortlist filled up with compact placements that
+  // routed no better than the schematic's. So demand is binned over a coarse
+  // grid and measured against what each bin can physically carry - a cell of
+  // side s fits s/(trace+clearance) parallel tracks of length s - and only the
+  // overflow is charged for. Under capacity this term is silent, which is what
+  // keeps it from re-introducing a bias towards sprawl.
+  const BINS = 8;
+  const cellW = Math.max(1e-6, opts.boardWidthMm / BINS);
+  const cellH = Math.max(1e-6, opts.boardHeightMm / BINS);
+  const pitch = Math.max(1e-6, opts.traceWidthMm + opts.clearanceMm);
+  const demand = new Float64Array(BINS * BINS);
+
+  // Capacity is the FREE area of a cell, not its area. Counting the whole cell
+  // treats the ground under a module as routable, so every cell came out under
+  // capacity and the term never fired at all - which is precisely the case it
+  // exists to catch, since packing parts together is what removes the room the
+  // router needs.
+  const capacity = new Float64Array(BINS * BINS);
+  for (let gy = 0; gy < BINS; gy++) {
+    for (let gx = 0; gx < BINS; gx++) {
+      const x0 = gx * cellW, x1 = x0 + cellW;
+      const y0 = gy * cellH, y1 = y0 + cellH;
+      let occupied = 0;
+      for (const c of placed) {
+        const ox = Math.max(0, Math.min(x1, c.x + c.widthMm / 2) - Math.max(x0, c.x - c.widthMm / 2));
+        const oy = Math.max(0, Math.min(y1, c.y + c.heightMm / 2) - Math.max(y0, c.y - c.heightMm / 2));
+        occupied += ox * oy;
+      }
+      const free = Math.max(0, cellW * cellH - occupied);
+      capacity[gy * BINS + gx] = free / pitch;
+    }
+  }
+
+  for (const seg of segments) {
+    const dist = Math.hypot(seg.bx - seg.ax, seg.by - seg.ay);
+    const steps = Math.max(1, Math.ceil(dist / Math.min(cellW, cellH)));
+    const per = dist / steps;
+    for (let k = 0; k < steps; k++) {
+      const f = (k + 0.5) / steps;
+      const gx = Math.min(BINS - 1, Math.max(0, Math.floor((seg.ax + (seg.bx - seg.ax) * f) / cellW)));
+      const gy = Math.min(BINS - 1, Math.max(0, Math.floor((seg.ay + (seg.by - seg.ay) * f) / cellH)));
+      demand[gy * BINS + gx] += per;
+    }
+  }
+
+  let overflow = 0;
+  for (let i = 0; i < demand.length; i++) {
+    if (demand[i] > capacity[i]) overflow += demand[i] - capacity[i];
+  }
+
+  return crossings * 1000 + overflow * 20 + hpwl;
 }
 
 /**
@@ -1196,7 +1257,16 @@ export function generatePcbLayout(
       // arrangement that actually gets used should have anything to say.
       const probe = placeComponents(trial, options, [], 1, seed);
       if (probe.overlaps > 0) continue;
-      shortlist.push({ seed, trial, score: scorePlacement(probe.placed, nets) });
+      shortlist.push({
+        seed,
+        trial,
+        score: scorePlacement(probe.placed, nets, {
+          traceWidthMm: options.traceWidthMm,
+          clearanceMm: options.clearanceMm,
+          boardWidthMm: probe.boardWidthMm,
+          boardHeightMm: probe.boardHeightMm,
+        }),
+      });
     }
     shortlist.sort((a, b) => a.score - b.score);
 
@@ -1205,9 +1275,13 @@ export function generatePcbLayout(
     // hill-climbing instead: move one part at a time and keep the move if the
     // score improves. Scoring is cheap next to routing, so this buys a much
     // better shortlist for a fraction of one routing pass.
-    const refineDeadline = Date.now() + 1500;
     const refined: typeof shortlist = [];
+    const refineEachMs = 1500 / Math.max(1, routeTop * 2);
     for (const start of shortlist.slice(0, routeTop * 2)) {
+      // Per candidate, not shared: one deadline for the whole loop meant the
+      // first starting point consumed it and every other one was returned
+      // unrefined.
+      const refineDeadline = Date.now() + refineEachMs;
       let cur = start;
       while (Date.now() < refineDeadline) {
         const i = Math.floor(rng() * inputs.length);
@@ -1220,7 +1294,12 @@ export function generatePcbLayout(
         const trial = inputs.map((c, k) => rotate(c, seed.rotations[k]));
         const probe = placeComponents(trial, options, [], 1, seed);
         if (probe.overlaps > 0) continue;
-        const score = scorePlacement(probe.placed, nets);
+        const score = scorePlacement(probe.placed, nets, {
+          traceWidthMm: options.traceWidthMm,
+          clearanceMm: options.clearanceMm,
+          boardWidthMm: probe.boardWidthMm,
+          boardHeightMm: probe.boardHeightMm,
+        });
         if (score < cur.score) cur = { seed, trial, score };
       }
       refined.push(cur);
