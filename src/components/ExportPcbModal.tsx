@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { loadMachiningSettings, saveMachiningSettings } from '../utils/storage';
 import type { Node, Edge } from '@xyflow/react';
 import {
@@ -82,6 +82,9 @@ const ROUTING_EFFORT_PRESETS = [
   { ms: 30000, label: 'Thorough — 30s' },
   { ms: 120000, label: 'Exhaustive — 2min' },
 ];
+
+/** Shown once per browser before the first connect; never again after acknowledged. */
+const SAFETY_ACK_KEY = 'grblSafetyAck';
 
 /**
  * What each of the three stencil buttons makes. Long enough to matter on a
@@ -211,6 +214,19 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const [viewSide, setViewSide] = useState<'copper' | 'component' | 'bottom' | 'composite'>('copper');
   const [showPadNumbers, setShowPadNumbers] = useState(true);
   const [serialState, setSerialState] = useState(webSerialManager.getState());
+
+  // Gate on the first real connect attempt only. The auto-resume effect above
+  // never reaches this — it only fires for a device already connected once
+  // before, which means the warning already ran.
+  const [showSafetyWarning, setShowSafetyWarning] = useState(false);
+  const safetyResolverRef = useRef<((ack: boolean) => void) | null>(null);
+  const requestSafetyAck = (): Promise<boolean> => {
+    if (localStorage.getItem(SAFETY_ACK_KEY)) return Promise.resolve(true);
+    setShowSafetyWarning(true);
+    return new Promise((resolve) => {
+      safetyResolverRef.current = resolve;
+    });
+  };
   /**
    * Off by default: a mesh probe is minutes of machine time and needs the
    * continuity clip attached, so it belongs behind a deliberate press of the
@@ -614,6 +630,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
   const ensureConnected = async () => {
     if (serialState.connected) return true;
+    if (!(await requestSafetyAck())) return false;
     setMachineError(null);
     if (transportMode === 'wifi' && !cloudDeviceId) {
       setMachineError('Enter the device IP address for WiFi mode');
@@ -2041,8 +2058,11 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                             // are standing in front of it, being asked to press
                             // Connect is a step with nothing behind it.
                             localStorage.setItem('grblCloudDeviceId', deviceId);
-                            webSerialManager.setTransport('wifi', deviceId);
-                            void webSerialManager.connect();
+                            void requestSafetyAck().then(ack => {
+                              if (!ack) return;
+                              webSerialManager.setTransport('wifi', deviceId);
+                              void webSerialManager.connect();
+                            });
                           }}
                           disabled={serialState.connected}
                           accentClass="bg-emerald-600 hover:bg-emerald-500 text-white"
@@ -2603,6 +2623,52 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
           onZeroOnCopper={handleZeroZ}
           onZeroOnPlate={handleZeroZOnPlate}
         />
+      )}
+
+      {showSafetyWarning && (
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                Before you connect a machine
+              </h3>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              This connects to a real machine that moves and cuts under its own power. Keep clear of
+              moving parts, wear eye protection, and never leave a running job unattended. Use your
+              own judgment — you are responsible for the machine&apos;s safe operation.
+            </p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              Provided with no warranty and no liability for injury, loss, or damage of any kind. Full
+              terms: PhysBox Permissive Public License (PPPL-1.0) — see License &amp; Disclaimers in
+              this app&apos;s Help.
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => {
+                  setShowSafetyWarning(false);
+                  safetyResolverRef.current?.(false);
+                  safetyResolverRef.current = null;
+                }}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+              >
+                No Machine Control
+              </button>
+              <button
+                onClick={() => {
+                  localStorage.setItem(SAFETY_ACK_KEY, '1');
+                  setShowSafetyWarning(false);
+                  safetyResolverRef.current?.(true);
+                  safetyResolverRef.current = null;
+                }}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg cursor-pointer"
+              >
+                Acknowledged
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
