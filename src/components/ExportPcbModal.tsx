@@ -2262,8 +2262,12 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     <div className="flex gap-2">
                       <button
                         onClick={handleGoToZero}
-                        disabled={manualMoveBlocked}
-                        title="Lift Z to clearance, then rapid back to the work origin (X0 Y0)"
+                        disabled={manualMoveBlocked || !(serialState.zeroZConfirmed || serialState.zeroRestored)}
+                        title={
+                          serialState.zeroZConfirmed || serialState.zeroRestored
+                            ? 'Lift Z to clearance, then rapid back to the work origin (X0 Y0)'
+                            : 'Set Z zero below first — Z has not been confirmed this session'
+                        }
                         className="flex-1 py-1 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
                       >
                         <Crosshair className="w-3.5 h-3.5" />

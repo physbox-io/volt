@@ -1023,6 +1023,7 @@ class WebSerialManager {
   /** Starts streaming a G-code job line by line over serial. */
   public async startJob(gcode: string): Promise<void> {
     this.assertUnlocked();
+    this.assertZTrusted();
 
     // Layer boundaries are read from the `; OP n/m:` headers before the
     // comments are dropped — restarting an operation needs to know where each
@@ -1453,6 +1454,28 @@ class WebSerialManager {
   }
 
   /**
+   * Refuses to start a job while the Z datum is unconfirmed.
+   *
+   * GRBL keeps G54's Z offset in EEPROM across sessions, tools and boards, so
+   * a datum that reads back as perfectly valid may belong to a different
+   * setup entirely — connecting, and homing, both leave it unconfirmed until
+   * proven otherwise. "Proven" means either this session zeroed Z itself
+   * (`zeroZConfirmed`), or the previously remembered origin was written back
+   * and the controller's own status confirmed it landed (`zeroRestored`) —
+   * not just that a restore was attempted, which `zeroRestoreDone` alone
+   * would allow for a write the controller silently refused.
+   */
+  private assertZTrusted(): void {
+    if (!this.state.zeroZConfirmed && !this.state.zeroRestored) {
+      throw new Error(
+        'Z zero has not been confirmed this session. Zero it — or reconnect to let the ' +
+          'remembered origin restore — before running a job: a Z move against an unconfirmed ' +
+          'datum can drive the tool into the board.'
+      );
+    }
+  }
+
+  /**
    * Folds a freshly taken zero into the remembered origin and writes it out.
    * Returns the state patch rather than applying it, so the caller can send it
    * in the same update as the status it was derived from.
@@ -1534,12 +1557,26 @@ class WebSerialManager {
   }
 
   /**
+   * Reads back the live work Z and clamps a requested retract height to never
+   * sit below it. `safeZMm` is a work height, so it only clears the board
+   * when Z0 belongs to the copper clamped down now — against an offset left
+   * over from a different board or tool it can be below the tool already,
+   * turning a move meant to retract into a plunge. May only move Z away from
+   * the board, never toward it.
+   */
+  private async clampedRetractZ(safeZMm: number): Promise<number> {
+    await this.awaitStatus();
+    return Math.max(safeZMm, this.state.wpos.z);
+  }
+
+  /**
    * Returns to work origin, lifting first. Going straight there in one move
    * would drag the tool across the board at whatever Z it happens to be at.
    */
   public async gotoWorkOrigin(safeZMm = 5): Promise<void> {
     await this.sendLine('G21 G90');
-    await this.sendLine(`G0 Z${safeZMm.toFixed(3)}`);
+    const retractZ = await this.clampedRetractZ(safeZMm);
+    await this.sendLine(`G0 Z${retractZ.toFixed(3)}`);
     await this.sendLine('G0 X0 Y0');
   }
 
@@ -1561,7 +1598,8 @@ class WebSerialManager {
 
     await this.sendLine('M5');
     await this.sendLine('G21 G90');
-    await this.sendLine(`G0 Z${safeZMm.toFixed(3)}`);
+    const retractZ = await this.clampedRetractZ(safeZMm);
+    await this.sendLine(`G0 Z${retractZ.toFixed(3)}`);
 
     const corners: Array<[number, number]> = [
       [minX, minY],
@@ -1829,6 +1867,13 @@ class WebSerialManager {
       // up front: nothing in the loop below changes a work offset.
       const workOffset = await this.awaitWorkOffset();
 
+      // Not clamped like a retract: `clearance` and `probeDepthMm` are chosen
+      // together (checked above), and every probe below travels down exactly
+      // `probeDepthMm` from wherever this leaves the tool. Clamping this to
+      // "never below the tool's current position" — right after `zeroZOnSurface`
+      // has just confirmed the datum below — would move it *up* instead
+      // whenever the tool starts higher than `clearance`, and every probe
+      // would then search too little to reach the copper.
       await this.sendLine(`G0 Z${clearance.toFixed(3)}`);
 
       const points: ProbePoint[][] = [];
@@ -1869,13 +1914,18 @@ class WebSerialManager {
       // depth budget is spent against exactly that, and it used to be a
       // constant somebody picked.
       const first = points[0][0];
+      // Not clamped, same reason as the loop above: another fixed-depth probe
+      // follows this move.
       await this.sendLine(`G0 Z${clearance.toFixed(3)} F${travelFeed}`);
       await this.sendLine(`G0 X${first.x.toFixed(3)} Y${first.y.toFixed(3)} F${travelFeed}`);
       const recheck = await this.probeDown(probeDepth, probeFeed);
       const recheckZ = workOffset ? round3(recheck.z - workOffset.z) : recheck.z;
       const verifyDeviationMm = Math.abs(round3(recheckZ - first.z));
 
-      await this.sendLine(`G0 Z${(clearance * 2).toFixed(3)} F${travelFeed}`);
+      // The last move of the routine, with no probe left to follow it, so this
+      // one really is just a retract — clamped like any other.
+      const finalClearZ = await this.clampedRetractZ(clearance * 2);
+      await this.sendLine(`G0 Z${finalClearZ.toFixed(3)} F${travelFeed}`);
       await this.sendLine(`G0 X${opts.minX.toFixed(3)} Y${opts.minY.toFixed(3)} F${travelFeed}`);
       await this.drain();
 

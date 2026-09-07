@@ -298,6 +298,12 @@ async function reconnect(opts: FakeGrblOptions = {}) {
 await webSerialManager.connect();
 check('connects', webSerialManager.getState().connected);
 
+// A job start now refuses to run against an unconfirmed Z datum (see
+// assertZTrusted) — zero it first so this block still tests what it says it
+// tests: streaming flow control, not the zero gate.
+await webSerialManager.zeroZOnSurface();
+check('Z zeroed before streaming test', webSerialManager.getState().zeroZConfirmed === true);
+
 const longJob = ['G90 G21', ...Array.from({ length: 400 }, (_, i) => `G1 X${(i * 0.1).toFixed(3)} Y10.000 Z-0.080 F300`), 'M5'].join('\n');
 await webSerialManager.startJob(longJob);
 
@@ -305,7 +311,7 @@ check('job completes', webSerialManager.getState().status === 'IDLE');
 check('progress reaches 100%', webSerialManager.getState().progressPercent === 100);
 check('no buffer overflow', !fake.overflowed, `peak ${fake.maxBufferSeen} bytes`);
 check('kept the buffer usefully full', fake.maxBufferSeen > 60, `peak ${fake.maxBufferSeen} bytes`);
-check('every line arrived', fake.received.filter(l => l.startsWith('G1')).length === 400, `${fake.received.filter(l => l.startsWith('G1')).length}`);
+check('every line arrived', fake.received.filter(l => l.startsWith('G1 ')).length === 400, `${fake.received.filter(l => l.startsWith('G1 ')).length}`);
 
 // --- 2. Mesh probing reads real [PRB:] values ------------------------------
 // A board tilted 0.01mm/mm in X and dished 0.05mm in the middle of Y.
