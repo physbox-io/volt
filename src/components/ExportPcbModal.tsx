@@ -1977,6 +1977,25 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
+                        Isolation Passes
+                        <InfoTip>
+                          Extra offset passes widen the isolation channel around each trace, at the cost of a longer job. Most boards only need 1.
+                        </InfoTip>
+                      </label>
+                      <NumberInput
+                        integer
+                        min={1}
+                        max={3}
+                        value={options.isolationPasses}
+                        onChange={v => setOptions({ ...options, isolationPasses: v })}
+                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                      />
+                    </div>
+                  </div>
+
                   <div className="p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded space-y-1.5">
                     <label className="flex items-center gap-2 cursor-pointer text-slate-600 dark:text-slate-300 font-medium">
                       <input

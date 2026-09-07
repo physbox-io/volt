@@ -91,7 +91,7 @@ const zs = active
 check('every Z is lifted above the stock', zs.length > 0 && zs.every(z => z > 0), zs.join(', '));
 
 // --- 3. Defaults ----------------------------------------------------------
-check('isolation depth default is 0.16mm', DEFAULT_PCB_OPTIONS.isolationDepthZ === -0.16, `${DEFAULT_PCB_OPTIONS.isolationDepthZ}`);
+check('isolation depth default is 0.2mm', DEFAULT_PCB_OPTIONS.isolationDepthZ === -0.2, `${DEFAULT_PCB_OPTIONS.isolationDepthZ}`);
 check('pads carry a margin by default', (DEFAULT_PCB_OPTIONS.padMarginMm ?? 0) > 0, `${DEFAULT_PCB_OPTIONS.padMarginMm}`);
 
 // --- 4. Bits the user actually owns ---------------------------------------

@@ -251,7 +251,7 @@ export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   toolChangeZ: 15.0,
   boardThicknessMm: 1.6,
   breakThroughMm: 0.3,
-  isolationDepthZ: -0.16,
+  isolationDepthZ: -0.2,
   // Through the 1.6mm blank and 0.3mm into the spoilboard. Kept as explicit
   // depths rather than derived, so a job can still be given its own.
   drillDepthZ: -1.9,
