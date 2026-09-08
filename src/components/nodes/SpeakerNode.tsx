@@ -2,7 +2,7 @@ import { Handle, Position } from '@xyflow/react';
 import { useEffect, useRef } from 'react';
 import type { NodePropertiesProps } from './registry';
 import { DEVICE_CARD, resolveOrientation } from './schematic';
-import { NumberInput } from '../NumberInput';
+import { NumberInput } from '@physbox-io/ui';
 
 
 export function SpeakerProperties({ node, updateData }: NodePropertiesProps) {

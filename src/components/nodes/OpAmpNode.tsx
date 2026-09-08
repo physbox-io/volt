@@ -1,7 +1,7 @@
 import { Handle, Position } from '@xyflow/react';
 import { useState } from 'react';
 import type { NodePropertiesProps } from './registry';
-import { NumberInput } from '../NumberInput';
+import { NumberInput } from '@physbox-io/ui';
 import { OPAMP_MODELS, getOpAmpModel, resolveOpAmpParams } from '../../utils/deviceModels';
 
 export function OpAmpProperties({ node, updateData }: NodePropertiesProps) {

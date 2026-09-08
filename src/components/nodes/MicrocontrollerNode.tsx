@@ -14,7 +14,7 @@ import {
   type McuPinType,
 } from '../../utils/mcuConfig';
 import { Plus, Trash2, Cpu, Wrench } from 'lucide-react';
-import { NumberInput } from '../NumberInput';
+import { NumberInput } from '@physbox-io/ui';
 
 /**
  * Reads the pad-number field. Kept as a number when it is one, so a part typed

@@ -1,5 +1,5 @@
 import type { NodePropertiesProps } from './registry';
-import { NumberInput } from '../NumberInput';
+import { NumberInput } from '@physbox-io/ui';
 
 /**
  * A hole milled clean through the board — a slot for a connector to poke

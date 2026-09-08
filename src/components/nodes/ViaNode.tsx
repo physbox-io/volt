@@ -1,6 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
-import { NumberInput } from '../NumberInput';
+import { NumberInput } from '@physbox-io/ui';
 
 /**
  * A plated through-hole. On a single-sided milled board this is the tie point

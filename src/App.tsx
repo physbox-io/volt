@@ -41,7 +41,7 @@ import { PropertiesPanel } from './components/PropertiesPanel';
 import { FlowArea } from './components/FlowArea';
 import { ProbeTooltip } from './components/ProbeTooltip';
 import { HILMemoizer } from './utils/hilMemoizer';
-import { NumberInput } from './components/NumberInput';
+import { NumberInput } from '@physbox-io/ui';
 
 
 

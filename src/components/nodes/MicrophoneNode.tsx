@@ -3,7 +3,7 @@ import { useState, useRef, useCallback } from 'react';
 import { Mic, Square } from 'lucide-react';
 import type { NodePropertiesProps } from './registry';
 import { DEVICE_CARD, DEVICE_TITLE, resolveOrientation } from './schematic';
-import { NumberInput } from '../NumberInput';
+import { NumberInput } from '@physbox-io/ui';
 
 export function MicrophoneProperties({ node, updateData }: NodePropertiesProps) {
   return (

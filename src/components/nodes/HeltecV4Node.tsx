@@ -3,7 +3,7 @@ import { Wifi, WifiOff, ExternalLink } from 'lucide-react';
 import { memo } from 'react';
 import type { NodePropertiesProps } from './registry';
 import { DEVICE_CARD_DARK } from './schematic';
-import { NumberInput } from '../NumberInput';
+import { NumberInput } from '@physbox-io/ui';
 
 export const HELTEC_V4_GPIO_PINS = ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41'];
 

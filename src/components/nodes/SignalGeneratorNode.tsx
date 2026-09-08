@@ -2,7 +2,7 @@ import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { AlertCircle } from 'lucide-react';
 import type { NodePropertiesProps } from './registry';
 import { useCallback } from 'react';
-import { NumberInput } from '../NumberInput';
+import { NumberInput } from '@physbox-io/ui';
 import { DEVICE_CARD, DEVICE_SCREEN, DEVICE_TITLE, DeviceField, STROKE, resolveOrientation } from './schematic';
 
 export function SignalGeneratorProperties({ node, updateData, simLength }: NodePropertiesProps) {

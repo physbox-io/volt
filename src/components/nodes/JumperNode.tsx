@@ -1,6 +1,6 @@
 import type { NodePropertiesProps } from './registry';
 import { LeadHandles, RotatedSymbol, leadBoxStyle, resolveOrientation } from './schematic';
-import { NumberInput } from '../NumberInput';
+import { NumberInput } from '@physbox-io/ui';
 
 /**
  * A wire jumper: two pads bridged by a hand-fitted wire after milling.

@@ -1,7 +1,7 @@
 import { Handle, Position } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
-import { NumberInput } from '../NumberInput';
+import { NumberInput } from '@physbox-io/ui';
 
 import { useState } from 'react';
 import { BJT_NPN_MODELS, BJT_PNP_MODELS, getBjtModel, resolveBjtParams } from '../../utils/deviceModels';

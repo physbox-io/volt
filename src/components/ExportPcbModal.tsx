@@ -57,7 +57,7 @@ import {
 import { openSvgInEtch } from '../utils/etchHandoff';
 import { usePcbLayout } from '../hooks/usePcbLayout';
 import { webSerialManager } from '../utils/webSerialManager';
-import { NumberInput } from './NumberInput';
+import { NumberInput } from '@physbox-io/ui';
 import { TeknoBoxPicker } from './TeknoBoxPicker';
 import {
   getGridStats,

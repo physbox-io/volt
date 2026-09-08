@@ -1,6 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
-import { NumberInput } from '../NumberInput';
+import { NumberInput } from '@physbox-io/ui';
 
 /**
  * A bare pin header of arbitrary rows x cols. It is a mechanical breakout

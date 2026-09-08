@@ -1,5 +1,5 @@
 import type { NodePropertiesProps } from './registry';
-import { NumberInput } from '../NumberInput';
+import { NumberInput } from '@physbox-io/ui';
 
 /**
  * An unplated screw / mounting hole. It carries no net and has no handles, so

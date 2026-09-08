@@ -4,7 +4,7 @@ import { computeFFT } from '../../utils/fft';
 import { detectPeriod } from '../../utils/periodDetect';
 import type { NodePropertiesProps } from './registry';
 import { DEVICE_CARD_DARK, pinRow } from './schematic';
-import { NumberInput } from '../NumberInput';
+import { NumberInput } from '@physbox-io/ui';
 
 export function ScopeProperties({ node, updateData }: NodePropertiesProps) {
   return (
