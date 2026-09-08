@@ -6,6 +6,10 @@ WORKDIR /app
 # Copy the entire project context
 COPY . .
 
+# Needed to install @physbox-io/ui from GitHub Packages (see .npmrc)
+ARG GITHUB_TOKEN
+ENV GITHUB_TOKEN=$GITHUB_TOKEN
+
 # Build the engine dependency
 WORKDIR /app/ngspice-wasm/EEcircuit-engine
 RUN npm install
