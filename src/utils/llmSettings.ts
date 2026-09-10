@@ -108,11 +108,15 @@ export const writeMaxTokens = (value: number): number => {
 
 /**
  * Pulls the account's copilot settings down into this browser, so a key entered
- * in `etch` or `physics` is already there when the copilot is first opened here.
+ * in `etch`, `physics`, or on physbox.io's settings page is already there when
+ * the copilot is first opened here.
  *
- * Local values win: the sign-in that triggers this may well have happened *after*
- * a key was typed into this browser, and overwriting it would lose the newer of
- * the two. Only keys with nothing local are filled in.
+ * The account wins, as it does in `etch` and `physics`: settings.html on the
+ * website is the one place a key can be changed or removed for every app at
+ * once, and that only holds if each app takes what the account says rather than
+ * keeping whatever this browser had. An empty string is a deliberate removal and
+ * is applied too. Keys the account has no row for at all are left alone, so a
+ * key typed here before signing in survives the sign-in that follows it.
  */
 export const restoreLlmSettingsFromCloud = async (): Promise<void> => {
   let params: Record<string, unknown>;
@@ -123,8 +127,8 @@ export const restoreLlmSettingsFromCloud = async (): Promise<void> => {
   }
   for (const key of SYNCED_LLM_PARAMETER_KEYS) {
     const value = params?.[key];
-    if (value === undefined || value === null || value === '') continue;
-    if (read(key)) continue;
+    if (value === undefined || value === null) continue;
+    if (read(key) === String(value)) continue;
     try {
       localStorage.setItem(key, String(value));
     } catch {
