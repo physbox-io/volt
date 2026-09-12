@@ -292,6 +292,13 @@ export function DocsModal({ onClose }: DocsModalProps) {
                     down on RF or oscillator boards, where fat adjacent copper means more coupling.
                   </li>
                   <li>
+                    <strong>Pad Clearance</strong> keeps a ring of bare laminate around every pad that the
+                    flood may not enter, the pad's own net included. A milled board has no solder mask, so
+                    without it the only thing between a pad and the flooded copper beside it is the
+                    isolation channel, which a blob of solder crosses without trying. The pad and the trace
+                    feeding it are kept, so the ring behaves like a thermal relief with one spoke.
+                  </li>
+                  <li>
                     <strong>Auto isolation depth</strong> picks the shallowest cut that still clears the foil:
                     copper thickness from the material preset, plus an allowance for how flat the board is. A
                     V-bit widens as it descends, so a shallower cut is a narrower channel and two fatter traces

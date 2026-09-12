@@ -1526,6 +1526,27 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     </p>
                   </div>
                   <div>
+                    <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
+                      Pad Clearance (mm)
+                      <InfoTip>
+                        Bare laminate kept between every pad and the flooded copper around it. There is
+                        no solder mask on a milled board, so without this the only thing between a pad
+                        and the ground flood is the isolation channel, which solder bridges easily. The
+                        pad and the trace feeding it are kept, so the ring is a thermal relief, not a cut.
+                      </InfoTip>
+                    </label>
+                    <NumberInput
+                      step="0.1"
+                      min={0}
+                      value={options.padClearanceMm ?? 0}
+                      onChange={v => setOptions({
+                          ...options,
+                          padClearanceMm: v,
+                        })
+                      } className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+                  <div>
                     <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">Trace Clearance (mm)</label>
                     <NumberInput
                       step="0.05"

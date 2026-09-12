@@ -162,6 +162,19 @@ export interface PcbOptions {
    */
   copperFloodMm?: number;
   /**
+   * Bare laminate kept around every pad when copper is flooded, in mm.
+   *
+   * A milled board has no solder mask, so the only thing between a pad and
+   * the flooded copper beside it is the isolation channel: a fraction of a
+   * millimetre of laminate that a blob of solder crosses without trying. This
+   * holds every net's flood, the pad's own included, this far off the pad's
+   * outline. The pad itself and the trace feeding it are nominal copper and
+   * always survive, so the ring ends up as a thermal relief with a spoke where
+   * the track enters. It has no effect when the flood is off, since without a
+   * flood the copper next to a pad is a dead island anyway.
+   */
+  padClearanceMm?: number;
+  /**
    * Cut an isolation ring around every pad that carries no net.
    *
    * The board is isolation-milled, so copper the toolpath never encircles stays
@@ -270,6 +283,7 @@ export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   drillConsolidationMm: 0.3,
   boardMarginMm: 1.5,
   copperFloodMm: 0.6,
+  padClearanceMm: 0.5,
   isolateUnusedPads: true,
   placementSearch: true,
   placementCandidates: 240,
@@ -999,6 +1013,15 @@ export function floodCopperByNet(
     channelMarginMm?: number;
     /** Copper that must be kept clear but never grows: unassigned pads, cutouts. */
     blockers?: Poly[];
+    /**
+     * Pads that get soldered. No net's flood, the pad's own included, comes
+     * within {@link padClearanceMm} of them. Copper the layout already had
+     * inside that ring - the pad, the trace feeding it - is kept, which is
+     * what turns the ring into a thermal relief rather than a cut.
+     */
+    pads?: Poly[];
+    /** Laminate kept between a pad's outline and any flooded copper, in mm. */
+    padClearanceMm?: number;
     /** Region copper is allowed to occupy, typically the board minus toolpath room. */
     bounds?: Poly[];
   }
@@ -1023,6 +1046,15 @@ export function floodCopperByNet(
   const blockerKeepout =
     opts.blockers && opts.blockers.length > 0
       ? offsetPolys(unionPolys(opts.blockers), keepClear)
+      : [];
+  // Pads are static too. Their ring is measured from the pad's own outline, not
+  // from the channel, and unlike a blocker it binds the pad's own net as well:
+  // if that net could fill the ring, solder on the pad would wet straight out
+  // to the channel edge and the clearance would buy nothing.
+  const padClearance = Math.max(0, opts.padClearanceMm ?? 0);
+  const padKeepout =
+    padClearance > 0 && opts.pads && opts.pads.length > 0
+      ? offsetPolys(unionPolys(opts.pads), padClearance)
       : [];
   const bounds = opts.bounds && opts.bounds.length > 0 ? opts.bounds : null;
   const boundsBox = bounds ? polysBounds(bounds) : null;
@@ -1072,7 +1104,7 @@ export function floodCopperByNet(
       // Only the neighbours this net could actually reach this step matter, and
       // on any board bigger than a stamp that is a handful of them. Skipping
       // the rest keeps the clip small, which is where Clipper spends its time.
-      const clip: Poly[] = [...blockerKeepout];
+      const clip: Poly[] = [...blockerKeepout, ...padKeepout];
       for (const otherId of netIds) {
         if (otherId === netId) continue;
         const box = keepoutBox.get(otherId)!;
@@ -1606,12 +1638,17 @@ export function generatePcbLayout(
     // flooding across one would bury a hole that still has to be soldered.
     const blockersTop: Poly[] = [];
     const blockersBottom: Poly[] = [];
+    // Every pad, netted or not, gets a solderable ring of laminate around it.
+    const solderPadsTop: Poly[] = [];
+    const solderPadsBottom: Poly[] = [];
     for (const pad of pads) {
-      if (pad.netId) continue;
       const comp = compById.get(pad.componentId);
       if (!comp) continue;
       const poly = padPolygon(pad, comp.rotationDeg, effectivePadMarginMm(comp.footprint, padMargin));
       const isTht = pad.spec.drillDiameter && pad.spec.drillDiameter > 0;
+      solderPadsTop.push(poly);
+      if (isTwoLayer && isTht) solderPadsBottom.push(poly);
+      if (pad.netId) continue;
       blockersTop.push(poly);
       if (isTwoLayer && isTht) blockersBottom.push(poly);
     }
@@ -1643,6 +1680,8 @@ export function generatePcbLayout(
       channelMm: effectiveToolDiaMm,
       channelMarginMm: Math.max(0, options.channelMarginMm ?? 0.05),
       blockers: blockersTop,
+      pads: solderPadsTop,
+      padClearanceMm: options.padClearanceMm,
       bounds,
     });
     copperByNet = flooded.copper;
@@ -1654,6 +1693,8 @@ export function generatePcbLayout(
         channelMm: effectiveToolDiaMm,
         channelMarginMm: Math.max(0, options.channelMarginMm ?? 0.05),
         blockers: blockersBottom,
+        pads: solderPadsBottom,
+        padClearanceMm: options.padClearanceMm,
         bounds,
       });
       copperByNetBottom = floodedBottom.copper;
@@ -2874,6 +2915,10 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
       `(a ${options.traceWidthMm}mm trace in open laminate ends up ` +
       `${(options.traceWidthMm + result.copperFloodMm * 2).toFixed(2)}mm wide)`
     );
+    const padClr = Math.max(0, options.padClearanceMm ?? 0);
+    if (padClr > 0) {
+      g.push(`; Pads:       kept ${padClr.toFixed(2)}mm clear of flooded copper`);
+    }
   }
   g.push(`; Routed:     ${(result.completion * 100).toFixed(1)}%`);
   for (const v of result.violations) {

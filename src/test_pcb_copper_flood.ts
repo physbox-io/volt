@@ -12,6 +12,7 @@ import {
   DEFAULT_PCB_OPTIONS,
 } from './utils/pcbExporter';
 import {
+  intersectPolys,
   offsetPolys,
   polysBounds,
   polysOverlap,
@@ -129,6 +130,58 @@ check(
   `${bb.minX.toFixed(3)}..${bb.maxX.toFixed(3)}, ${bb.minY.toFixed(3)}..${bb.maxY.toFixed(3)}`
 );
 
+// --- 3b. Pad clearance ----------------------------------------------------
+// A ground trace runs past a pad on another net, fed by a trace of its own.
+// Without solder mask the pad needs more than the channel between it and the
+// ground copper, and its own net may not fill that ring either.
+const PAD = rectPoly(0, 0, 1.6, 1.6);
+const withPad = new Map<string, Poly[]>([
+  ['sig', [PAD, rectPoly(-3, 0, 4.4, 0.3)]],   // pad plus the trace feeding it from the left
+  ['gnd', [rectPoly(0, 2.5, 12, 0.4)]],       // ground track 1.3mm above the pad edge
+]);
+const relieved = floodCopperByNet(withPad, {
+  maxFloodMm: 1.0,
+  channelMm: CHANNEL,
+  channelMarginMm: MARGIN,
+  pads: [PAD],
+  padClearanceMm: 0.5,
+});
+check(
+  'the ground flood stops the pad clearance short of the pad',
+  gapAtLeast(relieved.copper.get('gnd')!, [PAD], 0.5),
+  'ground copper came within 0.5mm of the pad'
+);
+// Copper of the pad's own net in the column straight above the pad. The trace
+// runs off to the left and is free to fatten there; this column is only pad.
+const ABOVE_PAD = rectPoly(0, 2, 1.6, 4);
+const sigAbove = polysBounds(intersectPolys(relieved.copper.get('sig')!, [ABOVE_PAD]));
+check(
+  "the pad's own net does not fill the ring above the pad",
+  sigAbove.maxY < 0.8 + 0.02,
+  `signal copper reaches y ${sigAbove.maxY.toFixed(3)} above the pad`
+);
+check(
+  'but the trace still reaches the pad through it',
+  totalArea(intersectPolys(relieved.copper.get('sig')!, [rectPoly(-1.2, 0, 0.6, 0.3)])) > 0.6 * 0.3 - 1e-3
+);
+check(
+  'and the trace fattens once it is clear of the ring',
+  polysBounds(intersectPolys(relieved.copper.get('sig')!, [rectPoly(-4.5, 0, 0.5, 4)])).maxY > 0.5,
+  'trace away from the pad did not flood'
+);
+const unrelieved = floodCopperByNet(withPad, {
+  maxFloodMm: 1.0,
+  channelMm: CHANNEL,
+  channelMarginMm: MARGIN,
+  pads: [PAD],
+  padClearanceMm: 0,
+});
+check(
+  'a clearance of zero is the old behaviour: the pad floods out to the channel',
+  polysBounds(intersectPolys(unrelieved.copper.get('sig')!, [ABOVE_PAD])).maxY > 0.8 + 0.3,
+  `signal copper reaches y ${polysBounds(intersectPolys(unrelieved.copper.get('sig')!, [ABOVE_PAD])).maxY.toFixed(3)}`
+);
+
 // --- 4. Whole board -------------------------------------------------------
 const nodes: Node[] = [
   { id: 'R1', type: 'resistor', position: { x: 0, y: 0 }, data: { label: 'R1' } },
@@ -153,6 +206,8 @@ check(
 );
 check('the flood actually happened', fat.copperFloodMm > 0, `${fat.copperFloodMm}`);
 check('and is recorded in the program header', fat.gcode.includes('; Copper:'), '');
+check('pad clearance is on by default', (DEFAULT_PCB_OPTIONS.padClearanceMm ?? 0) > 0);
+check('and is recorded in the program header too', fat.gcode.includes('; Pads:       kept'), '');
 check('a board with flooding off says nothing about it', !plain.gcode.includes('; Copper:'));
 
 // The isolation ring is what the machine cuts, so it is the ring — not the
