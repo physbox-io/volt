@@ -14,6 +14,7 @@
 import type { Node, Edge } from '@xyflow/react';
 import { buildPortAdjacency } from './graphTopology';
 import type { ComponentFootprint } from './pcbFootprints';
+import { getEffectiveMcuConfig } from './mcuConfig';
 
 /** What a schematic symbol becomes on the physical board. */
 export type NodeRole =
@@ -223,7 +224,7 @@ const HANDLE_ORDER: Record<string, string[]> = {
   // TO-220 power MOSFET: 1 = Gate, 2 = Drain, 3 = Source.
   nmos: ['g', 'd', 's'],
   pmos: ['g', 'd', 's'],
-  mcu: ['5V', 'GND', 'D0', 'D1', 'D2', 'D3', 'A0', 'A1'],
+  mcu: ['D0', 'D1', 'D2', 'D3', 'GND', '5V', 'A1', 'A0'],
   heltec_v4: ['3V3', 'GND', 'GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41'],
   // Board-only parts. Pin headers and vias name their handles after the pad
   // number, so they resolve by direct match and need no entry here.
@@ -309,11 +310,12 @@ export function resolveHandleToPin(
   );
   if (direct >= 0) return { pinNumber: pads[direct].pinNumber, padIndex: direct };
 
-  // 2b. Custom MCU pin lookup
-  if (type === 'mcu' && customNodeData?.mcuConfig?.pins) {
-    const mcuPins = customNodeData.mcuConfig.pins;
+  // 2b. MCU pin lookup (custom or default)
+  if (type === 'mcu') {
+    const mcuConfig = getEffectiveMcuConfig(customNodeData);
+    const mcuPins = mcuConfig.pins;
     const pinIdx = mcuPins.findIndex((p: any) =>
-      p.id.toLowerCase() === handle.toLowerCase() || p.label.toLowerCase() === handle.toLowerCase()
+      p.id.toLowerCase() === handle.toLowerCase() || (p.label && p.label.toLowerCase() === handle.toLowerCase())
     );
     if (pinIdx >= 0) {
       const pin = mcuPins[pinIdx];

@@ -11,7 +11,8 @@ import { describe, it, expect } from 'vitest';
 import type { Node, Edge } from '@xyflow/react';
 import { executeMcuCode } from '../src/utils/mcu';
 import { generateSpiceNetlist } from '../src/utils/spice';
-import { generateCustomMcuFootprint } from '../src/utils/pcbFootprints';
+import { generateCustomMcuFootprint, resolveFootprint } from '../src/utils/pcbFootprints';
+import { resolveHandleToPin } from '../src/utils/pcbNets';
 import {
   MCU_PRESETS,
   createCustomMcuConfig,
@@ -175,3 +176,19 @@ describe('pin numbering survives a round trip through node data', () => {
     expect(rightColumnRunsUp(roundTripped)).toBe(false);
   });
 });
+
+describe('resolving MCU schematic handles to footprint pads', () => {
+  it('maps default MCU handles D0 and GND to pins 1 and 5', () => {
+    const fp = resolveFootprint(undefined, 'mcu', 8);
+    expect(resolveHandleToPin('mcu', 'D0', fp, {})?.pinNumber).toBe('1');
+    expect(resolveHandleToPin('mcu', 'GND', fp, {})?.pinNumber).toBe('5');
+  });
+
+  it('maps custom MCU handles by their configured pinNumber', () => {
+    const esp32 = MCU_PRESETS.find(p => p.key === 'esp32_devkit')!;
+    const fp = resolveFootprint(undefined, 'mcu', esp32.config.pins.length, { mcuConfig: esp32.config });
+    const g4Pin = esp32.config.pins.find(p => p.id === 'G4')!;
+    expect(resolveHandleToPin('mcu', 'G4', fp, { mcuConfig: esp32.config })?.pinNumber).toBe(String(g4Pin.pinNumber));
+  });
+});
+

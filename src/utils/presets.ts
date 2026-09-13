@@ -309,11 +309,13 @@ export const mcuBlink: CircuitPreset = {
     { id: 'r1', type: 'resistor', position: { x: 400, y: 176 }, data: { label: '330Ω' } },
     { id: 'led1', type: 'led', position: { x: 600, y: 172 }, data: { label: 'LED', color: 'blue', v_drop: 2.0, max_current: 20 } },
     { id: 'g1', type: 'ground', position: { x: 604, y: 350 }, data: { label: 'GND' } },
+    { id: 'g2', type: 'ground', position: { x: 200, y: 350 }, data: { label: 'GND' } },
   ],
   edges: [
     { id: 'e-mcu-r1', source: 'mcu1', target: 'r1', sourceHandle: 'D0', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-r1-led1', source: 'r1', target: 'led1', sourceHandle: 'out', targetHandle: 'anode', type: 'smoothstep' },
     { id: 'e-led1-g1', source: 'led1', target: 'g1', sourceHandle: 'cathode', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-mcu-g2', source: 'mcu1', target: 'g2', sourceHandle: 'GND', targetHandle: 'in', type: 'smoothstep' },
   ]
 };
 
@@ -324,10 +326,12 @@ export const mcuSpeaker: CircuitPreset = {
     { id: 'mcu1', type: 'mcu', position: { x: 100, y: 152 }, data: { label: 'Microcontroller', code: "pinMode('D1', 'OUTPUT');\n\n// Generate 500Hz square wave\nconst halfPeriod = 1;\nwhile(true) {\n  digitalWrite('D1', 1);\n  sleep(halfPeriod);\n  digitalWrite('D1', 0);\n  sleep(halfPeriod);\n}" } },
     { id: 'spk1', type: 'speaker', position: { x: 400, y: 188 }, data: { label: 'Speaker' } },
     { id: 'g1', type: 'ground', position: { x: 412, y: 300 }, data: { label: 'GND' } },
+    { id: 'g2', type: 'ground', position: { x: 200, y: 350 }, data: { label: 'GND' } },
   ],
   edges: [
     { id: 'e-mcu-spk1', source: 'mcu1', target: 'spk1', sourceHandle: 'D1', targetHandle: 'in', type: 'smoothstep' },
     { id: 'e-spk1-g1', source: 'spk1', target: 'g1', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-mcu-g2', source: 'mcu1', target: 'g2', sourceHandle: 'GND', targetHandle: 'in', type: 'smoothstep' },
   ]
 };
 
@@ -338,10 +342,12 @@ export const mcuAnalogOut: CircuitPreset = {
     { id: 'mcu1', type: 'mcu', position: { x: 100, y: 164 }, data: { label: 'Microcontroller', code: "pinMode('A0', 'OUTPUT');\n\n// Generate ~5Hz sine wave\nconst freq = 5;\nconst points = 20;\nconst dt = 1000 / (freq * points);\n\nwhile(true) {\n  for(let i=0; i<points; i++) {\n    const rad = (i / points) * 2 * Math.PI;\n    const val = (Math.sin(rad) + 1) * 127;\n    analogWrite('A0', val);\n    \n    // Log first period\n    if (millis() < 1000 / freq) {\n      Serial.println(`t=${millis().toFixed(0)} val=${val.toFixed(0)}`);\n    }\n    sleep(dt);\n  }\n}" } },
     { id: 'scope1', type: 'scope', position: { x: 400, y: 151.1 }, data: { label: 'A0 Output' } },
     { id: 'g1', type: 'ground', position: { x: 400, y: 294.29999999999995 }, data: { label: 'GND' } },
+    { id: 'g2', type: 'ground', position: { x: 200, y: 350 }, data: { label: 'GND' } },
   ],
   edges: [
     { id: 'e-mcu-scope', source: 'mcu1', target: 'scope1', sourceHandle: 'A0', targetHandle: 'ch1', type: 'smoothstep' },
     { id: 'e-scope-g1', source: 'scope1', target: 'g1', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-mcu-g2', source: 'mcu1', target: 'g2', sourceHandle: 'GND', targetHandle: 'in', type: 'smoothstep' },
   ]
 };
 
