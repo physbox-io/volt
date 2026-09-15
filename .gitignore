@@ -32,3 +32,6 @@ dist-ssr
 *.pid
 /revert.js
 /test_*.js
+
+# Claude Code local config
+.claude
