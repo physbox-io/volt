@@ -9,6 +9,7 @@ import { toPng } from 'html-to-image';
 import { presets as builtinPresets } from '../utils/presets';
 import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey, loadMachiningSettings } from '../utils/storage';
 import { generatePcbLayout, type PcbOptions } from '../utils/pcbExporter';
+import { createVoltMachineHandlers, setCurrentCircuit } from '../utils/machineMcp';
 import {
   MCU_PACKAGE_STYLES,
   MCU_PIN_SIDES,
@@ -231,10 +232,37 @@ export function useMCPBridge(props: BridgeProps) {
       ws.onerror = () => ws?.close();
     };
 
+    /*
+     * The machine commands, built once and shared with Etch and Mesh.
+     *
+     * Everything that can move an axis goes through the arming gate: a person
+     * clicks "Allow Claude to move this machine" in the app, once, and the
+     * agent works inside that window. Reading state, trimming a running cut,
+     * pausing, cancelling and e-stopping are all ungated — refusing a stop
+     * would be worse than having no gate at all.
+     */
+    const machineHandlers = createVoltMachineHandlers();
+
     const handle = async (cmd: string, msg: any): Promise<unknown> => {
       const { nodes, edges, isSimulating, selectedPreset, probeMode,
               runSimulation, stopSimulation, resetSimulation, setProbeMode, setNodes, setEdges,
               loadPreset } = p.current;
+
+      // The machine handlers outlive any one render, so they are pointed at the
+      // circuit this call is answering about rather than closing over a stale one.
+      setCurrentCircuit(nodes, edges);
+
+      const machineHandler = machineHandlers[cmd];
+      if (machineHandler) {
+        try {
+          return await machineHandler(msg ?? {});
+        } catch (e) {
+          // Returned rather than thrown: a refusal is an answer the agent has to
+          // read and act on — arm the machine, fix the board, re-probe — and an
+          // exception here would surface as a bridge fault instead.
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      }
 
       switch (cmd) {
         case 'GET_STATE':

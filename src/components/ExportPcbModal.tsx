@@ -66,6 +66,7 @@ import {
   interpolateGridZ,
   type ProbeGrid,
 } from '../utils/meshLeveler';
+import { setActiveHeightmap } from '../utils/machineMcp';
 import { PcbToolpathPreview } from './PcbToolpathPreview';
 import { InfoTip } from './InfoTip';
 import { JobPauseModal } from './JobPauseModal';
@@ -413,6 +414,17 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const heightmapStale = heightmap !== null && activeHeightmap === null;
 
   const gridStats = activeHeightmap ? getGridStats(activeHeightmap) : null;
+
+  /*
+   * Hand the live map to the MCP side, so a board milled from a conversation is
+   * levelled against the same probe the Mill button here would have used. A map
+   * that no longer covers the board is published as null rather than withheld:
+   * the agent's mill path has to see it go away, or it would go on assuming a
+   * compensation that is not being applied.
+   */
+  useEffect(() => {
+    setActiveHeightmap(activeHeightmap);
+  }, [activeHeightmap]);
 
   /**
    * What the machine measured about itself, in the units the depth budget is

@@ -26,6 +26,7 @@ import { presets, DEFAULT_PRESET_KEY } from './utils/presets';
 import { EdgePathProvider } from './components/AuraEdge';
 import { SettingsModal } from './components/SettingsModal';
 import { UserProfileButton } from './components/UserProfileButton';
+import { AgentMachineBanner } from './components/AgentMachineBanner';
 import { loadSettings, saveSettings, loadMachiningSettings } from './utils/storage';
 import { cloudAutosave } from './utils/cloudDocuments';
 import { useMCPBridge } from './hooks/useMCPBridge';
@@ -2007,6 +2008,9 @@ export default function App() {
             >
               <Sparkles className="w-4 h-4" />
             </button>
+
+            {/* Whether Claude may move the machine — see AgentMachineBanner */}
+            <AgentMachineBanner />
 
             {/* User Profile & Cloud Sync */}
             <UserProfileButton />

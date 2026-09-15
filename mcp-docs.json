@@ -8,7 +8,7 @@
     "5. Trigger the transient simulation using circuit_run_sim. Always call this after modifying node properties or connections to update voltages, currents, and MCU outputs.",
     "6. Retrieve the simulation waveforms using circuit_get_waveforms to inspect voltages, currents, and MCU logs programmatically.",
     "7. If troubleshooting or analyzing a wire, call circuit_toggle_probe to enable real-time voltage inspection at specific coordinates.",
-    "8. Call circuit_set_note_cards to put a card on the canvas describing the circuit \u2014 what it is, the component values that set its behaviour and what they work out to, and how it works. A finished circuit is not finished without one.",
+    "8. Call circuit_set_note_cards to put a card on the canvas describing the circuit — what it is, the component values that set its behaviour and what they work out to, and how it works. A finished circuit is not finished without one.",
     "9. When the user will come back to it, save it with circuit_save_preset, passing noteCard so the description comes back with the preset."
   ],
   "gotchas": [
@@ -18,9 +18,9 @@
     "SAMPLING RATES: The oscilloscope and speaker components capture waveforms over the simulation duration (e.g., simLength). If you are outputting audio, make sure the sampling frequency of your signal generator or MCU code matches the time scale to avoid aliasing.",
     "NMOS HIGH-SIDE SWITCHING: Do not use NMOS as the high-side switch in a buck converter (drain at Vin, source at switching node, gate driven from a GND-referenced signal). This is a fundamental electronics constraint, not a simulator limitation: when the NMOS turns on, the source rises toward Vin, collapsing Vgs below the threshold and immediately turning it off. A proper high-side NMOS requires a bootstrap gate driver. Without one, use NMOS low-side only (source tied to GND). For buck converters, the working topology is: NMOS drain at Vin, source at the switching node, freewheeling diode cathode also at the switching node, diode anode to GND, inductor from switching node to output.",
     "SWITCHING FREQUENCY AND SIMULATION SPEED: The default SPICE timestep is around 1ms (normal resolution) or 0.05ms (high resolution). Signal generators running faster than roughly 1-5kHz may require many sub-steps per cycle to converge, significantly increasing simulation time. Very high frequencies (tens of kHz and above) combined with a long simLength can make the simulation slow or unresponsive. If a switching circuit is slow to simulate, try reducing the frequency or the simLength first.",
-    "BUCK CONVERTER DUTY CYCLE: The theoretical duty cycle for a buck converter is Vout/Vin. In practice, MOSFET threshold voltage and diode forward drop mean the effective duty is lower \u2014 expect to tune the dutyCycle parameter down by several percent from the ideal value.",
-    "A device's part number lives in data.model, and setting it is what makes the device that part \u2014 do not hand-write bf/vto/gain to imitate a real component when the catalogue in schema.spiceModels already has it. Label alone does nothing: data.label is the caption on the schematic, so a node with label '2N3904' and no model is a generic transistor with a misleading name on it.",
-    "SINGLE-SIDED ROUTING FAILURES: the board has one copper layer, so a net that has to cross another net cannot be routed at all \u2014 circuit_get_pcb_layout returns completion < 1 and names it in `unrouted`. Trace width, clearance, routing grid and a longer budget rarely rescue a crossing; they only help when the failure is congestion. The real fixes are structural: place a `jumper` part to fly the net over, move a connector, or pick a pin on the same side of the module as the rest of that connector's nets. A dual-header module whose connector straddles both rows will always force at least one crossing."
+    "BUCK CONVERTER DUTY CYCLE: The theoretical duty cycle for a buck converter is Vout/Vin. In practice, MOSFET threshold voltage and diode forward drop mean the effective duty is lower — expect to tune the dutyCycle parameter down by several percent from the ideal value.",
+    "A device's part number lives in data.model, and setting it is what makes the device that part — do not hand-write bf/vto/gain to imitate a real component when the catalogue in schema.spiceModels already has it. Label alone does nothing: data.label is the caption on the schematic, so a node with label '2N3904' and no model is a generic transistor with a misleading name on it.",
+    "SINGLE-SIDED ROUTING FAILURES: the board has one copper layer, so a net that has to cross another net cannot be routed at all — circuit_get_pcb_layout returns completion < 1 and names it in `unrouted`. Trace width, clearance, routing grid and a longer budget rarely rescue a crossing; they only help when the failure is congestion. The real fixes are structural: place a `jumper` part to fly the net over, move a connector, or pick a pin on the same side of the module as the rest of that connector's nets. A dual-header module whose connector straddles both rows will always force at least one crossing."
   ],
   "coordinateSystem": {
     "canvasGrid": "React Flow canvas uses a standard X/Y coordinate system. X increases to the right, Y increases downwards.",
@@ -36,7 +36,7 @@
     "circuit_toggle_probe": "Toggle probe mode (click a wire to inspect voltage).",
     "circuit_list_presets": "List all available built-in and user-saved circuit presets.",
     "circuit_load_preset": "Load a named circuit preset (e.g., basicBlink, timer555Blink, sineAudio, bjtAmp, micSpeaker, classBamp, classABamp, bridgeRectifier, mcuBlink, mcuSpeaker, mcuAnalogOut, mcuAnalogIn, mcuPassThrough, mcuCleanAudioSampler, mixedLogicBlink, opAmpAmp, boostConverter, bistableMultivibrator, astableMultivibrator, potDimmer, sevenSegDirect, currentMirror, buckConverter, transformerRectifier, dffBlinker, heltecLightToFreqHIL, heltecGPIOToCYDSpeakerHIL, ldrWebcamDemo).",
-    "circuit_save_preset": "Save the current active circuit canvas as a custom user preset. Always pass noteCard: a markdown string describing THIS circuit, which the app puts up as a note card beside the canvas whenever the preset is loaded. This is the card that comes back up whenever the preset is loaded, so a preset saved without one reopens with nothing explaining it. For the circuit currently on the canvas, use circuit_set_note_cards instead \u2014 the two are separate, and saving a preset does not capture the live card. Shape it like the built-in presets' cards (circuit_load_preset one and read its card on screen): a `#` title naming the circuit, a sentence on what it does, a `## How it works` walking the signal through the stages, and the values that set its behaviour \u2014 supply rail, the RC or divider figures, the frequency or gain they work out to \u2014 quoted from the components actually on the canvas. Optional recommendedSimLength (seconds) sets how long circuit_run_sim runs by default when the preset is loaded; give it one when the interesting behaviour takes longer than a default run to appear.",
+    "circuit_save_preset": "Save the current active circuit canvas as a custom user preset. Always pass noteCard: a markdown string describing THIS circuit, which the app puts up as a note card beside the canvas whenever the preset is loaded. This is the card that comes back up whenever the preset is loaded, so a preset saved without one reopens with nothing explaining it. For the circuit currently on the canvas, use circuit_set_note_cards instead — the two are separate, and saving a preset does not capture the live card. Shape it like the built-in presets' cards (circuit_load_preset one and read its card on screen): a `#` title naming the circuit, a sentence on what it does, a `## How it works` walking the signal through the stages, and the values that set its behaviour — supply rail, the RC or divider figures, the frequency or gain they work out to — quoted from the components actually on the canvas. Optional recommendedSimLength (seconds) sets how long circuit_run_sim runs by default when the preset is loaded; give it one when the interesting behaviour takes longer than a default run to appear.",
     "circuit_delete_preset": "Delete a custom user circuit preset by its key.",
     "circuit_set_nodes": "Replace all components in the PhysBox: Volt canvas.",
     "circuit_set_edges": "Replace all wires in the PhysBox: Volt canvas.",
@@ -45,37 +45,58 @@
     "circuit_get_schema": "Return the PhysBox: Volt component schema, state fields, and SPICE model specifications.",
     "circuit_get_waveforms": "Return transient waveforms (voltage/current time series) for all components and wires after simulation runs.",
     "circuit_get_history": "Return simulation waveform history for all components and wires.",
-    "circuit_get_screenshot": "Capture the schematic as a PNG. The frame is the CIRCUIT, not the viewport: every component is fitted into the image with a margin, so the picture does not depend on where the user happens to have scrolled and two calls of the same circuit give the same image. Returns { ok, dataUrl, width, height }; errors when the canvas is empty. Use it to check a layout \u2014 whether parts overlap, whether a wire runs where you meant it to \u2014 after building a circuit.",
+    "circuit_get_screenshot": "Capture the schematic as a PNG. The frame is the CIRCUIT, not the viewport: every component is fitted into the image with a margin, so the picture does not depend on where the user happens to have scrolled and two calls of the same circuit give the same image. Returns { ok, dataUrl, width, height }; errors when the canvas is empty. Use it to check a layout — whether parts overlap, whether a wire runs where you meant it to — after building a circuit.",
     "circuit_upload_audio": "Upload audio samples to a microphone node.",
     "circuit_download_audio": "Download audio waveforms from a speaker node, optionally interpolated.",
     "circuit_get_note_cards": "Return the note card overlays currently on the canvas, as [{ id, markdown, minimized, x, y }].",
-    "circuit_set_note_cards": "Replace the note card overlays on the canvas. Pass noteCards: [{ id, markdown, minimized, x, y }] \u2014 one card is the norm; id can be any unique string, minimized false, and x around (window width - 580) with y 20 parks it clear of the inspector. Call this after circuit_set_circuit or circuit_set_nodes, and again whenever an edit changes what the card claims. Pass an empty array to clear.\n\nThe markdown is the label for THIS circuit:\n- `# Title` naming the circuit (\"Astable 555 Blinker\"), not its category.\n- A sentence on what it does and what to look for when it runs.\n- `## Values` \u2014 the numbers that set the behaviour, read off the components you actually placed: supply rail, each R and C that matters, and the figure they work out to (frequency, duty cycle, gain, cutoff, quiescent current), with the expression so the reader can follow it \u2014 e.g. f = 1.44/((R1+2\u00b7R2)\u00b7C1) \u2248 1.9 Hz.\n- `## How it works` \u2014 the signal walked through the stages.\n- `## Try it` \u2014 two or three specific component changes and what each does.\n\nQuote real values, not \"a few kilohms\", and describe the circuit rather than the plumbing that built it. Circuit_set_circuit and circuit_set_nodes drop a card left over from a loaded preset, since it describes a circuit that is no longer on the canvas \u2014 yours is what replaces it.",
-    "circuit_reset": "Reset the simulation to t=0, leaving the circuit itself untouched. Stops the run and strips the results it painted onto the canvas: node voltages, scope traces, per-edge currents, MCU logs and any initial conditions carried over. Use it before a fresh circuit_run_sim when you want to be certain the waveforms you read back are from this run \u2014 circuit_stop_sim alone leaves the old ones in place, and they look identical to new ones.",
-    "circuit_update_component": "Change one component in place: circuit_update_component(id, updates). Prefer this over circuit_set_nodes for an edit \u2014 set_nodes replaces every node, so anything that changed on the canvas between your read and your write is silently overwritten by your stale copy.\n\nupdates takes the node's own fields (position) and a `data` object that is MERGED, not replaced: { data: { label: '10k' } } changes the label and leaves the simulation output sitting beside it alone. id cannot be changed, and neither can type \u2014 a different part has different terminals and different data, so delete it and add the replacement.\n\nFor a transistor, MOSFET or op-amp, { data: { model: '2n3904' } } is enough to make it that part \u2014 the netlist resolves the model against the catalogue. See schema.spiceModels.\n\nFor a microcontroller's pins, package geometry or program, use circuit_define_mcu instead: an mcuConfig merged in through here leaves the node's packageId describing the old package, is not validated, and says nothing about the wires a renamed pin just stranded.",
-    "circuit_get_pcb_layout": "Place and route the current circuit as a single-sided milled PCB and return the result, without opening the export dialog. This is how you interrogate a board: `completion` is 1 when every connection routed, and `unrouted` names each one that did not, with the pads it runs between and why it failed. Also returns board size, per-component placement (position, rotation, package, courtyard), per-net port lists and trace counts, plus violations and warnings.\n\nGeometry is opt-in because it is bulky: pass includePads:true for every pad's pin number, net and mm position \u2014 the way to check a module footprint against its datasheet, since a header row generated end-for-end against its neighbour cannot be seated in ANY orientation and looks fine until you read the pin numbers. Narrow that to one part with `component` (a node id). Pass includeTraces:true for routed polylines. `options` overrides the saved machining settings for this call only (traceWidthMm, clearanceMm, routingBudgetMs, boardWidthMm...) \u2014 nothing is persisted.\n\nRouting runs for up to the routing budget, so this is slower than the other read tools.",
-    "circuit_get_pcb_preview": "Render the laid-out board as a PNG and return it as an image, so the board can actually be looked at rather than only queried. `view` picks the face: 'copper' (default) is the board as milled, matching the toolpath and the blank clamped on the machine; 'component' is the mirror image seen from the face the parts sit on. A single-sided board is milled copper-up and assembled from the other side, so the two are mirror images and the wrong one will happily look correct \u2014 say which you meant.\n\nPad numbers are drawn on every pad by default; pass padNumbers:false for a clean picture of a dense board. `pxPerMm` (2-30, default 12) sets the resolution, capped at 2000px a side. `options` overrides the saved machining settings for this call only. Routing runs first, so this is slower than circuit_get_screenshot \u2014 and note that it shows the BOARD, whereas circuit_get_screenshot shows the schematic.",
-    "circuit_delete_component": "Delete one or more components from the canvas, together with every wire attached to them. Pass `id` as a single node id or a list of them.\n\nUse this rather than circuit_set_nodes for a removal. set_nodes replaces the whole canvas from your copy, so anything that changed between your read and your write is silently overwritten \u2014 and it leaves the deleted part's wires behind, dangling from a node that no longer exists. Those orphans still carry connectivity, so the board goes on routing to a part nobody can see.\n\nEvery id is checked before anything is removed: naming a component that does not exist fails the whole call rather than half-applying it. Returns the ids deleted and the ids of the wires that went with them.",
-    "circuit_define_mcu": "Define a microcontroller outright \u2014 pins, package geometry and program in one call: circuit_define_mcu(nodeId, presetKey?, pins?, geometry?, code?, label?).\n\nThe node must already exist and be of type 'mcu' (add one with circuit_set_nodes or circuit_set_circuit) \u2014 a component's type cannot be changed in place. presetKey starts from a known part (circuit_list_mcu_presets for the list); pins and geometry are applied over it and make the part custom. Omit presetKey to edit what the node already has.\n\nPrefer this over pushing an mcuConfig through circuit_update_component. It rewrites the node's packageId to match \u2014 without that the footprint resolver keeps milling the old package whatever the new config says \u2014 it refuses a config that cannot work and names the field, and it reports every wire left dangling by a renamed pin, since a pin id IS the handle its edges are attached by.\n\nReturns { ok, id, presetKey, style, pinCount, packageId, pins, warnings, danglingEdges }. See schema.mcuConfig for every field and its rules.",
-    "circuit_list_mcu_presets": "The built-in MCU presets, to start from a real part rather than assembling pins by hand. Returns one entry per preset: { key, name, description, style, pinCount, isSmd, pins } where pins is the list of pin ids. Pass a key as circuit_define_mcu's presetKey."
+    "circuit_set_note_cards": "Replace the note card overlays on the canvas. Pass noteCards: [{ id, markdown, minimized, x, y }] — one card is the norm; id can be any unique string, minimized false, and x around (window width - 580) with y 20 parks it clear of the inspector. Call this after circuit_set_circuit or circuit_set_nodes, and again whenever an edit changes what the card claims. Pass an empty array to clear.\n\nThe markdown is the label for THIS circuit:\n- `# Title` naming the circuit (\"Astable 555 Blinker\"), not its category.\n- A sentence on what it does and what to look for when it runs.\n- `## Values` — the numbers that set the behaviour, read off the components you actually placed: supply rail, each R and C that matters, and the figure they work out to (frequency, duty cycle, gain, cutoff, quiescent current), with the expression so the reader can follow it — e.g. f = 1.44/((R1+2·R2)·C1) ≈ 1.9 Hz.\n- `## How it works` — the signal walked through the stages.\n- `## Try it` — two or three specific component changes and what each does.\n\nQuote real values, not \"a few kilohms\", and describe the circuit rather than the plumbing that built it. Circuit_set_circuit and circuit_set_nodes drop a card left over from a loaded preset, since it describes a circuit that is no longer on the canvas — yours is what replaces it.",
+    "circuit_reset": "Reset the simulation to t=0, leaving the circuit itself untouched. Stops the run and strips the results it painted onto the canvas: node voltages, scope traces, per-edge currents, MCU logs and any initial conditions carried over. Use it before a fresh circuit_run_sim when you want to be certain the waveforms you read back are from this run — circuit_stop_sim alone leaves the old ones in place, and they look identical to new ones.",
+    "circuit_update_component": "Change one component in place: circuit_update_component(id, updates). Prefer this over circuit_set_nodes for an edit — set_nodes replaces every node, so anything that changed on the canvas between your read and your write is silently overwritten by your stale copy.\n\nupdates takes the node's own fields (position) and a `data` object that is MERGED, not replaced: { data: { label: '10k' } } changes the label and leaves the simulation output sitting beside it alone. id cannot be changed, and neither can type — a different part has different terminals and different data, so delete it and add the replacement.\n\nFor a transistor, MOSFET or op-amp, { data: { model: '2n3904' } } is enough to make it that part — the netlist resolves the model against the catalogue. See schema.spiceModels.\n\nFor a microcontroller's pins, package geometry or program, use circuit_define_mcu instead: an mcuConfig merged in through here leaves the node's packageId describing the old package, is not validated, and says nothing about the wires a renamed pin just stranded.",
+    "circuit_get_pcb_layout": "Place and route the current circuit as a single-sided milled PCB and return the result, without opening the export dialog. This is how you interrogate a board: `completion` is 1 when every connection routed, and `unrouted` names each one that did not, with the pads it runs between and why it failed. Also returns board size, per-component placement (position, rotation, package, courtyard), per-net port lists and trace counts, plus violations and warnings.\n\nGeometry is opt-in because it is bulky: pass includePads:true for every pad's pin number, net and mm position — the way to check a module footprint against its datasheet, since a header row generated end-for-end against its neighbour cannot be seated in ANY orientation and looks fine until you read the pin numbers. Narrow that to one part with `component` (a node id). Pass includeTraces:true for routed polylines. `options` overrides the saved machining settings for this call only (traceWidthMm, clearanceMm, routingBudgetMs, boardWidthMm...) — nothing is persisted.\n\nRouting runs for up to the routing budget, so this is slower than the other read tools.",
+    "circuit_get_pcb_preview": "Render the laid-out board as a PNG and return it as an image, so the board can actually be looked at rather than only queried. `view` picks the face: 'copper' (default) is the board as milled, matching the toolpath and the blank clamped on the machine; 'component' is the mirror image seen from the face the parts sit on. A single-sided board is milled copper-up and assembled from the other side, so the two are mirror images and the wrong one will happily look correct — say which you meant.\n\nPad numbers are drawn on every pad by default; pass padNumbers:false for a clean picture of a dense board. `pxPerMm` (2-30, default 12) sets the resolution, capped at 2000px a side. `options` overrides the saved machining settings for this call only. Routing runs first, so this is slower than circuit_get_screenshot — and note that it shows the BOARD, whereas circuit_get_screenshot shows the schematic.",
+    "circuit_delete_component": "Delete one or more components from the canvas, together with every wire attached to them. Pass `id` as a single node id or a list of them.\n\nUse this rather than circuit_set_nodes for a removal. set_nodes replaces the whole canvas from your copy, so anything that changed between your read and your write is silently overwritten — and it leaves the deleted part's wires behind, dangling from a node that no longer exists. Those orphans still carry connectivity, so the board goes on routing to a part nobody can see.\n\nEvery id is checked before anything is removed: naming a component that does not exist fails the whole call rather than half-applying it. Returns the ids deleted and the ids of the wires that went with them.",
+    "circuit_define_mcu": "Define a microcontroller outright — pins, package geometry and program in one call: circuit_define_mcu(nodeId, presetKey?, pins?, geometry?, code?, label?).\n\nThe node must already exist and be of type 'mcu' (add one with circuit_set_nodes or circuit_set_circuit) — a component's type cannot be changed in place. presetKey starts from a known part (circuit_list_mcu_presets for the list); pins and geometry are applied over it and make the part custom. Omit presetKey to edit what the node already has.\n\nPrefer this over pushing an mcuConfig through circuit_update_component. It rewrites the node's packageId to match — without that the footprint resolver keeps milling the old package whatever the new config says — it refuses a config that cannot work and names the field, and it reports every wire left dangling by a renamed pin, since a pin id IS the handle its edges are attached by.\n\nReturns { ok, id, presetKey, style, pinCount, packageId, pins, warnings, danglingEdges }. See schema.mcuConfig for every field and its rules.",
+    "circuit_list_mcu_presets": "The built-in MCU presets, to start from a real part rather than assembling pins by hand. Returns one entry per preset: { key, name, description, style, pinCount, isSmd, pins } where pins is the list of pin ids. Pass a key as circuit_define_mcu's presetKey.",
+    "circuit_machine_status": "Report the milling machine: whether it is connected, its GRBL state, work and machine coordinates, the work offset, live feed and spindle, the trim percentages, and how far through a job it is. Read-only and never gated — this works whether or not the machine is armed, and is the first thing to call before anything else here.\n\n`armed` is the field that decides what else you can do. False means every command that moves an axis will be refused until the person at the machine allows it; `armedUntil` is when that permission lapses on its own. The trim figures come from the controller's own status report, so they are right even if it was reset or adjusted from a pendant.",
+    "circuit_machine_settings": "The controller's `$$` settings — max rates, accelerations, steps/mm, homing and soft-limit configuration — as read when the link opened. Read-only.\n\nAn empty result with a `note` means the controller never answered `$$`, which is NOT the same as a controller with no settings: the figures are unknown, so do not reason about travel limits or feed ceilings from their absence.",
+    "circuit_machine_list_devices": "List the Tekno Boxes paired to this account, with whether each is online right now. Pass one of these ids as circuit_machine_connect's deviceId to cut over WiFi. Read-only.",
+    "circuit_machine_arm": "Deliberately CANNOT arm the machine. It exists to give a clear answer rather than leave you guessing why motion is refused.\n\nArming is a click in the app, by the person standing next to the machine: \"Allow Claude to move this machine\". That is the one thing in this whole tool set an agent may not do for itself, and it is the reason the rest of it is safe to expose at all. If you need to move the machine and it is not armed, ask the user to click it — do not retry, and do not look for another route.\n\nThe permission lasts about an hour and covers everything: jogging, zeroing, probing, framing and milling. They can end it at any moment with Stop in the same banner, which also cancels whatever is running.",
+    "circuit_machine_disarm": "Give the permission back before it lapses, and stop anything running. Needs no arming itself — handing back an authority is not a privileged act. Worth calling when you have finished a job and nothing further is planned, rather than leaving the window open for the rest of the hour.",
+    "circuit_machine_connect": "Open the link to the machine. `transport` is 'usb' or 'wifi'; WiFi also needs `deviceId` from circuit_machine_list_devices.\n\nUSB is worth understanding before you try it: the browser asks the person at the keyboard to pick a serial port from a native dialog, so this only works if they are sitting there to pick one. If they are not, it fails and there is nothing you can do about it from here — ask them to connect in the app instead. WiFi has no such prompt and is the transport to prefer when a box is paired.",
+    "circuit_machine_disconnect": "Close the machine link. Does not stop a job — cancel or e-stop first if one is running.",
+    "circuit_machine_jog": "Move the tool by a relative distance: x, y and z in mm, optional feedRate in mm/min (default 1000). Positive Z is up, away from the board. At least one axis is required. Needs the machine armed.\n\nThis is how the bit gets over the corner of the blank before zeroing. It is a GRBL `$J=` jog, so it leaves the modal state alone and can be cancelled mid-move — it will not put the machine into relative mode behind your back.\n\nThe reply carries the position after the move, read back from the controller rather than assumed. Jogging clears any standing zero confirmation, which is correct — the confirmation meant \"the tool is standing at the origin\" and it no longer is — and does not move the origin itself.",
+    "circuit_machine_home": "Run the homing cycle ($H), establishing machine coordinates against the limit switches. Needs the machine armed. Only works on a controller with homing enabled ($22=1); elsewhere it answers error:5.\n\nHoming does not set the work origin and does not make a stale Z datum trustworthy — it leaves the job needing its Z zeroed before it will run.",
+    "circuit_machine_unlock": "Clear GRBL's alarm lockout ($X). Needs the machine armed.\n\nGRBL boots into Alarm whenever homing is enabled, and enters it after a limit trip, a failed probe or a reset mid-motion — in that state it refuses every G-code line with error:9. Unlocking after a *boot* lockout is routine. Unlocking after a limit trip or a reset mid-motion is not: the machine has lost its position, and unlocking does not give it back. Home it before cutting anything.",
+    "circuit_machine_goto_origin": "Lift to a safe height, then travel to the work origin (X0 Y0). `safeZMm` is a work height, default 5. Needs the machine armed.\n\nIt lifts first rather than going straight there, which would drag the tool across the board at whatever height it happened to be at. The retract is clamped against the live position so it can only ever move Z away from the board — against an origin left over from a different setup a nominal +5 can be below the tool already.",
+    "circuit_machine_zero_xy": "Set the current XY position as the work origin — the corner the board is laid out from. Needs the machine armed.\n\nJog the bit over the corner of the copper blank first. The zero is written with `G10 L20`, a real work offset that survives a reset, and is remembered across page reloads so a closed tab does not take the only record of the setup with it. The reply's `workOffset` is the confirmation it actually took: the controller acknowledges the command by return, which only says the line was received.",
+    "circuit_machine_zero_z": "Set work Z0, the datum everything the job cuts is referenced to. Needs the machine armed.\n\nTwo ways, and picking the wrong one puts every cut out by the difference:\n- No arguments: probes the copper directly under the bit using the continuity clip, and puts Z0 on the surface. This is the zero a height map is referenced to, so it is the one to use before circuit_machine_probe_surface, and the one to use for an ordinary job.\n- `touchPlateMm`: probes onto a conductive plate of that thickness. The tool stops on TOP of the plate, so Z0 is placed that far below the contact point. Pass the real thickness — a wrong figure is a wrong datum, silently.\n\n`surfaceOffsetMm` is how far the copper here stands above the plane a loaded height map is referenced to. Leave it at 0 when defining that plane. When re-zeroing at a tool change somewhere else on the board, pass the map's reading at this XY, or every remaining cut shifts by the height difference between the two spots.\n\nThe reply's `zeroScatterMm` is how far the two stabs of the probe disagreed — the machine's own repeatability at the one place it matters most. Anything above about 0.05mm is worth mentioning to the user before cutting: an isolation pass is 35 microns of copper plus whatever margin is left.",
+    "circuit_machine_probe_surface": "Probe a grid of points across the board and keep the height map, so the isolation pass follows a board that is not flat. Optional `cols` and `rows` (default 4x4). Needs the machine armed.\n\nRequires XY zeroed at the board origin and Z zeroed ON THE COPPER — call circuit_machine_zero_z with no touch plate first. The map is stored and applied automatically by circuit_mill_pcb.\n\nA 0.1mm bow across a board is the whole isolation depth, which is why this exists; it is also why the result is checked rather than trusted. The call fails outright if the map sits well off the Z0 plane (Z0 is not on this copper), if it sits bodily off it while being the right shape (Z0 was set against a stale map), or if re-probing the first point disagrees with its first reading by more than 0.15mm (the machine cannot find the same spot twice, and no map will fix that). Read those failures as real — they each name what to do.\n\n`repeatabilityMm` in the reply is that re-probe figure. It is the number the isolation depth budget is actually spent against.",
+    "circuit_machine_frame_job": "Trace the outline of the board with the spindle off, at clearance height. Needs the machine armed.\n\nOne lap answers the questions that otherwise only come up once something is cutting: is the blank where the job thinks it is, is it big enough, do the clamps foul the travel. Seconds, against re-flying ten thousand isolation moves. Do this after zeroing and before circuit_mill_pcb — it is the cheapest check available and the user can watch it.\n\nTakes the current board's outline by default; pass explicit `bounds` to frame something else. The spindle is stopped first, deliberately: after zeroing Z the tool is standing on the surface of the stock, and framing from there with it running would drag a spinning cutter around the outline.",
+    "circuit_mill_pcb": "Mill the board on the canvas: isolation, drilling and profiling, streamed to the machine. Needs the machine armed. This is the one that cuts.\n\nBefore calling it, the board should be laid out and checked (circuit_get_pcb_layout), the blank clamped, XY and Z zeroed, and ideally framed. It refuses rather than cutting a board that is not ready, and each refusal names the fix:\n- Any net that would not route. A single-layer board missing its hardest connections looks finished and is scrap; fix it with a `jumper` part or by moving a component.\n- Any design rule violation.\n- A Z datum that has not been confirmed this session. GRBL keeps the work offset in EEPROM across boards and tools, so one that reads back perfectly may belong to a different setup entirely.\n- A loaded height map that no longer describes this setup.\n\nIf a probed height map is loaded it is applied automatically, and the summary says so. The job streams line by line and stops by itself at every tool change — call circuit_machine_status to see the pause, tell the user which bit to fit, and after the FIRST change the job will not resume until Z has been re-zeroed for the new bit, because a different bit is a different length and the old datum would gouge.\n\nReturns immediately with the job under way; poll circuit_machine_status for progress.",
+    "circuit_machine_pause": "Feed hold: decelerate and stop without losing position or discarding the planner. Never gated — this works whether or not the machine is armed, because refusing a stop would be worse than having no permission system at all. Resume with circuit_machine_resume. The spindle keeps running and Z does not move.",
+    "circuit_machine_resume": "Pick a paused job back up. Needs the machine armed.\n\nRefuses if the job stopped at a tool change and Z has not been re-zeroed since — resuming there would cut with a datum describing the bit that came out, which gouges as deep as the two bits differ in length. Call circuit_machine_zero_z first. The first tool change of a job is exempt: that is the bit the operator loaded and zeroed during setup, not a change.",
+    "circuit_machine_cancel": "Stop the job and drop the rest of the program. Never gated. Soft-resets the controller, which leaves it in Alarm if it was moving — unlock and re-home before cutting again. The board has been cut into and generally cannot be registered a second time, so prefer circuit_machine_pause if there is any chance of carrying on.",
+    "circuit_machine_estop": "Emergency stop: soft-reset the controller and stop the spindle, at once. Never gated, and never refused for any reason.\n\nThis is the one to reach for the moment something looks wrong — a cut in the wrong place, a sound that is not right, the user saying stop. Position is lost and the machine will need re-homing and re-zeroing, which is a small price. Do not deliberate about it.",
+    "circuit_machine_trim": "Trim a running job without stopping it: `feed` and `spindle` take a step of 10, 1, -1 or -10 (percent) or the string 'reset'; `rapid` takes 100, 50 or 25. Never gated — it changes how hard a job someone already chose to run is cutting, and cannot start one.\n\nThis is what to reach for when a cut is chattering or running hot, where the alternative is aborting onto material that has been cut into and can no longer be registered.\n\nSTEPS, NOT TARGETS: GRBL has no command to set a figure, so 87 is rejected rather than silently ignored. Nudge and check with circuit_machine_status, which the controller updates a moment later."
   },
   "schema": {
     "nodeFields": {
-      "id": "string \u2014 unique component identifier",
-      "type": "string \u2014 component type (resistor, capacitor, inductor, diode, zener, led, switch, multimeter, scope, speaker, microphone, npn, pnp, nmos, pmos, voltage, currentsource, acvoltage, signalgen, ground, mcu, heltec_v4, sevenseg, potentiometer, opamp, timer555, transformer, dff, ldr, junction, and, or, not, nand, nor, xor, jumper, pinheader, via, mountinghole, cutout)",
+      "id": "string — unique component identifier",
+      "type": "string — component type (resistor, capacitor, inductor, diode, zener, led, switch, multimeter, scope, speaker, microphone, npn, pnp, nmos, pmos, voltage, currentsource, acvoltage, signalgen, ground, mcu, heltec_v4, sevenseg, potentiometer, opamp, timer555, transformer, dff, ldr, junction, and, or, not, nand, nor, xor, jumper, pinheader, via, mountinghole, cutout)",
       "position": {
-        "x": "number \u2014 X position on canvas",
-        "y": "number \u2014 Y position on canvas"
+        "x": "number — X position on canvas",
+        "y": "number — Y position on canvas"
       },
       "data": {
-        "label": "string \u2014 display label (e.g., '1k', '10u', '5V')",
-        "value": "string/number \u2014 component value",
-        "isSimulating": "boolean \u2014 true if SPICE simulation is running and rendering animation",
-        "current_array": "number[] \u2014 transient current through component in Amperes over time",
-        "time_points": "number[] \u2014 transient timestamps in milliseconds",
-        "voltageData": "{t: number, v: number}[] \u2014 transient voltage readings (e.g., for Oscilloscope, Speaker)",
-        "segmentVoltageArrays": "Record<string, number[]> \u2014 per-segment voltage readings for 7-Segment displays",
-        "orientation": "string \u2014 'horizontal' or 'vertical', standing the part on end so its leads come off the top and bottom edges instead of left and right. Worth using: a divider drawn with its series elements vertical against a horizontal rail reads far better than an all-horizontal chain. Every two-lead component honours it, plus the potentiometer; see schema.orientation for the list and for which way each type defaults.",
-        "model": "string \u2014 the part number, from the catalogue in schema.spiceModels for this device type ('2n3904', 'irf540n', 'lm741', \u2026), or 'custom'. THIS DRIVES THE SIMULATION: the netlist takes the part's parameters from the catalogue, so naming a model is all it takes to simulate that device. Any parameter you also set explicitly overrides the one the part came with, which is what 'custom' records. An unknown name falls back to the generic device, and a part number is not applied across polarity \u2014 '2n3904' on a pnp is not recognised. Applies to npn, pnp, nmos, pmos and opamp."
+        "label": "string — display label (e.g., '1k', '10u', '5V')",
+        "value": "string/number — component value",
+        "isSimulating": "boolean — true if SPICE simulation is running and rendering animation",
+        "current_array": "number[] — transient current through component in Amperes over time",
+        "time_points": "number[] — transient timestamps in milliseconds",
+        "voltageData": "{t: number, v: number}[] — transient voltage readings (e.g., for Oscilloscope, Speaker)",
+        "segmentVoltageArrays": "Record<string, number[]> — per-segment voltage readings for 7-Segment displays",
+        "orientation": "string — 'horizontal' or 'vertical', standing the part on end so its leads come off the top and bottom edges instead of left and right. Worth using: a divider drawn with its series elements vertical against a horizontal rail reads far better than an all-horizontal chain. Every two-lead component honours it, plus the potentiometer; see schema.orientation for the list and for which way each type defaults.",
+        "model": "string — the part number, from the catalogue in schema.spiceModels for this device type ('2n3904', 'irf540n', 'lm741', …), or 'custom'. THIS DRIVES THE SIMULATION: the netlist takes the part's parameters from the catalogue, so naming a model is all it takes to simulate that device. Any parameter you also set explicitly overrides the one the part came with, which is what 'custom' records. An unknown name falls back to the generic device, and a part number is not applied across polarity — '2n3904' on a pnp is not recognised. Applies to npn, pnp, nmos, pmos and opamp."
       }
     },
     "componentTerminals": {
@@ -180,7 +201,7 @@
         "A1",
         "5V",
         "GND",
-        "... the default 8-pin part only \u2014 an mcu's terminals ARE its pin ids, so they change with data.mcuConfig; see schema.mcuConfig"
+        "... the default 8-pin part only — an mcu's terminals ARE its pin ids, so they change with data.mcuConfig; see schema.mcuConfig"
       ],
       "heltec_v4": [
         "GPIO_1",
@@ -286,29 +307,29 @@
       "potentiometer": {
         "description": "Modelled as a two-resistor voltage divider to capture 3-terminal behaviour.",
         "parameters": {
-          "label": "string \u2014 total end-to-end resistance, SI suffix allowed (e.g. '10k'). This is where the resistance comes from; there is no separate numeric field.",
-          "position": "number \u2014 wiper position in PERCENT, 0 to 100 (default 50). Note the unit: this is 0-100, not 0.0-1.0. A value of 0.5 means half a percent, and puts the wiper almost at the 'out' end.",
+          "label": "string — total end-to-end resistance, SI suffix allowed (e.g. '10k'). This is where the resistance comes from; there is no separate numeric field.",
+          "position": "number — wiper position in PERCENT, 0 to 100 (default 50). Note the unit: this is 0-100, not 0.0-1.0. A value of 0.5 means half a percent, and puts the wiper almost at the 'out' end.",
           "R_top": "totalResistance * (1 - position/100) ohms, between 'in' and 'wiper'",
           "R_bottom": "totalResistance * (position/100) ohms, between 'wiper' and 'out'",
-          "wiperVoltage": "With 'in' at Vin and 'out' at ground, V(wiper) = Vin * position/100 \u2014 so a larger position means a higher wiper voltage."
+          "wiperVoltage": "With 'in' at Vin and 'out' at ground, V(wiper) = Vin * position/100 — so a larger position means a higher wiper voltage."
         }
       },
       "sevenseg": {
         "description": "Common Cathode 7-segment display node. Assumes common pin is grounded.",
-        "activationThreshold": "2.5V \u2014 segment lights up if (V_seg - V_common) > 2.5V"
+        "activationThreshold": "2.5V — segment lights up if (V_seg - V_common) > 2.5V"
       },
       "currentSource": {
         "description": "Provides constant DC current.",
         "parameters": {
-          "value": "number \u2014 DC current in Amperes"
+          "value": "number — DC current in Amperes"
         }
       },
       "transformer": {
         "description": "Coupled linear inductors model.",
         "parameters": {
-          "l_pri": "string/number \u2014 primary inductance (e.g. '10m')",
-          "l_sec": "string/number \u2014 secondary inductance (e.g. '10m')",
-          "k": "number \u2014 coupling coefficient from 0.01 to 1.0 (default 0.99)"
+          "l_pri": "string/number — primary inductance (e.g. '10m')",
+          "l_sec": "string/number — secondary inductance (e.g. '10m')",
+          "k": "number — coupling coefficient from 0.01 to 1.0 (default 0.99)"
         }
       },
       "dff": {
@@ -318,28 +339,28 @@
       "ldr": {
         "description": "Light Dependent Resistor (Photoresistor).",
         "parameters": {
-          "r_dark": "number \u2014 dark resistance in ohms (default 100k)",
-          "lightLevel": "number \u2014 normalized light intensity from 0.0 (dark) to 1.0 (bright)",
-          "isWebcamActive": "boolean \u2014 if true, uses live webcam video feed brightness as lightLevel"
+          "r_dark": "number — dark resistance in ohms (default 100k)",
+          "lightLevel": "number — normalized light intensity from 0.0 (dark) to 1.0 (bright)",
+          "isWebcamActive": "boolean — if true, uses live webcam video feed brightness as lightLevel"
         }
       },
       "heltec_v4": {
         "description": "Hardware-in-the-Loop (HIL) ESP32/CYD development board node connected via WebSocket.",
         "parameters": {
-          "ip": "string \u2014 IP address of local CYD/Heltec hardware board",
+          "ip": "string — IP address of local CYD/Heltec hardware board",
           "hilExecutionMode": "'native' | 'memoized'",
-          "pins": "Record<string, 'digital_in' | 'digital_out' | 'analog_in' | 'analog_out'> \u2014 pin direction configuration"
+          "pins": "Record<string, 'digital_in' | 'digital_out' | 'analog_in' | 'analog_out'> — pin direction configuration"
         }
       },
       "opamp": {
         "description": "5-terminal op-amp macro model (IN+ IN- VCC VEE OUT), emitted as a .SUBCKT built from the node's own parameters. Not a fixed ideal part: gain, bandwidth, input and output impedance and rail headroom all come off data, so an LM741 and an MCP6002 behave differently in the same circuit.",
         "parameters": {
-          "gain": "number \u2014 open-loop DC gain (Avol). Default 100000.",
-          "gbw": "number \u2014 gain-bandwidth product in Hz. 0 (the default) means infinite bandwidth; a real figure adds the dominant pole, which is what makes a follower ring or a high-gain stage roll off.",
-          "rin": "string \u2014 differential input resistance, SPICE suffixes allowed ('100MEG' default, '2MEG' bipolar, '1T' for a JFET or CMOS part).",
-          "rout": "number \u2014 series output resistance in ohms. Default 0.01; a real part is 20-75, which is what makes the output sag into a heavy load.",
-          "vRailDropHi": "number \u2014 headroom below VCC the output cannot reach, in volts. Default 0.",
-          "vRailDropLo": "number \u2014 headroom above VEE the output cannot reach, in volts. Default 0. These two are what separate a rail-to-rail part from an LM741 that stops 2 V short of each rail."
+          "gain": "number — open-loop DC gain (Avol). Default 100000.",
+          "gbw": "number — gain-bandwidth product in Hz. 0 (the default) means infinite bandwidth; a real figure adds the dominant pole, which is what makes a follower ring or a high-gain stage roll off.",
+          "rin": "string — differential input resistance, SPICE suffixes allowed ('100MEG' default, '2MEG' bipolar, '1T' for a JFET or CMOS part).",
+          "rout": "number — series output resistance in ohms. Default 0.01; a real part is 20-75, which is what makes the output sag into a heavy load.",
+          "vRailDropHi": "number — headroom below VCC the output cannot reach, in volts. Default 0.",
+          "vRailDropLo": "number — headroom above VEE the output cannot reach, in volts. Default 0. These two are what separate a rail-to-rail part from an LM741 that stops 2 V short of each rail."
         },
         "models": {
           "howToUse": "data.model names the part and the netlist reads its parameters from the catalogue. Set model alone for a stock part; set a parameter as well only to deviate from it.",
@@ -350,36 +371,36 @@
           "mcp6002": "MCP6002, CMOS rail-to-rail: gain 100000, gbw 1e6, rin 1T, rout 20, drops 0.02/0.02."
         },
         "noSlewRateModel": "There is no slew-rate parameter. Large-signal slewing is not modelled; gbw gives the small-signal roll-off and that is the whole of the speed behaviour. A circuit whose result turns on slew limiting will simulate optimistically.",
-        "comparatorUse": "Open-loop it behaves as a comparator: OUT sits at VCC when in_non > in_inv and at VEE otherwise. Both vcc and vee MUST be wired \u2014 they set the clamp, so an unconnected vee leaves the output swinging to whatever the shunt resistor allows.",
+        "comparatorUse": "Open-loop it behaves as a comparator: OUT sits at VCC when in_non > in_inv and at VEE otherwise. Both vcc and vee MUST be wired — they set the clamp, so an unconnected vee leaves the output swinging to whatever the shunt resistor allows.",
         "outputDrive": "OUT is a voltage source behind rout with no current limit, so a load drawing amps from it will simulate happily. Size series resistors as you would for the real part."
       },
       "multimeter": {
         "description": "A meter reads either the voltage across its two terminals or the current through them, and which one changes the netlist, not just the display.",
         "parameters": {
-          "mode": "string \u2014 'voltage' (default) or 'current'. In voltage mode the meter is a 1G shunt across pos/neg and is wired in PARALLEL with what it measures. In current mode it becomes a 0V source acting as an ammeter, and must be wired in SERIES, in the loop it is reading.",
-          "isRms": "boolean \u2014 report RMS over the whole run instead of the value at the playhead. Default false."
+          "mode": "string — 'voltage' (default) or 'current'. In voltage mode the meter is a 1G shunt across pos/neg and is wired in PARALLEL with what it measures. In current mode it becomes a 0V source acting as an ammeter, and must be wired in SERIES, in the loop it is reading.",
+          "isRms": "boolean — report RMS over the whole run instead of the value at the playhead. Default false."
         },
         "wiringWarning": "Getting these the wrong way round is the usual mistake: a current-mode meter placed in parallel shorts the thing it is measuring, and a voltage-mode meter placed in series is a 1G resistor blocking the branch."
       },
       "pinheader": {
         "description": "A through-hole header. It emits no SPICE device, but edges to its pads still join nets.",
         "parameters": {
-          "rows": "number \u2014 1 to 8 (default 1)",
-          "cols": "number \u2014 1 to 40 (default 8)",
-          "pitchMm": "number \u2014 pad spacing on the board in mm (default 2.54)"
+          "rows": "number — 1 to 8 (default 1)",
+          "cols": "number — 1 to 40 (default 8)",
+          "pitchMm": "number — pad spacing on the board in mm (default 2.54)"
         },
         "terminals": "Pad numbers as strings, row-major from '1': in a 2x5 header pad 6 starts the second row, directly under pad 1. Resizing renumbers the pads, so an edge pointing at a pad that no longer exists stops connecting."
       },
       "bjt": {
-        "description": "npn and pnp are Gummel-Poon models, emitted per node as .model NPN(...) / PNP(...) from the node's own parameters \u2014 \u03b2 and the rest are data, not fixed.",
+        "description": "npn and pnp are Gummel-Poon models, emitted per node as .model NPN(...) / PNP(...) from the node's own parameters — β and the rest are data, not fixed.",
         "parameters": {
-          "bf": "number \u2014 forward beta (current gain). Default 300.",
-          "is": "number \u2014 saturation current in amps. Default 1e-14.",
-          "vaf": "number \u2014 forward Early voltage. Default 100.",
-          "ikf": "number \u2014 forward knee current, where beta starts falling off. Default 0.4.",
-          "rb": "number \u2014 base resistance in ohms. Default 10.",
-          "cjc": "string \u2014 base-collector junction capacitance ('2p' default).",
-          "cje": "string \u2014 base-emitter junction capacitance ('4p' default). CJC/CJE are deliberately non-zero: at zero the solver has no timescale to resolve and astable circuits fail with 'timestep too small'."
+          "bf": "number — forward beta (current gain). Default 300.",
+          "is": "number — saturation current in amps. Default 1e-14.",
+          "vaf": "number — forward Early voltage. Default 100.",
+          "ikf": "number — forward knee current, where beta starts falling off. Default 0.4.",
+          "rb": "number — base resistance in ohms. Default 10.",
+          "cjc": "string — base-collector junction capacitance ('2p' default).",
+          "cje": "string — base-emitter junction capacitance ('4p' default). CJC/CJE are deliberately non-zero: at zero the solver has no timescale to resolve and astable circuits fail with 'timestep too small'."
         },
         "models": {
           "howToUse": "data.model names the part and the netlist reads its parameters from the catalogue. Set model alone for a stock part; set a parameter as well only to deviate from it.",
@@ -402,13 +423,13 @@
       "mosfet": {
         "description": "nmos and pmos are SPICE LEVEL=1 models, emitted per node from the node's own parameters. Body is tied to source. LEVEL=1 is a square-law model: fine for switching and for gate-threshold behaviour, not a substitute for a vendor model in the linear region.",
         "parameters": {
-          "vto": "number \u2014 threshold voltage in volts (negative for pmos). Default 2.0 / -2.0.",
-          "kp": "number \u2014 transconductance parameter A/V\u00b2. Default 0.05 (nmos) / 0.02 (pmos).",
-          "lambda": "number \u2014 channel-length modulation. Default 0.01.",
-          "rd": "number \u2014 drain resistance in ohms. Default 0.",
-          "rs": "number \u2014 source resistance in ohms. Default 0. rd+rs is effectively the part's on-resistance and is what makes a power FET run cool where a small-signal one does not.",
-          "cgs": "string \u2014 gate-source capacitance; omitted from the netlist when 0.",
-          "cgd": "string \u2014 gate-drain capacitance; omitted when 0. These two set how hard the gate is to drive, so a driver stage sized without them is sized wrong."
+          "vto": "number — threshold voltage in volts (negative for pmos). Default 2.0 / -2.0.",
+          "kp": "number — transconductance parameter A/V². Default 0.05 (nmos) / 0.02 (pmos).",
+          "lambda": "number — channel-length modulation. Default 0.01.",
+          "rd": "number — drain resistance in ohms. Default 0.",
+          "rs": "number — source resistance in ohms. Default 0. rd+rs is effectively the part's on-resistance and is what makes a power FET run cool where a small-signal one does not.",
+          "cgs": "string — gate-source capacitance; omitted from the netlist when 0.",
+          "cgd": "string — gate-drain capacitance; omitted when 0. These two set how hard the gate is to drive, so a driver stage sized without them is sized wrong."
         },
         "models": {
           "howToUse": "data.model names the part and the netlist reads its parameters from the catalogue. Set model alone for a stock part; set a parameter as well only to deviate from it.",
@@ -437,9 +458,9 @@
         "mountinghole",
         "cutout"
       ],
-      "note": "Placed, drilled and routed on the board but emitting no SPICE device. Edges to a pin header or via still join nets \u2014 the part itself just contributes no component. 'jumper' is the exception: the router draws no copper for it, but electrically it is a wire (a 1 milliohm resistor between its 'a' and 'b' terminals) and it does simulate."
+      "note": "Placed, drilled and routed on the board but emitting no SPICE device. Edges to a pin header or via still join nets — the part itself just contributes no component. 'jumper' is the exception: the router draws no copper for it, but electrically it is a wire (a 1 milliohm resistor between its 'a' and 'b' terminals) and it does simulate."
     },
-    "pinHeaderTerminals": "Pad numbers as strings, numbered row-major from '1' \u2014 a 2x5 header has terminals '1' through '10'.",
+    "pinHeaderTerminals": "Pad numbers as strings, numbered row-major from '1' — a 2x5 header has terminals '1' through '10'.",
     "orientation": {
       "description": "Every component with exactly two leads can be drawn either way round, as can the potentiometer. Set data.orientation to 'vertical' to stand a part on end; 'horizontal' or an absent field lays it flat. Terminal NAMES never change with orientation - only which edge they sit on.",
       "inlineTypes": [
@@ -469,29 +490,29 @@
       "unsupportedTypes": "Every other type - op-amps, transistors, logic gates, the 555, transformers, MCUs, the scope, the seven-segment display, ground - ignores data.orientation and always renders horizontally. Setting it on them is harmless but has no effect, so do not lay a schematic out assuming a vertical op-amp or transistor."
     },
     "mcuConfig": {
-      "what": "The mcu node type is fully programmable: data.mcuConfig defines its pins and its physical package, and data.code is the JavaScript it runs. Everything below is settable over MCP, so an agent can define a part that is in no catalogue \u2014 a breakout board, a module, a chip \u2014 and have it simulate, draw and mill correctly.",
+      "what": "The mcu node type is fully programmable: data.mcuConfig defines its pins and its physical package, and data.code is the JavaScript it runs. Everything below is settable over MCP, so an agent can define a part that is in no catalogue — a breakout board, a module, a chip — and have it simulate, draw and mill correctly.",
       "write": "Use circuit_define_mcu(nodeId, presetKey?, pins?, geometry?, code?, label?). It validates, keeps data.packageId in step with the config, and reports dangling wires. Read the current one from circuit_get_components as data.mcuConfig.",
       "pins": {
         "what": "One entry per electrical pin, in the order they run down their side. THIS IS THE PIN LIST: an mcu's terminals are its pin ids, so pins[].id is what circuit_set_edges attaches a wire to (sourceHandle/targetHandle) and what code addresses in pinMode()/digitalWrite()/analogRead(). Renaming a pin strands every wire already on it.",
-        "id": "string, required, unique (compared case-insensitively) \u2014 the handle and the code name, e.g. 'GPIO_33', 'D0', '5V'",
-        "label": "string \u2014 what is drawn beside the pin on the schematic. Blank falls back to the id. This is NOT what the PCB pad is stamped with.",
-        "type": "'io' | 'digital' | 'analog' | 'power' | 'ground' \u2014 colours the pin and marks power/ground rails",
-        "side": "'left' | 'right' | 'top' | 'bottom' \u2014 which edge of the symbol and of the footprint the pin sits on. 'top'/'bottom' are only laid out for style 'quad'.",
-        "pinNumber": "number or string, optional \u2014 the PHYSICAL pad, and the text stamped on it in the PCB layout ('12', or a designator such as 'J2-12'). Must be unique: two pins on one pad short together. Omit it and the pin falls back to its position in this list.",
-        "voltage": "number, optional \u2014 the rail a power pin supplies, e.g. 5 or 3.3"
+        "id": "string, required, unique (compared case-insensitively) — the handle and the code name, e.g. 'GPIO_33', 'D0', '5V'",
+        "label": "string — what is drawn beside the pin on the schematic. Blank falls back to the id. This is NOT what the PCB pad is stamped with.",
+        "type": "'io' | 'digital' | 'analog' | 'power' | 'ground' — colours the pin and marks power/ground rails",
+        "side": "'left' | 'right' | 'top' | 'bottom' — which edge of the symbol and of the footprint the pin sits on. 'top'/'bottom' are only laid out for style 'quad'.",
+        "pinNumber": "number or string, optional — the PHYSICAL pad, and the text stamped on it in the PCB layout ('12', or a designator such as 'J2-12'). Must be unique: two pins on one pad short together. Omit it and the pin falls back to its position in this list.",
+        "voltage": "number, optional — the rail a power pin supplies, e.g. 5 or 3.3"
       },
       "geometry": {
         "style": "'dip' | 'header_1x' | 'header_2x' | 'header_matrix' | 'quad' | 'custom'",
-        "widthMm/heightMm": "number > 0 \u2014 the body/courtyard the placer keeps clear",
-        "pitchMm": "number > 0 \u2014 centre-to-centre pin spacing, usually 2.54 or 1.27",
-        "rowSpacingMm": "number > 0 \u2014 distance between the two rows. REQUIRED for 'dip', 'header_2x' and 'header_matrix'.",
-        "isSmd": "boolean \u2014 surface-mount pads instead of drilled holes",
-        "drillDiaMm": "number \u2014 hole diameter; must be above zero for a through-hole part and zero when isSmd",
-        "padWidthMm/padHeightMm": "number > 0 \u2014 copper pad size",
-        "pinNumbering": "'dual-column' (both rows numbered top-down: Nano, ESP32 DevKit, Heltec) or 'counterclockwise' (down the left row and back up the right: DIP chips, Pico). Getting this backwards reverses one row of holes against the other, and flipping the part over cannot undo it \u2014 it mirrors both rows together."
+        "widthMm/heightMm": "number > 0 — the body/courtyard the placer keeps clear",
+        "pitchMm": "number > 0 — centre-to-centre pin spacing, usually 2.54 or 1.27",
+        "rowSpacingMm": "number > 0 — distance between the two rows. REQUIRED for 'dip', 'header_2x' and 'header_matrix'.",
+        "isSmd": "boolean — surface-mount pads instead of drilled holes",
+        "drillDiaMm": "number — hole diameter; must be above zero for a through-hole part and zero when isSmd",
+        "padWidthMm/padHeightMm": "number > 0 — copper pad size",
+        "pinNumbering": "'dual-column' (both rows numbered top-down: Nano, ESP32 DevKit, Heltec) or 'counterclockwise' (down the left row and back up the right: DIP chips, Pico). Getting this backwards reverses one row of holes against the other, and flipping the part over cannot undo it — it mirrors both rows together."
       },
       "code": "data.code is the JavaScript the MCU runs, addressed by pin id: pinMode('D0','OUTPUT'); digitalWrite('D0',1); analogRead('A0'); sleep(500). Pass it as DEFINE_MCU's `code`, or set data.code through circuit_update_component. See gotchas on the two-pass MCU simulation.",
-      "packageId": "data.packageId is written for you by DEFINE_MCU and must match the config. Set it by hand only to force a catalogue package (DIP-8, DIP-28...) over the generated footprint \u2014 anything else there is ignored for an mcu."
+      "packageId": "data.packageId is written for you by DEFINE_MCU and must match the config. Set it by hand only to force a catalogue package (DIP-8, DIP-28...) over the generated footprint — anything else there is ignored for an mcu."
     }
   },
   "examples": [
@@ -1354,5 +1375,30 @@
         }
       ]
     }
-  ]
+  ],
+  "machining": {
+    "overview": "Volt can drive the CNC that mills the board, not just design it. The tools are the circuit_machine_* set plus circuit_mill_pcb.",
+    "permission": "Everything that can move an axis is refused until the person at the machine clicks \"Allow Claude to move this machine\" in the app. You cannot do this for yourself and there is no way around it — circuit_machine_arm exists only to say so. When motion is refused, ask the user to click it. Reading state, trimming a running cut, pausing, cancelling and e-stopping all work without it, always.",
+    "order": [
+      "1. circuit_get_pcb_layout — completion must be 1. A board with unrouted nets is scrap; fix it before going near the machine.",
+      "2. circuit_machine_status — check it is connected, and whether it is armed.",
+      "3. circuit_machine_connect if it is not, preferring WiFi (USB needs the user to pick a port from a native dialog).",
+      "4. Ask the user to clamp the blank, fit the isolation bit, and attach the continuity clip.",
+      "5. circuit_machine_jog the bit over the corner of the blank, then circuit_machine_zero_xy.",
+      "6. circuit_machine_zero_z with no touch plate, to put Z0 on the copper. Check zeroScatterMm.",
+      "7. circuit_machine_probe_surface, unless the board is small and known flat.",
+      "8. circuit_machine_frame_job and let the user watch the lap before anything cuts.",
+      "9. circuit_mill_pcb.",
+      "10. Poll circuit_machine_status. The job stops at each tool change: tell the user which bit, then circuit_machine_zero_z for it before circuit_machine_resume."
+    ],
+    "gotchas": [
+      "THE DATUM IS THE WHOLE JOB. An isolation pass is 35 microns of copper. Work Z0 set against the wrong surface, the wrong bit or a stale height map does not produce a slightly worse board, it produces no isolation at all or a trench through the laminate. Every refusal these tools make about a datum is worth taking at face value.",
+      "A DIFFERENT BIT IS A DIFFERENT LENGTH. After every tool change except the first, Z must be re-zeroed before the job resumes, and circuit_machine_resume will refuse until it has been. This is not a formality — the gouge is as deep as the two bits differ.",
+      "ZERO Z ON THE COPPER BEFORE PROBING A SURFACE. The height map is referenced to that plane. Probing against a Z0 set on a touch plate, or left over from another board, produces a map that looks entirely reasonable and shifts the whole job.",
+      "FRAME BEFORE YOU CUT. It costs seconds and catches a blank that is too small, mis-clamped or in the wrong place — the failures that are otherwise discovered by cutting into a clamp.",
+      "PREFER PAUSE TO CANCEL. A cancelled job leaves a part-cut board that generally cannot be registered again. A feed hold keeps the position and can be resumed.",
+      "DO NOT DELIBERATE ABOUT AN E-STOP. If the user says stop, or something looks wrong, call circuit_machine_estop first and work out what happened afterwards. It is never gated and never refused.",
+      "USB NEEDS A HUMAN. Connecting over USB opens a native browser dialog that only the person at the keyboard can answer. If they are not there, WiFi via a Tekno Box is the only route."
+    ]
+  }
 }
