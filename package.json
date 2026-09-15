@@ -12,7 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@physbox-io/machining": "file:../machining",
+    "@physbox-io/machining": "^0.1.0",
     "@physbox-io/ui": "^0.2.0",
     "@tailwindcss/vite": "^4.2.4",
     "@types/clipper-lib": "^6.4.0",
