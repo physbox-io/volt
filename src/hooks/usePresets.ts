@@ -46,14 +46,18 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     [userPresets]
   );
 
-  const loadPreset = useCallback((key: string) => {
-    const preset = allPresets[key];
-    if (!preset) return;
+  /**
+   * Puts a circuit on the canvas, wherever it came from.
+   *
+   * Split out of `loadPreset` when links joined the dropdown as a way in: the
+   * sequence below is the "apply a preset to the app" one this hook exists to
+   * keep in a single place, and a shared circuit has no key to look up.
+   */
+  const applyPreset = useCallback((preset: CircuitPreset) => {
     stopSimulation();
     setInitialConditions({});
     setNodes(preset.nodes);
     setEdges(preset.edges);
-    setSelectedPreset(key);
     if (preset.recommendedSimLength) {
       setSimLength(preset.recommendedSimLength);
     }
@@ -63,32 +67,49 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     if (preset.pcbOptions && Object.keys(preset.pcbOptions).length > 0) {
       saveMachiningSettings(preset.pcbOptions);
     }
-  }, [allPresets, stopSimulation, setInitialConditions, setNodes, setEdges, setSimLength]);
+  }, [stopSimulation, setInitialConditions, setNodes, setEdges, setSimLength]);
+
+  const loadPreset = useCallback((key: string) => {
+    const preset = allPresets[key];
+    if (!preset) return;
+    applyPreset(preset);
+    setSelectedPreset(key);
+  }, [allPresets, applyPreset]);
 
   const handlePresetChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     loadPreset(e.target.value);
   }, [loadPreset]);
 
+  /**
+   * The circuit as it stands, in the shape a preset is stored in.
+   *
+   * One builder because a saved circuit, a cloud revision and a share link must
+   * all carry the same thing — this was two identical copies in the two save
+   * paths, and a third copy for sharing would be the one that quietly stopped
+   * carrying the board settings.
+   */
+  const currentCircuit = useCallback((name: string): CircuitPreset => ({
+    name,
+    nodes: nodes.map(n => ({ ...n, selected: false })),
+    edges: edges.map(e => ({
+      ...e,
+      data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined
+    })),
+    // The board is milled with the trace width and clearance it was routed
+    // for, so the CAM settings travel with the circuit rather than being
+    // re-derived every time it is opened.
+    pcbOptions: loadMachiningSettings(),
+    // Saving over a preset keeps its note card. There is no way to write one
+    // from the save dialog, so rebuilding the preset without it meant pressing
+    // Save silently threw away the card the preset opened with.
+    noteCard: loadUserPresets()[nameToKey(name.replace(/^User:\s*/, ''))]?.noteCard,
+  }), [nodes, edges]);
+
   const savePreset = useCallback(() => {
     const trimmed = saveDialogName.trim();
     if (!trimmed) return;
     const key = nameToKey(trimmed);
-    const preset: CircuitPreset = {
-      name: `User: ${trimmed}`,
-      nodes: nodes.map(n => ({ ...n, selected: false })),
-      edges: edges.map(e => ({
-        ...e,
-        data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined
-      })),
-      // The board is milled with the trace width and clearance it was routed
-      // for, so the CAM settings travel with the circuit rather than being
-      // re-derived every time it is opened.
-      pcbOptions: loadMachiningSettings(),
-      // Saving over a preset keeps its note card. There is no way to write one
-      // from this dialog, so rebuilding the preset without it meant pressing
-      // Save silently threw away the card the preset opened with.
-      noteCard: loadUserPresets()[key]?.noteCard,
-    };
+    const preset = currentCircuit(`User: ${trimmed}`);
     const updated = addUserPreset(key, preset);
     setUserPresets(updated);
     // A deliberate save is also a named revision of the cloud document, which the
@@ -97,33 +118,18 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     setSelectedPreset(key);
     setIsSaveDialogOpen(false);
     setSaveDialogName('');
-  }, [saveDialogName, nodes, edges]);
+  }, [saveDialogName, currentCircuit]);
 
   const savePresetByName = useCallback((name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
     const key = nameToKey(trimmed);
-    const preset: CircuitPreset = {
-      name: `User: ${trimmed}`,
-      nodes: nodes.map(n => ({ ...n, selected: false })),
-      edges: edges.map(e => ({
-        ...e,
-        data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined
-      })),
-      // The board is milled with the trace width and clearance it was routed
-      // for, so the CAM settings travel with the circuit rather than being
-      // re-derived every time it is opened.
-      pcbOptions: loadMachiningSettings(),
-      // Saving over a preset keeps its note card. There is no way to write one
-      // from this dialog, so rebuilding the preset without it meant pressing
-      // Save silently threw away the card the preset opened with.
-      noteCard: loadUserPresets()[key]?.noteCard,
-    };
+    const preset = currentCircuit(`User: ${trimmed}`);
     const updated = addUserPreset(key, preset);
     setUserPresets(updated);
     void cloudAutosave.saveExplicit(trimmed, preset, `Saved as “${trimmed}”`);
     setSelectedPreset(key);
-  }, [nodes, edges]);
+  }, [currentCircuit]);
 
   const deleteUserPreset = useCallback((key: string) => {
     const updated = removeUserPreset(key);
@@ -138,6 +144,8 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     userPresets,
     allPresets,
     loadPreset,
+    applyPreset,
+    currentCircuit,
     handlePresetChange,
     isSaveDialogOpen,
     setIsSaveDialogOpen,

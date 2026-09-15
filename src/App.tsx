@@ -17,7 +17,9 @@ import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
 import { getEffectiveMcuConfig } from './utils/mcuConfig';
 import { buildNetlistResultIndex, findNetGraph } from './utils/netlistResult';
 import { isPortConnected } from './utils/graphTopology';
-import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight, Wrench } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { buildShareLink, readShareLink, clearShareFragment, type ShareLink } from './utils/shareLink';
+import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight, Wrench, Share2, Copy, Check } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
 import { ExportPcbModal } from './components/ExportPcbModal';
 import { webSerialManager, type MachineState } from './utils/webSerialManager';
@@ -296,6 +298,9 @@ export default function App() {
     savePreset,
     savePresetByName,
     deleteUserPreset,
+    allPresets,
+    applyPreset,
+    currentCircuit,
   } = usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation });
 
   const selectedPresetRef = useRef(selectedPreset);
@@ -1730,6 +1735,88 @@ export default function App() {
 
   const { exportJson, importJson } = useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulation });
 
+  /*
+   * Sharing the circuit as a link.
+   *
+   * Volt could already hand artwork to Etch by link and had no way to hand a
+   * circuit to a person. The only way to give someone a board was the JSON
+   * file, which is a file: it goes in an email, not in a message, and the
+   * person on the other end has to save it, find it and import it.
+   */
+  const [share, setShare] = useState<ShareLink | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+
+  const copyShareLink = useCallback(async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareCopied(true);
+    } catch {
+      // No clipboard on an insecure origin, and none in some embedded views.
+      // The link is in a selectable field beside this for exactly that case.
+      setShareCopied(false);
+    }
+  }, []);
+
+  /**
+   * Copies a link that opens this circuit in someone else's browser.
+   *
+   * `currentCircuit` is the same builder the save dialog uses, so a link, a
+   * saved circuit and a cloud revision all carry the same thing — including
+   * the board settings it was routed with. Nothing is uploaded: the circuit is
+   * inside the link, which is why there is no account and nothing to expire.
+   *
+   * Copied as it is built rather than merely displayed: the reason anyone
+   * presses this is to paste it somewhere, and a panel that shows kilobytes of
+   * base64 and invites you to select it by hand is not a share button.
+   */
+  const handleShare = useCallback(async () => {
+    setShareError(null);
+    setShareCopied(false);
+    try {
+      const name = (userPresets[selectedPreset] ?? allPresets[selectedPreset])?.name ?? 'Shared circuit';
+      const link = await buildShareLink(currentCircuit(name));
+      setShare(link);
+      await copyShareLink(link.url);
+    } catch (e) {
+      setShare(null);
+      setShareError(e instanceof Error ? e.message : 'That circuit could not be made into a link.');
+    }
+  }, [currentCircuit, userPresets, allPresets, selectedPreset, copyShareLink]);
+
+  /**
+   * A circuit arriving by link — one this app made, from the share button.
+   *
+   * Declinable, and the fragment stays in the URL until it is accepted: it
+   * replaces what is on the canvas, so "no" has to mean "not now" rather than
+   * throwing the shared circuit away.
+   */
+  useEffect(() => {
+    readShareLink()
+      .then((circuit) => {
+        if (!circuit) return;
+        const name = circuit.name?.replace(/^User:\s*/, '') || 'a shared circuit';
+        if (
+          nodes.length > 0 &&
+          !window.confirm(
+            `Open "${name}"?\n\n` +
+              'This replaces the circuit on the canvas. Save it first if you want it back.\n' +
+              'Cancel keeps it — the link stays in the address bar, so you can reload to open it later.'
+          )
+        ) {
+          return;
+        }
+        clearShareFragment();
+        applyPreset(circuit);
+      })
+      .catch((err) => {
+        clearShareFragment();
+        setShareError(err?.message || 'That link could not be read.');
+      });
+    // Once, on mount: opening the circuit takes the fragment out of the URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useMCPBridge({
     nodes, edges, isSimulating, selectedPreset, probeMode,
     runSimulation, stopSimulation, resetSimulation,
@@ -1912,6 +1999,17 @@ export default function App() {
               title="Import JSON"
             >
               <Upload className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Share: a link with the circuit inside it. Next to the exports
+                because it is one — the same circuit as the JSON file,
+                addressed to a browser instead of a disk. */}
+            <button
+              onClick={handleShare}
+              className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-sky-600 dark:text-sky-400 transition-colors focus:outline-none cursor-pointer"
+              title="Copy a share link — the circuit travels inside it"
+            >
+              <Share2 className="w-3.5 h-3.5" />
             </button>
 
             <button
@@ -2159,6 +2257,88 @@ export default function App() {
             edges={edges}
           />
         )}
+        {/* Share link report.
+
+            Portalled to the body rather than rendered where it is used: the
+            header is a stacking context of its own, so every z-index inside it
+            is only a rank among its siblings and a note card at z-[100] sits on
+            top of the panel whatever number it carries. z-[105] puts it above
+            the cards and below the dialogs.
+
+            The link is in a selectable field as well as on the clipboard: a
+            clipboard write is refused on an insecure origin, and a share button
+            that silently did nothing is indistinguishable from one that
+            worked. */}
+        {(share || shareError) &&
+          createPortal(
+            <div className="fixed top-16 right-4 max-lg:top-1/2 max-lg:right-1/2 max-lg:translate-x-1/2 max-lg:-translate-y-1/2 z-[105] w-[28rem] max-w-[90vw] p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl text-xs">
+              <div className="flex items-start justify-between gap-3">
+                <p className="font-bold text-slate-800 dark:text-slate-100">
+                  {shareError
+                    ? 'This circuit could not be shared as a link'
+                    : shareCopied
+                      ? 'Link copied'
+                      : 'Share link'}
+                </p>
+                <button
+                  onClick={() => {
+                    setShare(null);
+                    setShareError(null);
+                  }}
+                  className="text-slate-400 hover:text-slate-700 dark:hover:text-white font-bold cursor-pointer px-1"
+                  title="Dismiss"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {shareError && (
+                <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">{shareError}</p>
+              )}
+
+              {share && (
+                <>
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <input
+                      readOnly
+                      value={share.url}
+                      onFocus={(e) => e.currentTarget.select()}
+                      className="flex-1 min-w-0 px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-mono text-[10px] outline-none"
+                    />
+                    <button
+                      onClick={() => copyShareLink(share.url)}
+                      className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer transition-colors"
+                      title="Copy link"
+                    >
+                      {shareCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      {shareCopied ? 'Copied' : 'Copy'}
+                    </button>
+                    {share.travelsWell && typeof navigator !== 'undefined' && 'share' in navigator && (
+                      <button
+                        onClick={() => {
+                          void navigator.share({ title: 'Volt circuit', url: share.url }).catch(() => {
+                            // Cancelled, or refused for a URL this long. The copy is already made.
+                          });
+                        }}
+                        className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold cursor-pointer transition-colors"
+                        title="Send it to a message, a post or another app"
+                      >
+                        <Share2 className="w-3 h-3" />
+                        Send
+                      </button>
+                    )}
+                  </div>
+                  <ul className="mt-1.5 space-y-1 text-[11px] text-slate-500 dark:text-slate-400 list-disc list-inside">
+                    {share.notes.map((n, i) => (
+                      <li key={i}>{n}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>,
+            document.body
+          )}
+
         {isDocsOpen && <DocsModal onClose={() => setIsDocsOpen(false)} />}
         {isSettingsOpen && (
           <SettingsModal

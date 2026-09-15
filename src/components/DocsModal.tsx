@@ -276,6 +276,16 @@ export function DocsModal({ onClose }: DocsModalProps) {
                   over WebSerial rather than saved out for another sender. The only file this app writes is the
                   circuit itself, in Physbox JSON.
                 </p>
+                <p className="mb-4">
+                  <strong>Share</strong> copies a link with the circuit inside it &mdash; nodes, wires and the
+                  board settings it was routed with, because a board is milled with the trace width and
+                  clearance it was routed for. Nothing is uploaded: it travels in the part of the URL that
+                  never reaches a server, which is why there is no account, no expiry and nothing to take
+                  down. The cost is length. Volt says how long the link is, warns when it is long enough that
+                  a chat app might shorten it &mdash; a shortened link loses the circuit &mdash; and refuses
+                  outright rather than hand you one too long for a browser to open. Export the JSON and send
+                  the file for those.
+                </p>
 
                 <h4 className="text-xl font-semibold mb-2 mt-6">How much copper you keep</h4>
                 <p className="mb-4">
