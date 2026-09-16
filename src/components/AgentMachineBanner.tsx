@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Bot, Hand, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Bot, Hand, ShieldAlert, ShieldCheck } from 'lucide-react';
 import type { ArmingState } from '@physbox-io/machining';
 import { machineArming, subscribeToArming } from '../utils/machineMcp';
-import { webSerialManager } from '../utils/webSerialManager';
 
 /**
  * The one place a person says whether Claude may move the machine.
@@ -10,21 +9,28 @@ import { webSerialManager } from '../utils/webSerialManager';
  * This is the whole of the safety story made visible. Everything an agent can
  * do that moves an axis is refused until this is armed, and arming is
  * deliberately not something the agent can do for itself — it can ask, which
- * raises the banner's attention state, and that is all.
+ * raises this to its attention state, and that is all.
  *
- * It is a banner rather than a setting in a dialog because it has to be true
- * that nobody arms this without noticing: while the window is open the banner
- * stays on screen, naming the last thing the agent did, with the way to close
- * it one click away. A checkbox buried in preferences would be armed once and
- * forgotten, which is the failure this is built to avoid.
+ * It lives in the navbar and is ALWAYS present, which took a bug to learn. It
+ * used to hide itself whenever no machine was connected, on the reasoning that
+ * most people never plug one in and a standing notice about something that
+ * cannot happen to them is noise. That was wrong twice over:
+ *
+ *  - Connecting is itself a gated command, so hiding the control until a
+ *    machine was connected meant it could never be armed, so the agent could
+ *    never connect. The feature was unreachable from a cold start.
+ *  - A permission control nobody can find is not a permission control. Someone
+ *    has to know this exists *before* they need it, which means seeing it while
+ *    they are not thinking about machines at all.
+ *
+ * So the idle state is a quiet chip rather than nothing, and it grows into a
+ * banner when there is something to say.
  */
 export function AgentMachineBanner() {
   const [arming, setArming] = useState<ArmingState>(() => machineArming.getState());
-  const [connected, setConnected] = useState(() => webSerialManager.getState().connected);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => subscribeToArming(setArming), []);
-  useEffect(() => webSerialManager.addListener(s => setConnected(s.connected)), []);
 
   // Ticks only while the window is open, so the countdown stays honest without
   // a timer running for the whole session.
@@ -44,39 +50,33 @@ export function AgentMachineBanner() {
   const asked =
     !arming.armed && arming.requestedAt !== undefined && now - arming.requestedAt < 60_000;
 
-  // Most people never plug a machine in, and a standing notice about something
-  // that cannot happen to them is noise. It appears when there is a machine to
-  // move, when the window is open, or when the agent has just asked.
-  if (!connected && !arming.armed && !asked) return null;
-
-  if (!arming.armed && !asked) {
-    return (
-      <button
-        onClick={() => machineArming.arm()}
-        className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs text-slate-400 transition hover:border-slate-600 hover:text-slate-200"
-        title="Claude cannot move the machine until you allow it"
-      >
-        <ShieldCheck size={14} />
-        Claude cannot move the machine
-      </button>
-    );
-  }
-
   if (asked) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-amber-500/60 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200">
+      <div className="flex shrink-0 items-center gap-2 rounded-lg border border-amber-500/60 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-200">
         <ShieldAlert size={14} className="shrink-0" />
-        <span>
-          Claude asked to <strong>{arming.requestedFor?.replace(/_/g, ' ')}</strong> and was
-          refused — it cannot move the machine until you allow it.
+        <span className="hidden sm:inline">
+          Claude asked to <strong>{arming.requestedFor?.replace(/_/g, ' ')}</strong>
         </span>
         <button
           onClick={() => machineArming.arm()}
-          className="shrink-0 rounded-md bg-amber-400 px-2 py-1 font-medium text-amber-950 transition hover:bg-amber-300"
+          className="shrink-0 cursor-pointer rounded-md bg-amber-500 px-2 py-1 font-medium text-white transition hover:bg-amber-400"
         >
-          Allow Claude to move this machine
+          Allow
         </button>
       </div>
+    );
+  }
+
+  if (!arming.armed) {
+    return (
+      <button
+        onClick={() => machineArming.arm()}
+        className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600 shadow-xs transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+        title="Claude cannot move the machine. Click to let it jog, zero, probe and cut for the next hour — you can stop it at any time."
+      >
+        <ShieldCheck size={14} />
+        <span className="hidden sm:inline">Machine locked</span>
+      </button>
     );
   }
 
@@ -88,22 +88,22 @@ export function AgentMachineBanner() {
   const showLast = last && now - last.at < 30_000;
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-emerald-500/60 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200">
+    <div
+      className="flex min-w-0 shrink-0 items-center gap-2 rounded-lg border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1.5 text-xs text-emerald-700 dark:text-emerald-200"
+      title={`Claude may move the machine for another ${minutesLeft} minutes. Stop ends it immediately and cancels anything running.`}
+    >
       <Bot size={14} className="shrink-0 animate-pulse" />
-      <span className="shrink-0 font-medium">Claude can move this machine</span>
-      {showLast ? (
-        <span className="truncate font-mono text-emerald-300/90">
+      <span className="shrink-0 font-medium">Claude can move this</span>
+      {showLast && (
+        <span className="hidden truncate font-mono text-emerald-600 md:inline dark:text-emerald-300/90">
           {last!.name.replace(/_/g, ' ')}
           {last!.detail ? ` ${last!.detail}` : ''}
         </span>
-      ) : (
-        <span className="text-emerald-300/60">idle</span>
       )}
-      <span className="ml-auto shrink-0 text-emerald-300/60">{minutesLeft}m left</span>
+      <span className="shrink-0 text-emerald-600/70 dark:text-emerald-300/60">{minutesLeft}m</span>
       <button
         onClick={() => machineArming.disarm('operator')}
-        className="flex shrink-0 items-center gap-1 rounded-md bg-emerald-400 px-2 py-1 font-medium text-emerald-950 transition hover:bg-emerald-300"
-        title="Stops anything Claude is running and takes the permission back"
+        className="flex shrink-0 cursor-pointer items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 font-medium text-white transition hover:bg-emerald-500"
       >
         <Hand size={12} />
         Stop

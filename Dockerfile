@@ -12,12 +12,16 @@ ENV GITHUB_TOKEN=$GITHUB_TOKEN
 
 # Build the engine dependency
 WORKDIR /app/ngspice-wasm/EEcircuit-engine
-RUN npm install
+RUN npm ci
 RUN npm run build
 
 # Build the frontend application
 WORKDIR /app
-RUN npm install
+# `ci`, not `install`: the lockfile is what the tests ran against, and the
+# shared @physbox-io packages are on a caret range. `npm install` is free to
+# resolve a newer minor at build time, so a deploy could ship a version of the
+# machine layer nobody had run — quietly, and only in the image.
+RUN npm ci
 RUN npm run build
 
 # Production stage
