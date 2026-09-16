@@ -23,6 +23,13 @@ const ARM_TOOLTIP =
  * and a navbar chip claiming the machine was locked when it was merely
  * unattended would be read as a fault to clear.
  *
+ * The colour tracks the CURRENT STATE, not the action the button performs:
+ * green while only people can move the machine, red while an AI can. This sits
+ * in the navbar for the whole session, so it is read as a status lamp far more
+ * often than it is clicked — and on a status lamp red means live. Colouring it
+ * by the action instead put a red chip on screen while nothing was armed, which
+ * is the safe state announcing itself as the dangerous one.
+ *
  * It lives in the navbar and is ALWAYS present, which took a bug to learn. It
  * used to hide itself whenever no machine was connected, on the reasoning that
  * most people never plug one in and a standing notice about something that
@@ -84,7 +91,7 @@ export function AgentMachineBanner() {
     return (
       <button
         onClick={() => machineArming.arm()}
-        className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-red-500/60 bg-red-500/10 px-2.5 py-1.5 text-xs font-semibold tracking-wide text-red-600 transition hover:bg-red-500/20 dark:text-red-400"
+        className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-semibold tracking-wide text-emerald-700 transition hover:bg-emerald-500/20 dark:text-emerald-400"
         title={ARM_TOOLTIP}
       >
         <ShieldCheck size={14} />
@@ -102,21 +109,21 @@ export function AgentMachineBanner() {
 
   return (
     <div
-      className="flex min-w-0 shrink-0 items-center gap-2 rounded-lg border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1.5 text-xs text-emerald-700 dark:text-emerald-200"
+      className="flex min-w-0 shrink-0 items-center gap-2 rounded-lg border border-red-500/60 bg-red-500/10 px-2.5 py-1.5 text-xs text-red-700 dark:text-red-300"
       title={`${ARM_TOOLTIP} Armed for another ${minutesLeft} minutes; disarming is immediate and cancels anything running.`}
     >
       <Bot size={14} className="shrink-0 animate-pulse" />
       <span className="shrink-0 font-semibold tracking-wide">ARMED</span>
       {showLast && (
-        <span className="hidden truncate font-mono text-emerald-600 md:inline dark:text-emerald-300/90">
+        <span className="hidden truncate font-mono text-red-600 md:inline dark:text-red-300/90">
           {last!.name.replace(/_/g, ' ')}
           {last!.detail ? ` ${last!.detail}` : ''}
         </span>
       )}
-      <span className="shrink-0 text-emerald-600/70 dark:text-emerald-300/60">{minutesLeft}m</span>
+      <span className="shrink-0 text-red-600/70 dark:text-red-300/60">{minutesLeft}m</span>
       <button
         onClick={() => machineArming.disarm('operator')}
-        className="flex shrink-0 cursor-pointer items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 font-medium text-white transition hover:bg-emerald-500"
+        className="flex shrink-0 cursor-pointer items-center gap-1 rounded-md bg-red-600 px-2 py-1 font-semibold tracking-wide text-white transition hover:bg-red-500"
       >
         <Hand size={12} />
         DISARM
