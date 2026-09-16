@@ -18,7 +18,20 @@ import { getEffectiveMcuConfig } from './utils/mcuConfig';
 import { buildNetlistResultIndex, findNetGraph } from './utils/netlistResult';
 import { isPortConnected } from './utils/graphTopology';
 import { createPortal } from 'react-dom';
-import { buildShareLink, readShareLink, clearShareFragment, type ShareLink } from './utils/shareLink';
+import {
+  buildShareLink,
+  readShareLink,
+  clearShareFragment,
+  buildAccountShareLink,
+  canShareViaAccount,
+  shareTokenInUrl,
+  readAccountShareLink,
+  clearShareToken,
+  ShareTooLargeError,
+  type ShareLink,
+} from './utils/shareLink';
+import { revokeShare, isProRequired } from './utils/apiClient';
+import { SIGN_IN_REQUESTED_EVENT } from './components/UserProfileButton';
 import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight, Wrench, Share2, Copy, Check } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
 import { ExportPcbModal } from './components/ExportPcbModal';
@@ -29,7 +42,7 @@ import { EdgePathProvider } from './components/AuraEdge';
 import { SettingsModal } from './components/SettingsModal';
 import { UserProfileButton } from './components/UserProfileButton';
 import { AgentMachineBanner } from './components/AgentMachineBanner';
-import { loadSettings, saveSettings, loadMachiningSettings } from './utils/storage';
+import { loadSettings, saveSettings, loadMachiningSettings, type CircuitPreset } from './utils/storage';
 import { cloudAutosave } from './utils/cloudDocuments';
 import { useMCPBridge } from './hooks/useMCPBridge';
 import { usePresets } from './hooks/usePresets';
@@ -1746,6 +1759,8 @@ export default function App() {
   const [share, setShare] = useState<ShareLink | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
+  const [shareTooBig, setShareTooBig] = useState<ShareTooLargeError | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
 
   const copyShareLink = useCallback(async (url: string) => {
     try {
@@ -1770,19 +1785,73 @@ export default function App() {
    * presses this is to paste it somewhere, and a panel that shows kilobytes of
    * base64 and invites you to select it by hand is not a share button.
    */
+  /** The circuit as it would be shared, built the same way the save builds it. */
+  const circuitToShare = useCallback(
+    () => currentCircuit((userPresets[selectedPreset] ?? allPresets[selectedPreset])?.name ?? 'Shared circuit'),
+    [currentCircuit, userPresets, allPresets, selectedPreset]
+  );
+
   const handleShare = useCallback(async () => {
     setShareError(null);
+    setShareTooBig(null);
     setShareCopied(false);
     try {
-      const name = (userPresets[selectedPreset] ?? allPresets[selectedPreset])?.name ?? 'Shared circuit';
-      const link = await buildShareLink(currentCircuit(name));
+      const link = await buildShareLink(circuitToShare());
       setShare(link);
       await copyShareLink(link.url);
     } catch (e) {
       setShare(null);
-      setShareError(e instanceof Error ? e.message : 'That circuit could not be made into a link.');
+      /*
+       * A circuit too big for a link is an ordinary outcome for a board with
+       * firmware on it, not an error to apologise for — so it is kept apart
+       * from a real failure. The panel turns it into the offer that solves it.
+       */
+      if (e instanceof ShareTooLargeError) setShareTooBig(e);
+      else setShareError(e instanceof Error ? e.message : 'That circuit could not be made into a link.');
     }
-  }, [currentCircuit, userPresets, allPresets, selectedPreset, copyShareLink]);
+  }, [circuitToShare, copyShareLink]);
+
+  /**
+   * Leaves the circuit with the account and copies the short link for it.
+   *
+   * Offered only after the link-sized route has failed. It is the heavier
+   * option — it needs an account, and it puts a copy of the circuit on a server
+   * — and offering it first would make an account look required for something
+   * that almost never needs one.
+   */
+  const handleAccountShare = useCallback(async () => {
+    setShareError(null);
+    setShareBusy(true);
+    try {
+      const link = await buildAccountShareLink(circuitToShare());
+      setShareTooBig(null);
+      setShare(link);
+      await copyShareLink(link.url);
+    } catch (e) {
+      setShareError(
+        isProRequired(e)
+          ? 'Sharing from your account needs PhysBox Pro.'
+          : e instanceof Error
+            ? e.message
+            : 'That circuit could not be shared from your account.'
+      );
+    } finally {
+      setShareBusy(false);
+    }
+  }, [circuitToShare, copyShareLink]);
+
+  /** Turns off a link that points at the account. A link with the circuit inside it cannot be recalled. */
+  const handleStopSharing = useCallback(async (token: string) => {
+    setShareBusy(true);
+    const ok = await revokeShare(token);
+    setShareBusy(false);
+    if (!ok) {
+      setShareError('That link could not be turned off. Try again in a moment.');
+      return;
+    }
+    setShare(null);
+    setShareCopied(false);
+  }, []);
 
   /**
    * A circuit arriving by link — one this app made, from the share button.
@@ -1791,23 +1860,56 @@ export default function App() {
    * replaces what is on the canvas, so "no" has to mean "not now" rather than
    * throwing the shared circuit away.
    */
+  /**
+   * Puts a shared circuit on the canvas, however the link carried it.
+   *
+   * Through `applyPreset`, the one sequence that applies a circuit to the app.
+   * The link is taken out of the address bar only on a yes: there is nowhere to
+   * put a shared circuit alongside the open one, so declining has to mean "not
+   * now" rather than "thrown away".
+   */
+  const openSharedCircuit = useCallback((circuit: CircuitPreset): boolean => {
+    const name = circuit.name?.replace(/^User:\s*/, '') || 'a shared circuit';
+    if (
+      nodes.length > 0 &&
+      !window.confirm(
+        `Open "${name}"?\n\n` +
+          'This replaces the circuit on the canvas. Save it first if you want it back.\n' +
+          'Cancel keeps it — the link stays in the address bar, so you can reload to open it later.'
+      )
+    ) {
+      return false;
+    }
+    clearShareFragment();
+    clearShareToken();
+    applyPreset(circuit);
+    return true;
+  }, [nodes.length, applyPreset]);
+
+  /**
+   * A circuit arriving as a token — the account route, for circuits too big for
+   * a link. It lands through `openSharedCircuit`, the same way a fragment does.
+   */
+  useEffect(() => {
+    const token = shareTokenInUrl();
+    if (!token) return;
+    readAccountShareLink(token)
+      .then((circuit) => openSharedCircuit(circuit))
+      .catch((err) => {
+        clearShareToken();
+        setShareError(err?.message || 'That shared link could not be opened.');
+      });
+    // Once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     readShareLink()
       .then((circuit) => {
         if (!circuit) return;
         const name = circuit.name?.replace(/^User:\s*/, '') || 'a shared circuit';
-        if (
-          nodes.length > 0 &&
-          !window.confirm(
-            `Open "${name}"?\n\n` +
-              'This replaces the circuit on the canvas. Save it first if you want it back.\n' +
-              'Cancel keeps it — the link stays in the address bar, so you can reload to open it later.'
-          )
-        ) {
-          return;
-        }
-        clearShareFragment();
-        applyPreset(circuit);
+        void name;
+        openSharedCircuit(circuit);
       })
       .catch((err) => {
         clearShareFragment();
@@ -2269,21 +2371,24 @@ export default function App() {
             clipboard write is refused on an insecure origin, and a share button
             that silently did nothing is indistinguishable from one that
             worked. */}
-        {(share || shareError) &&
+        {(share || shareError || shareTooBig) &&
           createPortal(
             <div className="fixed top-16 right-4 max-lg:top-1/2 max-lg:right-1/2 max-lg:translate-x-1/2 max-lg:-translate-y-1/2 z-[105] w-[28rem] max-w-[90vw] p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl text-xs">
               <div className="flex items-start justify-between gap-3">
                 <p className="font-bold text-slate-800 dark:text-slate-100">
-                  {shareError
-                    ? 'This circuit could not be shared as a link'
-                    : shareCopied
-                      ? 'Link copied'
-                      : 'Share link'}
+                  {shareTooBig
+                    ? 'This circuit is too big to put in a link'
+                    : shareError
+                      ? 'This circuit could not be shared as a link'
+                      : shareCopied
+                        ? 'Link copied'
+                        : 'Share link'}
                 </p>
                 <button
                   onClick={() => {
                     setShare(null);
                     setShareError(null);
+                    setShareTooBig(null);
                   }}
                   className="text-slate-400 hover:text-slate-700 dark:hover:text-white font-bold cursor-pointer px-1"
                   title="Dismiss"
@@ -2294,6 +2399,48 @@ export default function App() {
 
               {shareError && (
                 <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">{shareError}</p>
+              )}
+
+              {/* The offer, not an apology. The thing that fixes a circuit too
+                  big for a link is an account, and this is the moment it is
+                  worth having one — so it is asked for here rather than left to
+                  be found behind the avatar in the corner. */}
+              {shareTooBig && (
+                <div className="mt-1.5 space-y-2">
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300">{shareTooBig.message}</p>
+                  {canShareViaAccount() ? (
+                    <>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                        Your account can hold it instead, and the link becomes a short one.
+                      </p>
+                      <button
+                        onClick={handleAccountShare}
+                        disabled={shareBusy}
+                        className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-semibold cursor-pointer transition-colors"
+                      >
+                        <Share2 className="w-3 h-3" />
+                        {shareBusy ? 'Storing the circuit…' : 'Share from your account'}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                        Sign in and your account can hold the circuit instead — the link becomes a
+                        short one, anyone can open it without an account, and you can turn it off
+                        later. It is free; there is nothing to buy.
+                      </p>
+                      <button
+                        onClick={() => window.dispatchEvent(new CustomEvent(SIGN_IN_REQUESTED_EVENT))}
+                        className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer transition-colors"
+                      >
+                        Sign in to share this circuit
+                      </button>
+                    </>
+                  )}
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Or export JSON and send the file.
+                  </p>
+                </div>
               )}
 
               {share && (
@@ -2333,6 +2480,18 @@ export default function App() {
                       <li key={i}>{n}</li>
                     ))}
                   </ul>
+                  {/* Only for a link that points at the account. A link with the
+                      circuit inside it is already out there and cannot be
+                      recalled; offering to turn one off would be a lie. */}
+                  {share.token && (
+                    <button
+                      onClick={() => handleStopSharing(share.token!)}
+                      disabled={shareBusy}
+                      className="mt-2 text-[11px] text-red-600 dark:text-red-400 hover:underline disabled:opacity-50 cursor-pointer"
+                    >
+                      {shareBusy ? 'Turning it off…' : 'Stop sharing this link'}
+                    </button>
+                  )}
                 </>
               )}
             </div>,

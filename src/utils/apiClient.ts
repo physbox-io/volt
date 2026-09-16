@@ -503,6 +503,61 @@ export async function putCloudDocument(input: {
   });
 }
 
+/**
+ * A document left with the account so it can be handed over as a short link.
+ *
+ * Volt shares by putting the whole circuit in the URL fragment, which needs
+ * nothing from the server and is right for almost every board. This is for the
+ * ones it is not: an MCU node carrying firmware source, or a circuit saved with
+ * its routed geometry, runs past what a browser will take in a URL.
+ *
+ * Not a Pro route. A link from somebody who already uses this is how the next
+ * person finds it, and a share that required a subscription of the sender would
+ * mostly stop the link being made.
+ */
+export interface ShareMeta {
+  token: string;
+  appId: string;
+  name: string;
+  sizeBytes: number;
+  viewCount: number;
+  createdAt: string;
+}
+
+export async function createShare(input: {
+  appId: string;
+  name: string;
+  data: unknown;
+}): Promise<{ token: string; sizeBytes: number }> {
+  return request('/api/shares', {
+    method: 'POST',
+    body: JSON.stringify({ app_id: input.appId, name: input.name, data: input.data }),
+  });
+}
+
+export async function revokeShare(token: string): Promise<boolean> {
+  try {
+    await request(`/api/shares/${encodeURIComponent(token)}`, { method: 'DELETE' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Opens a shared document. Deliberately usable with no account.
+ *
+ * The person following a link has usually never signed in here, and an account
+ * wall is the point at which they close the tab. `request` sends the auth
+ * header only when there is one, so this works signed in or out.
+ */
+export async function fetchSharedDocument(token: string): Promise<ShareMeta & { data: unknown }> {
+  const res = await request<{ share: ShareMeta & { data: unknown } }>(
+    `/api/shared/${encodeURIComponent(token)}`
+  );
+  return res.share;
+}
+
 export async function fetchCloudDocuments(appId?: string): Promise<CloudDocumentMeta[]> {
   const res = await request<{ documents: CloudDocumentMeta[] }>(`/api/documents${toQuery({ app_id: appId })}`);
   return res.documents || [];

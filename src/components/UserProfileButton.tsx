@@ -65,10 +65,25 @@ function syncPresetsFromCloud(force = false): Promise<void> {
   return run;
 }
 
+/**
+ * Asks for the sign-in window from somewhere else in the app.
+ *
+ * The share panel needs it: the one thing to do about a circuit too big for a
+ * link is to leave it with an account, and sending somebody hunting for the
+ * avatar in the corner is how that offer goes unaccepted.
+ */
+export const SIGN_IN_REQUESTED_EVENT = 'physbox:sign-in-requested';
+
 export const UserProfileButton: React.FC = () => {
   const [user, setUser] = useState<PhysBoxUser | null>(getStoredUser());
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+
+  useEffect(() => {
+    const open = () => setShowLoginModal(true);
+    window.addEventListener(SIGN_IN_REQUESTED_EVENT, open);
+    return () => window.removeEventListener(SIGN_IN_REQUESTED_EVENT, open);
+  }, []);
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const [showRemoteModal, setShowRemoteModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);

@@ -15,6 +15,7 @@
 
 import type { CircuitPreset } from './storage';
 import { toBase64Url, fromBase64Url, gzip, gunzip } from './urlPayload';
+import { createShare, fetchSharedDocument, getStoredUser } from './apiClient';
 
 /** The only share format understood so far. */
 const SHARE_VERSION = '1';
@@ -52,6 +53,14 @@ export interface ShareLink {
    * copy, where the warning beside it is actually read.
    */
   travelsWell: boolean;
+  /**
+   * Set when the circuit was left with the account rather than put in the link.
+   *
+   * It is what "stop sharing" needs, and it is how the panel knows there is
+   * anything to stop: a link with the circuit inside it cannot be recalled, and
+   * offering to turn one off would be a lie.
+   */
+  token?: string;
   notes: string[];
 }
 
@@ -182,4 +191,104 @@ export function readShareLink(): Promise<CircuitPreset | null> {
  */
 export function clearShareFragment(): void {
   window.history.replaceState(null, '', window.location.pathname + window.location.search);
+}
+
+// ---------------------------------------------------------------------------
+// The other kind of link: a token, with the circuit left in the account
+//
+// Everything above puts the circuit in the URL, which needs no server and no
+// account and is right for almost every board. It is not right for an MCU node
+// carrying firmware source, or a circuit saved with its routed geometry.
+//
+// In the *query string*, not the fragment, which is the opposite of the choice
+// above and for the reason this path exists: a link that a chat app rewrites is
+// exactly what the fragment could not survive, and a rewrite keeps the query
+// and drops the fragment. The cost is that the token appears in an access log,
+// which is why it is 128 bits of randomness and why it can be revoked.
+//
+// What is stored is a snapshot and the server will not let it be edited
+// afterwards. Somebody who vouches for a link is vouching for what they sent.
+// Changing the circuit means making a new link.
+// ---------------------------------------------------------------------------
+
+/**
+ * The query parameter a token-shared document arrives in.
+ *
+ * The same name in every Physbox app rather than one word per app. A token is
+ * opaque and says nothing about where it belongs, so the app that receives one
+ * asks the server what it is and sends you to the right app if it is not this
+ * one — which only works if all three look in the same place for it.
+ */
+const SHARE_TOKEN_PARAM = 'share';
+
+/** What to call a sibling app when a link turns out to belong to it. */
+const APP_NAMES: Record<string, string> = { etch: 'Etch', volt: 'Volt', mesh: 'Mesh' };
+
+/** Whether there is an account to leave a circuit with at all. */
+export function canShareViaAccount(): boolean {
+  return Boolean(getStoredUser());
+}
+
+/**
+ * Leaves the circuit with the account and returns the short link for it.
+ *
+ * No size ceiling of our own here: the server holds the one that matters and
+ * says so in its refusal, and a second number kept in the app would be the one
+ * that drifted.
+ */
+export async function buildAccountShareLink(
+  circuit: CircuitPreset,
+  base: string = window.location.href
+): Promise<ShareLink> {
+  const name = circuit.name?.replace(/^User:\s*/, '') || 'Volt circuit';
+  const { token } = await createShare({ appId: 'volt', name, data: circuit });
+
+  const url = new URL(base);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set(SHARE_TOKEN_PARAM, token);
+  const full = url.toString();
+
+  return {
+    url: full,
+    length: full.length,
+    travelsWell: true,
+    token,
+    notes: [
+      'The circuit is stored with your account and the link points at it, so the link stays short.',
+      'What it holds cannot be changed afterwards — edit the circuit and share again for a new link.',
+      'Anyone with the link can open it, with or without an account. You can turn it off at any time.',
+    ],
+  };
+}
+
+/** The token in the address bar, if this page was opened from an account link. */
+export function shareTokenInUrl(search: string = window.location.search): string | null {
+  return new URLSearchParams(search).get(SHARE_TOKEN_PARAM);
+}
+
+/** Fetches the circuit a token stands for. */
+export async function readAccountShareLink(token: string): Promise<CircuitPreset> {
+  const share = await fetchSharedDocument(token);
+  /*
+   * A token carries no hint of which app made it, so a Mesh link pasted into
+   * Volt would otherwise be answered with "that link is damaged" — which sends
+   * somebody looking for a fault in a link that is perfectly good.
+   */
+  if (share.appId && share.appId !== 'volt') {
+    const other = APP_NAMES[share.appId] ?? share.appId;
+    throw new Error(`That link is a ${other} document, not a Volt circuit. Open it in ${other}.`);
+  }
+  const circuit = share.data as CircuitPreset | null;
+  if (!circuit || !Array.isArray(circuit.nodes) || !Array.isArray(circuit.edges)) {
+    throw new Error('That shared circuit could not be read — it may have been made by a newer version of Volt.');
+  }
+  return { ...circuit, name: circuit.name || share.name || 'Shared circuit' };
+}
+
+/** Takes an opened token back out of the address bar. See `clearShareFragment`. */
+export function clearShareToken(): void {
+  const url = new URL(window.location.href);
+  url.searchParams.delete(SHARE_TOKEN_PARAM);
+  window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
 }
