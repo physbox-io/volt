@@ -31,7 +31,7 @@ import {
   type ShareLink,
 } from './utils/shareLink';
 import { revokeShare, isProRequired } from './utils/apiClient';
-import { SIGN_IN_REQUESTED_EVENT } from './components/UserProfileButton';
+import { SIGN_IN_REQUESTED_EVENT, SIGNED_IN_EVENT } from './components/UserProfileButton';
 import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight, Wrench, Share2, Copy, Check } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
 import { ExportPcbModal } from './components/ExportPcbModal';
@@ -1840,6 +1840,20 @@ export default function App() {
     }
   }, [circuitToShare, copyShareLink]);
 
+  /*
+   * Signing in was the answer to "this circuit is too big for a link", so the
+   * share is finished off rather than leaving the panel sitting there with the
+   * same button on it — the person already said what they wanted.
+   */
+  useEffect(() => {
+    const done = (e: Event) => {
+      if ((e as CustomEvent<{ reason?: string }>).detail?.reason !== 'share') return;
+      void handleAccountShare();
+    };
+    window.addEventListener(SIGNED_IN_EVENT, done);
+    return () => window.removeEventListener(SIGNED_IN_EVENT, done);
+  }, [handleAccountShare]);
+
   /** Turns off a link that points at the account. A link with the circuit inside it cannot be recalled. */
   const handleStopSharing = useCallback(async (token: string) => {
     setShareBusy(true);
@@ -2430,7 +2444,11 @@ export default function App() {
                         later. It is free; there is nothing to buy.
                       </p>
                       <button
-                        onClick={() => window.dispatchEvent(new CustomEvent(SIGN_IN_REQUESTED_EVENT))}
+                        onClick={() =>
+                          window.dispatchEvent(
+                            new CustomEvent(SIGN_IN_REQUESTED_EVENT, { detail: { reason: 'share' } })
+                          )
+                        }
                         className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer transition-colors"
                       >
                         Sign in to share this circuit

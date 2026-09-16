@@ -258,6 +258,10 @@ export async function buildAccountShareLink(
       'The circuit is stored with your account and the link points at it, so the link stays short.',
       'What it holds cannot be changed afterwards — edit the circuit and share again for a new link.',
       'Anyone with the link can open it, with or without an account. You can turn it off at any time.',
+      // Said at the moment somebody is deciding to rely on it, rather than
+      // buried in terms nobody opens. PhysBox Cloud is early and might not
+      // continue; a link is a convenience, not an archive.
+      'PhysBox Cloud is early — accounts and links here may be withdrawn at any time. Keep your own copy of anything that matters.',
     ],
   };
 }

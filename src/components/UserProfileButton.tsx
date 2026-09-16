@@ -74,13 +74,32 @@ function syncPresetsFromCloud(force = false): Promise<void> {
  */
 export const SIGN_IN_REQUESTED_EVENT = 'physbox:sign-in-requested';
 
+/**
+ * Fired when a sign-in that somebody *asked for* has completed.
+ *
+ * Carries the reason back, so whatever sent them here can finish the job
+ * instead of making them press the same button a second time.
+ */
+export const SIGNED_IN_EVENT = 'physbox:signed-in';
+
 export const UserProfileButton: React.FC = () => {
   const [user, setUser] = useState<PhysBoxUser | null>(getStoredUser());
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
 
+  /**
+   * Why the sign-in window was opened, when something else opened it.
+   *
+   * A ref rather than state: nothing renders differently for it, and it has to
+   * survive the re-renders between the request and the sign-in completing.
+   */
+  const signInReason = useRef<string | null>(null);
+
   useEffect(() => {
-    const open = () => setShowLoginModal(true);
+    const open = (e: Event) => {
+      signInReason.current = (e as CustomEvent<{ reason?: string }>).detail?.reason ?? 'unspecified';
+      setShowLoginModal(true);
+    };
     window.addEventListener(SIGN_IN_REQUESTED_EVENT, open);
     return () => window.removeEventListener(SIGN_IN_REQUESTED_EVENT, open);
   }, []);
@@ -150,7 +169,22 @@ export const UserProfileButton: React.FC = () => {
       void syncPresetsFromCloud(true);
       setShowLoginModal(false);
       setDropdownOpen(false);
-      if (!res.is_admin) {
+
+      /*
+       * The guest-list window is skipped for somebody who was sent here to do
+       * something, and the thing they came for is done instead.
+       *
+       * It says access is being activated in batches, which is true of the Pro
+       * cloud layer and the exact opposite of what has just happened to
+       * somebody who signed in to share: the account exists, it works, and
+       * sharing is open to it immediately. Showing it there told a new user
+       * they had not got in, seconds after they had.
+       */
+      const asked = signInReason.current;
+      signInReason.current = null;
+      if (asked) {
+        window.dispatchEvent(new CustomEvent(SIGNED_IN_EVENT, { detail: { reason: asked } }));
+      } else if (!res.is_admin) {
         setShowGuestModal(true);
       }
     } catch (err: any) {

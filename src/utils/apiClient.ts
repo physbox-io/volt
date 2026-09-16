@@ -190,9 +190,17 @@ export async function loginWithGoogle(credential: string): Promise<{ token: stri
 export async function fetchCurrentUser(): Promise<PhysBoxUser | null> {
   if (!getStoredAuthToken()) return null;
   try {
-    const res = await request<{ user: PhysBoxUser }>('/api/auth/me');
+    const res = await request<{ user: PhysBoxUser; token?: string }>('/api/auth/me');
     if (res.user) {
-      setStoredAuth(getStoredAuthToken()!, res.user);
+      /*
+       * The server rolls a session forward when it is more than halfway
+       * through its year, and hands the new token back here. Storing it is
+       * what actually keeps somebody signed in: without this, an account that
+       * shared something and came back much later would find itself signed out
+       * — which, for a free feature nobody asked to have an account for, reads
+       * as having been deactivated.
+       */
+      setStoredAuth(res.token || getStoredAuthToken()!, res.user);
       return res.user;
     }
     return null;
