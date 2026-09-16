@@ -4,12 +4,24 @@ import type { ArmingState } from '@physbox-io/machining';
 import { machineArming, subscribeToArming } from '../utils/machineMcp';
 
 /**
- * The one place a person says whether Claude may move the machine.
+ * Said once, in one place, so both states and the tooltip cannot drift apart —
+ * and so an agent's refusal message can quote the same words.
+ */
+const ARM_TOOLTIP =
+  'Armed means an AI can control connected machines; otherwise only humans may.';
+
+/**
+ * The one place a person says whether an AI may move the machine.
  *
  * This is the whole of the safety story made visible. Everything an agent can
  * do that moves an axis is refused until this is armed, and arming is
  * deliberately not something the agent can do for itself — it can ask, which
  * raises this to its attention state, and that is all.
+ *
+ * The label is ARM rather than anything about locking. "Locked" already means
+ * something exact on these machines — GRBL's alarm lockout, cleared with `$X` —
+ * and a navbar chip claiming the machine was locked when it was merely
+ * unattended would be read as a fault to clear.
  *
  * It lives in the navbar and is ALWAYS present, which took a bug to learn. It
  * used to hide itself whenever no machine was connected, on the reasoning that
@@ -55,13 +67,14 @@ export function AgentMachineBanner() {
       <div className="flex shrink-0 items-center gap-2 rounded-lg border border-amber-500/60 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-200">
         <ShieldAlert size={14} className="shrink-0" />
         <span className="hidden sm:inline">
-          Claude asked to <strong>{arming.requestedFor?.replace(/_/g, ' ')}</strong>
+          AI asked to <strong>{arming.requestedFor?.replace(/_/g, ' ')}</strong>
         </span>
         <button
           onClick={() => machineArming.arm()}
-          className="shrink-0 cursor-pointer rounded-md bg-amber-500 px-2 py-1 font-medium text-white transition hover:bg-amber-400"
+          className="shrink-0 cursor-pointer rounded-md bg-amber-500 px-2 py-1 font-semibold tracking-wide text-white transition hover:bg-amber-400"
+          title={ARM_TOOLTIP}
         >
-          Allow
+          ARM
         </button>
       </div>
     );
@@ -71,11 +84,11 @@ export function AgentMachineBanner() {
     return (
       <button
         onClick={() => machineArming.arm()}
-        className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600 shadow-xs transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-        title="Claude cannot move the machine. Click to let it jog, zero, probe and cut for the next hour — you can stop it at any time."
+        className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-red-500/60 bg-red-500/10 px-2.5 py-1.5 text-xs font-semibold tracking-wide text-red-600 transition hover:bg-red-500/20 dark:text-red-400"
+        title={ARM_TOOLTIP}
       >
         <ShieldCheck size={14} />
-        <span className="hidden sm:inline">Machine locked</span>
+        ARM
       </button>
     );
   }
@@ -90,10 +103,10 @@ export function AgentMachineBanner() {
   return (
     <div
       className="flex min-w-0 shrink-0 items-center gap-2 rounded-lg border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1.5 text-xs text-emerald-700 dark:text-emerald-200"
-      title={`Claude may move the machine for another ${minutesLeft} minutes. Stop ends it immediately and cancels anything running.`}
+      title={`${ARM_TOOLTIP} Armed for another ${minutesLeft} minutes; disarming is immediate and cancels anything running.`}
     >
       <Bot size={14} className="shrink-0 animate-pulse" />
-      <span className="shrink-0 font-medium">Claude can move this</span>
+      <span className="shrink-0 font-semibold tracking-wide">ARMED</span>
       {showLast && (
         <span className="hidden truncate font-mono text-emerald-600 md:inline dark:text-emerald-300/90">
           {last!.name.replace(/_/g, ' ')}
@@ -106,7 +119,7 @@ export function AgentMachineBanner() {
         className="flex shrink-0 cursor-pointer items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 font-medium text-white transition hover:bg-emerald-500"
       >
         <Hand size={12} />
-        Stop
+        DISARM
       </button>
     </div>
   );
