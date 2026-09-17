@@ -219,6 +219,42 @@ describe('generateAirCutPerimeterGcode', () => {
     for (const z of absoluteZs(gcode)) expect(z).toBeGreaterThanOrEqual(60);
   });
 
+  /*
+   * The whole promise of the framing lap, and the reason the +10/+20/+50 choice
+   * could be taken away: the operator does not have to pick an offset that
+   * clears a stale Z0, because no offset can ever put the bit lower than it
+   * already is. Swept rather than spot-checked — the clearance is in work
+   * coordinates, and every one of these is a Z0 someone could plausibly be
+   * carrying over from a previous setup.
+   */
+  it('never descends, from any starting height', () => {
+    for (const startZ of [-50, -12, -1, 0, 0.5, 1.9, 2, 2.1, 21.9, 22, 22.1, 60, 500]) {
+      const zs = absoluteZs(generateAirCutPerimeterGcode(layout, options, 20, startZ));
+      expect(zs.length).toBeGreaterThan(0);
+      for (const z of zs) {
+        expect(z, `starting at Z${startZ}`).toBeGreaterThanOrEqual(startZ);
+      }
+    }
+  });
+
+  /*
+   * A relative lift is the only move that is safe without knowing where the
+   * tool is, so an unknown Z must never produce an absolute one — including
+   * the retract between the two laps and the return to the origin.
+   */
+  it('commands no absolute Z at all when the current Z is unknown', () => {
+    const gcode = generateAirCutPerimeterGcode(layout, options, 20, undefined);
+    expect(absoluteZs(gcode)).toEqual([]);
+    expect(gcode).toMatch(/G91 G0 Z20\.000/);
+  });
+
+  it('treats a non-finite current Z as unknown rather than as zero', () => {
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      const gcode = generateAirCutPerimeterGcode(layout, options, 20, bad);
+      expect(absoluteZs(gcode), `current Z ${bad}`).toEqual([]);
+    }
+  });
+
   it('lifts relatively when the current Z is unknown', () => {
     const gcode = generateAirCutPerimeterGcode(layout, options, 20);
     expect(gcode).toMatch(/G91 G0 Z20\.000/);
