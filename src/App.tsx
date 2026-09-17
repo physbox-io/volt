@@ -161,6 +161,13 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showAICopilot, setShowAICopilot] = useState(false);
   const [isPcbModalOpen, setIsPcbModalOpen] = useState(false);
+  /**
+   * Whether to show the machine dialog on its own, with no board panel behind
+   * it. Set by the spanner in the status bar, which is pressed about the
+   * machine rather than about the board; cleared by the print icon, which is
+   * pressed about the board.
+   */
+  const [pcbModalOnMachine, setPcbModalOnMachine] = useState(false);
 
   /*
    * Machine state for the bottom bar.
@@ -2129,7 +2136,10 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setIsPcbModalOpen(true)}
+              onClick={() => {
+                setPcbModalOnMachine(false);
+                setIsPcbModalOpen(true);
+              }}
               className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-amber-600 dark:text-amber-400 transition-colors focus:outline-none cursor-pointer"
               title="PCB Mill (CNC & WebSerial)"
             >
@@ -2371,6 +2381,7 @@ export default function App() {
             onClose={() => setIsPcbModalOpen(false)}
             nodes={nodes}
             edges={edges}
+            machineOnly={pcbModalOnMachine}
           />
         )}
         {/* Share link report.
@@ -2522,8 +2533,6 @@ export default function App() {
             onClose={() => setIsSettingsOpen(false)}
             showAura={showAura}
             setShowAura={setShowAura}
-            userPresets={userPresets}
-            onDeleteUserPreset={deleteUserPreset}
           />
         )}
 
@@ -2629,9 +2638,14 @@ export default function App() {
             </span>
             {/* Next to the status it acts on. A disconnected machine is the
                 moment someone wants this button. Volt keeps its machine setup
-                inside the PCB export modal, so that is what this opens. */}
+                inside the PCB export modal, so this opens that modal straight
+                onto the machine dialog — not onto the board, which is not what
+                was being asked about. */}
             <button
-              onClick={() => setIsPcbModalOpen(true)}
+              onClick={() => {
+                setPcbModalOnMachine(true);
+                setIsPcbModalOpen(true);
+              }}
               className="p-1 rounded text-amber-600 dark:text-amber-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               title="Connect the machine, home it, and set the work origin"
             >

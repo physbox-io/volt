@@ -8,19 +8,16 @@ import {
   Layers,
   Check,
   RefreshCw,
-  Compass,
   AlertTriangle,
   ShieldCheck,
-  Crosshair,
-  ArrowUp,
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
   Box,
   Scissors,
   Layers2,
   Archive,
   Star,
+  Plug,
+  Settings2,
+  Map,
 } from 'lucide-react';
 import {
   generateAirCutPerimeterGcode,
@@ -58,7 +55,6 @@ import { openSvgInEtch } from '../utils/etchHandoff';
 import { usePcbLayout } from '../hooks/usePcbLayout';
 import { webSerialManager } from '../utils/webSerialManager';
 import { NumberInput } from '@physbox-io/ui';
-import { TeknoBoxPicker } from './TeknoBoxPicker';
 import {
   getGridStats,
   findUnwarpableCommands,
@@ -71,18 +67,12 @@ import { PcbToolpathPreview } from './PcbToolpathPreview';
 import { InfoTip } from './InfoTip';
 import { JobPauseModal } from './JobPauseModal';
 import { PanZoomContainer } from './PanZoomContainer';
+import { MachineConnectModal } from './MachineConnectModal';
+import { BoardMapPanel } from './BoardMapPanel';
 
-/**
- * Wall-clock budgets offered for the maze router. Most boards finish in well
- * under a second; the larger budgets exist for dense boards where the router
- * needs to try many net orderings before one of them fits.
- */
-const ROUTING_EFFORT_PRESETS = [
-  { ms: 2000, label: 'Fast — 2s' },
-  { ms: 8000, label: 'Standard — 8s' },
-  { ms: 30000, label: 'Thorough — 30s' },
-  { ms: 120000, label: 'Exhaustive — 2min' },
-];
+/** Stable empty inputs for machine-only mode — see the layout call. */
+const EMPTY_NODES: Node[] = [];
+const EMPTY_EDGES: Edge[] = [];
 
 /** Shown once per browser before the first connect; never again after acknowledged. */
 const SAFETY_ACK_KEY = 'grblSafetyAck';
@@ -126,6 +116,21 @@ const SHIM_HINT =
   'the same thing, and you already have it.';
 
 
+/**
+ * How far above safe Z the framing lap flies, in mm.
+ *
+ * Not a choice any more. The reason there were three buttons was that the
+ * clearance is in *work* coordinates, so "safe Z + 20" is only 20mm up when Z0
+ * belongs to the blank clamped down right now — with a zero left over from a
+ * thicker board it could sit below the tool, and picking a bigger offset was
+ * the operator's way of buying headroom against that. The generator now refuses
+ * to descend at all (see `generateAirCutPerimeterGcode`: it takes the greater
+ * of the requested height and the tool's live Z, and lifts relatively when the
+ * live Z is unknown), so the number only has to be a comfortable lap height.
+ * 20mm is that, and there is nothing left for the buttons to protect against.
+ */
+const FRAME_Z_OFFSET_MM = 20;
+
 /** Search distance for a mesh probe point, measured down from the retract. */
 const DEFAULT_PROBE_DEPTH_MM = 3;
 /** Thickness of the touch plate used to set work Z0. */
@@ -156,12 +161,28 @@ interface ExportPcbModalProps {
   onClose: () => void;
   nodes?: Node[];
   edges?: Edge[];
+  /**
+   * Show only the machine dialog, with no export panel behind it.
+   *
+   * There are two doors into this component and they are opened for different
+   * reasons. The print icon means "look at my board"; the spanner beside the
+   * machine status in the status bar means "the machine needs seeing to". The
+   * spanner should not raise the board panel at all — it is not what was being
+   * asked about, and a full-screen layout dialog sitting behind a small one is
+   * just something in the way.
+   *
+   * The layout itself is still computed, because the machine controls need it:
+   * Frame traces this board's outline and the mesh probe samples inside it.
+   * It runs in a worker either way, so nothing is blocked waiting for it.
+   */
+  machineOnly?: boolean;
 }
 
 export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   onClose,
   nodes = [],
   edges = [],
+  machineOnly = false,
 }) => {
   const [rawOptions, setOptions] = useState<PcbOptions>(() => {
     return {
@@ -205,7 +226,20 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     void webSerialManager.connect().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const [activeTab, setActiveTab] = useState<'layout' | 'cam' | 'serial'>('layout');
+  const [activeTab, setActiveTab] = useState<'layout' | 'cam'>('layout');
+  /**
+   * The bench, in its own dialog rather than as a third tab. It has to be able
+   * to sit over either view: the reason to jog is usually something you can see
+   * on the toolpath, and a tab took the board away to show you the keypad.
+   */
+  /**
+   * The machine dialog raised from this panel's own Connect button. In
+   * machine-only mode the dialog *is* the component, so it is derived below
+   * rather than seeded into state — seeding it left the two out of step if the
+   * mode ever changed under a live mount.
+   */
+  const [panelMachineOpen, setPanelMachineOpen] = useState(false);
+  const showMachine = machineOnly || panelMachineOpen;
   /**
    * A single-sided board is milled copper-up and assembled from the other face,
    * so the two jobs need mirror-image pictures. Defaulting to the copper side
@@ -229,12 +263,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     });
   };
   /**
-   * Off by default: a mesh probe is minutes of machine time and needs the
-   * continuity clip attached, so it belongs behind a deliberate press of the
-   * Probe button rather than silently in front of every job.
-   */
-  const [autoLevel, setAutoLevel] = useState(false);
-  /**
    * How far the tool searches downward for the copper on each probe point, as
    * a travel distance from the retract height. It has to clear the retract plus
    * however far the blank sags — too short and the probe runs out of travel
@@ -251,7 +279,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const [touchPlateMm, setTouchPlateMm] = useState<number>(() =>
     readNumericSetting('grblTouchPlateMm', DEFAULT_TOUCH_PLATE_MM)
   );
-  const [busy, setBusy] = useState<'' | 'probing' | 'zeroing' | 'milling' | 'homing'>('');
+  const [busy, setBusy] = useState<'' | 'probing' | 'zeroing' | 'milling' | 'framing' | 'homing'>('');
   const [machineError, setMachineError] = useState<string | null>(null);
   /** Last word from the stencil export — the file written, or why not. */
   const [stencilNote, setStencilNote] = useState<string | null>(null);
@@ -289,8 +317,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const [autoIsolationDepth, setAutoIsolationDepth] = useState<boolean>(
     () => localStorage.getItem('pcbAutoIsolationDepth') !== '0'
   );
-  const [airCutZOffset, setAirCutZOffset] = useState<number>(20);
-  const [isAirCutMode, setIsAirCutMode] = useState<boolean>(false);
   const [jogStep, setJogStep] = useState<number>(1.0);
 
   // How the machine is reached: a USB cable to this computer, or a Tekno Box
@@ -308,6 +334,21 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       setSerialState(state);
     });
   }, []);
+
+  /**
+   * Wipes the slate before an operation that is about to produce its own
+   * verdict.
+   *
+   * `serialState.lastError` is written by an alarm or a refused line and then
+   * simply left standing — nothing in the protocol layer ever retracts it — so
+   * one failed probe kept a red banner up through every successful thing that
+   * followed, which is most of the "random errors" this panel showed. Clearing
+   * it as the next action starts is the moment it stops describing anything.
+   */
+  const clearErrors = () => {
+    setMachineError(null);
+    webSerialManager.clearLastError();
+  };
 
   const handleSafeClose = () => {
     const isJobActive = serialState.status === 'RUNNING' || serialState.status === 'PROBING' || busy !== '';
@@ -379,18 +420,27 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     [rawOptions, autoIsolationDepth, autoDepthZ]
   );
 
-  // Routing runs in a worker: a dense board takes seconds, and blocking the
-  // main thread for that long makes the whole editor feel broken.
-  const { result, isRouting, progress, hasResult } = usePcbLayout(nodes, edges, options);
+  /*
+   * Routing runs in a worker: a dense board takes seconds, and blocking the
+   * main thread for that long makes the whole editor feel broken.
+   *
+   * Skipped altogether in machine-only mode. Nothing in the machine dialog is
+   * about a board any more — framing and probing both moved to the CAM tab
+   * with the outline they need — so reaching the bench through the spanner
+   * should not start a place-and-route nobody is going to look at. An empty
+   * circuit returns immediately.
+   */
+  const layoutNodes = machineOnly ? EMPTY_NODES : nodes;
+  const layoutEdges = machineOnly ? EMPTY_EDGES : edges;
+  const { result, isRouting, progress, hasResult, effortStep, effortSteps } = usePcbLayout(
+    layoutNodes,
+    layoutEdges,
+    options
+  );
 
   const suggestedGrid = useMemo(() => {
     return suggestProbeGrid(options.boardWidthMm, options.boardHeightMm, 4, 8);
   }, [options.boardWidthMm, options.boardHeightMm]);
-
-  const nextEffortMs =
-    ROUTING_EFFORT_PRESETS.find(p => p.ms > options.routingBudgetMs)?.ms ??
-    options.routingBudgetMs;
-  const atMaxEffort = nextEffortMs === options.routingBudgetMs;
 
   const errorCount = result.violations.filter(v => v.severity === 'error').length;
   /**
@@ -456,6 +506,16 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     activeHeightmap?.verifyDeviationMm,
     serialState.zeroZScatterMm,
   ].some(v => v !== undefined && v > depthMargin * 0.5);
+
+  /**
+   * The one machine failure worth a banner.
+   *
+   * `serialState.lastError` is the machine's own last word and is never
+   * retracted by the protocol layer, so it is shown only until the operator
+   * dismisses it or starts the next action (see `clearErrors`) — otherwise a
+   * single bad probe sat in red over every good job that followed it.
+   */
+  const machineNote = machineError ?? serialState.lastError ?? null;
 
   const unwarpable = useMemo(
     () => (activeHeightmap ? findUnwarpableCommands(result.gcode) : []),
@@ -586,7 +646,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   /** Probes the board surface and stores the resulting offset grid. */
   const runProbe = async (): Promise<ProbeGrid | null> => {
     setBusy('probing');
-    setMachineError(null);
+    clearErrors();
     try {
       const grid = await webSerialManager.probeSurfaceMesh({
         // The board is inset from work zero by the profile tool radius, so the
@@ -643,7 +703,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const ensureConnected = async () => {
     if (serialState.connected) return true;
     if (!(await requestSafetyAck())) return false;
-    setMachineError(null);
+    clearErrors();
     if (transportMode === 'wifi' && !cloudDeviceId) {
       setMachineError('Enter the device IP address for WiFi mode');
       return false;
@@ -672,25 +732,30 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * cuts traces too faint to isolate and misses the copper entirely on the high
    * spots.
    */
-  const heightmapWontBeApplied = heightmapStale && !autoLevel;
+  const heightmapWontBeApplied = heightmapStale;
 
   const handleMillBoard = async () => {
     if (!result.success || machineBusy) return;
+    // Cutting is the CAM view's job: it is the one that follows the machine
+    // line by line and carries the restart-this-operation control. Leaving the
+    // panel on Layout meant watching a static picture of the board while the
+    // spindle ran, with the live view one click away and nothing saying so.
+    setActiveTab('cam');
     if (heightmapWontBeApplied) {
       setMachineError(
         'The probed height map no longer covers this board, so it will not be applied — but the ' +
-          'isolation depth was calculated assuming it would be. Re-probe the surface, or turn ' +
-          'auto-level on so the job probes before it cuts.'
+          'isolation depth was calculated assuming it would be. Re-probe the surface on the CAM ' +
+          'tab, or clear the old map there so the depth is worked out without it.'
       );
       return;
     }
     if (!(await ensureConnected())) return;
 
-    let grid = activeHeightmap;
-    if (autoLevel && !grid) {
-      grid = await runProbe();
-      if (!grid) return;
-    }
+    // Whatever has been probed, or nothing. Cutting unlevelled is a real
+    // choice — the auto depth falls back to its most conservative flatness
+    // allowance without a map — so it is not refused here; the board map panel
+    // says in so many words what it costs.
+    const grid = activeHeightmap;
 
     setBusy('milling');
     try {
@@ -704,9 +769,12 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
   const handleFrameBoard = async () => {
     if (!result.success || machineBusy) return;
+    // Same reason as milling: the frame is a real move to watch, and the air-cut
+    // banner that says the Z offset is applied lives on the CAM preview.
+    setActiveTab('cam');
     if (!(await ensureConnected())) return;
 
-    setBusy('milling');
+    setBusy('framing');
     try {
       // The outline, not the job lifted up: it bounds every cut in the program,
       // so one lap answers the registration question — is the blank where the
@@ -722,7 +790,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       const live = await webSerialManager.refreshPosition();
       const currentZ = live.workOffset ? live.wpos.z : undefined;
       await webSerialManager.startJob(
-        generateAirCutPerimeterGcode(result, options, airCutZOffset, currentZ)
+        generateAirCutPerimeterGcode(result, options, FRAME_Z_OFFSET_MM, currentZ)
       );
     } catch (e: any) {
       setMachineError(e?.message || 'Framing failed');
@@ -880,7 +948,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     if (manualMoveBlocked) return;
     if (!(await ensureConnected())) return;
     setBusy('zeroing');
-    setMachineError(null);
+    clearErrors();
     try {
       // The map survives: it still describes this board against the same
       // plane, which is exactly what the offset above re-establishes.
@@ -901,7 +969,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     if (manualMoveBlocked) return;
     if (!(await ensureConnected())) return;
     setBusy('zeroing');
-    setMachineError(null);
+    clearErrors();
     try {
       await webSerialManager.zeroZ(touchPlateMm, surfaceOffsetHere());
     } catch (e: any) {
@@ -914,7 +982,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const handleZeroXY = async () => {
     if (machineBusy) return;
     if (!(await ensureConnected())) return;
-    setMachineError(null);
+    clearErrors();
     try {
       await webSerialManager.zeroXY();
     } catch (e: any) {
@@ -930,11 +998,27 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const handleGoToZero = async () => {
     if (machineBusy) return;
     if (!(await ensureConnected())) return;
-    setMachineError(null);
+    clearErrors();
     try {
       await webSerialManager.gotoWorkOrigin();
     } catch (e: any) {
       setMachineError(e?.message || 'Go to zero failed');
+    }
+  };
+
+  /**
+   * Closes the link and releases the port.
+   *
+   * Only reachable while nothing is moving — the dialog disables it otherwise —
+   * because dropping the wire mid-stream leaves the controller running the
+   * blocks it has already buffered with nothing left watching them.
+   */
+  const handleDisconnect = async () => {
+    clearErrors();
+    try {
+      await webSerialManager.disconnect();
+    } catch (e: any) {
+      setMachineError(e?.message || 'Could not close the machine link');
     }
   };
 
@@ -944,7 +1028,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    */
   const handleUnlock = async () => {
     if (!(await ensureConnected())) return;
-    setMachineError(null);
+    clearErrors();
     try {
       await webSerialManager.unlockAlarm();
     } catch (e: any) {
@@ -955,7 +1039,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   /** Runs the homing cycle ($H) — the other way out of an alarm lockout. */
   const handleHome = async () => {
     if (!(await ensureConnected())) return;
-    setMachineError(null);
+    clearErrors();
     setBusy('homing');
     try {
       await webSerialManager.homeMachine();
@@ -979,7 +1063,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
   /** Feed-holds a running job. Motion stops; nothing is lost. */
   const handlePause = async () => {
-    setMachineError(null);
+    clearErrors();
     try {
       await webSerialManager.pauseJob();
     } catch (e: any) {
@@ -992,7 +1076,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * against the job before any of it is cut.
    */
   const handleResume = async () => {
-    setMachineError(null);
+    clearErrors();
     try {
       await webSerialManager.resumeJob();
     } catch (e: any) {
@@ -1012,7 +1096,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    */
   const handleRestartLayer = async () => {
     if (busy) return;
-    setMachineError(null);
+    clearErrors();
     setBusy('milling');
     try {
       await webSerialManager.restartCurrentLayer();
@@ -1032,6 +1116,127 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   // included — freezing mid-job at the last streamed line is the useful view.
   const liveProgress =
     isRunning || isPaused ? (serialState.progressPercent ?? 0) / 100 : null;
+
+  /*
+   * The machine dialog and the safety warning are shared by both modes, so they
+   * are built once here and rendered under whichever root applies below.
+   */
+  /*
+   * Shown before the first connect of a session, whichever door the
+   * machine was reached through — so it is built here rather than inside
+   * either render root.
+   */
+  const safetyWarning = showSafetyWarning && (
+      <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-amber-500" />
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+              Before you connect a machine
+            </h3>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+            This connects to a real machine that moves and cuts under its own power. Keep clear of
+            moving parts, wear eye protection, and never leave a running job unattended. Use your
+            own judgment — you are responsible for the machine&apos;s safe operation.
+          </p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+            Provided with no warranty and no liability for injury, loss, or damage of any kind. Full
+            terms: PhysBox Permissive Public License (PPPL-1.0) — see License &amp; Disclaimers in
+            this app&apos;s Help.
+          </p>
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              onClick={() => {
+                setShowSafetyWarning(false);
+                safetyResolverRef.current?.(false);
+                safetyResolverRef.current = null;
+              }}
+              className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+            >
+              No Machine Control
+            </button>
+            <button
+              onClick={() => {
+                localStorage.setItem(SAFETY_ACK_KEY, '1');
+                setShowSafetyWarning(false);
+                safetyResolverRef.current?.(true);
+                safetyResolverRef.current = null;
+              }}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg cursor-pointer"
+            >
+              Acknowledged
+            </button>
+          </div>
+        </div>
+      </div>
+  );
+
+  const machineDialog = showMachine && (
+    <MachineConnectModal
+      standalone={machineOnly}
+      onClose={() => (machineOnly ? onClose() : setPanelMachineOpen(false))}
+      serialState={serialState}
+      busy={busy}
+      machineBusy={machineBusy}
+      manualMoveBlocked={manualMoveBlocked}
+      isRunning={isRunning}
+      error={machineError || serialState.lastError || null}
+      onDismissError={clearErrors}
+      transportMode={transportMode}
+      onTransportModeChange={mode => {
+        setTransportMode(mode);
+        localStorage.setItem('grblTransport', mode);
+      }}
+      cloudDeviceId={cloudDeviceId}
+      onCloudDeviceIdChange={deviceId => {
+        setCloudDeviceId(deviceId);
+        localStorage.setItem('grblCloudDeviceId', deviceId);
+      }}
+      onPairedBox={deviceId => {
+        // Straight on to the machine: having just proved you are standing in
+        // front of it, being asked to press Connect is a step with nothing
+        // behind it.
+        localStorage.setItem('grblCloudDeviceId', deviceId);
+        void requestSafetyAck().then(ack => {
+          if (!ack) return;
+          webSerialManager.setTransport('wifi', deviceId);
+          void webSerialManager.connect();
+        });
+      }}
+      onConnect={() => void ensureConnected()}
+      onDisconnect={() => void handleDisconnect()}
+      onUnlock={handleUnlock}
+      onHome={handleHome}
+      onPause={handlePause}
+      jogStep={jogStep}
+      onJogStepChange={setJogStep}
+      onJog={(axis, dir) => void handleJog(axis, dir)}
+      onZeroXY={handleZeroXY}
+      onZeroZOnCopper={handleZeroZ}
+      onZeroZOnPlate={handleZeroZOnPlate}
+      onGoToZero={handleGoToZero}
+      touchPlateMm={touchPlateMm}
+      onTouchPlateChange={v => {
+        setTouchPlateMm(v);
+        localStorage.setItem('grblTouchPlateMm', String(v));
+      }}
+      safeZMm={options.safeZ}
+      onSafeZChange={v => {
+        setOptions(prev => ({ ...prev, safeZ: v }));
+        localStorage.setItem('grblSafeZMm', String(v));
+      }}
+    />
+  );
+
+  if (machineOnly) {
+    return (
+      <>
+        {machineDialog}
+        {safetyWarning}
+      </>
+    );
+  }
 
   return (
     // z-[99999] is the modal layer every other full-screen dialog here uses.
@@ -1067,6 +1272,67 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Whether this board has been mapped, said where it can be seen
+                from either tab. It used to be one line in the legend under the
+                layout preview, competing for a flex row with two other
+                statuses — so "has a board map been done" was a question the
+                panel could only answer if you were looking at the right tab
+                and the row happened to have room. */}
+            <span
+              className={`hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] font-semibold ${
+                activeHeightmap
+                  ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-700 dark:text-cyan-300'
+                  : heightmapStale
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300'
+                  : 'bg-slate-500/10 border-slate-400/30 text-slate-500 dark:text-slate-400'
+              }`}
+              title={
+                activeHeightmap
+                  ? `Levelled against a ${activeHeightmap.gridX}×${activeHeightmap.gridY} probed mesh, ` +
+                    `${gridStats!.spanZ.toFixed(3)}mm of warp. Open the machine dialog to see the map.`
+                  : heightmapStale
+                  ? 'A map was probed, but the board has since outgrown it, so it will not be applied.'
+                  : 'No surface probe has been done, so the job cuts at the commanded depth.'
+              }
+            >
+              <Map className="w-3 h-3 shrink-0" />
+              {activeHeightmap
+                ? `Mapped — ${gridStats!.spanZ.toFixed(2)}mm warp`
+                : heightmapStale
+                ? 'Map stale'
+                : 'No board map'}
+            </span>
+
+            {/* The machine lives behind this, not behind a tab. The dot is the
+                one piece of its state the rest of the panel has to show all the
+                time: whether there is anything on the other end. */}
+            <button
+              onClick={() => setPanelMachineOpen(true)}
+              title={
+                serialState.connected
+                  ? `Connected (${serialState.portName || 'Serial'}) — ${serialState.status}. Jog, zero, probe.`
+                  : 'Connect a GRBL machine — then jog, zero and probe from here.'
+              }
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
+                serialState.connected
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20'
+                  : 'bg-slate-200/70 dark:bg-slate-800/70 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300/70 dark:hover:bg-slate-700/70'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  serialState.connected
+                    ? machineBusy
+                      ? 'bg-amber-500 animate-pulse'
+                      : 'bg-emerald-500'
+                    : 'bg-slate-400 dark:bg-slate-600'
+                }`}
+              />
+              <Plug className="w-3.5 h-3.5 shrink-0" />
+              {serialState.connected ? serialState.status : 'Connect'}
+              <Settings2 className="w-3 h-3 shrink-0 opacity-60" />
+            </button>
+
             <button
               onClick={handleSafeClose}
               className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
@@ -1085,8 +1351,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                   result={result}
                   options={options}
                   heightmap={activeHeightmap}
-                  isAirCut={isAirCutMode}
-                  airCutZOffset={airCutZOffset}
+                  isAirCut={busy === 'framing'}
+                  airCutZOffset={FRAME_Z_OFFSET_MM}
                   liveProgress={liveProgress}
                   liveLayerLabel={liveLayer?.label ?? null}
                   onRestartLayer={isRunning || isPaused ? handleRestartLayer : undefined}
@@ -1180,11 +1446,9 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       <span className="w-2.5 h-2.5 rounded-full bg-[#64b5f6]"></span> Profile
                     </span>
                   </div>
-                  {gridStats && (
-                    <span className="text-cyan-700 dark:text-cyan-400 font-bold flex items-center gap-1">
-                      <Check className="w-3 h-3" /> Levelled — {activeHeightmap!.gridX}×{activeHeightmap!.gridY} mesh ({gridStats.spanZ.toFixed(3)}mm warp)
-                    </span>
-                  )}
+                  {/* The map's own status is in the header, next to Connect,
+                      where it is readable from either tab. This row is for what
+                      the machine measured about itself. */}
                   {/* The two numbers that say whether this machine can hold the
                       depth the job is about to cut at. Warp is what levelling
                       removes; these are what it cannot, and they are spent out
@@ -1207,11 +1471,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       Machine repeatability — {machineAccuracy.join(', ')}
                     </span>
                   )}
-                  {heightmapStale && (
-                    <span className="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" /> Heightmap discarded (board outgrew the probed mesh)
-                    </span>
-                  )}
                 </div>
               </div>
             )}
@@ -1222,36 +1481,65 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
               </div>
             )}
 
-            {(machineError || serialState.lastError) && (
+            {machineNote && (
               <div className="p-2 mt-2 bg-red-500/10 border border-red-500/30 rounded text-[11px] text-red-700 dark:text-red-300 flex items-start gap-1.5">
                 <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
-                <span>{machineError || serialState.lastError}</span>
+                <span className="flex-1">{machineNote}</span>
+                <button
+                  onClick={clearErrors}
+                  className="shrink-0 p-0.5 hover:bg-red-500/20 rounded cursor-pointer"
+                  title="Dismiss"
+                >
+                  <X className="w-3 h-3" />
+                </button>
               </div>
             )}
 
-            {/* Design Rule Check Warnings / Errors */}
+            {/* Design Rule Check Warnings / Errors.
+                Nothing is called an error until there is a layout to have
+                errors in. The placeholder result a routing pass starts from
+                carries `success: false` and a single violation reading
+                "Routing…", so the panel opened on a red "1 DRC Error — G-code
+                output blocked" every single time, for as long as the route
+                took, on a board with nothing wrong with it. */}
             <div className="w-full mt-3 space-y-1 max-h-28 overflow-y-auto">
-              {result.success ? (
-                <div className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-600 dark:text-emerald-400">
-                  <Check className="w-3.5 h-3.5 shrink-0" />
-                  DRC Passed — {Math.round(result.completion * 100)}% routed, isolation safe.
+              {isRouting && !hasResult ? (
+                <div className="flex items-center gap-1.5 text-[11px] font-mono text-sky-700 dark:text-sky-300">
+                  <RefreshCw className="w-3.5 h-3.5 shrink-0 animate-spin" />
+                  {progress
+                    ? `Routing — pass ${progress.pass}/${progress.totalPasses}, board ` +
+                      `${progress.attempt}/${progress.totalAttempts}, ` +
+                      `${(progress.completion * 100).toFixed(0)}% connected`
+                    : effortStep > 1
+                    ? `Retrying with more effort (${effortStep} of ${effortSteps})…`
+                    : 'Routing…'}
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 text-[11px] font-mono text-red-600 dark:text-red-400 font-bold">
-                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  {errorCount} DRC Error{errorCount === 1 ? '' : 's'} — G-code output blocked.
-                </div>
+                <>
+                  {result.success ? (
+                    <div className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-600 dark:text-emerald-400">
+                      <Check className="w-3.5 h-3.5 shrink-0" />
+                      DRC Passed — {Math.round(result.completion * 100)}% routed, isolation safe.
+                      {isRouting && ' (re-routing…)'}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-[11px] font-mono text-red-600 dark:text-red-400 font-bold">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      {errorCount} DRC Error{errorCount === 1 ? '' : 's'} — G-code output blocked.
+                    </div>
+                  )}
+                  {result.violations.map((v, i) => (
+                    <div
+                      key={i}
+                      className={`text-[10px] font-mono pl-5 ${
+                        v.severity === 'error' ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300'
+                      }`}
+                    >
+                      {v.severity === 'error' ? '✕' : '⚠'} {v.message}
+                    </div>
+                  ))}
+                </>
               )}
-              {result.violations.map((v, i) => (
-                <div
-                  key={i}
-                  className={`text-[10px] font-mono pl-5 ${
-                    v.severity === 'error' ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300'
-                  }`}
-                >
-                  {v.severity === 'error' ? '✕' : '⚠'} {v.message}
-                </div>
-              ))}
             </div>
           </div>
 
@@ -1277,16 +1565,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                 }`}
               >
                 CAM &amp; Tooling
-              </button>
-              <button
-                onClick={() => setActiveTab('serial')}
-                className={`flex-1 py-3 border-b-2 text-center transition-colors cursor-pointer ${
-                  activeTab === 'serial'
-                    ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold'
-                    : 'border-transparent hover:text-slate-800 dark:hover:text-slate-200'
-                }`}
-              >
-                WebSerial
               </button>
             </div>
 
@@ -1604,49 +1882,38 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       } className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
-                  <div>
-                    <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
-                      Routing Effort
-                      <InfoTip>
-                        How long the maze router may search for a way around obstacles before
-                        giving up. A denser board needs a bigger budget; routing runs in the
-                        background either way.
-                      </InfoTip>
-                    </label>
-                    <select
-                      value={options.routingBudgetMs}
-                      onChange={e =>
-                        setOptions({ ...options, routingBudgetMs: parseInt(e.target.value, 10) })
-                      }
-                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-sans"
-                    >
-                      {ROUTING_EFFORT_PRESETS.map(p => (
-                        <option key={p.ms} value={p.ms}>
-                          {p.label}
-                        </option>
-                      ))}
-                    </select>
-                    {isRouting && (
-                      <div className="mt-2 flex items-center gap-2 text-[11px] text-sky-700 dark:text-sky-300">
-                        <RefreshCw size={11} className="animate-spin shrink-0" />
-                        <span>
-                          {progress
-                            ? `Routing — pass ${progress.pass}/${progress.totalPasses}, ` +
-                              `board ${progress.attempt}/${progress.totalAttempts}, ` +
-                              `${(progress.completion * 100).toFixed(0)}% connected`
-                            : 'Routing…'}
-                        </span>
-                      </div>
-                    )}
-                    {!isRouting && hasResult && result.completion < 1 && !atMaxEffort && (
-                      <button
-                        onClick={() => setOptions({ ...options, routingBudgetMs: nextEffortMs })}
-                        className="mt-2 w-full px-2 py-1.5 bg-amber-500/10 border border-amber-500/40 rounded text-[11px] text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition"
-                      >
-                        {(result.completion * 100).toFixed(0)}% routed — try again with a bigger budget
-                      </button>
-                    )}
-                  </div>
+                  {/* No routing-effort dial. A budget never decided whether a
+                      board routed, only how long it took to say so — the
+                      placement search is what rescues a board that stalls, and
+                      it runs on its own when the first pass falls short. The
+                      router starts cheap and climbs by itself, so there is
+                      nothing here to set.
+
+                      Nor anything to report once it has finished: the DRC line
+                      under the preview already says "100% routed" in green,
+                      with a tick. This only speaks while the router is still
+                      working, or when it has given up — the two things that
+                      line cannot say. */}
+                  {isRouting ? (
+                    <div className="flex items-center gap-2 text-[11px] text-sky-700 dark:text-sky-300">
+                      <RefreshCw size={11} className="animate-spin shrink-0" />
+                      <span>
+                        {progress
+                          ? `Routing — pass ${progress.pass}/${progress.totalPasses}, ` +
+                            `board ${progress.attempt}/${progress.totalAttempts}, ` +
+                            `${(progress.completion * 100).toFixed(0)}% connected`
+                          : effortStep > 1
+                          ? `Retrying with more effort (${effortStep} of ${effortSteps})…`
+                          : 'Routing…'}
+                      </span>
+                    </div>
+                  ) : hasResult && result.completion < 1 ? (
+                    <div className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug">
+                      {(result.completion * 100).toFixed(0)}% routed after {effortSteps} attempts at
+                      increasing effort. More time will not help — this board needs wider
+                      clearances, a bigger board, or a jumper.
+                    </div>
+                  ) : null}
                 </div>
               )}
 
@@ -1800,6 +2067,31 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     </div>
                   </div>
 
+                  <BoardMapPanel
+                    heightmap={heightmap}
+                    activeHeightmap={activeHeightmap}
+                    heightmapStale={heightmapStale}
+                    onClearHeightmap={() => setHeightmap(null)}
+                    board={{
+                      originMm: result.boardOriginMm,
+                      widthMm: result.boardWidthMm,
+                      heightMm: result.boardHeightMm,
+                    }}
+                    depthMarginMm={depthMargin}
+                    boardReady={hasResult && result.success}
+                    suggestedGrid={suggestedGrid}
+                    probeDepthMm={probeDepthMm}
+                    onProbeDepthChange={v => {
+                      setProbeDepthMm(v);
+                      localStorage.setItem('grblProbeDepthMm', String(v));
+                    }}
+                    safeZMm={options.safeZ}
+                    probing={busy === 'probing'}
+                    probeProgress={serialState.probeProgress}
+                    machineBusy={machineBusy}
+                    onProbeSurface={handleStartSurfaceProbe}
+                  />
+
                   {showToolEditor && (
                     <div className="p-2.5 rounded border border-emerald-500/40 bg-emerald-500/5 space-y-2">
                       <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-snug">
@@ -1925,34 +2217,20 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     </select>
                   </div>
 
-                  <div>
-                    <label className="flex items-center justify-between text-slate-600 dark:text-slate-300 font-semibold mb-1">
-                      <span>Frame Z-Offset</span>
-                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-mono">+{airCutZOffset}mm Z</span>
-                    </label>
-                    <div className="flex gap-1.5">
-                      {[10, 20, 50].map(off => (
-                        <button
-                          key={off}
-                          onClick={() => {
-                            setAirCutZOffset(off);
-                            setIsAirCutMode(true);
-                          }}
-                          className={`flex-1 py-1 rounded cursor-pointer text-[11px] font-semibold border ${
-                            airCutZOffset === off
-                              ? 'bg-amber-100 dark:bg-amber-600/30 border-amber-500 text-amber-700 dark:text-amber-300'
-                              : 'bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-                          }`}
-                        >
-                          +{off}mm
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 block">Cut Feed (mm/min)</label>
+                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
+                        Cut Feed (mm/min)
+                        <InfoTip>
+                          How fast the bit travels while it is cutting. It is not a speed setting so
+                          much as a bite setting: feed ÷ (RPM × flutes) is the chipload — how much
+                          material each cutting edge takes per revolution. Too slow and the edge
+                          rubs instead of cutting, which heats the tip and blunts it; too fast and
+                          the chip is more than a 0.1mm carbide tip can carry and it snaps. Derived
+                          from the bit and the material when you pick either, so you only need this
+                          field if yours is behaving differently from the catalogue&apos;s.
+                        </InfoTip>
+                      </label>
                       <NumberInput
                         value={options.cutFeedrate}
                         onChange={v => setOptions({ ...options, cutFeedrate: v })}
@@ -1961,7 +2239,17 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     />
                     </div>
                     <div>
-                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 block">Plunge Feed (mm/min)</label>
+                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
+                        Plunge Feed (mm/min)
+                        <InfoTip>
+                          The same number for straight-down moves, and the one that actually breaks
+                          bits. Going down, the whole tip is buried and the only escape route for
+                          the chips is back up the flute it just came from — a V-bit has one flute
+                          and almost no room in it. Roughly a third of the cut feed is the usual
+                          ratio; drills are the exception and plunge at their full feed, because
+                          plunging is the only thing they do.
+                        </InfoTip>
+                      </label>
                       <NumberInput
                         value={options.plungeFeedrate}
                         onChange={v => setOptions({ ...options, plungeFeedrate: v })}
@@ -1973,7 +2261,21 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 block">Spindle RPM</label>
+                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
+                        Spindle RPM
+                        <InfoTip>
+                          Chosen for the tip diameter, not for the material. What a cutting edge
+                          cares about is its surface speed, and on a 0.1mm tip the edge is
+                          travelling a tiny circle — at 12,000rpm that is only about 0.6 metres a
+                          minute, which is slow for carbide in fibreglass. That is why the fine
+                          bits ask for more, not less: the 0.05mm tip runs at 18,000. A larger
+                          endmill reaches the same surface speed at far lower rpm and would just
+                          burn at 18,000. Above the figure here you are mostly adding heat, runout
+                          and noise; well below it the edge rubs, and a rubbed tip goes blunt in
+                          one board. Most hobby spindles are also weakest at the bottom of their
+                          range, which is a second reason not to drop far under it.
+                        </InfoTip>
+                      </label>
                       <NumberInput
                         value={options.spindleRpm}
                         onChange={v => setOptions({ ...options, spindleRpm: v })}
@@ -2046,494 +2348,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                 </div>
               )}
 
-              {activeTab === 'serial' && (
-                <div className="space-y-3">
-                  <div className="p-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-semibold text-slate-800 dark:text-slate-200">GRBL Machine Connection</div>
-                        <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                          {serialState.connected ? `Connected (${serialState.portName || 'Serial'})` : 'Disconnected'}
-                        </div>
-                      </div>
-                      <button
-                        onClick={ensureConnected}
-                        disabled={serialState.connected}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded cursor-pointer"
-                      >
-                        {serialState.connected
-                          ? 'Connected'
-                          : transportMode === 'wifi'
-                          ? 'Connect WiFi'
-                          : 'Connect Serial'}
-                      </button>
-                    </div>
-
-                    {/* Transport picker: USB (Web Serial) or WiFi (ESP32 proxy) */}
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {(['usb', 'wifi'] as const).map(mode => (
-                        <button
-                          key={mode}
-                          onClick={() => {
-                            setTransportMode(mode);
-                            localStorage.setItem('grblTransport', mode);
-                          }}
-                          disabled={serialState.connected}
-                          className={`py-1.5 rounded text-[11px] font-semibold border cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                            transportMode === mode
-                              ? 'bg-emerald-100 dark:bg-emerald-600/30 border-emerald-500 text-emerald-700 dark:text-emerald-300'
-                              : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-                          }`}
-                        >
-                          {mode === 'usb' ? 'USB (Web Serial)' : 'WiFi'}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* WiFi means a Tekno Box, reached through physbox rather
-                        than by address: the box is behind the customer's router
-                        with nothing to dial, and a page on https may not open a
-                        plain connection to a home network in any case. */}
-                    {transportMode === 'wifi' && (
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold block">
-                          Tekno Box
-                        </label>
-                        <TeknoBoxPicker
-                          value={cloudDeviceId}
-                          onChange={deviceId => {
-                            setCloudDeviceId(deviceId);
-                            localStorage.setItem('grblCloudDeviceId', deviceId);
-                          }}
-                          onPaired={deviceId => {
-                            // Straight on to the machine: having just proved you
-                            // are standing in front of it, being asked to press
-                            // Connect is a step with nothing behind it.
-                            localStorage.setItem('grblCloudDeviceId', deviceId);
-                            void requestSafetyAck().then(ack => {
-                              if (!ack) return;
-                              webSerialManager.setTransport('wifi', deviceId);
-                              void webSerialManager.connect();
-                            });
-                          }}
-                          disabled={serialState.connected}
-                          accentClass="bg-emerald-600 hover:bg-emerald-500 text-white"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Alarm banner. GRBL boots into Alarm whenever homing is
-                      enabled, and lands there again after a limit trip or a
-                      failed probe, refusing every G-code line with error:9
-                      until it is cleared. The banner explains the state; the
-                      controls below it are always present, because homing and
-                      unlocking are equally wanted when nothing is wrong. */}
-                  {serialState.status === 'ALARM' && (
-                    <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-600/60 rounded-lg text-amber-700 dark:text-amber-300 text-[11px] leading-relaxed">
-                      <span className="font-semibold">Machine is in alarm.</span>{' '}
-                      It will reject every command (error:9) until it is unlocked or homed.
-                      {serialState.lastError ? ` ${serialState.lastError}` : ''}
-                    </div>
-                  )}
-
-                  <div className="p-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2">
-                    <div className="font-semibold text-slate-800 dark:text-slate-200 text-[11px]">Machine controls</div>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button
-                        onClick={handleUnlock}
-                        disabled={!!busy || !serialState.connected}
-                        title="Clear a GRBL alarm lockout"
-                        className="py-1.5 rounded text-[11px] font-semibold bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white cursor-pointer"
-                      >
-                        Unlock ($X)
-                      </button>
-                      <button
-                        onClick={handleHome}
-                        disabled={!!busy || !serialState.connected}
-                        title="Run the homing cycle"
-                        className="py-1.5 rounded text-[11px] font-semibold bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 border border-slate-400 dark:border-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-800 dark:text-slate-200 cursor-pointer"
-                      >
-                        {busy === 'homing' ? 'Homing…' : 'Home ($H)'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Operator feed hold, while a job is actually moving */}
-                  {isRunning && (
-                    <button
-                      onClick={handlePause}
-                      className="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white rounded font-semibold cursor-pointer"
-                    >
-                      Pause job
-                    </button>
-                  )}
-
-                  {/* The pause itself is presented as a full-screen modal
-                      (JobPauseModal, rendered below) — a stopped machine with a
-                      bit half out is not something to leave behind a tab. */}
-
-                  {/* Interactive Jog Keypad Controls */}
-                  <div className="p-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2">
-                    <div className="flex items-center justify-between text-slate-600 dark:text-slate-300 font-semibold">
-                      <span className="flex items-center gap-1">
-                        <Crosshair className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                        Manual Jog Controls
-                      </span>
-                      <div className="flex gap-1 text-[10px]">
-                        {[0.1, 1.0, 10.0].map(st => (
-                          <button
-                            key={st}
-                            onClick={() => setJogStep(st)}
-                            className={`px-1.5 py-0.5 rounded cursor-pointer ${
-                              jogStep === st ? 'bg-emerald-500 text-white font-bold' : 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
-                            }`}
-                          >
-                            {st}mm
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-1.5 items-center justify-items-center py-1">
-                      <div></div>
-                      <button
-                        onClick={() => handleJog('Y', 1)}
-                        disabled={manualMoveBlocked}
-                        className="w-10 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded flex items-center justify-center cursor-pointer"
-                        title="Jog Y+"
-                      >
-                        <ArrowUp className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleJog('Z', 1)}
-                        disabled={manualMoveBlocked}
-                        className="px-2 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded text-[10px] font-bold cursor-pointer"
-                        title="Jog Z+"
-                      >
-                        Z+
-                      </button>
-
-                      <button
-                        onClick={() => handleJog('X', -1)}
-                        disabled={manualMoveBlocked}
-                        className="w-10 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded flex items-center justify-center cursor-pointer"
-                        title="Jog X-"
-                      >
-                        <ArrowLeft className="w-4 h-4" />
-                      </button>
-                      {/* The centre of a jog cross is where every other machine
-                          control puts "go home", so a button here read as one —
-                          and setting the work origin is the one action on this
-                          panel you cannot undo by jogging back. It lives below
-                          with the other zeros now, named. */}
-                      <div
-                        className="w-10 h-8 flex items-center justify-center text-slate-300 dark:text-slate-700"
-                        aria-hidden
-                      >
-                        <Crosshair className="w-3.5 h-3.5" />
-                      </div>
-                      <button
-                        onClick={() => handleJog('X', 1)}
-                        disabled={manualMoveBlocked}
-                        className="w-10 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded flex items-center justify-center cursor-pointer"
-                        title="Jog X+"
-                      >
-                        <ArrowRight className="w-4 h-4" />
-                      </button>
-
-                      <div></div>
-                      <button
-                        onClick={() => handleJog('Y', -1)}
-                        disabled={manualMoveBlocked}
-                        className="w-10 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded flex items-center justify-center cursor-pointer"
-                        title="Jog Y-"
-                      >
-                        <ArrowDown className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleJog('Z', -1)}
-                        disabled={manualMoveBlocked}
-                        className="px-2 h-8 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded text-[10px] font-bold cursor-pointer"
-                        title="Jog Z-"
-                      >
-                        Z-
-                      </button>
-                    </div>
-
-                    <div className="pt-2 mt-1 border-t border-slate-200 dark:border-slate-800">
-                      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
-                        Set the work origin
-                      </p>
-                      {/* XY first because that is the order it is done in: park
-                          the bit on the corner of the blank, fix X0 Y0 there,
-                          then probe Z on the copper. */}
-                      <button
-                        onClick={handleZeroXY}
-                        disabled={machineBusy}
-                        title="Sets the work origin X0 Y0 at the tool's current position (G10 L20)"
-                        className={`w-full py-1.5 rounded font-semibold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 ${
-                          serialState.zeroXYConfirmed
-                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                            : 'bg-emerald-700 hover:bg-emerald-600 text-white'
-                        }`}
-                      >
-                        {serialState.zeroXYConfirmed ? (
-                          <Check className="w-3.5 h-3.5" />
-                        ) : (
-                          <Crosshair className="w-3.5 h-3.5" />
-                        )}
-                        {serialState.zeroXYConfirmed ? 'XY0 set here' : 'Set XY0 at this spot'}
-                      </button>
-                      <p className="mt-1 mb-2 text-[9px] text-slate-400 dark:text-slate-500 leading-normal">
-                        Jog the bit over the front-left corner of the blank first — everything the
-                        job cuts is measured from the spot you set here.
-                      </p>
-
-                      <div className="flex gap-2">
-                      <button
-                        onClick={handleZeroZ}
-                        disabled={manualMoveBlocked}
-                        title="Probe straight onto the copper, using the continuity clip"
-                        className="flex-1 py-1 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        {busy === 'zeroing' && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                        Probe Z0 on Copper
-                      </button>
-                      <button
-                        onClick={handleZeroZOnPlate}
-                        disabled={manualMoveBlocked}
-                        title={`Probe onto the touch plate and set Z0 ${touchPlateMm}mm below the contact point`}
-                        className="flex-1 py-1 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        Probe Z0 on Plate
-                      </button>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleGoToZero}
-                        disabled={manualMoveBlocked || !(serialState.zeroZConfirmed || serialState.zeroRestored)}
-                        title={
-                          serialState.zeroZConfirmed || serialState.zeroRestored
-                            ? 'Lift Z to clearance, then rapid back to the work origin (X0 Y0)'
-                            : 'Set Z zero below first — Z has not been confirmed this session'
-                        }
-                        className="flex-1 py-1 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-semibold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <Crosshair className="w-3.5 h-3.5" />
-                        Go to Zero
-                      </button>
-                    </div>
-
-                    {/* Setting the work origin is otherwise silent: the button
-                        sends a line, GRBL says nothing a human sees, and the
-                        only evidence is the DRO changing. */}
-                    {(serialState.zeroXYPending || serialState.zeroXYConfirmed ||
-                      serialState.zeroZPending || serialState.zeroZConfirmed) && (
-                      <div className="space-y-0.5 text-[10px] font-semibold">
-                        {serialState.zeroXYConfirmed && (
-                          <div className="text-emerald-600 dark:text-emerald-400">
-                            XY zeroed - work origin set here
-                          </div>
-                        )}
-                        {serialState.zeroXYPending && (
-                          <div className="text-amber-600 dark:text-amber-400">
-                            XY zeroing - waiting for the machine to confirm...
-                          </div>
-                        )}
-                        {serialState.zeroZConfirmed && (
-                          <div className="text-emerald-600 dark:text-emerald-400">
-                            Z zeroed at {(serialState.zeroZTargetMm ?? 0).toFixed(2)}mm
-                          </div>
-                        )}
-                        {serialState.zeroZPending && (
-                          <div className="text-amber-600 dark:text-amber-400">
-                            Z zeroing - waiting for the machine to confirm...
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* The zeros outlive the tab. Closing it mid-job used to lose
-                        the only record of where the origin was, and a re-zero by
-                        eye does not land back on the same spot. */}
-                    {serialState.savedZero && !serialState.zeroXYConfirmed && !serialState.zeroZConfirmed && (
-                      <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                        Work origin kept from last session
-                        {serialState.zeroRestored && ' - restored onto the machine'}
-                        {' '}({(['x', 'y', 'z'] as const)
-                          .filter(a => serialState.savedZero![a] !== undefined)
-                          .map(a => `${a.toUpperCase()} ${serialState.savedZero![a]!.toFixed(2)}`)
-                          .join(' ')})
-                      </div>
-                    )}
-
-                    {/* The plate thickness is what makes plate-probing land on
-                        the right Z — a wrong number here is a wrong cut depth
-                        on every path, so it is edited right next to the button
-                        that uses it. */}
-                    <div>
-                      <label className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1 block">
-                        Touch plate thickness (mm)
-                      </label>
-                      <NumberInput
-                                                step={0.1}
-                        min={0.1}
-                        value={touchPlateMm}
-                        disabled={machineBusy}
-                        onChange={v => {
-                          setTouchPlateMm(v);
-                          localStorage.setItem('grblTouchPlateMm', String(v));
-                        }}
-                        className="w-full px-2 py-1.5 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-mono text-[11px] disabled:opacity-40"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Surface Probing & Action Buttons */}
-                  <div className="p-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-slate-600 dark:text-slate-300">Surface Mesh Probing</span>
-                      <span className="text-[10px] text-cyan-700 dark:text-cyan-400 font-mono">
-                        {suggestedGrid.cols}×{suggestedGrid.rows} Auto Mesh
-                      </span>
-                    </div>
-                    <label className="flex items-start gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={autoLevel}
-                        onChange={e => setAutoLevel(e.target.checked)}
-                        className="mt-0.5 accent-cyan-500"
-                      />
-                      <span className="text-[11px] text-slate-600 dark:text-slate-300">
-                        Auto-level surface before milling (re-references heightmap to Z0)
-                      </span>
-                    </label>
-
-                    {/* Retract height and probe search distance. Both feed the
-                        probe cycle directly: the tool lifts to safe Z between
-                        points, then searches `probeDepthMm` downward from
-                        there. */}
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <div>
-                        <label className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1 block">
-                          Retract / safe Z (mm)
-                        </label>
-                        <NumberInput
-                          step={0.5}
-                          min={0.5}
-                          value={options.safeZ}
-                          disabled={machineBusy}
-                          onChange={v => {
-                            setOptions({ ...options, safeZ: v });
-                            localStorage.setItem('grblSafeZMm', String(v));
-                          }}
-                          className="w-full px-2 py-1.5 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-mono text-[11px] disabled:opacity-40"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1 block">
-                          Probe search depth (mm)
-                        </label>
-                        <NumberInput
-                          step={0.5}
-                          min={0.5}
-                          value={probeDepthMm}
-                          disabled={machineBusy}
-                          onChange={v => {
-                          setProbeDepthMm(v);
-                          localStorage.setItem('grblProbeDepthMm', String(v));
-                        }}
-                          className="w-full px-2 py-1.5 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-mono text-[11px] disabled:opacity-40"
-                        />
-                      </div>
-                    </div>
-
-                    {/* The probe starts at the retract height, so anything less
-                        than that never reaches Z0 at all — it alarms out on the
-                        first point rather than after a slow full-grid pass. */}
-                    {probeDepthMm <= options.safeZ && (
-                      <div className="text-[10px] text-amber-700 dark:text-amber-400 leading-relaxed">
-                        Search depth must exceed the {options.safeZ}mm retract height, or the probe
-                        stops above the copper and the machine raises ALARM:5.
-                      </div>
-                    )}
-
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        onClick={handleStartSurfaceProbe}
-                        disabled={machineBusy}
-                        className="flex-1 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-600 dark:text-slate-300 rounded font-semibold flex items-center justify-center gap-1 cursor-pointer text-[11px]"
-                      >
-                        <Compass className="w-3.5 h-3.5" />
-                        {activeHeightmap ? 'Re-probe surface' : 'Probe surface'}
-                      </button>
-
-                      <button
-                        onClick={handleFrameBoard}
-                        disabled={machineBusy}
-                        title="Trace the board outline with the spindle off, to check the blank before cutting"
-                        className="flex-1 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-semibold flex items-center justify-center gap-1.5 cursor-pointer text-xs"
-                      >
-                        <Crosshair className="w-3.5 h-3.5" />
-                        Frame {result.boardWidthMm}x{result.boardHeightMm}
-                      </button>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                      <span className="flex items-center gap-1">
-                        Solder paste stencil
-                        <InfoTip>
-                          Export as a 3D-printable 0.2mm STL stencil, send vector geometry to
-                          Etch for laser cutting, or export a single-layer shim for cutting.
-                        </InfoTip>
-                      </span>
-                    </div>
-
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        onClick={handleExportPasteStencil}
-                        disabled={!result.success}
-                        title={PASTE_STENCIL_HINT}
-                        className="flex-1 min-w-0 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-bold flex items-center justify-center gap-1.5 cursor-pointer text-xs whitespace-nowrap"
-                      >
-                        <Box className="w-4 h-4 shrink-0" />
-                        Paste Stencil
-                      </button>
-
-                      <button
-                        onClick={handleExportShim}
-                        disabled={!result.success}
-                        title={SHIM_HINT}
-                        className="shrink-0 px-2 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-bold flex items-center justify-center cursor-pointer text-xs"
-                      >
-                        <Layers2 className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        onClick={handleStencilToEtch}
-                        disabled={!result.success}
-                        title={ETCH_HINT}
-                        className="shrink-0 px-2 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 rounded font-bold flex items-center justify-center cursor-pointer text-xs"
-                      >
-                        <Scissors className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        onClick={handleMillBoard}
-                        disabled={!result.success || machineBusy}
-                        className="flex-1 min-w-0 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded font-bold flex items-center justify-center gap-1.5 cursor-pointer text-xs shadow-sm whitespace-nowrap"
-                      >
-                        {busy ? <RefreshCw className="w-4 h-4 shrink-0 animate-spin" /> : <Play className="w-4 h-4 shrink-0" />}
-                        Start Milling
-                      </button>
-                    </div>
-
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Bottom Action Footer — pinned outside the scrolling tab
@@ -2574,7 +2388,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                   onFocus={() => setHoveredFooterHint('Trace the board outline live with the spindle off, to check the blank before cutting.')}
                   onBlur={() => setHoveredFooterHint(null)}
                   className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm whitespace-nowrap"
-                  title={`Trace the board outline live, ${airCutZOffset}mm above safe Z, with no spindle and no plunges — checks the blank is where the job thinks it is`}
+                  title={`Trace the board outline live, ${FRAME_Z_OFFSET_MM}mm above safe Z or higher — never below where the bit is now — with no spindle and no plunges. Checks the blank is where the job thinks it is.`}
                 >
                   <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
                   Frame
@@ -2664,6 +2478,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
         </div>
       </div>
 
+      {machineDialog}
+
       {isPaused && (
         <JobPauseModal
           message={serialState.pauseMessage || 'Job paused'}
@@ -2681,51 +2497,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
         />
       )}
 
-      {showSafetyWarning && (
-        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-5 space-y-4">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-amber-500" />
-              <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                Before you connect a machine
-              </h3>
-            </div>
-            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              This connects to a real machine that moves and cuts under its own power. Keep clear of
-              moving parts, wear eye protection, and never leave a running job unattended. Use your
-              own judgment — you are responsible for the machine&apos;s safe operation.
-            </p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-              Provided with no warranty and no liability for injury, loss, or damage of any kind. Full
-              terms: PhysBox Permissive Public License (PPPL-1.0) — see License &amp; Disclaimers in
-              this app&apos;s Help.
-            </p>
-            <div className="flex justify-end gap-2 pt-1">
-              <button
-                onClick={() => {
-                  setShowSafetyWarning(false);
-                  safetyResolverRef.current?.(false);
-                  safetyResolverRef.current = null;
-                }}
-                className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
-              >
-                No Machine Control
-              </button>
-              <button
-                onClick={() => {
-                  localStorage.setItem(SAFETY_ACK_KEY, '1');
-                  setShowSafetyWarning(false);
-                  safetyResolverRef.current?.(true);
-                  safetyResolverRef.current = null;
-                }}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg cursor-pointer"
-              >
-                Acknowledged
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {safetyWarning}
     </div>
   );
 };
