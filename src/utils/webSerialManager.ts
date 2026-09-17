@@ -65,6 +65,25 @@ export interface MachineState extends BaseMachineState {
   zeroXYConfirmed?: boolean;
   zeroZConfirmed?: boolean;
   /**
+   * Whether a work datum has been *established* on those axes during this
+   * connection — as opposed to the tool currently standing on it.
+   *
+   * The distinction is the whole point. `zeroXYConfirmed`/`zeroZConfirmed`
+   * describe where the tool is, so any jog clears them, and jogging away from
+   * the origin is the next thing anyone does after setting it: park on the
+   * corner, set XY0, jog over the copper, probe Z0, jog clear. By the time the
+   * job is started both `Confirmed` flags are false again even though both
+   * zeros are perfectly good — which is how "Z zero has not been confirmed
+   * this session" came up on a machine that had just been zeroed, and how Go
+   * to Zero sat disabled with the origin sitting right there.
+   *
+   * These flags say the origin exists. They survive motion and are cleared
+   * only by a fresh connection, where the controller may be a different
+   * machine in a different state.
+   */
+  zeroXYSet?: boolean;
+  zeroZSet?: boolean;
+  /**
    * Set at a tool-change pause and cleared by a Z zeroing operation. While it
    * is true, resuming would cut with a work Z0 that describes the *previous*
    * bit — which is a gouge as deep as the two bits differ in length.
@@ -244,7 +263,9 @@ export class WebSerialManager extends GrblMachine<MachineState> {
     // A fresh link is a fresh chance for the controller to have come up without
     // the work origin it had last time.
     this.zeroRestoreDone = false;
-    this.updateState({ zeroRestored: false });
+    // A new link may be a different machine, or the same one power-cycled. Any
+    // datum this session believed in belonged to the old connection.
+    this.updateState({ zeroRestored: false, zeroXYSet: false, zeroZSet: false });
   }
 
   // -------------------------------------------------------------------------
@@ -270,6 +291,7 @@ export class WebSerialManager extends GrblMachine<MachineState> {
     ) {
       patch.zeroXYPending = false;
       patch.zeroXYConfirmed = true;
+      patch.zeroXYSet = true;
     }
     if (
       framesKnown &&
@@ -278,6 +300,7 @@ export class WebSerialManager extends GrblMachine<MachineState> {
     ) {
       patch.zeroZPending = false;
       patch.zeroZConfirmed = true;
+      patch.zeroZSet = true;
     }
 
     // A zero that has just taken is the moment worth remembering: the origin is
@@ -351,12 +374,30 @@ export class WebSerialManager extends GrblMachine<MachineState> {
       .join(' ');
     try {
       await this.sendLine(`G10 L2 P1 ${words}`);
-      this.updateState({ zeroRestored: true });
+      this.updateState({
+        zeroRestored: true,
+        zeroXYSet: this.state.zeroXYSet || saved!.x !== undefined || saved!.y !== undefined,
+        zeroZSet: this.state.zeroZSet || saved!.z !== undefined,
+      });
     } catch {
       // A controller that refuses the offset leaves the operator to re-zero;
       // saying so is the UI's job, and the flag simply stays clear.
       this.zeroRestoreDone = false;
     }
+  }
+
+  /**
+   * Drops the last reported machine error.
+   *
+   * `lastError` is written by an alarm or a refused line and then left
+   * standing: nothing in the protocol layer ever says "and that is over with".
+   * A probe that alarmed once therefore kept a red banner on screen through
+   * every successful operation that followed it, until the tab was closed.
+   * The UI clears it when the operator starts the next action, which is the
+   * moment the old failure stops describing anything.
+   */
+  public clearLastError(): void {
+    if (this.state.lastError !== undefined) this.updateState({ lastError: undefined });
   }
 
   /** Forgets the remembered origin. The controller's own offsets are left alone. */
@@ -369,6 +410,9 @@ export class WebSerialManager extends GrblMachine<MachineState> {
    * Drops any standing "zeroed here" confirmation. Called whenever the machine
    * moves under its own steam, because the confirmation described where it was
    * rather than where the origin is.
+   *
+   * `zeroXYSet`/`zeroZSet` are deliberately left alone: the origin is still
+   * exactly where it was put. Only the tool has moved off it.
    */
   protected onMachineMoved(): void {
     this.updateState({
@@ -465,19 +509,20 @@ export class WebSerialManager extends GrblMachine<MachineState> {
    *
    * GRBL keeps G54's Z offset in EEPROM across sessions, tools and boards, so a
    * datum that reads back as perfectly valid may belong to a different setup
-   * entirely — connecting, and homing, both leave it unconfirmed until proven
-   * otherwise. "Proven" means either this session zeroed Z itself
-   * (`zeroZConfirmed`), or the previously remembered origin was written back
+   * entirely — connecting leaves it unconfirmed until proven otherwise.
+   * "Proven" means either this session zeroed Z itself (`zeroZSet`, which
+   * survives the jog clear of the copper that follows every probe — see the
+   * flag's own note), or the previously remembered origin was written back
    * and the controller's own status confirmed it landed (`zeroRestored`) — not
    * just that a restore was attempted, which `zeroRestoreDone` alone would
    * allow for a write the controller silently refused.
    */
   protected assertReadyToCut(): void {
-    if (!this.state.zeroZConfirmed && !this.state.zeroRestored) {
+    if (!this.state.zeroZSet && !this.state.zeroRestored) {
       throw new Error(
-        'Z zero has not been confirmed this session. Zero it — or reconnect to let the ' +
-          'remembered origin restore — before running a job: a Z move against an unconfirmed ' +
-          'datum can drive the tool into the board.'
+        'Z zero has not been set this session. Zero it — or reconnect to let the remembered ' +
+          'origin restore — before running a job: a Z move against an unconfirmed datum can ' +
+          'drive the tool into the board.'
       );
     }
   }

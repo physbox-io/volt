@@ -136,9 +136,9 @@ describe('the Z datum may not be trusted just because it reads back', () => {
    * datum that reads back as perfectly valid may belong to a different setup
    * entirely. Connecting does not make it this board's.
    */
-  it('refuses a job when Z has not been confirmed this session', async () => {
+  it('refuses a job when Z has not been set this session', async () => {
     fake.say('<Idle|MPos:0,0,0|WCO:0,0,0>\n');
-    await expect(machine.startJob('G1 X1 Y1')).rejects.toThrow(/Z zero has not been confirmed/);
+    await expect(machine.startJob('G1 X1 Y1')).rejects.toThrow(/Z zero has not been set/);
   });
 
   it('accepts a job once Z has been zeroed and the machine confirms it', async () => {
@@ -177,6 +177,41 @@ describe('the Z datum may not be trusted just because it reads back', () => {
 
     await machine.jog({ x: 10 });
     expect(machine.getState().zeroXYConfirmed).toBe(false);
+  });
+
+  /*
+   * ...but the origin itself is still exactly where it was put, and jogging
+   * off it is the next thing anyone does: park on the corner, set XY0, jog
+   * over the copper, probe Z0, jog clear, cut. Keying the refusal on the
+   * "tool is standing at the zero" flag meant the job was refused for having
+   * no Z datum on a machine that had just been zeroed — the error operators
+   * were being shown while both zeros were perfectly good.
+   */
+  it('keeps the datum, and lets the job run, after jogging off the zero', async () => {
+    const zeroing = machine.zeroZOnSurface(0);
+    await completeZeroZ(fake);
+    await zeroing;
+    fake.say('<Idle|MPos:0,0,-5|WCO:0,0,-5>\n');
+    await tick();
+
+    await machine.jog({ z: 5 });
+    expect(machine.getState().zeroZConfirmed).toBe(false);
+    expect(machine.getState().zeroZSet).toBe(true);
+
+    await expect(machine.startJob('G1 X1 Y1')).resolves.toBeUndefined();
+  });
+
+  it('forgets the datum on a fresh connection, where it may be another machine', async () => {
+    const zeroing = machine.zeroZOnSurface(0);
+    await completeZeroZ(fake);
+    await zeroing;
+    fake.say('<Idle|MPos:0,0,-5|WCO:0,0,-5>\n');
+    await tick();
+    expect(machine.getState().zeroZSet).toBe(true);
+
+    await machine.disconnect();
+    await machine.connect();
+    expect(machine.getState().zeroZSet).toBeFalsy();
   });
 });
 
