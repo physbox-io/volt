@@ -15,11 +15,19 @@ import {
   generateAirCutPerimeterGcode,
   sortPathsNearestNeighbor,
   groupDrillsByBit,
+  generatePcbLayout,
+  emptyPcbLayout,
+  reemitPcbGcode,
+  GCODE_ONLY_OPTIONS,
+  GCODE_DERIVED_FIELDS,
   DEFAULT_PCB_OPTIONS,
   type DrillPoint,
   type IsolationPath,
+  type PcbLayoutResult,
+  type PcbOptions,
   type PlacedPad,
 } from '../src/utils/pcbExporter';
+import { presets } from '../src/utils/presets';
 import { generateQuadFamilyFootprint, generateDIPFootprint } from '../src/utils/pcbFootprints';
 import { polysBounds } from '../src/utils/pcbGeometry';
 
@@ -351,5 +359,96 @@ describe('groupDrillsByBit', () => {
     const groups = groupDrillsByBit([hole(3.0, 0), hole(0.8, 1), hole(1.6, 2)], 0.1);
     const sizes = groups.map(g => g.bitMm);
     expect([...sizes].sort((a, b) => a - b)).toEqual(sizes);
+  });
+});
+
+describe('reusesLayoutAcross — the G-code-only option allowlist', () => {
+  /*
+   * The layout cache keys on the options that shape the board, and skips the
+   * ones that only shape the program emitted from it, so that nudging a
+   * feedrate re-emits in milliseconds instead of re-routing for seconds.
+   *
+   * That is only sound while every entry on the allowlist really does leave
+   * the board alone, and "the board" means everything a caller can see: the
+   * traces and pads, but also the drill list, the violations, the copper map
+   * and the rendered SVGs, any one of which the panel draws or the exporter
+   * reads. So the comparison here is the whole result minus the four fields
+   * that are derived from the G-code — not a hand-picked subset, which is how
+   * an earlier pass at this missed that the SVGs take the options too.
+   *
+   * A value that fails belongs off the list, not excluded from the test: the
+   * cost of being wrong is a stale board streamed to a real machine.
+   */
+  const board = presets.basicBlink ?? Object.values(presets).find(p => p.nodes.length > 0)!;
+  const base: PcbOptions = { ...DEFAULT_PCB_OPTIONS, autoGrowBoard: true };
+
+  /** A value meaningfully different from the default, per option. */
+  const nudged: Record<string, unknown> = {
+    cutFeedrate: base.cutFeedrate + 137,
+    travelFeedrate: base.travelFeedrate + 411,
+    plungeFeedrate: base.plungeFeedrate + 53,
+    drillFeedrate: base.drillFeedrate + 29,
+    spindleRpm: base.spindleRpm + 7000,
+    safeZ: base.safeZ + 6.5,
+    toolChangeZ: base.toolChangeZ + 11,
+    drillDepthZ: base.drillDepthZ - 1.3,
+    profileDepthZ: base.profileDepthZ - 0.9,
+    zStepdown: 0.17,
+    tabCount: (base.tabCount ?? 0) + 5,
+    tabWidthMm: (base.tabWidthMm ?? 1) + 2.4,
+    tabHeightMm: (base.tabHeightMm ?? 0.5) + 0.35,
+    pauseOnToolChange: !base.pauseOnToolChange,
+    rampedPlunge: !(base.rampedPlunge ?? true),
+    breakThroughMm: (base.breakThroughMm ?? 0.2) + 0.7,
+    boardThicknessMm: (base.boardThicknessMm ?? 1.6) + 0.8,
+    drillBitOverridesMm: { '0.9': 1.5, '1.0': 1.6 },
+    drillConsolidationMm: 0.45,
+    airCutZOffset: 37,
+  };
+
+  const layoutOf = (opts: PcbOptions) =>
+    generatePcbLayout(board.nodes as never, board.edges as never, opts);
+
+  /** Everything a caller can see except what the G-code is derived from. */
+  const boardShape = (r: PcbLayoutResult) => {
+    const copy: Record<string, unknown> = { ...(r as unknown as Record<string, unknown>) };
+    for (const field of GCODE_DERIVED_FIELDS) delete copy[field];
+    // Maps do not survive the structural compare; spell them out.
+    copy.copperByNet = [...(r.copperByNet ?? new Map())].map(([k, v]) => [k, JSON.stringify(v)]);
+    copy.bottomCopperByNet = r.bottomCopperByNet
+      ? [...r.bottomCopperByNet].map(([k, v]) => [k, JSON.stringify(v)])
+      : undefined;
+    return JSON.parse(JSON.stringify(copy));
+  };
+
+  const reference = layoutOf(base);
+
+  it('covers every option it claims to, with a value that actually differs', () => {
+    for (const key of GCODE_ONLY_OPTIONS) {
+      expect(nudged, `no nudge defined for ${key}`).toHaveProperty(key);
+      expect(nudged[key], `nudge for ${key} matches the default`).not.toEqual(
+        (base as unknown as Record<string, unknown>)[key]
+      );
+    }
+  });
+
+  it.each([...GCODE_ONLY_OPTIONS])('leaves the board untouched: %s', key => {
+    const changed = layoutOf({ ...base, [key]: nudged[key] } as PcbOptions);
+    expect(boardShape(changed)).toEqual(boardShape(reference));
+  });
+
+  it.each([...GCODE_ONLY_OPTIONS])('and re-emitting matches a full re-route: %s', key => {
+    const opts = { ...base, [key]: nudged[key] } as PcbOptions;
+    const rerouted = layoutOf(opts);
+    const reemitted = reemitPcbGcode(reference, opts);
+    expect(reemitted.gcode).toBe(rerouted.gcode);
+    expect(reemitted.cycleTimeSec).toBe(rerouted.cycleTimeSec);
+    expect(reemitted.travelDistanceMm).toBe(rerouted.travelDistanceMm);
+    expect(reemitted.cutDistanceMm).toBe(rerouted.cutDistanceMm);
+  });
+
+  it('hands back a placeholder result untouched rather than emitting over it', () => {
+    const empty = emptyPcbLayout(base, 'No placeable components.');
+    expect(reemitPcbGcode(empty, base)).toBe(empty);
   });
 });

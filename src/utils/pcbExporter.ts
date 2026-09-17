@@ -1911,12 +1911,87 @@ export function generatePcbLayout(
     result.svgBottomSide = renderPcbSvg(result, copperByNetBottom, options, 'bottom');
     result.svgComposite = renderPcbSvg(result, copperByNet, options, 'composite', copperByNetBottom);
   }
+  return withGcodeFor(result, options);
+}
+
+/**
+ * Options that change the G-code a layout is emitted as, but not the layout.
+ *
+ * Feeds, spindle speed, retract heights, cut depths, tab counts, which drill
+ * you actually own — none of them move a trace, a pad, a hole or the board
+ * outline by a micron. They were nonetheless part of the identity of a layout
+ * request, so nudging the spindle RPM threw away a routed board and paid for a
+ * full place-and-route to get an identical one back: on the densest preset
+ * here, seventeen seconds to change a number that only ever reaches an `S`
+ * word. Re-emitting instead takes about four milliseconds.
+ *
+ * This is an allowlist rather than a list of the options that *do* matter, and
+ * deliberately so: an option nobody has classified yet falls through to a full
+ * re-route, which is merely slow. Getting it wrong the other way would serve a
+ * stale board. `reusesLayoutAcross` in the exporter tests holds every entry
+ * here to that promise by laying the board out both ways and comparing
+ * everything except the G-code.
+ */
+export const GCODE_ONLY_OPTIONS = [
+  'cutFeedrate',
+  'travelFeedrate',
+  'plungeFeedrate',
+  'drillFeedrate',
+  'spindleRpm',
+  'safeZ',
+  'toolChangeZ',
+  'drillDepthZ',
+  'profileDepthZ',
+  'zStepdown',
+  'tabCount',
+  'tabWidthMm',
+  'tabHeightMm',
+  'pauseOnToolChange',
+  'rampedPlunge',
+  'breakThroughMm',
+  'boardThicknessMm',
+  'drillBitOverridesMm',
+  'drillConsolidationMm',
+  'airCutZOffset',
+] as const satisfies readonly (keyof PcbOptions)[];
+
+/**
+ * Fields of a result that are derived from its G-code rather than from the
+ * placement and the route. These are what {@link reemitPcbGcode} rewrites, and
+ * what the allowlist test excludes when it compares two layouts.
+ */
+export const GCODE_DERIVED_FIELDS = [
+  'gcode',
+  'cycleTimeSec',
+  'travelDistanceMm',
+  'cutDistanceMm',
+] as const satisfies readonly (keyof PcbLayoutResult)[];
+
+/** Emits `result`'s G-code and its derived metrics under `options`, in place. */
+function withGcodeFor(result: PcbLayoutResult, options: PcbOptions): PcbLayoutResult {
   result.gcode = generatePcbGcode(result, options);
   const metrics = estimatePcbMachiningMetrics(result.gcode, options);
   result.cycleTimeSec = metrics.cycleTimeSec;
   result.travelDistanceMm = metrics.travelDistanceMm;
   result.cutDistanceMm = metrics.cutDistanceMm;
   return result;
+}
+
+/**
+ * Re-emits a finished layout's G-code under different options, without routing
+ * it again. Only sound for a change confined to {@link GCODE_ONLY_OPTIONS}.
+ *
+ * A placeholder result — an empty circuit, or a layout that failed for a reason
+ * of its own — is handed back untouched: it carries an explanatory G-code
+ * comment rather than a program, and running the emitter over it would replace
+ * that with something that looks like output.
+ */
+export function reemitPcbGcode(
+  result: PcbLayoutResult,
+  userOptions?: Partial<PcbOptions>
+): PcbLayoutResult {
+  if (result.components.length === 0) return result;
+  return withGcodeFor({ ...result }, { ...DEFAULT_PCB_OPTIONS, ...userOptions });
 }
 
 interface LayoutAttempt {

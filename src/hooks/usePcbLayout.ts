@@ -3,6 +3,8 @@ import type { Edge, Node } from '@xyflow/react';
 import {
   emptyPcbLayout,
   generatePcbLayout,
+  reemitPcbGcode,
+  GCODE_ONLY_OPTIONS,
   type LayoutProgress,
   type PcbLayoutResult,
   type PcbOptions,
@@ -112,19 +114,39 @@ const projectEdges = (edges: Edge[]) =>
  * again to look at the same board. A handful of entries is enough to cover
  * flipping a setting and flipping it back; the oldest is dropped past that.
  */
-const layoutCache = new Map<string, PcbLayoutResult>();
+interface CachedLayout {
+  result: PcbLayoutResult;
+  /** The G-code-only options the stored result's program was emitted under. */
+  gcodeKey: string;
+}
+
+const layoutCache = new Map<string, CachedLayout>();
 // A result carries its G-code with it, so these are not small. Enough to hold
 // every rung of the ladder for one board, plus the board either side of a
 // setting the user is toggling — a climb that had its own rungs evicted would
 // re-run them from scratch on the way back.
 const LAYOUT_CACHE_LIMIT = 8;
 
-function rememberLayout(key: string, result: PcbLayoutResult) {
+function rememberLayout(key: string, entry: CachedLayout) {
   layoutCache.delete(key);
-  layoutCache.set(key, result);
+  layoutCache.set(key, entry);
   while (layoutCache.size > LAYOUT_CACHE_LIMIT) {
     layoutCache.delete(layoutCache.keys().next().value as string);
   }
+}
+
+/** Identity of the options that only decide how a layout is written out. */
+const gcodeKeyOf = (options: Partial<PcbOptions>) =>
+  JSON.stringify(GCODE_ONLY_OPTIONS.map(k => options[k] ?? null));
+
+/** The options that decide what the board *is*, which is what a cached layout answers. */
+function boardOptionsOf(options: Partial<PcbOptions>): Partial<PcbOptions> {
+  const geometry: Record<string, unknown> = { ...options };
+  for (const key of GCODE_ONLY_OPTIONS) delete geometry[key];
+  // Decided by the ladder below, not by the caller, and a board is the same
+  // board at every rung.
+  delete geometry.routingBudgetMs;
+  return geometry as Partial<PcbOptions>;
 }
 
 /**
@@ -164,10 +186,22 @@ export function usePcbLayout(
     }),
     [nodes, edges, options, budgetMs]
   );
+  /*
+   * What makes this a different board. Feeds, speeds, depths and the rest of
+   * the emit-time options are left out: they cannot move a trace, so a layout
+   * routed without them is still the right answer, and the program is rewritten
+   * from it in about four milliseconds rather than re-routed in seconds.
+   */
   const boardKey = useMemo(
-    () => JSON.stringify({ ...payload, options: { ...payload.options, routingBudgetMs: 0 } }),
+    () =>
+      JSON.stringify({
+        nodes: payload.nodes,
+        edges: payload.edges,
+        options: boardOptionsOf(payload.options),
+      }),
     [payload]
   );
+  const gcodeKey = useMemo(() => gcodeKeyOf(payload.options), [payload]);
   const cacheKey = `${boardKey}|${budgetMs}`;
 
   // Back to the bottom of the ladder for a different board.
@@ -180,7 +214,7 @@ export function usePcbLayout(
   const [state, setState] = useState<PcbLayoutState>(() => {
     const cached = layoutCache.get(cacheKey);
     return cached
-      ? { result: cached, isRouting: false, progress: null, hasResult: true, ...effortOf(0) }
+      ? { result: cached.result, isRouting: false, progress: null, hasResult: true, ...effortOf(0) }
       : {
           result: emptyPcbLayout(options, 'Routing…'),
           isRouting: true,
@@ -224,10 +258,19 @@ export function usePcbLayout(
     // for the same search again.
     const cached = layoutCache.get(cacheKey);
     if (cached) {
+      // The same board, but possibly asked for at a different feed or depth
+      // since it was routed. Rewriting the program off the stored layout is
+      // the whole point of keying the cache this way.
+      if (cached.gcodeKey !== gcodeKey) {
+        const reemitted = reemitPcbGcode(cached.result, payload.options);
+        rememberLayout(cacheKey, { result: reemitted, gcodeKey });
+        settle(reemitted);
+        return;
+      }
       // Through `settle`, so a cached partial climbs exactly as a fresh one
       // does — otherwise reopening the panel on a board that needed the top
       // rung would stop at whatever the bottom rung managed.
-      settle(cached);
+      settle(cached.result);
       return;
     }
 
@@ -238,7 +281,7 @@ export function usePcbLayout(
           payload.edges as never,
           payload.options
         );
-        rememberLayout(cacheKey, result);
+        rememberLayout(cacheKey, { result, gcodeKey });
         if (cancelled) return;
         settle(result);
       } catch (err) {
@@ -287,7 +330,7 @@ export function usePcbLayout(
           return;
         }
         if (msg.ok === true) {
-          rememberLayout(cacheKey, msg.result as PcbLayoutResult);
+          rememberLayout(cacheKey, { result: msg.result as PcbLayoutResult, gcodeKey });
           settle(msg.result as PcbLayoutResult);
         } else {
           setState(prev => ({
@@ -329,7 +372,7 @@ export function usePcbLayout(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [payload, cacheKey, debounceMs, settle]);
+  }, [payload, cacheKey, gcodeKey, debounceMs, settle]);
 
   useEffect(() => () => workerRef.current?.terminate(), []);
 
