@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Edge, Node } from '@xyflow/react';
 import {
   emptyPcbLayout,
@@ -18,6 +18,51 @@ export interface PcbLayoutState {
   progress: LayoutProgress | null;
   /** True once a layout has completed at least once. */
   hasResult: boolean;
+  /** Which rung of the effort ladder is being run, 1-based. */
+  effortStep: number;
+  /** How many rungs there are. */
+  effortSteps: number;
+}
+
+/**
+ * Wall-clock budgets the router is given, tried in order until the board comes
+ * out fully routed.
+ *
+ * This used to be a dropdown offering 2s, 8s, 30s and 2min, and the dropdown
+ * was the wrong shape for the problem: a budget is not a quality dial. What
+ * rescues a board that stalls is the placement search, which runs on its own
+ * whenever the first pass falls short. Time barely enters into it.
+ *
+ * Measured, across every shipped preset and several deliberately over-squeezed
+ * variants of them:
+ *
+ *   - Boards that route: the outcome is identical at every budget, and only
+ *     the wait changes. The densest preset came out 100% routed in 8s at the
+ *     bottom setting and 56s at the top.
+ *   - Boards that do not route: more time buys nothing worth having. Squeezed
+ *     to 0.9mm traces and clearances, opAmpAmp stalled at 76.5% on both 2s
+ *     (12.8s wall) and 2min (48.4s wall) — same four nets unrouted for four
+ *     times the wait. bistableMultivibrator went from 72.7% to 77.3%, one net
+ *     out of twenty-two, for 15s against 87s.
+ *
+ * The top rung is 2min even so. Nothing that routes ever reaches it — every
+ * rung stops the moment a board comes out fully routed — so the whole cost of
+ * having it falls on boards that were going to fail, and for those an extra
+ * minute is a fair price for the occasional net it does close. The measurements
+ * above are the argument for not *starting* there, which is what the dropdown
+ * made people do; they are not an argument for giving up early.
+ */
+export const ROUTING_BUDGET_LADDER = [2000, 8000, 30000, 120000] as const;
+
+/**
+ * Whether a result is worth escalating from.
+ *
+ * Only an incompletely routed board is: a circuit with nothing placeable in it,
+ * or one that failed for a reason time cannot fix, would otherwise climb the
+ * whole ladder to arrive at the same answer four times over.
+ */
+export function wantsMoreEffort(result: PcbLayoutResult): boolean {
+  return result.components.length > 0 && result.completion < 1;
 }
 
 /**
@@ -68,9 +113,11 @@ const projectEdges = (edges: Edge[]) =>
  * flipping a setting and flipping it back; the oldest is dropped past that.
  */
 const layoutCache = new Map<string, PcbLayoutResult>();
-// A result carries its G-code with it, so these are not small. Four is enough
-// to hold the board either side of a setting the user is toggling.
-const LAYOUT_CACHE_LIMIT = 4;
+// A result carries its G-code with it, so these are not small. Enough to hold
+// every rung of the ladder for one board, plus the board either side of a
+// setting the user is toggling — a climb that had its own rungs evicted would
+// re-run them from scratch on the way back.
+const LAYOUT_CACHE_LIMIT = 8;
 
 function rememberLayout(key: string, result: PcbLayoutResult) {
   layoutCache.delete(key);
@@ -97,24 +144,75 @@ export function usePcbLayout(
   // fields — a full re-place-and-route is far too expensive to run per keystroke.
   debounceMs = 450
 ): PcbLayoutState {
-  // A stable key for the inputs, so unrelated re-renders do not re-route.
+  /**
+   * Which rung of the effort ladder this board is on. Reset whenever the board
+   * itself changes, so every new circuit starts at the cheap end.
+   */
+  const [rung, setRung] = useState(0);
+  const budgetMs = ROUTING_BUDGET_LADDER[rung];
+
+  /*
+   * A stable key for the inputs, so unrelated re-renders do not re-route. The
+   * budget is deliberately not part of it: it is this hook's decision rather
+   * than the caller's, and a board is the same board at every rung.
+   */
   const payload = useMemo(
-    () => ({ nodes: projectNodes(nodes), edges: projectEdges(edges), options }),
-    [nodes, edges, options]
+    () => ({
+      nodes: projectNodes(nodes),
+      edges: projectEdges(edges),
+      options: { ...options, routingBudgetMs: budgetMs },
+    }),
+    [nodes, edges, options, budgetMs]
   );
-  const cacheKey = useMemo(() => JSON.stringify(payload), [payload]);
+  const boardKey = useMemo(
+    () => JSON.stringify({ ...payload, options: { ...payload.options, routingBudgetMs: 0 } }),
+    [payload]
+  );
+  const cacheKey = `${boardKey}|${budgetMs}`;
+
+  // Back to the bottom of the ladder for a different board.
+  useEffect(() => {
+    setRung(0);
+  }, [boardKey]);
+
+  const effortOf = (r: number) => ({ effortStep: r + 1, effortSteps: ROUTING_BUDGET_LADDER.length });
 
   const [state, setState] = useState<PcbLayoutState>(() => {
     const cached = layoutCache.get(cacheKey);
     return cached
-      ? { result: cached, isRouting: false, progress: null, hasResult: true }
+      ? { result: cached, isRouting: false, progress: null, hasResult: true, ...effortOf(0) }
       : {
           result: emptyPcbLayout(options, 'Routing…'),
           isRouting: true,
           progress: null,
           hasResult: false,
+          ...effortOf(0),
         };
   });
+
+  /**
+   * Takes a finished layout and either settles on it or climbs a rung.
+   *
+   * `isRouting` stays true across a climb: from outside, an escalation is one
+   * continuous attempt to route this board, not a result followed by a second
+   * request. The partial board is shown while the next rung runs, because a
+   * 94%-routed preview is a far better thing to look at than the last board.
+   */
+  const settle = useCallback(
+    (result: PcbLayoutResult) => {
+      const climbing = wantsMoreEffort(result) && rung < ROUTING_BUDGET_LADDER.length - 1;
+      setState({
+        result,
+        isRouting: climbing,
+        progress: null,
+        hasResult: true,
+        effortStep: (climbing ? rung + 1 : rung) + 1,
+        effortSteps: ROUTING_BUDGET_LADDER.length,
+      });
+      if (climbing) setRung(rung + 1);
+    },
+    [rung]
+  );
 
   const workerRef = useRef<Worker | null>(null);
   const supported = useRef(typeof Worker !== 'undefined');
@@ -126,21 +224,28 @@ export function usePcbLayout(
     // for the same search again.
     const cached = layoutCache.get(cacheKey);
     if (cached) {
-      setState({ result: cached, isRouting: false, progress: null, hasResult: true });
+      // Through `settle`, so a cached partial climbs exactly as a fresh one
+      // does — otherwise reopening the panel on a board that needed the top
+      // rung would stop at whatever the bottom rung managed.
+      settle(cached);
       return;
     }
 
     const runSync = () => {
       try {
-        const result = generatePcbLayout(payload.nodes as never, payload.edges as never, options);
+        const result = generatePcbLayout(
+          payload.nodes as never,
+          payload.edges as never,
+          payload.options
+        );
         rememberLayout(cacheKey, result);
         if (cancelled) return;
-        setState({ result, isRouting: false, progress: null, hasResult: true });
+        settle(result);
       } catch (err) {
         if (cancelled) return;
         setState(prev => ({
           ...prev,
-          result: emptyPcbLayout(options, err instanceof Error ? err.message : String(err)),
+          result: emptyPcbLayout(payload.options, err instanceof Error ? err.message : String(err)),
           isRouting: false,
           progress: null,
           hasResult: true,
@@ -183,16 +288,11 @@ export function usePcbLayout(
         }
         if (msg.ok === true) {
           rememberLayout(cacheKey, msg.result as PcbLayoutResult);
-          setState({
-            result: msg.result as PcbLayoutResult,
-            isRouting: false,
-            progress: null,
-            hasResult: true,
-          });
+          settle(msg.result as PcbLayoutResult);
         } else {
           setState(prev => ({
             ...prev,
-            result: emptyPcbLayout(options, msg.error),
+            result: emptyPcbLayout(payload.options, msg.error),
             isRouting: false,
             progress: null,
             hasResult: true,
@@ -229,7 +329,7 @@ export function usePcbLayout(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [payload, cacheKey, debounceMs]);
+  }, [payload, cacheKey, debounceMs, settle]);
 
   useEffect(() => () => workerRef.current?.terminate(), []);
 
