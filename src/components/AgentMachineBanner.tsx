@@ -47,7 +47,9 @@ const ARM_TOOLTIP =
  */
 export function AgentMachineBanner() {
   const [arming, setArming] = useState<ArmingState>(() => machineArming.getState());
-  const [now, setNow] = useState(Date.now());
+  // Read in the initialiser, not during render: a clock read on every render is
+  // a different answer every time and React is entitled to render twice.
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => subscribeToArming(setArming), []);
 

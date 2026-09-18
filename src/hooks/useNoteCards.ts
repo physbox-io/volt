@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { CircuitPreset } from '../utils/storage';
 import { presets as presetsMap } from '../utils/presets';
 
@@ -29,23 +29,25 @@ export function useNoteCards({ selectedPreset, userPresets }: UseNoteCardsArgs) 
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
 
   // Which preset — and which card text — the cards on screen were spawned for.
-  // `userPresets` is a fresh object on every save, so without this the effect
-  // below re-ran and reset the cards while the selection sat still, which would
-  // wipe a card the MCP bridge had just written the moment anything touched the
-  // preset list.
-  const spawnedFor = useRef<string | null>(null);
+  // `userPresets` is a fresh object on every save, so without this the cards
+  // were reset while the selection sat still, which would wipe a card the MCP
+  // bridge had just written the moment anything touched the preset list.
+  //
+  // Held as state and compared during render rather than written from an
+  // effect: spawning the card *is* a state reset keyed on the preset, not a
+  // synchronisation with anything outside React, and an effect would paint the
+  // previous preset's cards for a frame before replacing them.
+  const [spawnedFor, setSpawnedFor] = useState<string | null>(null);
 
-  useEffect(() => {
-    const allPresets = { ...presetsMap, ...userPresets };
-    const preset = allPresets[selectedPreset];
-    // Keyed on the card's text as well as the preset, so re-saving the preset
-    // under its own name — which is how the MCP bridge updates one — puts the
-    // new card up instead of leaving the old one standing. A card the bridge
-    // wrote directly still survives, because that changes `noteCards` without
-    // touching `preset.noteCard`.
-    const spawnKey = `${selectedPreset}\u0000${preset?.noteCard ?? ''}`;
-    if (spawnedFor.current === spawnKey) return;
-    spawnedFor.current = spawnKey;
+  const preset = { ...presetsMap, ...userPresets }[selectedPreset];
+  // Keyed on the card's text as well as the preset, so re-saving the preset
+  // under its own name — which is how the MCP bridge updates one — puts the
+  // new card up instead of leaving the old one standing. A card the bridge
+  // wrote directly still survives, because that changes `noteCards` without
+  // touching `preset.noteCard`.
+  const spawnKey = `${selectedPreset}\u0000${preset?.noteCard ?? ''}`;
+  if (spawnedFor !== spawnKey) {
+    setSpawnedFor(spawnKey);
     if (preset && preset.noteCard) {
       const defaultX = Math.max(20, window.innerWidth - 300 - 256 - 20);
       setNoteCards([{
@@ -62,7 +64,7 @@ export function useNoteCards({ selectedPreset, userPresets }: UseNoteCardsArgs) 
     } else {
       setNoteCards([]);
     }
-  }, [selectedPreset, userPresets]);
+  }
 
   const toggleEdit = useCallback((id: string) => {
     setEditingCardId(prev => prev === id ? null : id);

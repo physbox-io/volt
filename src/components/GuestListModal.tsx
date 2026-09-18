@@ -17,7 +17,7 @@ export const GuestListModal: React.FC<GuestListModalProps> = ({ isOpen, onClose,
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
     }
-  }, [isOpen]);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { X, Radio, Clock, AlertTriangle, RefreshCw, Cpu, Star } from 'lucide-react';
 import { fetchLatestTelemetry, isProAccount } from '../utils/apiClient';
@@ -13,7 +13,7 @@ export const RemoteMachiningModal: React.FC<RemoteMachiningModalProps> = ({ isOp
   const [telemetry, setTelemetry] = useState<MachiningTelemetry[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const data = await fetchLatestTelemetry();
@@ -21,10 +21,17 @@ export const RemoteMachiningModal: React.FC<RemoteMachiningModalProps> = ({ isOp
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
+      /*
+       * The first poll is fired here on purpose: this effect starts and stops a
+       * three-second poll of the telemetry service, and the spinner going up is
+       * part of starting it. There is nothing to derive the flag from — it is
+       * the state of a request that has not come back yet.
+       */
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadData();
       const interval = setInterval(loadData, 3000);
       const handleKeyDown = (e: KeyboardEvent) => {
@@ -36,7 +43,7 @@ export const RemoteMachiningModal: React.FC<RemoteMachiningModalProps> = ({ isOp
         window.removeEventListener('keydown', handleKeyDown);
       };
     }
-  }, [isOpen]);
+  }, [isOpen, onClose, loadData]);
 
   if (!isOpen) return null;
 

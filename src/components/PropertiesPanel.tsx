@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import type { Node, Edge } from '@xyflow/react';
+import type { AnyNodeData, RawNodeData } from '../types/nodes';
 import { X, Trash2, RotateCw, ArrowLeftRight } from 'lucide-react';
 import {
   ORIENTABLE_NODE_TYPES,
@@ -95,12 +97,27 @@ function isCatalogPart(nodeType: string | undefined, modelId: unknown): boolean 
   return false;
 }
 
-export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSimulation, simLength, isOpen, onClose }: { selectedNode: any, setNodes: any, setEdges: any, isSimulating: boolean, runSimulation: () => void, simLength: number, /** Drawer state below `lg`; ignored at `lg`, where this is a column. */ isOpen?: boolean, onClose?: () => void }) {
-  const simDebounceTimerRef = useRef<any>(null);
+export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSimulation, simLength, isOpen, onClose }: {
+  /*
+   * Every field of every part, for the reason given on `NodePropertiesProps`:
+   * this panel is dispatched on `node.type` at run time, so the compiler never
+   * knows which kind it was handed.
+   */
+  selectedNode: Node<AnyNodeData> | null,
+  setNodes: Dispatch<SetStateAction<Node[]>>,
+  setEdges: Dispatch<SetStateAction<Edge[]>>,
+  isSimulating: boolean,
+  runSimulation: () => void,
+  simLength: number,
+  /** Drawer state below `lg`; ignored at `lg`, where this is a column. */
+  isOpen?: boolean,
+  onClose?: () => void,
+}) {
+  const simDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const webcamIntervalRef = useRef<any>(null);
+  const webcamIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isRecordingWebcam, setIsRecordingWebcam] = useState(false);
   const webcamRecordingDataRef = useRef<{ t: number; v: number }[]>([]);
   const webcamRecordingStartRef = useRef<number>(0);
@@ -113,7 +130,7 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
   const ldrId = (selectedNode?.type === 'ldr' || (selectedNode?.type === 'led' && selectedNode?.data.photodiodeMode)) ? selectedNode.id : null;
   const isWebcamActive = (selectedNode?.type === 'ldr' || (selectedNode?.type === 'led' && selectedNode?.data.photodiodeMode)) ? !!selectedNode.data.isWebcamActive : false;
 
-  const updateData = (key: string, value: any) => {
+  const updateData = (key: string, value: unknown) => {
     setNodes((nds: Node[]) => nds.map(n => {
       if (n.id !== selectedNode?.id) return n;
       const newData = { ...n.data, [key]: value };
@@ -122,7 +139,7 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
       if (key === 'label') {
         const overrides = ['voltage', 'resistance', 'capacitance', 'inductance'];
         overrides.forEach(o => {
-          if (o in newData) delete (newData as any)[o];
+          if (o in newData) delete newData[o];
         });
       }
 
@@ -135,7 +152,7 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
       // out'. Editing any one of them writes it back and sets model='custom'.
       if (key === 'model' && value !== 'custom' && isCatalogPart(selectedNode?.type, value)) {
         DEVICE_PARAM_KEYS.forEach(k => {
-          if (k in newData) delete (newData as any)[k];
+          if (k in newData) delete newData[k];
         });
       }
 
@@ -248,13 +265,27 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
     }
   };
 
-  // Reactive Effect to handle webcam stream lifecycle matching selection & node state
+  /*
+   * The camera's lifecycle, matched to the selected node's `isWebcamActive`.
+   *
+   * This is a device, not derived state: `getUserMedia` has to be asked for and
+   * given back, and `stream` is React's record of whether it is running. The
+   * setState the rule objects to is `setStream(null)` as the tracks stop, which
+   * is the camera telling React it has gone — it just happens synchronously,
+   * because stopping a track does.
+   *
+   * `startWebcam`/`stopWebcam` are rebuilt every render (they close over the
+   * selection and over `updateData`), so listing them would take the camera
+   * down and ask for it again on every keystroke in the inspector.
+   */
   useEffect(() => {
     if (stream && (!ldrId || !isWebcamActive)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       stopWebcam();
     } else if (ldrId && isWebcamActive && !stream) {
       startWebcam();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ldrId, isWebcamActive, stream]);
 
   // Unmount cleanup effect
@@ -295,11 +326,20 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
   const TypeProperties = meta?.Properties;
 
   // --- PCB footprint ---------------------------------------------------
-  const fp: FootprintParams = (selectedNode.data?.footprintParams as FootprintParams) ?? {};
+  /*
+   * The board fields are read through the raw bag rather than the part union.
+   * `packageId` and `footprintParams` belong to no one kind of part — every
+   * physical part can carry them — and `pins` here is a package's pin count,
+   * which collides with the Heltec's `pins` pin-mode map. Naming the union type
+   * on these reads would either be a lie or would rename a field that saved
+   * files already contain.
+   */
+  const pcbData = selectedNode.data as RawNodeData;
+  const fp: FootprintParams = (pcbData.footprintParams as FootprintParams) ?? {};
   const showFootprintEditor =
-    !!selectedNode.data?.footprintParams || selectedNode.data?.packageId === CUSTOM_PACKAGE_ID;
+    !!pcbData.footprintParams || pcbData.packageId === CUSTOM_PACKAGE_ID;
 
-  const updateFootprintParam = (key: keyof FootprintParams, value: any) => {
+  const updateFootprintParam = <K extends keyof FootprintParams>(key: K, value: FootprintParams[K]) => {
     const next: FootprintParams = { ...fp, [key]: value };
     if (value === undefined) delete next[key];
     updateData('footprintParams', next);
@@ -312,9 +352,9 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
     previewFootprint = showFootprintEditor
       ? footprintFromParams(fp)
       : resolveFootprint(
-          selectedNode.data?.packageId as string | undefined,
+          pcbData.packageId as string | undefined,
           selectedNode.type,
-          (selectedNode.data?.pins as number) || 2,
+          (pcbData.pins as number) || 2,
           selectedNode.data
         );
   } catch {
@@ -324,7 +364,7 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
   // What the selector shows, and the packages it is filtered down to. Whatever
   // is set on the node wins even if this component type would not normally be
   // offered it, so an existing board keeps the footprint it was laid out with.
-  const setPackageId = selectedNode.data?.packageId as string | undefined;
+  const setPackageId = pcbData.packageId as string | undefined;
   const packageGroups = packageOptionsForType(
     selectedNode.type,
     setPackageId === CUSTOM_PACKAGE_ID ? undefined : setPackageId
@@ -409,7 +449,7 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
             if (next === CUSTOM_PACKAGE_ID) {
               // Seed from whatever is currently resolved, so the editor opens
               // on the part's real dimensions rather than on empty boxes.
-              if (!selectedNode.data?.footprintParams) {
+              if (!pcbData.footprintParams) {
                 const seedLeft = Math.ceil((previewFootprint?.pads.length || 8) / 2);
                 updateData('footprintParams', {
                   family: 'dual',
@@ -428,8 +468,8 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
         >
           {selectedNode.type === 'mcu' && (
             <optgroup label="Microcontroller / Module Geometry">
-              <option value={(selectedNode.data?.packageId as string) || 'MCU-PARAMETRIC'}>
-                {(selectedNode.data?.packageId as string) || 'Parametric MCU / Board Module'}
+              <option value={(pcbData.packageId as string) || 'MCU-PARAMETRIC'}>
+                {(pcbData.packageId as string) || 'Parametric MCU / Board Module'}
               </option>
             </optgroup>
           )}
@@ -476,7 +516,7 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
             <FootprintField label="Layout" >
               <select
                 value={fp.family ?? 'dual'}
-                onChange={e => updateFootprintParam('family', e.target.value)}
+                onChange={e => updateFootprintParam('family', e.target.value as FootprintParams['family'])}
                 className={FOOTPRINT_INPUT_CLASS}
               >
                 <option value="dual">Dual row (module / DIP-like)</option>

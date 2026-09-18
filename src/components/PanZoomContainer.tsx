@@ -33,11 +33,14 @@ export const PanZoomContainer: React.FC<PanZoomContainerProps> = ({
     setPan({ x: 0, y: 0 });
   }, [initialZoom]);
 
-  useEffect(() => {
-    if (resetKey !== undefined) {
-      resetView();
-    }
-  }, [resetKey, resetView]);
+  // Compared during render rather than reset from an effect: this is a state
+  // reset keyed on a prop, not a synchronisation with anything outside React,
+  // and from an effect the old view is painted for a frame before it snaps.
+  const [seenResetKey, setSeenResetKey] = useState(resetKey);
+  if (resetKey !== undefined && resetKey !== seenResetKey) {
+    setSeenResetKey(resetKey);
+    resetView();
+  }
 
   // React attaches `wheel` at the document root as a *passive* listener, so a
   // preventDefault() from the JSX prop is ignored and the modal scrolls behind

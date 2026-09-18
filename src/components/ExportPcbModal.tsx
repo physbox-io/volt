@@ -150,6 +150,17 @@ const HEIGHTMAP_EDGE_MARGIN_MM = 1;
  * A stored value that is not a finite positive number is ignored: a bad
  * thickness silently zeroes Z in the wrong place.
  */
+/**
+ * The message off whatever was thrown, read by shape rather than through
+ * `instanceof Error`. Everything caught in this file comes back from the
+ * serial layer or from an exporter, and a controller alarm or a rejected
+ * fetch arrives as a plain object; `instanceof` would drop its text and
+ * leave the panel showing the generic fallback for a fault it could name.
+ */
+function errorMessage(e: unknown): string | undefined {
+  return (e as { message?: string } | null | undefined)?.message;
+}
+
 function readNumericSetting(key: string, fallback: number): number {
   const raw = localStorage.getItem(key);
   if (raw === null) return fallback;
@@ -349,7 +360,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     webSerialManager.clearLastError();
   };
 
-  const handleSafeClose = () => {
+  const handleSafeClose = React.useCallback(() => {
     const isJobActive = serialState.status === 'RUNNING' || serialState.status === 'PROBING' || busy !== '';
     if (isJobActive) {
       if (!window.confirm('A machine operation is currently in progress. Closing this dialog will leave the machine running. Are you sure you want to close?')) {
@@ -357,7 +368,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       }
     }
     onClose();
-  };
+  }, [serialState.status, busy, onClose]);
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -367,7 +378,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [serialState.status, busy]);
+  }, [handleSafeClose]);
 
   const availableTools = useMemo(
     () => [...PCB_TOOL_PRESETS, ...customTools],
@@ -662,8 +673,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       });
       setHeightmap(grid);
       return grid;
-    } catch (e: any) {
-      setMachineError(e?.message || 'Surface probe failed');
+    } catch (e) {
+      setMachineError(errorMessage(e) || 'Surface probe failed');
       return null;
     } finally {
       setBusy('');
@@ -759,8 +770,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     setBusy('milling');
     try {
       await webSerialManager.startJob(webSerialManager.applyHeightmapToGcode(result.gcode, grid));
-    } catch (e: any) {
-      setMachineError(e?.message || 'Milling job failed');
+    } catch (e) {
+      setMachineError(errorMessage(e) || 'Milling job failed');
     } finally {
       setBusy('');
     }
@@ -791,8 +802,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       await webSerialManager.startJob(
         generateAirCutPerimeterGcode(result, options, FRAME_Z_OFFSET_MM, currentZ)
       );
-    } catch (e: any) {
-      setMachineError(e?.message || 'Framing failed');
+    } catch (e) {
+      setMachineError(errorMessage(e) || 'Framing failed');
     } finally {
       setBusy('');
     }
@@ -831,8 +842,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
         stencil.warnings[0] ||
           `Paste stencil written: ${stencil.apertureCount} apertures at ${stencil.thicknessMm}mm.`
       );
-    } catch (e: any) {
-      setStencilNote(e?.message || 'Could not build the paste stencil.');
+    } catch (e) {
+      setStencilNote(errorMessage(e) || 'Could not build the paste stencil.');
     }
   };
 
@@ -857,8 +868,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
         { material: 'film', thicknessMm: DEFAULT_PASTE_SHIM_OPTIONS.thicknessMm }
       );
       setStencilNote('Stencil sent to Etch — set the kerf compensation there before cutting.');
-    } catch (e: any) {
-      setStencilNote(e?.message || 'Could not open the stencil in Etch.');
+    } catch (e) {
+      setStencilNote(errorMessage(e) || 'Could not open the stencil in Etch.');
     }
   };
 
@@ -888,8 +899,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       link.click();
       URL.revokeObjectURL(url);
       setGerberNote(`Gerber package written: ${result.drills.length} drills, ${result.layers ?? 1} layer(s).`);
-    } catch (e: any) {
-      setGerberNote(e?.message || 'Could not build the Gerber package.');
+    } catch (e) {
+      setGerberNote(errorMessage(e) || 'Could not build the Gerber package.');
     }
   };
 
@@ -915,8 +926,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
         `Shim written: ${Math.round(shim.widthMm)}×${Math.round(shim.heightMm)}mm at ` +
           `${shim.thicknessMm}mm. Print it in black, one layer, then cut the stencil from it.`
       );
-    } catch (e: any) {
-      setStencilNote(e?.message || 'Could not build the shim.');
+    } catch (e) {
+      setStencilNote(errorMessage(e) || 'Could not build the shim.');
     }
   };
 
@@ -952,8 +963,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       // The map survives: it still describes this board against the same
       // plane, which is exactly what the offset above re-establishes.
       await webSerialManager.zeroZOnSurface(surfaceOffsetHere());
-    } catch (e: any) {
-      setMachineError(e?.message || 'Zeroing Z failed');
+    } catch (e) {
+      setMachineError(errorMessage(e) || 'Zeroing Z failed');
     } finally {
       setBusy('');
     }
@@ -971,8 +982,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     clearErrors();
     try {
       await webSerialManager.zeroZ(touchPlateMm, surfaceOffsetHere());
-    } catch (e: any) {
-      setMachineError(e?.message || 'Zeroing Z on the touch plate failed');
+    } catch (e) {
+      setMachineError(errorMessage(e) || 'Zeroing Z on the touch plate failed');
     } finally {
       setBusy('');
     }
@@ -984,8 +995,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     clearErrors();
     try {
       await webSerialManager.zeroXY();
-    } catch (e: any) {
-      setMachineError(e?.message || 'Zeroing XY failed');
+    } catch (e) {
+      setMachineError(errorMessage(e) || 'Zeroing XY failed');
     }
   };
 
@@ -1000,8 +1011,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     clearErrors();
     try {
       await webSerialManager.gotoWorkOrigin();
-    } catch (e: any) {
-      setMachineError(e?.message || 'Go to zero failed');
+    } catch (e) {
+      setMachineError(errorMessage(e) || 'Go to zero failed');
     }
   };
 
@@ -1016,8 +1027,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     clearErrors();
     try {
       await webSerialManager.disconnect();
-    } catch (e: any) {
-      setMachineError(e?.message || 'Could not close the machine link');
+    } catch (e) {
+      setMachineError(errorMessage(e) || 'Could not close the machine link');
     }
   };
 
@@ -1030,8 +1041,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     clearErrors();
     try {
       await webSerialManager.unlockAlarm();
-    } catch (e: any) {
-      setMachineError(e?.message || 'Unlock failed');
+    } catch (e) {
+      setMachineError(errorMessage(e) || 'Unlock failed');
     }
   };
 
@@ -1042,8 +1053,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     setBusy('homing');
     try {
       await webSerialManager.homeMachine();
-    } catch (e: any) {
-      setMachineError(e?.message || 'Homing failed');
+    } catch (e) {
+      setMachineError(errorMessage(e) || 'Homing failed');
     } finally {
       setBusy('');
     }
@@ -1055,8 +1066,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     const dist = jogStep * direction;
     try {
       await webSerialManager.jog({ [axis.toLowerCase()]: dist });
-    } catch (e: any) {
-      setMachineError(e?.message || 'Jog command failed');
+    } catch (e) {
+      setMachineError(errorMessage(e) || 'Jog command failed');
     }
   };
 
@@ -1065,8 +1076,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     clearErrors();
     try {
       await webSerialManager.pauseJob();
-    } catch (e: any) {
-      setMachineError(e?.message || 'Could not pause the job');
+    } catch (e) {
+      setMachineError(errorMessage(e) || 'Could not pause the job');
     }
   };
 
@@ -1078,8 +1089,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     clearErrors();
     try {
       await webSerialManager.resumeJob();
-    } catch (e: any) {
-      setMachineError(e?.message || 'Could not resume the job');
+    } catch (e) {
+      setMachineError(errorMessage(e) || 'Could not resume the job');
     }
   };
 
@@ -1099,8 +1110,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     setBusy('milling');
     try {
       await webSerialManager.restartCurrentLayer();
-    } catch (e: any) {
-      setMachineError(e?.message || 'Could not restart this layer');
+    } catch (e) {
+      setMachineError(errorMessage(e) || 'Could not restart this layer');
     } finally {
       setBusy('');
     }

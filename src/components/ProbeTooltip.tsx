@@ -1,33 +1,55 @@
 import { useState, useEffect } from 'react';
 import { playbackTicker, findIndexForTime } from '../utils/playbackTicker';
 
-export function ProbeTooltip({ probeData, isSimulating, onClose }: { probeData: any; isSimulating: boolean; onClose: () => void }) {
-  const [currentVoltage, setCurrentVoltage] = useState(probeData.voltage);
-  const [currentTimeMs, setCurrentTimeMs] = useState(0);
+/**
+ * One probed net, as `App.tsx` assembles it when the probe is clicked. The
+ * trace fields are absent until a run has produced samples, which is what the
+ * effect below branches on: with no history there is one steady value to show,
+ * not a sparkline to play back.
+ */
+export interface ProbeReading {
+  netName: string;
+  voltage: number;
+  history?: number[];
+  timePoints?: number[];
+  maxV?: number;
+  minV?: number;
+  avgV?: number;
+  /** Where the click was, in client pixels; the card is placed beside it. */
+  x: number;
+  y: number;
+}
+
+export function ProbeTooltip({ probeData, isSimulating, onClose }: { probeData: ProbeReading; isSimulating: boolean; onClose: () => void }) {
+  const history = probeData.history;
+  const times = probeData.timePoints;
+  const hasTrace = !!history && !!times && history.length > 0;
+  const playing = hasTrace && isSimulating;
+
+  const [ticked, setTicked] = useState<{ elapsedMs: number; voltage: number } | null>(null);
 
   useEffect(() => {
-    if (!probeData.history || !probeData.timePoints || probeData.history.length === 0) {
-      setCurrentVoltage(probeData.voltage);
-      setCurrentTimeMs(0);
-      return;
-    }
-
-    if (!isSimulating) {
-      setCurrentTimeMs(0);
-      setCurrentVoltage(probeData.history[probeData.history.length - 1] ?? 0);
-      return;
-    }
-
-    const times = probeData.timePoints;
-
+    if (!playing) return;
     const unsubscribe = playbackTicker.subscribe((elapsedMs) => {
-      setCurrentTimeMs(elapsedMs);
       const idx = findIndexForTime(times, elapsedMs);
-      setCurrentVoltage(probeData.history[idx] ?? 0);
+      setTicked({ elapsedMs, voltage: history[idx] ?? 0 });
     });
-
     return unsubscribe;
-  }, [probeData, isSimulating]);
+  }, [playing, history, times]);
+
+  /*
+   * A card that is not being played back reads the last solved value, or the
+   * steady-state one when the net has no trace at all. Derived rather than
+   * written into state by the effect: the effect's only job is the ticker
+   * subscription, and writing the idle case from it re-rendered the card on
+   * every mount before it had anything new to say.
+   */
+  const currentTimeMs = playing && ticked ? ticked.elapsedMs : 0;
+  const currentVoltage = playing && ticked
+    ? ticked.voltage
+    : hasTrace
+      ? (history[history.length - 1] ?? 0)
+      : probeData.voltage;
 
   return (
     <div
