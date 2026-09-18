@@ -208,6 +208,30 @@ function driftsFrom(saved: SavedWorkOrigin | undefined, offset: Vec3): boolean {
 }
 
 /**
+ * Whether a patch would leave the state exactly as it already is.
+ *
+ * One level of nesting is enough: everything nested in machine state is a flat
+ * record of numbers — the two position vectors, the work offset, the override
+ * percentages — and each status report allocates fresh ones, so identity says
+ * nothing about whether the machine moved.
+ */
+function patchChangesNothing(state: MachineState, patch: Partial<MachineState>): boolean {
+  const current = state as unknown as Record<string, unknown>;
+  return Object.entries(patch).every(([key, value]) => sameValue(current[key], value));
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = Object.keys(left);
+  return (
+    keys.length === Object.keys(right).length && keys.every(k => Object.is(left[k], right[k]))
+  );
+}
+
+/**
  * Exported for the policy tests, which drive it against a fake controller.
  * Application code uses the `webSerialManager` singleton below — there is one
  * machine, and two managers fighting over one serial port is not a state worth
@@ -254,6 +278,27 @@ export class WebSerialManager extends GrblMachine<MachineState> {
 
   protected createInitialState(): MachineState {
     return { ...super.createInitialState(), savedZero: loadSavedZero() };
+  }
+
+  /**
+   * Drops an update that changes nothing.
+   *
+   * The status poll runs at 4Hz and every reply is folded into the state
+   * whether or not anything in it moved, so a machine standing still still
+   * produced four fresh state objects a second. Each one is a new identity,
+   * and each one re-renders every subscriber — here that is the whole editor
+   * and the export panel, board preview and toolpath included. Connecting
+   * therefore cost a large slice of every frame from then on, and on a dense
+   * board it cost all of it: the bench dialog stopped answering clicks while
+   * the machine was doing nothing at all.
+   *
+   * The same guard is in @physbox-io/machining, for Etch and Mesh. This
+   * override can go the moment Volt installs a release that carries it; until
+   * then it is what makes the fix real here, and it is idempotent either way.
+   */
+  protected updateState(patch: Partial<MachineState>): void {
+    if (patchChangesNothing(this.state, patch)) return;
+    super.updateState(patch);
   }
 
   // -------------------------------------------------------------------------

@@ -437,15 +437,21 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * Skipped altogether in machine-only mode. Nothing in the machine dialog is
    * about a board any more — framing and probing both moved to the CAM tab
    * with the outline they need — so reaching the bench through the spanner
-   * should not start a place-and-route nobody is going to look at. An empty
-   * circuit returns immediately.
+   * should not start a place-and-route nobody is going to look at.
+   *
+   * `enabled` is what skips it. Handing the hook empty arrays, which is what
+   * this did before, still spawned a worker and still routed — a board with
+   * nothing on it, but a real run all the same. The empty arrays stay because
+   * they keep the hook's own bookkeeping cheap: the payload it builds walks
+   * and sanitizes every node and then stringifies the lot, on every render.
    */
   const layoutNodes = machineOnly ? EMPTY_NODES : nodes;
   const layoutEdges = machineOnly ? EMPTY_EDGES : edges;
   const { result, isRouting, progress, hasResult, effortStep, effortSteps } = usePcbLayout(
     layoutNodes,
     layoutEdges,
-    options
+    options,
+    { enabled: !machineOnly }
   );
 
   const suggestedGrid = useMemo(() => {
@@ -703,8 +709,14 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    *
    * Not during an operator feed hold: GRBL is in Hold and would refuse the
    * move, and shifting position part-way through a cut would ruin the resume.
+   *
+   * And not without a machine on the other end. The jog keypad and both zero
+   * buttons sat live while disconnected, so the first thing anyone does in
+   * this dialog — press an arrow to check the link — was a button that
+   * accepted the click and did nothing, which reads as the app having hung.
    */
   const manualMoveBlocked =
+    !serialState.connected ||
     !!busy ||
     isRunning ||
     serialState.status === 'PROBING' ||

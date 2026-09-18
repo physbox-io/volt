@@ -162,9 +162,27 @@ export function usePcbLayout(
   nodes: Node[],
   edges: Edge[],
   options: Partial<PcbOptions>,
-  // Long enough to swallow a slider drag or a burst of typing in the numeric
-  // fields — a full re-place-and-route is far too expensive to run per keystroke.
-  debounceMs = 450
+  {
+    /**
+     * Whether there is anything to route for.
+     *
+     * The bench dialog — connect, jog, zero — is reached through the same
+     * component as the board panel, and mounting it therefore started a
+     * place-and-route for a board nothing on screen was going to show. On a
+     * dense circuit that is not a wasted millisecond but a wasted ladder: the
+     * router climbs 2s, 8s, 30s and 120s budgets before it gives up, so
+     * opening the panel to press Connect left a worker pegged for minutes
+     * while the operator wondered what the machine was waiting for.
+     *
+     * Feeding the hook empty arrays was the first attempt and is not the same
+     * thing: it still spawns a worker, still routes, and still settles a
+     * result, only for a board with nothing on it.
+     */
+    enabled = true,
+    // Long enough to swallow a slider drag or a burst of typing in the numeric
+    // fields — a full re-place-and-route is far too expensive to run per keystroke.
+    debounceMs = 450,
+  }: { enabled?: boolean; debounceMs?: number } = {}
 ): PcbLayoutState {
   /**
    * Which rung of the effort ladder this board is on. Reset whenever the board
@@ -212,12 +230,12 @@ export function usePcbLayout(
   const effortOf = (r: number) => ({ effortStep: r + 1, effortSteps: ROUTING_BUDGET_LADDER.length });
 
   const [state, setState] = useState<PcbLayoutState>(() => {
-    const cached = layoutCache.get(cacheKey);
+    const cached = enabled ? layoutCache.get(cacheKey) : undefined;
     return cached
       ? { result: cached.result, isRouting: false, progress: null, hasResult: true, ...effortOf(0) }
       : {
-          result: emptyPcbLayout(options, 'Routing…'),
-          isRouting: true,
+          result: emptyPcbLayout(options, enabled ? 'Routing…' : 'No board requested'),
+          isRouting: enabled,
           progress: null,
           hasResult: false,
           ...effortOf(0),
@@ -252,6 +270,7 @@ export function usePcbLayout(
   const supported = useRef(typeof Worker !== 'undefined');
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
 
     // Already routed these exact inputs — show that result rather than paying
@@ -372,7 +391,7 @@ export function usePcbLayout(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [payload, cacheKey, gcodeKey, debounceMs, settle]);
+  }, [enabled, payload, cacheKey, gcodeKey, debounceMs, settle]);
 
   useEffect(() => () => workerRef.current?.terminate(), []);
 
