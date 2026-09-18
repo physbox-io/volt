@@ -3,6 +3,7 @@ import {
   createMachineHandlers,
   describeMachine,
   gridOffPlaneMm,
+  requireNumber,
   type ArmingState,
 } from '@physbox-io/machining';
 import type { Edge, Node } from '@xyflow/react';
@@ -239,12 +240,15 @@ export function createVoltMachineHandlers(): Record<
     MACHINE_ZERO_Z: async (args: Record<string, unknown>) => {
       machineArming.requireArmed('zero_z');
       machineArming.noteAgentCommand('zero_z', args.touchPlateMm ? `plate=${args.touchPlateMm}` : 'on surface');
-      // Passed through as sent rather than re-checked: a non-number here is a
-      // malformed request, and quietly reading it as 0 would put the whole job
-      // out by the plate thickness instead of failing where it can be seen.
-      const surfaceOffsetMm = (args.surfaceOffsetMm ?? 0) as number;
-      if (typeof args.touchPlateMm === 'number') {
-        await webSerialManager.zeroZ(args.touchPlateMm, surfaceOffsetMm);
+      // Checked rather than cast. `as number` is a compiler instruction and
+      // nothing at run time: a `surfaceOffsetMm` of "0.1" would have been
+      // coerced by the arithmetic downstream and put every cut in the job out
+      // by a tenth, and one of "abc" would have reached the controller as
+      // `ZNaN`. Refusing costs nothing here — the machine has not moved.
+      const surfaceOffsetMm = requireNumber(args, 'surfaceOffsetMm', { default: 0 })!;
+      const touchPlateMm = requireNumber(args, 'touchPlateMm');
+      if (touchPlateMm !== undefined) {
+        await webSerialManager.zeroZ(touchPlateMm, surfaceOffsetMm);
       } else {
         await webSerialManager.zeroZOnSurface(surfaceOffsetMm);
       }
