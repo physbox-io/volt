@@ -9,10 +9,11 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@physbox-io/machining": "^0.3.4",
+    "@physbox-io/machining": "^0.3.7",
     "@physbox-io/ui": "^0.2.1",
     "@tailwindcss/vite": "^4.2.4",
     "@types/clipper-lib": "^6.4.0",
