@@ -1143,8 +1143,15 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     target,
   } = props;
   // React Flow renamed these between versions and still passes both on some
-  // edges, so read either. They are not on the published EdgeProps type.
-  const legacyProps = props as EdgeProps & { sourceHandleId?: string | null; targetHandleId?: string | null };
+  // edges, so read either. Neither name is on the published EdgeProps type —
+  // `sourceHandle`/`targetHandle` are on `Edge` but are dropped from the props
+  // the component is handed, so both have to be named here or `tsc -b` fails.
+  const legacyProps = props as EdgeProps & {
+    sourceHandleId?: string | null;
+    targetHandleId?: string | null;
+    sourceHandle?: string | null;
+    targetHandle?: string | null;
+  };
   const sourceHandle = legacyProps.sourceHandleId || legacyProps.sourceHandle;
   const targetHandle = legacyProps.targetHandleId || legacyProps.targetHandle;
 
