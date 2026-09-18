@@ -224,7 +224,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     if (webSerialManager.getState().connected) return;
     webSerialManager.setTransport('wifi', savedDevice);
     void webSerialManager.connect().catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [activeTab, setActiveTab] = useState<'layout' | 'cam'>('layout');
   /**

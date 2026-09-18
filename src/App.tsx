@@ -460,7 +460,8 @@ export default function App() {
       // User turned HIL off (or the node lost its enable flag): tear the socket down.
       hilRunningRef.current = false;
       hilConnectedRef.current = false;
-      try { hilSocketRef.current.close(); } catch (e) {}
+      // Already closed, or never opened: either way the socket is going.
+      try { hilSocketRef.current.close(); } catch { /* closing a dead socket */ }
       hilSocketRef.current = null;
       if (heltecId) {
         setNodes(nds => nds.map(n => n.id === heltecId ? { ...n, data: { ...n.data, isConnected: false } } : n));
@@ -474,7 +475,9 @@ export default function App() {
         if (hilSocketRef.current) {
           try {
             hilSocketRef.current.close();
-          } catch (e) {}
+          } catch {
+            // Already closed. The node is gone from the canvas either way.
+          }
           hilSocketRef.current = null;
         }
       }
@@ -1383,7 +1386,7 @@ export default function App() {
       const findGraph = (netName: string) => findNetGraph(result, netName);
 
       const updatedNodes = currentNodes.map(n => {
-        let newNode = { ...n } as any;
+        const newNode = { ...n } as any;
         newNode.data = { ...newNode.data, isSimulating: true };
         
         const v1Net = portToNet[`${n.id}-in`] || portToNet[`${n.id}-pos`] || portToNet[`${n.id}-anode`] || portToNet[`${n.id}-c`];
