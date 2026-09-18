@@ -4,6 +4,7 @@ import {
   gridFromPoints,
   gridOffPlaneMm,
   normalizeGrid,
+  retractProgram,
   round3,
   warpGcode,
   type JobPauseKind,
@@ -673,14 +674,23 @@ export class WebSerialManager extends GrblMachine<MachineState> {
       // front: nothing in the loop below changes a work offset.
       const workOffset = await this.awaitWorkOffset();
 
-      // Not clamped like a retract: `clearance` and `probeDepthMm` are chosen
-      // together (checked above), and every probe below travels down exactly
-      // `probeDepthMm` from wherever this leaves the tool. Clamping this to
-      // "never below the tool's current position" — right after zeroZOnSurface
-      // has just confirmed the datum below — would move it *up* instead
-      // whenever the tool starts higher than `clearance`, and every probe would
-      // then search too little to reach the copper.
-      await this.sendLine(`G0 Z${clearance.toFixed(3)}`);
+      /*
+       * Relative, and every lift below it is too.
+       *
+       * This used to be an absolute `G0 Z<clearance>`, on the reasoning that
+       * the datum had just been confirmed by `zeroZOnSurface` and each probe
+       * needs a known height to search from. The reasoning holds right up until
+       * the datum is wrong — a Z zeroed on the wrong face, a G54 offset left
+       * over from another job — and then the move that was meant to lift clear
+       * is a full-speed plunge through the board before any probe has run. That
+       * is not hypothetical: it destroyed a tool and a plate on Mesh, which is
+       * why no probe routine in any of these apps commands an absolute Z any
+       * more.
+       *
+       * The height the tool starts at is the operator's, and each lift below
+       * tracks the surface it just measured.
+       */
+      await this.sendProgram(retractProgram(clearance));
 
       const points: ProbePoint[][] = [];
       let done = 0;
@@ -695,9 +705,11 @@ export class WebSerialManager extends GrblMachine<MachineState> {
           const colIdx = r % 2 === 0 ? c : cols - 1 - c;
           const x = opts.minX + colIdx * stepX;
 
+          // XY only: no Z word, so the tool crosses at the height the last
+          // lift left it, which tracks the copper rather than a datum.
           await this.sendLine(`G0 X${x.toFixed(3)} Y${y.toFixed(3)} F${travelFeed}`);
           const contact = await this.probeDown(probeDepth, probeFeed);
-          await this.sendLine(`G0 Z${clearance.toFixed(3)} F${travelFeed}`);
+          await this.sendProgram(retractProgram(clearance));
 
           rowPoints[colIdx] = {
             x,
@@ -720,9 +732,9 @@ export class WebSerialManager extends GrblMachine<MachineState> {
       // depth budget is spent against exactly that, and it used to be a
       // constant somebody picked.
       const first = points[0][0];
-      // Not clamped, same reason as the loop above: another fixed-depth probe
-      // follows this move.
-      await this.sendLine(`G0 Z${clearance.toFixed(3)} F${travelFeed}`);
+      // Relative, as above: a fixed-depth probe follows this move, and an
+      // absolute Z before a probe is the plunge this routine refuses to make.
+      await this.sendProgram(retractProgram(clearance));
       await this.sendLine(`G0 X${first.x.toFixed(3)} Y${first.y.toFixed(3)} F${travelFeed}`);
       const recheck = await this.probeDown(probeDepth, probeFeed);
       const recheckZ = workOffset ? round3(recheck.z - workOffset.z) : recheck.z;
