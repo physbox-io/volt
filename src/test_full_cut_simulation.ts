@@ -42,8 +42,10 @@ const unhandled: string[] = [];
 /** Tools whose change was let through / stopped for want of a Z re-zero. */
 const resumeAllowed: string[] = [];
 const resumeRefused: string[] = [];
-declare const process: { on(ev: string, cb: (e: any) => void): void };
-process.on('unhandledRejection', (e: any) => unhandled.push(e?.message ?? String(e)));
+declare const process: { on(ev: string, cb: (e: unknown) => void): void };
+/** A rejection value is not necessarily an Error — node hands over whatever was thrown. */
+const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
+process.on('unhandledRejection', (e: unknown) => unhandled.push(messageOf(e)));
 /**
  * Something worth knowing that is not a defect: a margin thinner than it looks,
  * or the price of an operator skipping a step. Printed, never fatal.
@@ -375,7 +377,9 @@ class FakeCnc {
 let cnc: FakeCnc;
 function installFake(opts: FakeCncOptions = {}) {
   cnc = new FakeCnc(opts);
-  (globalThis as any).navigator = {
+  // The DOM's own Navigator is far more than this, so the shim is reached
+  // through unknown rather than pretending to be one.
+  (globalThis as unknown as { navigator: { serial: unknown } }).navigator = {
     serial: {
       requestPort: async () => ({
         open: async () => {},
@@ -388,8 +392,13 @@ function installFake(opts: FakeCncOptions = {}) {
   return cnc;
 }
 
+type LocalStorageShim = {
+  getItem(k: string): string | null;
+  setItem(k: string, v: string): void;
+  removeItem(k: string): void;
+};
 const store = new Map<string, string>();
-(globalThis as any).localStorage = {
+(globalThis as { localStorage?: LocalStorageShim }).localStorage = {
   getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
   setItem: (k: string, v: string) => void store.set(k, String(v)),
   removeItem: (k: string) => void store.delete(k),
@@ -414,7 +423,7 @@ function optionsWithSpan(spanZ?: number): PcbOptions {
 
 console.log('Routing the board…');
 let options = optionsWithSpan(undefined);
-let layout = generatePcbLayout(timer555Blink.nodes as any, timer555Blink.edges as any, options);
+let layout = generatePcbLayout(timer555Blink.nodes, timer555Blink.edges, options);
 
 check('the board routes', layout.success, layout.error || `${layout.violations.length} violations`);
 console.log(
@@ -484,7 +493,7 @@ function realSpan() {
 // The modal re-derives the isolation depth once the flatness is known, which
 // re-routes the board. Do the same, then re-check the map still covers it.
 options = optionsWithSpan(span);
-layout = generatePcbLayout(timer555Blink.nodes as any, timer555Blink.edges as any, options);
+layout = generatePcbLayout(timer555Blink.nodes, timer555Blink.edges, options);
 console.log(
   `  after auto-depth: board ${layout.boardWidthMm.toFixed(2)} x ${layout.boardHeightMm.toFixed(2)}mm, ` +
     `depth Z${options.isolationDepthZ.toFixed(3)}`
@@ -562,11 +571,11 @@ async function runJob(
         // rather than on the local high or low spot.
         const w = cnc.workPos();
         await webSerialManager.zeroZOnSurface(interpolateGridZ(heightmap, w.x, w.y));
-      } catch (e: any) {
+      } catch (e) {
         // A re-zero that cannot run is the operator's problem, not the rig's:
         // record it and carry on, exactly as pressing Resume anyway would.
-        zeroErrors.push(`${t}: ${e?.message ?? e}`);
-        allZeroErrors.push(`${t}: ${e?.message ?? e}`);
+        zeroErrors.push(`${t}: ${messageOf(e)}`);
+        allZeroErrors.push(`${t}: ${messageOf(e)}`);
       }
       await new Promise(r => setTimeout(r, 200));
     }

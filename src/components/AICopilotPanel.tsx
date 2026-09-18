@@ -3,6 +3,7 @@ import type { Node, Edge } from '@xyflow/react';
 import { X, Sparkles, Brain, Wand2, Loader2, AlertCircle, HelpCircle } from 'lucide-react';
 import SYSTEM_INSTRUCTIONS from './systemInstructions.txt?raw';
 import { LLMError, callLLM } from '../utils/llmClient';
+import type { AnyNodeData } from '../types/nodes';
 import {
   isClaudeModel,
   modelDisplayName,
@@ -28,7 +29,36 @@ const cleanJSONString = (str: string): string => {
     .replace(/,\s*([\]}])/g, '$1'); // Remove trailing commas
 };
 
-const parseAIJSON = (text: string): any => {
+/**
+ * A node and an edge as the model writes them, which is not as React Flow
+ * reads them: every field is a hope rather than a promise, and the cleaning
+ * below is what turns one into the other. Typing these as `Node`/`Edge` would
+ * claim the model had supplied the fields that this code exists to supply.
+ */
+interface AINode {
+  id?: string;
+  type?: string;
+  position?: { x: number; y: number };
+  label?: string;
+  /** Whatever the model put on the part; passed through onto the node. */
+  data?: Record<string, unknown> & { label?: string };
+}
+
+interface AIEdge {
+  id?: string;
+  source?: string;
+  target?: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+}
+
+/** What the generate and mutate paths hope to find in a reply. */
+interface AISchematic {
+  nodes?: AINode[];
+  edges?: AIEdge[];
+}
+
+const parseAIJSON = (text: string): unknown => {
   // 1. Try to find markdown json code blocks
   const codeBlockRegex = /```json\s*([\s\S]*?)\s*```/i;
   const matchBlock = text.match(codeBlockRegex);
@@ -143,29 +173,34 @@ export default function AICopilotPanel({ nodes, edges, setNodes, setEdges, onClo
   const handleExplain = async () => {
     setMode('explain');
 
-    const nodesSummary = nodes.map((n: any) => ({
-      id: n.id,
-      label: n.data?.label,
-      type: n.type,
-      // specific node properties
-      color: n.data?.color,
-      waveform: n.data?.waveform,
-      frequency: n.data?.frequency,
-      amplitude: n.data?.amplitude,
-      bf: n.data?.bf,
-      isOpen: n.data?.isOpen,
-      position: n.data?.position, // potentiometer position
-      common: n.data?.common,
-      value: n.data?.value,
-      // outputs / measurements
-      voltage: n.data?.voltage,
-      brightness: n.data?.brightness,
-      isExploded: n.data?.isExploded,
-      hasLogs: !!n.data?.logs,
-      mcuLogsSnippet: n.data?.logs ? n.data.logs.slice(-100) : undefined,
-    }));
+    const nodesSummary = nodes.map(n => {
+      // The flattened union, because this walks every part on the canvas and
+      // reads whichever fields each one happens to carry.
+      const data = n.data as AnyNodeData;
+      return {
+        id: n.id,
+        label: data?.label,
+        type: n.type,
+        // specific node properties
+        color: data?.color,
+        waveform: data?.waveform,
+        frequency: data?.frequency,
+        amplitude: data?.amplitude,
+        bf: data?.bf,
+        isOpen: data?.isOpen,
+        position: data?.position, // potentiometer position
+        common: data?.common,
+        value: data?.value,
+        // outputs / measurements
+        voltage: data?.voltage,
+        brightness: data?.brightness,
+        isExploded: data?.isExploded,
+        hasLogs: !!data?.logs,
+        mcuLogsSnippet: data?.logs ? data.logs.slice(-100) : undefined,
+      };
+    });
 
-    const edgesSummary = edges.map((e: any) => ({
+    const edgesSummary = edges.map(e => ({
       id: e.id,
       source: e.source,
       target: e.target,
@@ -220,10 +255,10 @@ Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
     const response = await callModel(SYSTEM_INSTRUCTIONS, prompt);
     if (response) {
       try {
-        const parsed = parseAIJSON(response);
+        const parsed = parseAIJSON(response) as AISchematic;
         if (parsed.nodes && parsed.edges) {
           const idMap: Record<string, string> = {};
-          const cleanNodes = parsed.nodes.map((n: any) => {
+          const cleanNodes = parsed.nodes.map((n: AINode) => {
             const newId = crypto.randomUUID();
             idMap[String(n.id)] = newId;
             
@@ -240,7 +275,7 @@ Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
             };
           });
 
-          const cleanEdges = parsed.edges.map((e: any) => {
+          const cleanEdges = parsed.edges.map((e: AIEdge) => {
             const srcId = idMap[String(e.source)] || e.source;
             const tgtId = idMap[String(e.target)] || e.target;
             
@@ -260,8 +295,10 @@ Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
         } else {
           throw new Error('JSON missing nodes or edges keys');
         }
-      } catch (e: any) {
-        setError(`Failed to parse AI response: ${e.message}. Raw reply printed below.`);
+      } catch (e) {
+        // By shape, not `instanceof Error`: this also catches whatever a
+        // malformed reply made the cleaning code throw.
+        setError(`Failed to parse AI response: ${(e as { message?: string })?.message}. Raw reply printed below.`);
         setAiResponse(response);
       }
     }
@@ -304,9 +341,9 @@ Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
     const response = await callModel(SYSTEM_INSTRUCTIONS, promptWithContext);
     if (response) {
       try {
-        const parsed = parseAIJSON(response);
+        const parsed = parseAIJSON(response) as AISchematic;
         if (parsed.nodes && parsed.edges) {
-          const cleanNodes = parsed.nodes.map((n: any) => {
+          const cleanNodes = parsed.nodes.map((n: AINode) => {
             const nodeType = n.type || 'resistor';
             return {
               id: n.id || crypto.randomUUID(),
@@ -319,7 +356,7 @@ Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
             };
           });
 
-          const cleanEdges = parsed.edges.map((e: any) => {
+          const cleanEdges = parsed.edges.map((e: AIEdge) => {
             return {
               id: e.id || crypto.randomUUID(),
               source: e.source,
@@ -336,8 +373,8 @@ Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
         } else {
           throw new Error('JSON missing nodes or edges keys');
         }
-      } catch (e: any) {
-        setError(`Failed to parse AI mutation response: ${e.message}. Raw response below.`);
+      } catch (e) {
+        setError(`Failed to parse AI mutation response: ${(e as { message?: string })?.message}. Raw response below.`);
         setAiResponse(response);
       }
     }

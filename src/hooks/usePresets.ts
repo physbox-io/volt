@@ -93,7 +93,7 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     nodes: nodes.map(n => ({ ...n, selected: false })),
     edges: edges.map(e => ({
       ...e,
-      data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined
+      data: e.data?.waypoints ? { waypoints: e.data.waypoints } : undefined
     })),
     // The board is milled with the trace width and clearance it was routed
     // for, so the CAM settings travel with the circuit rather than being

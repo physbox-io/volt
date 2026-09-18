@@ -8,6 +8,7 @@ import { getNodesBounds, getViewportForBounds, type Node, type Edge } from '@xyf
 import { toPng } from 'html-to-image';
 import { presets as builtinPresets } from '../utils/presets';
 import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey, loadMachiningSettings } from '../utils/storage';
+import type { NoteCard } from './useNoteCards';
 import { generatePcbLayout, type PcbOptions } from '../utils/pcbExporter';
 import { createVoltMachineHandlers, setCurrentCircuit } from '../utils/machineMcp';
 import {
@@ -21,13 +22,64 @@ import {
   type McuGeometryConfig,
 } from '../utils/mcuConfig';
 
+/**
+ * A command off the bridge socket, flattened.
+ *
+ * Every field any command takes, all optional — the same reading as
+ * `AnyNodeData`: the socket is a run-time dispatch on `cmd`, so there is no
+ * point at which the compiler knows which command's payload arrived. It is
+ * written down because the alternative was an `any` that made every one of the
+ * forty reads below unchecked, and a field renamed on the MCP server would
+ * arrive here as `undefined` in silence.
+ *
+ * The values are what the protocol says each field is, not what the socket
+ * guarantees: this is a JSON parse of whatever an agent sent, so the handlers
+ * keep their own `Array.isArray` and `typeof` checks. The fields left as
+ * `unknown` are the ones a handler validates before using.
+ */
+type BridgeCommand = {
+  cmd?: string;
+  /** The request envelope's own id, echoed back on the reply. */
+  id?: string | number;
+  nodeId?: string;
+  nodeIds?: unknown;
+  nodes?: Node[];
+  edges?: Edge[];
+  updates?: unknown;
+  presetKey?: string;
+  geometry?: unknown;
+  pins?: unknown;
+  code?: unknown;
+  label?: unknown;
+  values?: number[];
+  pwlData?: { t: number; v: number }[];
+  sampleRate?: number;
+  acCouple?: boolean;
+  normalize?: boolean;
+  voltageScale?: number;
+  name?: string;
+  key?: string;
+  recommendedSimLength?: number;
+  noteCard?: string;
+  noteCards?: NoteCard[];
+  runSim?: boolean;
+  options?: unknown;
+  component?: string;
+  includePads?: boolean;
+  includeTraces?: boolean;
+  view?: string;
+  padNumbers?: boolean;
+  pxPerMm?: number;
+  preset?: string;
+};
+
 interface BridgeProps {
   nodes: Node[];
   edges: Edge[];
   isSimulating: boolean;
   selectedPreset: string;
   probeMode: boolean;
-  runSimulation: (nodesOverride?: Node[]) => Promise<any>;
+  runSimulation: (nodesOverride?: Node[]) => Promise<unknown>;
   stopSimulation: () => void;
   resetSimulation: () => void;
   setProbeMode: (v: boolean) => void;
@@ -207,8 +259,11 @@ export function useMCPBridge(props: BridgeProps) {
         }));
 
       ws.onmessage = (evt) => {
-        let msg: any;
-        try { msg = JSON.parse(evt.data); } catch { return; }
+        // The one cast on the way in. What follows it is a JSON parse of
+        // whatever an agent sent, which is why each handler still checks the
+        // fields it is about to act on.
+        let msg: BridgeCommand;
+        try { msg = JSON.parse(evt.data) as BridgeCommand; } catch { return; }
         const { cmd, id } = msg;
         if (!cmd) return;
 
@@ -243,7 +298,7 @@ export function useMCPBridge(props: BridgeProps) {
      */
     const machineHandlers = createVoltMachineHandlers();
 
-    const handle = async (cmd: string, msg: any): Promise<unknown> => {
+    const handle = async (cmd: string, msg: BridgeCommand): Promise<unknown> => {
       const { nodes, edges, isSimulating, selectedPreset, probeMode,
               runSimulation, stopSimulation, resetSimulation, setProbeMode, setNodes, setEdges,
               loadPreset } = p.current;
@@ -600,14 +655,14 @@ export function useMCPBridge(props: BridgeProps) {
           const errors: string[] = [];
           const warnings: string[] = [];
 
-          const hasGround = targetNodes.some((n: any) => n.type === 'ground');
+          const hasGround = targetNodes.some(n => n.type === 'ground');
           if (!hasGround) {
             warnings.push('No Ground (GND) reference node found. SPICE simulations require at least one ground connection to prevent floating net errors.');
           }
 
-          const nodeMap = new Map<string, any>(targetNodes.map((n: any) => [n.id, n]));
+          const nodeMap = new Map<string, Node>(targetNodes.map(n => [n.id, n]));
 
-          targetEdges.forEach((e: any) => {
+          targetEdges.forEach(e => {
             if (!nodeMap.has(e.source)) {
               errors.push(`Edge ${e.id} references missing source node: ${e.source}`);
             }

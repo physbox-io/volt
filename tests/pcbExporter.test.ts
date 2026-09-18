@@ -196,7 +196,8 @@ describe('generateAirCutPerimeterGcode', () => {
     boardOriginMm: 5,
     boardWidthMm: 40,
     boardHeightMm: 30,
-  } as any;
+    // Only the board rectangle: profileToolpath reads nothing else off the layout.
+  } as unknown as PcbLayoutResult;
   const options = { ...DEFAULT_PCB_OPTIONS, safeZ: 2 };
 
   /** Every absolute Z the program commands while G90 is in force. */

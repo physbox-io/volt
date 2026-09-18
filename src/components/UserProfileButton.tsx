@@ -187,9 +187,13 @@ export const UserProfileButton: React.FC = () => {
       } else if (!res.is_admin) {
         setShowGuestModal(true);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Sign in failed:', err);
-      setLoginError(err?.message || 'Sign in failed. Please try again.');
+      // Read `message` by shape rather than through `instanceof Error`: what
+      // lands here is whatever the API client or Google's SDK rejected with,
+      // and neither of them promises an Error.
+      const message = (err as { message?: string } | null)?.message;
+      setLoginError(message || 'Sign in failed. Please try again.');
     } finally {
       setIsLoading(false);
     }

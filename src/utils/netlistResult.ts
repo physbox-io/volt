@@ -1,10 +1,12 @@
+import type { SpiceResult } from '../types/simulation';
+
 export interface NetlistResultIndex {
   timestamps_ms: number[];
   indexByName: Map<string, number>;
 }
 
 /** Builds a lookup index for a SPICE result so repeated `findNetGraph` calls (e.g. once per HIL slice) are O(1) instead of re-scanning `variableNames`. */
-export function buildNetlistResultIndex(result: any): NetlistResultIndex {
+export function buildNetlistResultIndex(result: SpiceResult | null | undefined): NetlistResultIndex {
   const timestamps_ms = (result?.data && result.data.length > 0 && result.data[0].values)
     ? result.data[0].values.map((t: number) => t * 1000)
     : [];
@@ -18,7 +20,7 @@ export function buildNetlistResultIndex(result: any): NetlistResultIndex {
 }
 
 /** Looks up a net's voltage series by name (handling ground '0' and the 'v(name)' variable naming convention). Pass a prebuilt `index` when calling repeatedly for the same result. */
-export function findNetGraph(result: any, netName: string, index?: NetlistResultIndex) {
+export function findNetGraph(result: SpiceResult | null | undefined, netName: string, index?: NetlistResultIndex) {
   if (!netName || !result) return null;
   const resultIndex = index ?? buildNetlistResultIndex(result);
   const search = netName.toLowerCase();

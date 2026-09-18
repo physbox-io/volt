@@ -1,7 +1,22 @@
 
-import { Simulation } from 'eecircuit-engine';
+import { Simulation, type ResultType } from 'eecircuit-engine';
+import { type Node, type Edge } from '@xyflow/react';
 import { generateSpiceNetlist } from './utils/spice.js';
 
+/**
+ * A transient run comes back as the real branch of the union. Naming it here
+ * keeps `data[i].values` a number[], which is what Math.max is spread over
+ * below — the complex branch's values are {real, img} pairs and would silently
+ * become NaN.
+ */
+type RealResult = Extract<ResultType, { dataType: 'real' }>;
+
+/*
+ * A netlist fixture, not a canvas one: the nodes carry no `position` and the
+ * edges no `id`, because the netlist generator keys everything off ids and
+ * handles and never reads either. Hence the cast through unknown — these are
+ * deliberately partial React Flow objects.
+ */
 const basicBlink = {
   nodes: [
     { id: 'sg1', type: 'signalgen', data: { label: 'SIGNALGEN', waveform: 'square', frequency: 1, amplitude: 5 } },
@@ -20,7 +35,7 @@ const basicBlink = {
 
 async function runTest() {
   console.log("Generating netlist...");
-  const { netlist, portToNet } = generateSpiceNetlist(basicBlink.nodes as any, basicBlink.edges as any);
+  const { netlist, portToNet } = generateSpiceNetlist(basicBlink.nodes as unknown as Node[], basicBlink.edges as unknown as Edge[]);
   console.log("Netlist generated:");
   console.log(netlist);
   console.log("Port to Net map:", portToNet);
@@ -32,14 +47,14 @@ async function runTest() {
     console.log("Engine initialized. Starting simulation...");
     
     // Set a timeout to avoid hanging forever
-    const timeoutPromise = new Promise((_, reject) => 
+    const timeoutPromise = new Promise<never>((_, reject) => 
       setTimeout(() => reject(new Error("Simulation timed out")), 10000)
     );
     
     engine.setNetList(netlist);
     const simPromise = engine.runSim();
     
-    const result = await Promise.race([simPromise, timeoutPromise]) as any;
+    const result = await Promise.race([simPromise, timeoutPromise]) as RealResult;
     console.log("Simulation completed successfully!");
     
     console.log(`Found ${result.numVariables} variables.`);

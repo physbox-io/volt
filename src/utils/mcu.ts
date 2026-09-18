@@ -9,13 +9,41 @@ export interface McuExecutionResult {
   logs: string[];
 }
 
+/**
+ * Everything a sketch carries from one slice of the run to the next.
+ *
+ * A slice does not restart the sketch: it resumes the generator where the last
+ * `sleep()` left it, with the pin modes, the last driven voltages and the clock
+ * still set. That is why this is handed back out and parked on the node rather
+ * than rebuilt — a state rebuilt each slice would make every `sleep()` in a
+ * sketch run forever and every output start again from 0V.
+ */
+export interface McuState {
+  mcuTimeMs: number;
+  simLengthMs: number;
+  inputWaveforms: Record<string, PWLPoint[]>;
+  logs: string[];
+  pinModes: Record<string, 'INPUT' | 'OUTPUT'>;
+  /** Last value driven onto each output, so the next slice starts from it. */
+  lastPinVals: Record<string, number>;
+  pwlOutputs: Record<string, PWLPoint[]>;
+  /** The compiled sketch, mid-run. `yield` hands back a sleep in ms. */
+  generator?: Generator<number, void, unknown>;
+  /** A sleep that ran past the end of a slice, and how much of it was served. */
+  pendingYield?: { duration: number; elapsed: number } | null;
+}
+
 export function executeMcuCode(
   code: string,
   simLengthSeconds: number,
   inputWaveforms: Record<string, PWLPoint[]>,
-  initialState?: any
-): McuExecutionResult & { newState: any } {
-  const state = initialState || {};
+  initialState?: unknown
+): McuExecutionResult & { newState: McuState } {
+  // `unknown` in, because what arrives is whatever was parked on the node last
+  // slice — out of a saved file or an MCP agent as easily as out of this
+  // function. The fields the rest of this body relies on are all filled in
+  // immediately below, which is what makes the assertion good.
+  const state = (initialState || {}) as McuState;
 
   // Setup execution context inside state to share with generator closures
   state.mcuTimeMs = 0;
@@ -122,8 +150,8 @@ export function executeMcuCode(
     wait: (_ms: number) => {},
     millis: () => state.mcuTimeMs,
     Serial: {
-      println: (msg: any) => state.logs.push(String(msg)),
-      print: (msg: any) => {
+      println: (msg: unknown) => state.logs.push(String(msg)),
+      print: (msg: unknown) => {
         if (state.logs.length === 0) state.logs.push("");
         state.logs[state.logs.length - 1] += String(msg);
       }
@@ -169,7 +197,7 @@ export function executeMcuCode(
      let res;
      try {
         res = state.generator.next();
-     } catch (e: any) {
+     } catch (e) {
         console.error("MCU Runtime Error:", e);
         state.logs.push("Runtime Error: " + String(e));
         break;

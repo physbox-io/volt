@@ -41,8 +41,13 @@ const AUTH_TOKEN_KEY = 'physbox_auth_token';
 const USER_KEY = 'physbox_user_profile';
 
 export function getApiBaseUrl(): string {
-  if (typeof window !== 'undefined' && (window as any).PHYSBOX_API_URL) {
-    return (window as any).PHYSBOX_API_URL;
+  // Set by the page that hosts the app, so it is a property of `window` that no
+  // .d.ts here declares. The `typeof` guard has to stay outside the read: this
+  // module is loaded in contexts with no `window` at all, where touching it is a
+  // ReferenceError rather than an undefined.
+  if (typeof window !== 'undefined') {
+    const override = (window as { PHYSBOX_API_URL?: string }).PHYSBOX_API_URL;
+    if (override) return override;
   }
   if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
     return 'http://localhost:3000';
@@ -210,7 +215,7 @@ export async function fetchCurrentUser(): Promise<PhysBoxUser | null> {
   }
 }
 
-export async function syncCloudParameters(appId: string, parameters: Record<string, any>): Promise<boolean> {
+export async function syncCloudParameters(appId: string, parameters: Record<string, unknown>): Promise<boolean> {
   if (!getStoredAuthToken()) return false;
   try {
     await request('/api/parameters', {
@@ -224,10 +229,10 @@ export async function syncCloudParameters(appId: string, parameters: Record<stri
   }
 }
 
-export async function fetchCloudParameters(appId: string): Promise<Record<string, any>> {
+export async function fetchCloudParameters(appId: string): Promise<Record<string, unknown>> {
   if (!getStoredAuthToken()) return {};
   try {
-    const res = await request<{ parameters: Record<string, any> }>(`/api/parameters?app_id=${encodeURIComponent(appId)}`);
+    const res = await request<{ parameters: Record<string, unknown> }>(`/api/parameters?app_id=${encodeURIComponent(appId)}`);
     return res.parameters || {};
   } catch (err) {
     console.warn('[PhysBox Cloud] Could not fetch parameters:', err);
@@ -235,7 +240,7 @@ export async function fetchCloudParameters(appId: string): Promise<Record<string
   }
 }
 
-export async function syncCloudPreset(appId: string, name: string, data: any, id?: string): Promise<string | null> {
+export async function syncCloudPreset(appId: string, name: string, data: unknown, id?: string): Promise<string | null> {
   if (!getStoredAuthToken()) return null;
   try {
     const res = await request<{ id: string }>('/api/presets', {
@@ -249,10 +254,22 @@ export async function syncCloudPreset(appId: string, name: string, data: any, id
   }
 }
 
-export async function fetchCloudPresets(appId: string): Promise<any[]> {
+/**
+ * A preset row as the account holds it: the server's own id and name, with
+ * whatever the app posted under `data`. `data` stays `unknown` because this
+ * module is shared by apps that each save a different shape into it — the
+ * caller is the only side that knows which one it asked for.
+ */
+export interface CloudPresetRecord {
+  id?: string;
+  name?: string;
+  data?: unknown;
+}
+
+export async function fetchCloudPresets(appId: string): Promise<CloudPresetRecord[]> {
   if (!getStoredAuthToken()) return [];
   try {
-    const res = await request<{ presets: any[] }>(`/api/presets?app_id=${encodeURIComponent(appId)}`);
+    const res = await request<{ presets: CloudPresetRecord[] }>(`/api/presets?app_id=${encodeURIComponent(appId)}`);
     return res.presets || [];
   } catch (err) {
     console.warn('[PhysBox Cloud] Failed to load cloud presets:', err);

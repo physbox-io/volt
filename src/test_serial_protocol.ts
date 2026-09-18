@@ -14,6 +14,9 @@ function check(name: string, cond: boolean, detail = '') {
   console.log(`${cond ? '  ok  ' : '!!FAIL'} ${name}${cond ? '' : `  ${detail}`}`);
 }
 
+/** A thrown value is only an Error by convention, so read the message as one. */
+const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
 const GRBL_BUFFER = 128;
 
 /** Reports between WCO lines, matching GRBL's own 10-30 report cadence. */
@@ -260,7 +263,9 @@ class FakeGrbl {
 let fake: FakeGrbl;
 function installFake(opts: FakeGrblOptions = {}) {
   fake = new FakeGrbl(opts);
-  (globalThis as any).navigator = {
+  // The DOM's own Navigator is far more than this, so the shim is reached
+  // through unknown rather than pretending to be one.
+  (globalThis as unknown as { navigator: { serial: unknown } }).navigator = {
     serial: {
       requestPort: async () => ({
         open: async () => {},
@@ -278,8 +283,13 @@ installFake();
 // The work origin is remembered in localStorage, which node does not have.
 // The shim is also what lets a "reopened tab" be simulated below: what survives
 // the reload is exactly what is left in here.
+type LocalStorageShim = {
+  getItem(k: string): string | null;
+  setItem(k: string, v: string): void;
+  removeItem(k: string): void;
+};
 const store = new Map<string, string>();
-(globalThis as any).localStorage = {
+(globalThis as { localStorage?: LocalStorageShim }).localStorage = {
   getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
   setItem: (k: string, v: string) => void store.set(k, String(v)),
   removeItem: (k: string) => void store.delete(k),
@@ -412,8 +422,8 @@ await reconnect({ surface: x => 0.01 * x });
 let biasError = '';
 try {
   await webSerialManager.probeSurfaceMesh({ minX: 0, minY: 0, maxX: 60, maxY: 40, cols: 3, rows: 3 });
-} catch (e: any) {
-  biasError = e?.message ?? '';
+} catch (e) {
+  biasError = e instanceof Error ? e.message : '';
 }
 check('a map far off Z0 is refused', /work Z0/i.test(biasError), biasError || 'no error thrown');
 
@@ -691,8 +701,8 @@ const cutsBefore = fake.received.filter(l => l === 'G1 X1.000').length;
 let refused = '';
 try {
   await webSerialManager.resumeJob();
-} catch (e: any) {
-  refused = e.message;
+} catch (e) {
+  refused = messageOf(e);
 }
 check('resuming a bit change without re-zeroing is refused', refused.includes('re-zeroed'), refused || '(allowed)');
 check('and the job is still sitting at the pause', webSerialManager.getState().status === 'PAUSED_TOOL', webSerialManager.getState().status);
@@ -766,8 +776,8 @@ await webSerialManager.resumeJob();
 let restartErr = '';
 try {
   await webSerialManager.restartCurrentLayer();
-} catch (e: any) {
-  restartErr = e.message;
+} catch (e) {
+  restartErr = messageOf(e);
 }
 check('a real fault is not silently unlocked', !fake.received.includes('$X'), fake.received.slice(-4).join(' | '));
 check('a real fault stops the job', restartErr.includes('position'), restartErr || '(no error)');
@@ -780,8 +790,8 @@ await webSerialManager.resumeJob();
 let driftErr = '';
 try {
   await webSerialManager.restartCurrentLayer();
-} catch (e: any) {
-  driftErr = e.message;
+} catch (e) {
+  driftErr = messageOf(e);
 }
 check('silent position loss is caught', driftErr.includes('lost'), driftErr || '(no error)');
 check('and the job is not left running', webSerialManager.getState().status !== 'RUNNING', webSerialManager.getState().status);
@@ -791,8 +801,8 @@ await reconnect({ probeMisses: true });
 let probeErr = '';
 try {
   await webSerialManager.probeSurfaceMesh({ minX: 0, minY: 0, maxX: 60, maxY: 40 });
-} catch (e: any) {
-  probeErr = e.message;
+} catch (e) {
+  probeErr = messageOf(e);
 }
 check('missed probe throws', probeErr.includes('contact'), probeErr || '(no error)');
 check('machine returns to idle after a failed probe', webSerialManager.getState().status === 'IDLE', webSerialManager.getState().status);

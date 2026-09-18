@@ -16,6 +16,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Node, Edge } from '@xyflow/react';
+import type { RawNodeData } from '../types/nodes';
 import {
   resolveFootprint,
   generateJumperFootprint,
@@ -357,7 +358,7 @@ export interface PlacedComponent {
   footprint: ComponentFootprint;
   widthMm: number;           // Courtyard after rotation
   heightMm: number;
-  data?: any;
+  data?: RawNodeData;
 }
 
 export interface PlacedPad {
@@ -573,7 +574,7 @@ interface PlacementInput {
   footprint: ComponentFootprint;
   widthMm: number;
   heightMm: number;
-  data?: any;
+  data?: RawNodeData;
 }
 
 /**

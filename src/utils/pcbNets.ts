@@ -15,6 +15,7 @@ import type { Node, Edge } from '@xyflow/react';
 import { buildPortAdjacency } from './graphTopology';
 import type { ComponentFootprint } from './pcbFootprints';
 import { getEffectiveMcuConfig } from './mcuConfig';
+import type { RawNodeData } from '../types/nodes';
 
 /** What a schematic symbol becomes on the physical board. */
 export type NodeRole =
@@ -289,7 +290,7 @@ export function resolveHandleToPin(
   nodeType: string | undefined,
   handleId: string,
   footprint: ComponentFootprint,
-  customNodeData?: any
+  customNodeData?: RawNodeData
 ): PinMapping | undefined {
   const pads = footprint.pads;
   if (pads.length === 0) return undefined;
@@ -314,7 +315,7 @@ export function resolveHandleToPin(
   if (type === 'mcu') {
     const mcuConfig = getEffectiveMcuConfig(customNodeData);
     const mcuPins = mcuConfig.pins;
-    const pinIdx = mcuPins.findIndex((p: any) =>
+    const pinIdx = mcuPins.findIndex(p =>
       p.id.toLowerCase() === handle.toLowerCase() || (p.label && p.label.toLowerCase() === handle.toLowerCase())
     );
     if (pinIdx >= 0) {

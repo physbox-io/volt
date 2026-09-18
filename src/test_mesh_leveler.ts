@@ -7,6 +7,7 @@ import {
   warpGcode,
   findUnwarpableCommands,
   type ProbePoint,
+  type ProbeGrid,
 } from './utils/meshLeveler';
 
 let fails = 0;
@@ -81,7 +82,9 @@ check('clean gcode reports nothing', findUnwarpableCommands('G1 X10 Y10 Z-0.08')
 
 // --- 4. Degenerate input ---------------------------------------------------
 check('rejects a 1-row mesh', gridFromPoints([[{ x: 0, y: 0, z: 0 }]]) === null);
-check('warp with no grid is a no-op', warpGcode('G1 X10', null as any) === 'G1 X10');
+// warpGcode guards a missing grid at runtime (`!grid?.points?.length`) but its
+// signature does not admit null, so the null this asserts on has to be cast in.
+check('warp with no grid is a no-op', warpGcode('G1 X10', null as unknown as ProbeGrid) === 'G1 X10');
 
 // --- 5. A map has to be referenced to the plane the job is cut against -----
 //

@@ -192,7 +192,7 @@ async function probeBoardSurface(args: Record<string, unknown>): Promise<unknown
  */
 export function createVoltMachineHandlers(): Record<
   string,
-  (args: Record<string, any>) => Promise<unknown>
+  (args: Record<string, unknown>) => Promise<unknown>
 > {
   const shared = createMachineHandlers({
     machine: webSerialManager,
@@ -236,13 +236,17 @@ export function createVoltMachineHandlers(): Record<
      * copper, and passing the wrong thickness — or none — puts every cut in the
      * job out by that difference.
      */
-    MACHINE_ZERO_Z: async (args: Record<string, any>) => {
+    MACHINE_ZERO_Z: async (args: Record<string, unknown>) => {
       machineArming.requireArmed('zero_z');
       machineArming.noteAgentCommand('zero_z', args.touchPlateMm ? `plate=${args.touchPlateMm}` : 'on surface');
+      // Passed through as sent rather than re-checked: a non-number here is a
+      // malformed request, and quietly reading it as 0 would put the whole job
+      // out by the plate thickness instead of failing where it can be seen.
+      const surfaceOffsetMm = (args.surfaceOffsetMm ?? 0) as number;
       if (typeof args.touchPlateMm === 'number') {
-        await webSerialManager.zeroZ(args.touchPlateMm, args.surfaceOffsetMm ?? 0);
+        await webSerialManager.zeroZ(args.touchPlateMm, surfaceOffsetMm);
       } else {
-        await webSerialManager.zeroZOnSurface(args.surfaceOffsetMm ?? 0);
+        await webSerialManager.zeroZOnSurface(surfaceOffsetMm);
       }
       await webSerialManager.refreshPosition();
       return {
@@ -253,7 +257,7 @@ export function createVoltMachineHandlers(): Record<
       };
     },
 
-    MACHINE_PROBE_SURFACE: async (args: Record<string, any>) => {
+    MACHINE_PROBE_SURFACE: async (args: Record<string, unknown>) => {
       machineArming.requireArmed('probe_surface');
       machineArming.noteAgentCommand('probe_surface');
       return probeBoardSurface(args);

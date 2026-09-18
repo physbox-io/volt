@@ -13,8 +13,12 @@ class MemoryStorage {
   removeItem(k: string) { this.map.delete(k); }
   clear() { this.map.clear(); }
 }
-(globalThis as any).localStorage = new MemoryStorage();
-(globalThis as any).window = { dispatchEvent: () => true };
+// Both are reached through unknown: the shims are only the members the code
+// under test touches, not the whole Storage and Window interfaces.
+(globalThis as unknown as { localStorage: MemoryStorage }).localStorage = new MemoryStorage();
+(globalThis as unknown as { window: { dispatchEvent: (event: Event) => boolean } }).window = {
+  dispatchEvent: () => true,
+};
 
 // The module uploads through cloudSync on every save; the merge rule under test
 // is purely local, so the network half is stubbed out.
@@ -28,7 +32,7 @@ import { addUserPreset, mergePulledPresets, loadUserPresets, nameToKey, type Cir
 
 const preset = (label: string, savedAt?: number): CircuitPreset => ({
   name: label,
-  nodes: [{ id: label, type: 'resistor', position: { x: 0, y: 0 }, data: {} }] as any,
+  nodes: [{ id: label, type: 'resistor', position: { x: 0, y: 0 }, data: {} }],
   edges: [],
   ...(savedAt === undefined ? {} : { savedAt }),
 });

@@ -13,13 +13,13 @@ import {
 } from './utils/pcbExporter.js';
 import { suggestProbeGrid } from './utils/meshLeveler.js';
 
-function assert(condition: any, message?: string) {
+function assert(condition: unknown, message?: string) {
   if (!condition) {
     throw new Error(message || 'Assertion failed');
   }
 }
 
-function assertStrictEqual(actual: any, expected: any, message?: string) {
+function assertStrictEqual(actual: unknown, expected: unknown, message?: string) {
   if (actual !== expected) {
     throw new Error(`${message}: expected ${expected}, got ${actual}`);
   }

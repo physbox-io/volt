@@ -1,3 +1,5 @@
+import type { RawNodeData } from '../types/nodes';
+
 export type McuPinType = 'io' | 'digital' | 'analog' | 'power' | 'ground';
 export type McuPinSide = 'left' | 'right' | 'top' | 'bottom';
 
@@ -642,7 +644,7 @@ export const MCU_PRESETS: McuPreset[] = [
 /**
  * Returns the effective McuGeometryConfig for a node, resolving any defaults.
  */
-export function getEffectiveMcuConfig(data?: any): McuGeometryConfig {
+export function getEffectiveMcuConfig(data?: RawNodeData): McuGeometryConfig {
   if (!data || !data.mcuConfig) {
     return DEFAULT_MCU_CONFIG;
   }

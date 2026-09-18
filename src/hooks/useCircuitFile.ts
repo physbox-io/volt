@@ -31,8 +31,8 @@ export function useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulatio
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
-    input.onchange = (e: any) => {
-      const file = e.target.files[0];
+    input.onchange = () => {
+      const file = input.files?.[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (e) => {

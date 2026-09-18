@@ -32,7 +32,9 @@ class MemoryStorage {
   }
 }
 const storage = new MemoryStorage();
-(globalThis as any).localStorage = storage;
+// Reached through unknown because the shim is only the four methods under
+// test, not the whole Storage interface.
+(globalThis as unknown as { localStorage: MemoryStorage }).localStorage = storage;
 
 // Telemetry is a network post on every state change and says nothing about the
 // rules under test.

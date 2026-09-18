@@ -544,6 +544,7 @@ import {
   type McuGeometryConfig,
   type McuPinDef,
 } from './mcuConfig';
+import type { RawNodeData } from '../types/nodes';
 
 export function generateHeaderFootprint(pinCount: number, pitch = 2.54): ComponentFootprint {
   const count = Math.max(1, pinCount);
@@ -1851,11 +1852,21 @@ function buildSpecialPackage(packageId: string): ComponentFootprint | null {
   return null;
 }
 
+/**
+ * Reads a dimension off a node's data bag the way the generators below already
+ * read it: every one of them puts its argument through `Math.max`, which did
+ * this conversion implicitly while this parameter was `any`. `undefined` is
+ * carried through rather than turned into NaN, because that is what lets each
+ * generator's own default apply.
+ */
+const optNum = (v: unknown): number | undefined => (v === undefined ? undefined : Number(v));
+const num = (v: unknown): number => Number(v);
+
 export function resolveFootprint(
   packageId?: string,
   componentType?: string,
   pinCount = 2,
-  customData?: any
+  customData?: RawNodeData
 ): ComponentFootprint {
   const type = (componentType || '').toLowerCase();
 
@@ -1869,28 +1880,31 @@ export function resolveFootprint(
   // Mechanical and connector-only parts are fully described by their own data,
   // so they resolve before any packageId or mcuConfig handling.
   if (type === 'pinheader') {
-    const rows = Math.max(1, Math.round(customData?.rows ?? 1));
-    const cols = Math.max(1, Math.round(customData?.cols ?? 8));
+    const rows = Math.max(1, Math.round(num(customData?.rows ?? 1)));
+    const cols = Math.max(1, Math.round(num(customData?.cols ?? 8)));
     return generateMatrixHeaderFootprint(
       cols,
       rows,
-      customData?.pitchMm ?? 2.54,
-      customData?.rowSpacingMm ?? customData?.pitchMm ?? 2.54
+      num(customData?.pitchMm ?? 2.54),
+      num(customData?.rowSpacingMm ?? customData?.pitchMm ?? 2.54)
     );
   }
   if (type === 'via') {
-    return generateViaFootprint(customData?.drillDiameterMm, customData?.padDiameterMm);
+    return generateViaFootprint(optNum(customData?.drillDiameterMm), optNum(customData?.padDiameterMm));
   }
   if (type === 'mountinghole') {
-    return generateMountingHoleFootprint(customData?.holeDiameterMm, customData?.keepoutDiameterMm);
+    return generateMountingHoleFootprint(
+      optNum(customData?.holeDiameterMm),
+      optNum(customData?.keepoutDiameterMm)
+    );
   }
   if (type === 'jumper') {
-    return generateJumperFootprint(customData?.pitchMm, customData?.drillDiameterMm);
+    return generateJumperFootprint(optNum(customData?.pitchMm), optNum(customData?.drillDiameterMm));
   }
   if (type === 'cutout') {
     const shape = customData?.cutoutShape === 'circle' ? 'circle' : 'rect';
-    const w = Math.max(1, customData?.cutoutWidthMm ?? 10);
-    const h = shape === 'circle' ? w : Math.max(1, customData?.cutoutHeightMm ?? 6);
+    const w = Math.max(1, num(customData?.cutoutWidthMm ?? 10));
+    const h = shape === 'circle' ? w : Math.max(1, num(customData?.cutoutHeightMm ?? 6));
     return generateCutoutFootprint(w, h);
   }
 

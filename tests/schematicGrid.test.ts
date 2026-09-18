@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { presets } from '../src/utils/presets';
+import { type Node } from '@xyflow/react';
 
 const NODE_DIR = 'src/components/nodes';
 const SNAP = 4;
@@ -65,24 +66,24 @@ describe('preset pins line up', () => {
   };
 
   /** A part drawn on end takes its leads top and bottom rather than side to side. */
-  const onEnd = (n: any) => ['vertical', 'up', 'down'].includes(n.data?.orientation);
+  const onEnd = (n: Node) => ['vertical', 'up', 'down'].includes(String(n.data?.orientation));
 
-  const centreY = (n: any): number | null => {
+  const centreY = (n: Node): number | null => {
     const e = H[n.type as string];
     if (!e) return null; // content-sized card: its height is not knowable here
-    const vertical = ['vertical', 'up', 'down'].includes(n.data?.orientation);
+    const vertical = ['vertical', 'up', 'down'].includes(String(n.data?.orientation));
     return n.position.y + (vertical ? e[1] : e[0]) / 2;
   };
 
   it.each(Object.keys(presets).filter(k => (presets[k].nodes ?? []).length > 0))(
     '%s has no pin pair a hair out of line',
     key => {
-      const p: any = presets[key];
-      const byId = new Map((p.nodes ?? []).map((n: any) => [n.id, n]));
+      const p = presets[key];
+      const byId = new Map((p.nodes ?? []).map((n): [string, Node] => [n.id, n]));
       const offenders: string[] = [];
       for (const e of p.edges ?? []) {
-        const a: any = byId.get(e.source);
-        const b: any = byId.get(e.target);
+        const a = byId.get(e.source);
+        const b = byId.get(e.target);
         if (!a || !b) continue;
         const ya = centreY(a);
         const yb = centreY(b);
@@ -102,10 +103,10 @@ describe('preset pins line up', () => {
        * to double back on itself first, which reads as a kink against the symbol.
        */
       for (const e of p.edges ?? []) {
-        const a: any = byId.get(e.source);
-        const b: any = byId.get(e.target);
+        const a = byId.get(e.source);
+        const b = byId.get(e.target);
         if (!a || !b || e.sourceHandle === 'gnd' || e.targetHandle === 'gnd') continue;
-        for (const [side, end] of [[a, b], [b, a]] as [any, any][]) {
+        for (const [side, end] of [[a, b], [b, a]] as [Node, Node][]) {
           if (onEnd(side) || !onEnd(end)) continue;
           const sideH = H[side.type as string];
           if (sideH === undefined || H[end.type as string] === undefined) continue;

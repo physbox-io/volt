@@ -1,5 +1,8 @@
+import type { SpiceResult } from '../types/simulation';
+
 export interface CachedHILSliceResult {
-  result: any;
+  /** The SPICE run for the slice, carried verbatim and handed straight back. */
+  result: SpiceResult;
   portToNet: Record<string, string>;
   nextICs: Record<string, number>;
   outputs: Record<string, [number, number][]>;
