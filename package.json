@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@physbox-io/machining": "^0.3.4",
-    "@physbox-io/ui": "^0.2.0",
+    "@physbox-io/ui": "^0.2.1",
     "@tailwindcss/vite": "^4.2.4",
     "@types/clipper-lib": "^6.4.0",
     "@xyflow/react": "^12.10.2",
@@ -23,7 +23,6 @@
     "html-to-image": "^1.11.13",
     "jszip": "^3.10.1",
     "lucide-react": "^1.14.0",
-    "puppeteer": "^24.42.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "reactflow": "^11.11.4",

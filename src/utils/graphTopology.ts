@@ -119,7 +119,7 @@ export function mergeOverlappingNodesAndJunctions(
     if (otherJunc) {
       // Merge junc into otherJunc
       updatedEdges = updatedEdges.map(edge => {
-        let updated = { ...edge };
+        const updated = { ...edge };
         if (edge.source === junc.id) {
           updated.source = otherJunc.id;
           updated.sourceHandle = 'out';
@@ -147,7 +147,7 @@ export function mergeOverlappingNodesAndJunctions(
         if (Math.hypot(coord.x - junc.position.x, coord.y - junc.position.y) < 12) {
           // Merge junction junc into this handle
           updatedEdges = updatedEdges.map(edge => {
-            let updated = { ...edge };
+            const updated = { ...edge };
             if (edge.source === junc.id) {
               updated.source = node.id;
               updated.sourceHandle = handle;
@@ -178,7 +178,7 @@ export function mergeOverlappingNodesAndJunctions(
     );
     if (otherG) {
       updatedEdges = updatedEdges.map(edge => {
-        let updated = { ...edge };
+        const updated = { ...edge };
         if (edge.source === g.id) {
           updated.source = otherG.id;
         }
@@ -200,7 +200,7 @@ export function splitEdgesOnOverlappingNodes(
   edges: Edge[],
   renderedPaths?: Record<string, { x: number; y: number }[]>
 ): { nodes: Node[], edges: Edge[] } {
-  let updatedNodes = [...nodes];
+  const updatedNodes = [...nodes];
   let updatedEdges = [...edges];
 
   const connectableNodes = updatedNodes.filter(n => n.type === 'junction' || n.type === 'ground');

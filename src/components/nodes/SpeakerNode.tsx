@@ -120,7 +120,8 @@ export function SpeakerNode({ data }: any) {
       source.start();
       
       return () => {
-        try { source.stop(); } catch (e) {}
+        // Stopping a source that already ended throws; nothing to do about it.
+        try { source.stop(); } catch { /* already stopped */ }
       };
     }
   }, [data.voltageData, data.acCouple, data.normalize, data.voltageScale, data.outputTarget]);

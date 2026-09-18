@@ -35,8 +35,8 @@ const parseAIJSON = (text: string): any => {
   if (matchBlock && matchBlock[1]) {
     try {
       return JSON.parse(cleanJSONString(matchBlock[1].trim()));
-    } catch (e) {
-      // fallback
+    } catch {
+      // Not JSON after all — fall through to the next way of finding it.
     }
   }
 
@@ -46,7 +46,9 @@ const parseAIJSON = (text: string): any => {
   if (matchGeneric && matchGeneric[1]) {
     try {
       return JSON.parse(cleanJSONString(matchGeneric[1].trim()));
-    } catch (e) {}
+    } catch {
+      // Not JSON after all — fall through to the next way of finding it.
+    }
   }
 
   // 3. Fallback to extracting between first '{' and last '}'
@@ -57,8 +59,8 @@ const parseAIJSON = (text: string): any => {
       const candidate = text.substring(index, lastBrace + 1);
       try {
         return JSON.parse(cleanJSONString(candidate.trim()));
-      } catch (e) {
-        // try next index
+      } catch {
+        // Not JSON from this brace. Try the next one along.
       }
     }
     index = text.indexOf('{', index + 1);

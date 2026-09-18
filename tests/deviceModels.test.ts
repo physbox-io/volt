@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Node, Edge } from '@xyflow/react';
+import type { Node } from '@xyflow/react';
 import { generateSpiceNetlist } from '../src/utils/spice';
 import {
   BJT_NPN_MODELS,

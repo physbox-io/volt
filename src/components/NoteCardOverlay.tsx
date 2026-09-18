@@ -1,7 +1,9 @@
 import { useRef } from 'react';
 import { FileText, Edit3, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { sanitizeNoteUrl } from '@physbox-io/ui';
 
-// Simple robust markdown parser to convert basic markdown text to safe HTML
+// Markdown for a note card. Headings, emphasis, code, links and bullets;
+// nothing else, because a note card is a label rather than a document.
 function parseNoteMarkdown(md: string): string {
   if (!md) return '';
   let html = md.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -11,8 +13,17 @@ function parseNoteMarkdown(md: string): string {
   html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-slate-900 dark:text-slate-100">$1</strong>');
   html = html.replace(/\*(.*?)\*/g, '<em class="italic text-slate-700 dark:text-slate-300">$1</em>');
   html = html.replace(/`(.*?)`/g, '<code class="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[10px] font-mono text-pink-600 dark:text-pink-400">$1</code>');
-  html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-emerald-600 dark:text-emerald-400 hover:underline">$1</a>');
-  html = html.replace(/^\s*-\s+(.*$)/gim, '<li class="ml-4 list-disc text-slate-650 dark:text-slate-300 text-xs mb-0.5">$1</li>');
+  // A link is the one place a note card's text reaches an HTML attribute, so
+  // what may become an href is decided in @physbox-io/ui and shared with the
+  // other apps. Anything else is left on the page as the text it was written
+  // as, rather than becoming an anchor nobody can see the target of.
+  html = html.replace(/\[(.*?)\]\((.*?)\)/g, (whole, label: string, url: string) => {
+    const href = sanitizeNoteUrl(url);
+    return href
+      ? `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-emerald-600 dark:text-emerald-400 hover:underline">${label}</a>`
+      : whole;
+  });
+  html = html.replace(/^\s*-\s+(.*$)/gim, '<li class="ml-4 list-disc text-slate-600 dark:text-slate-300 text-xs mb-0.5">$1</li>');
   html = html.split('\n').map(line => {
     const t = line.trim();
     if (t.startsWith('<h') || t.startsWith('<li') || t === '') return line;
@@ -105,7 +116,7 @@ export function NoteCardOverlay({ card, isEditing, onToggleEdit, onToggleMinimiz
             />
           ) : (
             <div
-              className="prose-sm dark:prose-invert max-h-64 overflow-y-auto text-slate-700 dark:text-slate-300 font-normal text-slate-650 dark:text-slate-400 leading-normal"
+              className="prose-sm dark:prose-invert max-h-64 overflow-y-auto text-slate-700 dark:text-slate-300 font-normal text-slate-600 dark:text-slate-400 leading-normal"
               dangerouslySetInnerHTML={{ __html: parseNoteMarkdown(card.markdown) }}
             />
           )}

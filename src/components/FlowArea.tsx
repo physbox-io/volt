@@ -269,9 +269,10 @@ export function FlowArea({
 
     if (!connectingStartRef.current) return;
 
-    // Get drop point screen coordinates
-    let clientX = 0;
-    let clientY = 0;
+    // Where the drop landed, in screen coordinates. Declared without the 0s
+    // they never kept: every branch below either assigns both or returns.
+    let clientX: number;
+    let clientY: number;
     if (event.clientX !== undefined) {
       clientX = event.clientX;
       clientY = event.clientY;

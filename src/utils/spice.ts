@@ -7,7 +7,7 @@ import { resolveBjtParams, resolveMosfetParams, resolveOpAmpParams } from './dev
  *  e.g. '47kΩ' → '47k', '10µF' → '10uF' */
 export function sanitizeSpiceValue(val: string): string {
   // 1. Replace symbols
-  let cleaned = val.replace(/Ω/g, '').replace(/µ/g, 'u').trim();
+  const cleaned = val.replace(/Ω/g, '').replace(/µ/g, 'u').trim();
   // 2. Extract leading numeric part with potential SI suffix (e.g. 10k, 4.7, 100u, 5V)
   const match = cleaned.match(/^([-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?[a-zA-Z]*)/);
   if (match) return match[1];
@@ -48,8 +48,8 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
     const sourcePort = `${edge.source}-${edge.sourceHandle || 'out'}`;
     const targetPort = `${edge.target}-${edge.targetHandle || 'in'}`;
     
-    let sourceNet = portToNet[sourcePort];
-    let targetNet = portToNet[targetPort];
+    const sourceNet = portToNet[sourcePort];
+    const targetNet = portToNet[targetPort];
 
     if (!sourceNet && !targetNet) {
       const netId = `N${netIdCounter++}`;

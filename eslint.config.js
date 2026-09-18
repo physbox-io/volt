@@ -18,5 +18,19 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // A leading underscore is how this codebase says "required here, and
+      // deliberately not used" — a parameter a signature forces on an
+      // implementation, or a field destructured off an object to drop it.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+          caughtErrors: 'all',
+        },
+      ],
+    },
   },
 ])

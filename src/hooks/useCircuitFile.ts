@@ -45,7 +45,9 @@ export function useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulatio
           } else {
             alert('Invalid circuit JSON format. Must contain "nodes" and "edges" arrays.');
           }
-        } catch (err) {
+        } catch {
+          // The reason is never useful to whoever picked the file: it is
+          // either not JSON or not a circuit, and both read the same to them.
           alert('Failed to parse JSON file');
         }
       };

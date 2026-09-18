@@ -446,7 +446,7 @@ check('Z zero is confirmed on the copper', webSerialManager.getState().zeroZConf
 // --- 2. Probe the mesh the modal would probe -------------------------------
 
 const grid0 = suggestProbeGrid(layout.boardWidthMm, layout.boardHeightMm, 4, 8);
-let heightmap: ProbeGrid = await webSerialManager.probeSurfaceMesh({
+const heightmap: ProbeGrid = await webSerialManager.probeSurfaceMesh({
   minX: layout.boardOriginMm,
   minY: layout.boardOriginMm,
   maxX: layout.boardOriginMm + layout.boardWidthMm,

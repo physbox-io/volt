@@ -1,4 +1,12 @@
-import { BaseEdge, type EdgeProps, getSmoothStepPath, useReactFlow } from '@xyflow/react';
+import {
+  BaseEdge,
+  type Edge,
+  Position,
+  type EdgeProps,
+  type Node,
+  getSmoothStepPath,
+  useReactFlow,
+} from '@xyflow/react';
 import { useEffect, useState, createContext, useContext, useMemo, useCallback, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../utils/playbackTicker';
 import { getHandleCoord } from '../utils/nodeGeometry';
@@ -24,7 +32,7 @@ export const EdgePathContext = createContext<{
   setHoveredEdgeId: (id: string | null) => void;
 } | null>(null);
 
-export function EdgePathProvider({ children }: { children: React.ReactNode; edges?: any[] }) {
+export function EdgePathProvider({ children }: { children: React.ReactNode; edges?: Edge[] }) {
   const [paths, setPaths] = useState<Record<string, {x: number; y: number}[]>>({});
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
 
@@ -59,7 +67,7 @@ export function EdgePathProvider({ children }: { children: React.ReactNode; edge
   );
 }
 
-export function getNodeDimensions(type: string, data: any) {
+export function getNodeDimensions(type: string, data: Node['data'] | undefined) {
   const orientation = data?.orientation || 'horizontal';
   const isHorizontal = orientation === 'horizontal' || orientation === 'left';
 
@@ -754,15 +762,15 @@ export function getSchematicPath({
   targetY: number;
   targetPosition: string;
   sourceOffset?: number;
-  allEdges?: any[];
+  allEdges?: Edge[];
   edgeId?: string;
-  nodes?: any[];
+  nodes?: Node[];
   sourceId?: string;
   targetId?: string;
   otherEdgesPaths?: Record<string, Point[]>;
   sourceIndex?: number;
   targetIndex?: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }) {
   // Try obstacle-avoiding A* router first
   if (nodes && nodes.length > 0) {
@@ -778,8 +786,8 @@ export function getSchematicPath({
     // shrunk enough that a wire terminating on the boundary pin still passes.
     const PIN_INSET = 5;
     const spanObstacles: Obstacle[] = nodes
-      .filter((n: any) => n.type !== 'junction')
-      .map((n: any) => {
+      .filter((n: Node) => n.type !== 'junction')
+      .map((n: Node) => {
         const w = n.measured?.width || getNodeDimensions(n.type, n.data).width;
         const h = n.measured?.height || getNodeDimensions(n.type, n.data).height;
         const own = n.id === sourceId || n.id === targetId;
@@ -798,8 +806,8 @@ export function getSchematicPath({
     // an 8px lead — a dog-leg around every junction that sits on a vertical
     // wire. Neutralize the direction and pin the endpoint exactly on the dot
     // (React Flow reports the handle center half a px off the 1px node).
-    const srcJunction = nodes.find((n: any) => n.id === sourceId && n.type === 'junction');
-    const tgtJunction = nodes.find((n: any) => n.id === targetId && n.type === 'junction');
+    const srcJunction = nodes.find((n: Node) => n.id === sourceId && n.type === 'junction');
+    const tgtJunction = nodes.find((n: Node) => n.id === targetId && n.type === 'junction');
     const srcPos = srcJunction ? 'none' : sourcePosition;
     const tgtPos = tgtJunction ? 'none' : targetPosition;
     if (srcJunction) sp = { x: srcJunction.position.x, y: srcJunction.position.y };
@@ -841,8 +849,8 @@ export function getSchematicPath({
     // leaving a pin sideways had to hop 4px around its own component's
     // inflated box and back — a signature micro-zigzag at almost every pin.
     const obstacles: Obstacle[] = nodes
-      .filter((n: any) => n.type !== 'junction')
-      .map((n: any) => {
+      .filter((n: Node) => n.type !== 'junction')
+      .map((n: Node) => {
         const w = n.measured?.width || getNodeDimensions(n.type, n.data).width;
         const h = n.measured?.height || getNodeDimensions(n.type, n.data).height;
         const own = n.id === sourceId || n.id === targetId;
@@ -859,7 +867,7 @@ export function getSchematicPath({
     // merge into a single trunk rather than each drawing its own parallel run,
     // so they are excluded from soft-repulsion and their already-routed cells
     // become cheap to travel along.
-    const me = allEdges.find((e: any) => e.id === edgeId);
+    const me = allEdges.find((e: Edge) => e.id === edgeId);
     const sameNetIds = new Set<string>();
     if (me) {
       const myPorts = new Set([
@@ -974,15 +982,15 @@ export function getSchematicPath({
     }
   }
 
-  const sortedEdgeIds = allEdges.map((e: any) => e.id).sort();
+  const sortedEdgeIds = allEdges.map((e: Edge) => e.id).sort();
   const edgeIndex = Math.max(0, sortedEdgeIds.indexOf(edgeId));
 
   const shiftStep = 8;
   const shiftPattern = [0, 1, -1, 2, -2];
 
   const obstacles: Obstacle[] = (nodes || [])
-    .filter((n: any) => n.type !== 'junction')
-    .map((n: any) => {
+    .filter((n: Node) => n.type !== 'junction')
+    .map((n: Node) => {
       const w = n.measured?.width || getNodeDimensions(n.type, n.data).width;
       const h = n.measured?.height || getNodeDimensions(n.type, n.data).height;
       return { x: n.position.x, y: n.position.y, width: w, height: h };
@@ -1015,8 +1023,8 @@ export function getSchematicPath({
     const [path] = getSmoothStepPath({
       sourceX,
       sourceY,
-      sourcePosition: sourcePosition as any,
-      targetPosition: targetPosition as any,
+      sourcePosition: sourcePosition as Position,
+      targetPosition: targetPosition as Position,
       targetX,
       targetY,
       borderRadius: 0,
@@ -1043,8 +1051,8 @@ export function getSchematicPath({
  * (instrument cards like the signal generator) attach inside the box and are
  * left alone.
  */
-function clampToPin(nodes: any[], x: number, y: number, pos: string, id?: string): Point {
-  const n = id ? nodes.find((q: any) => q.id === id) : null;
+function clampToPin(nodes: Node[], x: number, y: number, pos: string, id?: string): Point {
+  const n = id ? nodes.find((q: Node) => q.id === id) : null;
   if (!n) return { x, y };
   /*
    * Only ever clamp against a box React Flow has actually measured.
@@ -1081,7 +1089,7 @@ function getOrthogonalPathThroughWaypoint(
   targetY: number,
   targetPosition: string,
   W: { x: number; y: number },
-  nodes: any[] = [],
+  nodes: Node[] = [],
   sourceId?: string,
   targetId?: string,
 ) {
@@ -1134,8 +1142,11 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     source,
     target,
   } = props;
-  const sourceHandle = (props as any).sourceHandleId || (props as any).sourceHandle;
-  const targetHandle = (props as any).targetHandleId || (props as any).targetHandle;
+  // React Flow renamed these between versions and still passes both on some
+  // edges, so read either. They are not on the published EdgeProps type.
+  const legacyProps = props as EdgeProps & { sourceHandleId?: string | null; targetHandleId?: string | null };
+  const sourceHandle = legacyProps.sourceHandleId || legacyProps.sourceHandle;
+  const targetHandle = legacyProps.targetHandleId || legacyProps.targetHandle;
 
   const { setEdges, screenToFlowPosition, getViewport, getEdges, getNodes } = useReactFlow();
   
@@ -1144,13 +1155,13 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
   const allNodes = getNodes();
   
   const sharingSource = allEdges
-    .filter(e => e.source === source && (e.sourceHandle === sourceHandle || (e as any).sourceHandleId === sourceHandle))
+    .filter(e => e.source === source && (e.sourceHandle === sourceHandle || (e as Edge & { sourceHandleId?: string | null }).sourceHandleId === sourceHandle))
     .map(e => e.id)
     .sort();
   const sourceIndex = Math.max(0, sharingSource.indexOf(id));
 
   const sharingTarget = allEdges
-    .filter(e => e.target === target && (e.targetHandle === targetHandle || (e as any).targetHandleId === targetHandle))
+    .filter(e => e.target === target && (e.targetHandle === targetHandle || (e as Edge & { targetHandleId?: string | null }).targetHandleId === targetHandle))
     .map(e => e.id)
     .sort();
   const targetIndex = Math.max(0, sharingTarget.indexOf(id));
@@ -1160,7 +1171,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
   // Find the edge incoming to our source handle
   const incomingEdge = allEdges.find(e =>
     e.target === source &&
-    (e.targetHandle === sourceHandle || (e as any).targetHandleId === sourceHandle)
+    (e.targetHandle === sourceHandle || (e as Edge & { targetHandleId?: string | null }).targetHandleId === sourceHandle)
   );
 
   let sourceOffset = minWireGap;
@@ -1188,7 +1199,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     }
   }
 
-  const waypoints: { x: number; y: number }[] = useMemo(() => (data as any)?.waypoints || [], [data]);
+  const waypoints: { x: number; y: number }[] = useMemo(() => (data?.waypoints as { x: number; y: number }[] | undefined) || [], [data]);
   const [isDragging, setIsDragging] = useState(false);
 
   const context = useContext(EdgePathContext);
@@ -1340,7 +1351,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
       const newX = Math.round((initialX + flowDx) / 4) * 4;
       const newY = Math.round((initialY + flowDy) / 4) * 4;
 
-      setEdges((eds: any[]) => eds.map(edge => {
+      setEdges((eds: Edge[]) => eds.map(edge => {
         if (!bundleIds.has(edge.id)) return edge;
         return {
           ...edge,
@@ -1369,7 +1380,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     const clickPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
     const bundleIds = collectBundleIds(clickPos);
 
-    setEdges((eds: any[]) => eds.map(edge => {
+    setEdges((eds: Edge[]) => eds.map(edge => {
       if (!bundleIds.has(edge.id)) return edge;
       return {
         ...edge,
