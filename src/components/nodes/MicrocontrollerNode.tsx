@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
-import { DEVICE_CARD_DARK } from './schematic';
+import { DEVICE_CARD_DARK } from './schematicStyle';
 import {
   getEffectiveMcuConfig,
   createCustomMcuConfig,

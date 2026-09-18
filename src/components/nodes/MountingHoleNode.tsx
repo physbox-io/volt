@@ -2,6 +2,7 @@ import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import type { MountingHoleNodeData } from '../../types/nodes';
 import { NumberInput } from '@physbox-io/ui';
+import { MOUNTING_HOLE_PRESETS } from './partDefaults';
 
 /**
  * An unplated screw / mounting hole. It carries no net and has no handles, so
@@ -9,23 +10,6 @@ import { NumberInput } from '@physbox-io/ui';
  * the board, it is drilled, and the router keeps its keepout clear so no trace
  * runs under the screw head.
  */
-
-/** Common metric screw sizes, with the clearance drill for each. */
-export const MOUNTING_HOLE_PRESETS = [
-  { id: 'M2', label: 'M2', holeMm: 2.2, keepoutMm: 4.5 },
-  { id: 'M2.5', label: 'M2.5', holeMm: 2.7, keepoutMm: 5.5 },
-  { id: 'M3', label: 'M3', holeMm: 3.2, keepoutMm: 6.5 },
-  { id: 'M4', label: 'M4', holeMm: 4.3, keepoutMm: 8.0 },
-];
-
-export function mountingHoleDefaultData(label?: string) {
-  return {
-    label: label || 'Mount',
-    screwSize: 'M3',
-    holeDiameterMm: 3.2,
-    keepoutDiameterMm: 6.5,
-  };
-}
 
 export function MountingHoleProperties({ node, updateData }: NodePropertiesProps) {
   const hole = node.data?.holeDiameterMm ?? 3.2;

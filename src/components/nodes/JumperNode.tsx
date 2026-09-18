@@ -1,7 +1,8 @@
 import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import type { JumperNodeData } from '../../types/nodes';
-import { LeadHandles, RotatedSymbol, leadBoxStyle, resolveOrientation } from './schematic';
+import { LeadHandles, RotatedSymbol } from './schematic';
+import { leadBoxStyle, resolveOrientation } from './orientation';
 import { NumberInput } from '@physbox-io/ui';
 
 /**
@@ -19,14 +20,6 @@ import { NumberInput } from '@physbox-io/ui';
 
 /** Series resistance used to model the jumper wire in SPICE. */
 export const JUMPER_RESISTANCE_OHMS = 0.001;
-
-export function jumperDefaultData(label?: string) {
-  return {
-    label: label || 'Jumper',
-    pitchMm: 5.08,
-    drillDiameterMm: 0.8,
-  };
-}
 
 export function JumperProperties({ node, updateData }: NodePropertiesProps) {
   const pitch = node.data?.pitchMm ?? 5.08;

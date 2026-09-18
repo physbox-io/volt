@@ -4,7 +4,9 @@ import { AlertCircle } from 'lucide-react';
 import type { NodePropertiesProps } from './registry';
 import { useCallback } from 'react';
 import { NumberInput } from '@physbox-io/ui';
-import { DEVICE_CARD, DEVICE_SCREEN, DEVICE_TITLE, DeviceField, STROKE, resolveOrientation } from './schematic';
+import { DeviceField } from './schematic';
+import { DEVICE_CARD, DEVICE_SCREEN, DEVICE_TITLE, STROKE } from './schematicStyle';
+import { resolveOrientation } from './orientation';
 import type { SignalGeneratorNodeData } from '../../types/nodes';
 
 export function SignalGeneratorProperties({ node, updateData, simLength }: NodePropertiesProps) {

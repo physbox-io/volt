@@ -181,8 +181,6 @@ export type LedNodeData = BaseNodeData & {
   /** Light as a recorded stream, taking precedence over `lightLevel`. */
   pwlData?: PwlPoint[];
   isExploded?: boolean;
-  /** Written by the run: see the module comment. */
-  isSimulating?: boolean;
   current_array?: number[];
   time_points?: number[];
   /** Steady-state brightness, 0–1, for a part that is not being animated. */
@@ -203,7 +201,6 @@ export type LdrNodeData = BaseNodeData & {
 
 export type SevenSegmentNodeData = BaseNodeData & {
   common?: 'anode' | 'cathode';
-  isSimulating?: boolean;
   /** Steady-state volts per segment, keyed 'a'…'g'. */
   segmentVoltages?: Record<string, number>;
   /** The same, sampled over the run, for playback. */
@@ -234,8 +231,6 @@ export type ScopeNodeData = BaseNodeData & {
   /** Screen size in px, as left by the resize handle. */
   width?: number;
   height?: number;
-  /** Injected by `App.tsx` so the handle can write the size back. */
-  onResize?: (width: number, height: number) => void;
 };
 
 export type MultimeterNodeData = BaseNodeData & {
@@ -246,7 +241,6 @@ export type MultimeterNodeData = BaseNodeData & {
   voltage?: number;
   voltage_array?: number[];
   time_points?: number[];
-  isSimulating?: boolean;
 };
 
 /* ── Audio ────────────────────────────────────────────────────────────── */
@@ -255,8 +249,6 @@ export type MicrophoneNodeData = BaseNodeData & {
   /** Gain applied to the recorded signal. */
   amplification?: number;
   pwlData?: PwlPoint[];
-  /** The run's length in seconds, so a recording can be cut to fit it. */
-  simLength?: number;
 };
 
 export type SpeakerNodeData = BaseNodeData & {

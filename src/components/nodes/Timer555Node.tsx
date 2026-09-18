@@ -1,5 +1,5 @@
 import { Handle, Position } from '@xyflow/react';
-import { DEVICE_CARD_DARK } from './schematic';
+import { DEVICE_CARD_DARK } from './schematicStyle';
 
 export function Timer555Node() {
   return (

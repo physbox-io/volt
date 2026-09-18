@@ -6,10 +6,6 @@ import { SchematicLabel } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
 import type { TransformerNodeData } from '../../types/nodes';
 
-export function transformerDefaultData() {
-  return { label: 'Transformer', l_pri: '10m', l_sec: '10m', k: 0.99, l_pri_label: '10mH', l_sec_label: '10mH' };
-}
-
 export function TransformerProperties({ node, updateData }: NodePropertiesProps) {
   return (
     <>

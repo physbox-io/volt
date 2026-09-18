@@ -1,9 +1,11 @@
 import { Handle, Position, useReactFlow } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
+import { useCanvasState } from '../canvasState';
 import { useEffect, useRef, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
 import type { NodePropertiesProps } from './registry';
-import { DEVICE_CARD_DARK, resolveOrientation } from './schematic';
+import { DEVICE_CARD_DARK } from './schematicStyle';
+import { resolveOrientation } from './orientation';
 import type { MultimeterNodeData } from '../../types/nodes';
 
 export function MultimeterProperties({ node, updateData }: NodePropertiesProps) {
@@ -88,7 +90,7 @@ function formatReading(val: number, mode?: 'voltage' | 'current'): string {
 
 export const MultimeterNode = memo(function MultimeterNode({ id, data }: NodeProps<Node<MultimeterNodeData>>) {
   const { isVertical } = resolveOrientation(data.orientation);
-  const isSimulating = !!data.isSimulating;
+  const { isSimulating } = useCanvasState();
   const displayRef = useRef<HTMLDivElement>(null);
   const { setNodes } = useReactFlow();
 

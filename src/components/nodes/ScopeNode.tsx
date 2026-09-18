@@ -1,12 +1,12 @@
-import { Handle, Position, NodeResizer } from '@xyflow/react';
+import { Handle, Position, NodeResizer, useReactFlow } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { computeFFT } from '../../utils/fft';
 import { detectPeriod } from '../../utils/periodDetect';
 import type { NodePropertiesProps } from './registry';
-import { DEVICE_CARD_DARK, pinRow } from './schematic';
+import { DEVICE_CARD_DARK, pinRow } from './schematicStyle';
 import { NumberInput } from '@physbox-io/ui';
-import type { ScopeNodeData } from '../../types/nodes';
+import type { PwlPoint, ScopeNodeData } from '../../types/nodes';
 
 export function ScopeProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -70,9 +70,27 @@ function pickStep(range: number, divs: number, steps: number[]): number {
   return steps[steps.length - 1];
 }
 
-export function ScopeNode({ data, selected }: NodeProps<Node<ScopeNodeData>>) {
-  const points1: { t: number; v: number }[] = data.voltageData1 || data.voltageData || [];
-  const points2: { t: number; v: number }[] = data.voltageData2 || [];
+export function ScopeNode({ id, data, selected }: NodeProps<Node<ScopeNodeData>>) {
+  /*
+   * The screen size is written from here rather than through a callback App
+   * injected into the node's `data` after render. That injection was an effect
+   * that re-rendered the whole canvas to hand each scope a closure, and a scope
+   * dropped onto the canvas had no handler at all until the effect next ran.
+   */
+  const { setNodes } = useReactFlow();
+  const onResize = useCallback((w: number, h: number) => {
+    setNodes(nds => nds.map(n => (n.id === id ? { ...n, data: { ...n.data, width: w, height: h } } : n)));
+  }, [id, setNodes]);
+
+  // Memoised, not computed inline: `|| []` hands back a fresh array on every
+  // render, and three separate useMemos downstream take these as dependencies —
+  // so the FFT, the auto-ranging and the period detection were all recomputed
+  // on every render of a scope that had no trace on it.
+  const points1 = useMemo<PwlPoint[]>(
+    () => data.voltageData1 || data.voltageData || [],
+    [data.voltageData1, data.voltageData],
+  );
+  const points2 = useMemo<PwlPoint[]>(() => data.voltageData2 || [], [data.voltageData2]);
   const showFFT = data.showFFT || false;
 
   const width = data.width ?? 240;
@@ -163,9 +181,7 @@ export function ScopeNode({ data, selected }: NodeProps<Node<ScopeNodeData>>) {
         isVisible={selected}
         lineClassName="!border-indigo-400"
         handleClassName="!w-2 !h-2 !bg-indigo-400 !border-indigo-600"
-        onResize={(_e, params) => {
-          if (data.onResize) data.onResize(params.width, params.height);
-        }}
+        onResize={(_e, params) => onResize(params.width, params.height)}
       />
 
       {/* Header */}

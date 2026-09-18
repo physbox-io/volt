@@ -9,7 +9,7 @@
  * itself if the part was dragged further.
  */
 import { describe, it, expect } from 'vitest';
-import { getSchematicPath, routeOrthogonal } from '../src/components/AuraEdge';
+import { getSchematicPath, routeOrthogonal } from '../src/utils/edgeRouting';
 
 /** The points of an `M x y L x y …` path. */
 function pointsOf(path: string): { x: number; y: number }[] {

@@ -46,17 +46,32 @@ import { SpeakerProperties } from './SpeakerNode';
 import { ScopeProperties } from './ScopeNode';
 import { MultimeterProperties } from './MultimeterNode';
 import { PotentiometerProperties } from './PotentiometerNode';
-import { TransformerProperties, transformerDefaultData } from './TransformerNode';
-import { DFlipFlopProperties, dffDefaultData } from './DFlipFlopNode';
-import { LDRProperties, ldrDefaultData } from './LDRNode';
+import { TransformerProperties } from './TransformerNode';
+import { DFlipFlopProperties } from './DFlipFlopNode';
+import { LDRProperties } from './LDRNode';
 import { SevenSegmentProperties } from './SevenSegmentNode';
 import { CurrentSourceProperties } from './CurrentSourceNode';
-import { HeltecV4Properties, heltecV4DefaultData } from './HeltecV4Node';
-import { PinHeaderProperties, pinHeaderDefaultData } from './PinHeaderNode';
-import { ViaProperties, viaDefaultData } from './ViaNode';
-import { MountingHoleProperties, mountingHoleDefaultData } from './MountingHoleNode';
-import { JumperProperties, jumperDefaultData } from './JumperNode';
-import { CutoutProperties, cutoutDefaultData } from './CutoutNode';
+import { HeltecV4Properties } from './HeltecV4Node';
+import { PinHeaderProperties } from './PinHeaderNode';
+import { ViaProperties } from './ViaNode';
+import { MountingHoleProperties } from './MountingHoleNode';
+import { JumperProperties } from './JumperNode';
+import { CutoutProperties } from './CutoutNode';
+// The seed data a part is dropped with lives in `partDefaults.ts` rather than
+// in each part's component file: a file that exports both a component and a
+// plain function loses React Fast Refresh, and a full reload on this canvas
+// throws away the running simulation and the circuit view being edited.
+import {
+  transformerDefaultData,
+  dffDefaultData,
+  ldrDefaultData,
+  heltecV4DefaultData,
+  pinHeaderDefaultData,
+  viaDefaultData,
+  mountingHoleDefaultData,
+  jumperDefaultData,
+  cutoutDefaultData,
+} from './partDefaults';
 import { OpAmpProperties } from './OpAmpNode';
 
 export const nodeRegistry: Record<string, NodeMeta> = {

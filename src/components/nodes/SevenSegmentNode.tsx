@@ -1,9 +1,10 @@
 import { Handle, Position } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
+import { useCanvasState } from '../canvasState';
 import { useEffect, useState, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
 import type { NodePropertiesProps } from './registry';
-import { DEVICE_CARD_DARK, pinRow } from './schematic';
+import { DEVICE_CARD_DARK, pinRow } from './schematicStyle';
 import type { SevenSegmentNodeData } from '../../types/nodes';
 
 export function SevenSegmentProperties(_props: NodePropertiesProps) {
@@ -30,29 +31,34 @@ const SEG_COLORS: Record<string, string> = {
   d: 'bg-green-400', e: 'bg-teal-400', f: 'bg-emerald-400', g: 'bg-purple-400',
 };
 
+/** Module scope so the ticker subscription below does not restart every render. */
+const segs = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+
 export const SevenSegmentNode = memo(function SevenSegmentNode({ data }: NodeProps<Node<SevenSegmentNodeData>>) {
-  const segs = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
-  const [currentVoltages, setCurrentVoltages] = useState<Record<string, number>>(data.segmentVoltages || {});
-  const isSimulating = !!data.isSimulating;
+  const { isSimulating } = useCanvasState();
+  const arrays = data.segmentVoltageArrays;
+  const timePoints = data.timePoints;
+  const playing = isSimulating && !!arrays && !!timePoints && timePoints.length > 0;
+
+  const [tickedVoltages, setTickedVoltages] = useState<Record<string, number> | null>(null);
 
   useEffect(() => {
-    if (!isSimulating || !data.segmentVoltageArrays || !data.timePoints || data.timePoints.length === 0) {
-      setCurrentVoltages(data.segmentVoltages || {});
-      return;
-    }
-
+    if (!playing) return;
     const unsubscribe = playbackTicker.subscribe((elapsedMs) => {
-      const idx = findIndexForTime(data.timePoints, elapsedMs);
-
+      const idx = findIndexForTime(timePoints, elapsedMs);
       const nextVoltages: Record<string, number> = {};
       segs.forEach(s => {
-        nextVoltages[s] = data.segmentVoltageArrays[s]?.[idx] || 0;
+        nextVoltages[s] = arrays[s]?.[idx] || 0;
       });
-      setCurrentVoltages(nextVoltages);
+      setTickedVoltages(nextVoltages);
     });
-
     return unsubscribe;
-  }, [data.segmentVoltageArrays, data.timePoints, data.segmentVoltages, isSimulating]);
+  }, [playing, arrays, timePoints]);
+
+  // A display that is not being played back reads its steady-state voltages
+  // straight off the node, rather than the effect writing them into state on
+  // mount — one is derived, only the ticker is a subscription.
+  const currentVoltages = playing && tickedVoltages ? tickedVoltages : (data.segmentVoltages || {});
 
   return (
     <div className={`${DEVICE_CARD_DARK} p-1.5 w-16 h-20 flex flex-col items-center justify-center relative`}>

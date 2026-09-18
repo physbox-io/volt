@@ -10,14 +10,6 @@ import { NumberInput } from '@physbox-io/ui';
  * It has one pad and one handle, so wiring two nets to it merges them.
  */
 
-export function viaDefaultData(label?: string) {
-  return {
-    label: label || 'Via',
-    drillDiameterMm: 0.6,
-    padDiameterMm: 1.2,
-  };
-}
-
 export function ViaProperties({ node, updateData }: NodePropertiesProps) {
   const drill = node.data?.drillDiameterMm ?? 0.6;
   const pad = node.data?.padDiameterMm ?? 1.2;

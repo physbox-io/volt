@@ -3,10 +3,6 @@ import type { NodePropertiesProps } from './registry';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { BaseNodeData } from '../../types/nodes';
 
-export function dffDefaultData() {
-  return { label: 'DFF' };
-}
-
 export function DFlipFlopProperties(_props: NodePropertiesProps) {
   return (
     <div className="mb-3 p-2.5 bg-indigo-50 dark:bg-slate-800/40 border border-indigo-100 dark:border-slate-800 rounded-lg text-xs text-indigo-900 dark:text-indigo-200 shadow-sm leading-relaxed">

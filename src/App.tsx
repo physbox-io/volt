@@ -12,7 +12,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { HELTEC_V4_GPIO_PINS } from './components/nodes/HeltecV4Node';
+import { HELTEC_V4_GPIO_PINS } from './components/nodes/partDefaults';
 import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
 import { getEffectiveMcuConfig } from './utils/mcuConfig';
 import { buildNetlistResultIndex, findNetGraph } from './utils/netlistResult';
@@ -57,12 +57,16 @@ import { PropertiesPanel } from './components/PropertiesPanel';
 import { FlowArea } from './components/FlowArea';
 import { ProbeTooltip } from './components/ProbeTooltip';
 import { HILMemoizer } from './utils/hilMemoizer';
+import { CanvasStateProvider } from './components/canvasState';
+import type { SpiceResult } from './types/simulation';
+import type { PwlPoint } from './types/nodes';
+import type { PWLPoint } from './utils/mcu';
 import { NumberInput } from '@physbox-io/ui';
 
 
 
 let simulationWorker: Worker | null = null;
-const pendingSimulations = new Map<string, { resolve: (res: any) => void; reject: (err: any) => void }>();
+const pendingSimulations = new Map<string, { resolve: (res: SpiceResult) => void; reject: (err: unknown) => void }>();
 
 const getSimulationWorker = () => {
   if (!simulationWorker) {
@@ -100,7 +104,7 @@ const terminateWorker = () => {
   pendingSimulations.clear();
 };
 
-const runSimInWorker = (netlist: string): Promise<any> => {
+const runSimInWorker = (netlist: string): Promise<SpiceResult> => {
   return new Promise((resolve, reject) => {
     const id = Math.random().toString(36).slice(2);
     pendingSimulations.set(id, { resolve, reject });
@@ -193,7 +197,15 @@ export default function App() {
    * opens when it is asked for and not merely because a part was selected:
    * touching a component to move it is not a request to read its datasheet.
    */
-  const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
+  /*
+   * Whether the inspector drawer has been *asked* for. What is actually shown is
+   * `isPropertiesOpen` below, which also requires something to be selected:
+   * losing the selection closes the drawer, so the next component tapped does
+   * not reopen it unasked. Derived rather than written back from an effect,
+   * which used to re-render the whole app on every change to `nodes`.
+   */
+  const [isPropertiesRequested, setIsPropertiesRequested] = useState(false);
+  const isPropertiesOpen = isPropertiesRequested && nodes.some(n => n.selected);
   const [probeMode, setProbeMode] = useState(false);
   const [probeData, setProbeData] = useState<{
     netName: string;
@@ -206,7 +218,7 @@ export default function App() {
     x: number;
     y: number;
   } | null>(null);
-  const simResultRef = useRef<{ portToNet: Record<string, string>; result: any } | null>(null);
+  const simResultRef = useRef<{ portToNet: Record<string, string>; result: SpiceResult } | null>(null);
   const [initialConditions, setInitialConditions] = useState<Record<string, number>>({});
   
   // Hardware-in-the-Loop (HIL) state refs
@@ -222,8 +234,7 @@ export default function App() {
   const hilBackgroundPollActiveRef = useRef(true);
   const hilRunningRef = useRef(false);
   const lastSendTimeRef = useRef<number | null>(null);
-  const lastSimulatedVoltagesRef = useRef<Record<string, number>>({});
-  const lastSimulatedResultRef = useRef<any>(null);
+  const lastSimulatedResultRef = useRef<SpiceResult | null>(null);
   const lastPortToNetRef = useRef<Record<string, string>>({});
   const lastSliceDurationRef = useRef<number>(50);
   const hilInitialConditionsRef = useRef<Record<string, number>>({});
@@ -323,27 +334,15 @@ export default function App() {
     currentCircuit,
   } = usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation });
 
+  // Read from HIL callbacks that outlive the render they were created in, so it
+  // is a ref rather than a dependency — written from an effect, because a write
+  // during render is a side effect React is entitled to run twice.
   const selectedPresetRef = useRef(selectedPreset);
-  selectedPresetRef.current = selectedPreset;
+  useEffect(() => {
+    selectedPresetRef.current = selectedPreset;
+  }, [selectedPreset]);
 
   const { noteCards, editingCardId, toggleEdit, toggleMinimize, updateMarkdown, closeCard, moveCard, addCard } = useNoteCards({ selectedPreset, userPresets });
-
-  // Scope resize handler — inject into every scope node's data
-  const scopeResizeHandler = useCallback((nodeId: string, w: number, h: number) => {
-    setNodes(nds => nds.map(n =>
-      n.id === nodeId ? { ...n, data: { ...n.data, width: w, height: h } } : n
-    ));
-  }, [setNodes]);
-
-  // Inject onResize callback into scope nodes
-  useEffect(() => {
-    setNodes(nds => nds.map(n => {
-      if (n.type === 'scope' && !n.data.onResize) {
-        return { ...n, data: { ...n.data, onResize: (w: number, h: number) => scopeResizeHandler(n.id, w, h) } };
-      }
-      return n;
-    }));
-  }, [nodes.length, scopeResizeHandler, setNodes]);
 
   // Auto-close sidebar on small screens
   useEffect(() => {
@@ -368,19 +367,6 @@ export default function App() {
     }
   }, []);
 
-  // Keep microphone nodes aware of the simulation duration
-  useEffect(() => {
-    setNodes(nds => {
-      const hasMic = nds.some(n => n.type === 'microphone');
-      if (!hasMic) return nds;
-      return nds.map(n =>
-        n.type === 'microphone' && n.data.simLength !== simLength
-          ? { ...n, data: { ...n.data, simLength } }
-          : n
-      );
-    });
-  }, [simLength, setNodes]);
-
   /*
    * Cloud auto-save.
    *
@@ -404,7 +390,7 @@ export default function App() {
       nodes: nodes.map((n) => ({ ...n, selected: false })),
       edges: edges.map((e) => ({
         ...e,
-        data: (e.data as any)?.waypoints ? { waypoints: (e.data as any).waypoints } : undefined,
+        data: e.data?.waypoints ? { waypoints: e.data.waypoints } : undefined,
       })),
       pcbOptions: loadMachiningSettings(),
       // Carried through for the same reason the hand-save carries it: a circuit
@@ -422,22 +408,6 @@ export default function App() {
     return () => clearTimeout(t);
   }, [simLength]);
 
-  // Update edges when aura setting changes
-  useEffect(() => {
-    setEdges(eds => eds.map(e => ({
-      ...e,
-      type: showAura ? 'aura' : 'smoothstep'
-    })));
-  }, [showAura, setEdges]);
-
-  // Sync isSimulating state to all nodes so they can gate animations
-  useEffect(() => {
-    setNodes(nds => nds.map(n => ({
-      ...n,
-      data: { ...n.data, isSimulating }
-    })));
-  }, [isSimulating, setNodes]);
-
   // Background connection effect for Heltec HIL node
   const heltecNode = nodes.find(n => n.type === 'heltec_v4');
   const heltecId = heltecNode?.id;
@@ -448,11 +418,26 @@ export default function App() {
   // Connect on the node or starts a HIL run.
   const heltecHilEnabled = !!heltecNode?.data?.hilEnabled;
 
+  /*
+   * The board's session, not React's state.
+   *
+   * `ensureHILConnection` is one of a set of mutually recursive closures — it
+   * opens the socket, which starts the pipeline, which polls, which reconnects —
+   * so it is declared below with the rest of the driver rather than above this
+   * effect, and it is a fresh function on every render. Listing it as a
+   * dependency would hang up on the board and dial it again on every keystroke,
+   * which is the opposite of what this effect is for.
+   *
+   * The `setNodes` in the other branch is the socket telling React it has gone.
+   * That is precisely what an effect is meant to do with an external system; it
+   * simply happens synchronously, because closing a socket does.
+   */
   useEffect(() => {
     if (heltecId && heltecIp && heltecHilEnabled) {
       if (!hilConnectedRef.current && (!hilSocketRef.current || hilSocketRef.current.readyState === WebSocket.CLOSED)) {
         const node = nodes.find(n => n.id === heltecId);
         if (node) {
+          // eslint-disable-next-line react-hooks/immutability
           ensureHILConnection(heltecIp as string, node);
         }
       }
@@ -464,6 +449,7 @@ export default function App() {
       try { hilSocketRef.current.close(); } catch { /* closing a dead socket */ }
       hilSocketRef.current = null;
       if (heltecId) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setNodes(nds => nds.map(n => n.id === heltecId ? { ...n, data: { ...n.data, isConnected: false } } : n));
       }
     }
@@ -482,6 +468,8 @@ export default function App() {
         }
       }
     };
+    // A stable `ensureHILConnection` means restructuring the driver; see above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [heltecId, heltecIp, heltecHilEnabled, nodes]);
 
   const onNodesChange = useCallback(
@@ -780,7 +768,8 @@ export default function App() {
   // ~15-line script (compile overhead on this PSRAM-backed heap), which dominated
   // HIL round-trip time. This is a fixed, already-loaded handler taking structured
   // JSON, so there's no per-slice compilation at all.
-  const buildHILSliceCommand = (pins: Record<string, string>, voltages: Record<string, any>, connectedPins: Set<string>) => {
+  /** `voltages` is the run-length encoded pin output: [value, hold in microseconds]. */
+  const buildHILSliceCommand = (pins: Record<string, string>, voltages: Record<string, [number, number][]>, connectedPins: Set<string>) => {
     const writes: { pin: number; seq: [number, number][] }[] = [];
     const reads: { pin: number; type: 'analog' | 'digital' }[] = [];
     for (const pinId of HELTEC_V4_GPIO_PINS) {
@@ -999,7 +988,7 @@ export default function App() {
       const hilMaxStepMs = Math.min(maxStepLimit, Math.max(minStepMs, fastestHalfPeriodMs / 10));
 
       // Map physical voltages of heltec_v4 to connected mcu input pins
-      const mcuWaveforms: any = {};
+      const mcuWaveforms: Record<string, Record<string, PWLPoint[]>> = {};
       const heltecNode = nextNodes.find(n => n.type === 'heltec_v4');
       const mcuNode = nextNodes.find(n => n.type === 'mcu');
       if (heltecNode && mcuNode) {
@@ -1038,10 +1027,10 @@ export default function App() {
       const curICs = { ...hilInitialConditionsRef.current };
       const cachedSlice = memoizer.get(curInputs, curICs, netlistDurationMs, hilMaxStepMs);
 
-      let result: any;
+      let result: SpiceResult;
       let portToNet: Record<string, string>;
       let nextICs: Record<string, number>;
-      let outputs: Record<string, any>;
+      let outputs: Record<string, [number, number][]>;
       let writes: { pin: number; seq: [number, number][] }[];
       let reads: { pin: number; type: 'analog' | 'digital' }[];
 
@@ -1130,7 +1119,6 @@ export default function App() {
       lastSimulatedResultRef.current = result;
       lastPortToNetRef.current = portToNet;
       lastSliceDurationRef.current = netlistDurationMs;
-      lastSimulatedVoltagesRef.current = outputs;
       const resultIndex = buildNetlistResultIndex(result);
 
       // Stream simulated speaker audio to the CYD board over WebSocket
@@ -1360,7 +1348,7 @@ export default function App() {
       let result = await runSimInWorker(netlist);
 
       if (needsTwoPass) {
-         const mcuWaveforms: any = {};
+         const mcuWaveforms: Record<string, Record<string, PWLPoint[]>> = {};
          for (const mcu of mcuNodes) {
            mcuWaveforms[mcu.id] = {};
            const mcuPins = getEffectiveMcuConfig(mcu.data).pins;
@@ -1386,8 +1374,8 @@ export default function App() {
       const findGraph = (netName: string) => findNetGraph(result, netName);
 
       const updatedNodes = currentNodes.map(n => {
-        const newNode = { ...n } as any;
-        newNode.data = { ...newNode.data, isSimulating: true };
+        const newNode: Node = { ...n };
+        newNode.data = { ...newNode.data };
         
         const v1Net = portToNet[`${n.id}-in`] || portToNet[`${n.id}-pos`] || portToNet[`${n.id}-anode`] || portToNet[`${n.id}-c`];
         const v2Net = portToNet[`${n.id}-out`] || portToNet[`${n.id}-neg`] || portToNet[`${n.id}-gnd`] || portToNet[`${n.id}-cathode`] || portToNet[`${n.id}-e`];
@@ -1467,15 +1455,15 @@ export default function App() {
           const ch1 = findGraph(portToNet[`${n.id}-ch1`]);
           const ch2 = findGraph(portToNet[`${n.id}-ch2`]);
           const gnd = findGraph(portToNet[`${n.id}-gnd`]);
-          let vd1: any[] = [];
-          let vd2: any[] = [];
+          let vd1: PwlPoint[] = [];
+          let vd2: PwlPoint[] = [];
           if (ch1) vd1 = ch1.timestamps_ms.map((t, i) => ({ t, v: ch1.voltage_levels[i] - (gnd ? gnd.voltage_levels[i] : 0) }));
           if (ch2) vd2 = ch2.timestamps_ms.map((t, i) => ({ t, v: ch2.voltage_levels[i] - (gnd ? gnd.voltage_levels[i] : 0) }));
           newNode.data = { ...newNode.data, voltageData1: vd1, voltageData2: vd2 };
         } else if (n.type === 'speaker') {
           const graph = findGraph(portToNet[`${n.id}-in`]);
           const gnd = findGraph(portToNet[`${n.id}-gnd`]);
-          let vd: any[] = [];
+          let vd: PwlPoint[] = [];
           if (graph) vd = graph.timestamps_ms.map((t, i) => ({ t, v: graph.voltage_levels[i] - (gnd ? gnd.voltage_levels[i] : 0) }));
           newNode.data = { ...newNode.data, voltageData: vd };
         } else if (n.type === 'mcu') {
@@ -1529,7 +1517,6 @@ export default function App() {
 
         return { 
           ...e, 
-          type: showAura ? 'aura' : 'smoothstep', 
           data: { ...e.data, current_array: curArr, time_points: tPts } 
         };
       });
@@ -1561,11 +1548,11 @@ export default function App() {
         rawResult: result
       };
       
-    } catch (e: any) {
+    } catch (e) {
       console.error("Simulation failed:", e);
       setIsSpiceRunning(false);
       setIsSimulating(false);
-      return { ok: false, error: e.message || String(e) };
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
     } finally {
       simInFlightRef.current = false;
       // Values moved on while this solve was running; take the newest ones.
@@ -1610,10 +1597,31 @@ export default function App() {
 
   const { undo, redo, canUndo, canRedo } = useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, setNodes, setEdges });
 
-  // Clear initial conditions on structural changes
-  useEffect(() => {
+  /*
+   * Clear initial conditions on structural changes.
+   *
+   * Compared during render rather than cleared from an effect: the conditions
+   * belong to a particular circuit, and from an effect the first render after a
+   * part is added still carries the previous circuit's operating point — which
+   * is what a re-run launched in that same frame would have solved from.
+   */
+  const structuralKey = `${nodes.length}:${edges.length}`;
+  const [seenStructuralKey, setSeenStructuralKey] = useState(structuralKey);
+  if (seenStructuralKey !== structuralKey) {
+    setSeenStructuralKey(structuralKey);
     setInitialConditions({});
-  }, [nodes.length, edges.length]);
+  }
+
+  /*
+   * `runSimulation` closes over most of this component, so it is a new function
+   * on every render. A callback that named it as a dependency would be rebuilt
+   * on every render too — and React Flow re-registers every node's handlers when
+   * one is. Held here instead, and read at the moment it is called.
+   */
+  const runSimulationRef = useRef(runSimulation);
+  useEffect(() => {
+    runSimulationRef.current = runSimulation;
+  });
 
   /*
    * Node data the netlist is actually built from.
@@ -1679,7 +1687,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [netlistSignature]);
 
-  const onNodeClick = useCallback((_: any, node: Node) => {
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     if (node.type === 'switch') {
       setNodes((nds) => {
         const nextNodes = nds.map((n) => {
@@ -1691,20 +1699,14 @@ export default function App() {
         
         // Auto-re-trigger simulation with the NEW state
         if (isSimulating) {
-          setTimeout(() => runSimulation(nextNodes, initialConditions), 50);
+          setTimeout(() => runSimulationRef.current(nextNodes, initialConditions), 50);
         }
         return nextNodes;
       });
     }
-  }, [setNodes, runSimulation, isSimulating, initialConditions]);
+  }, [setNodes, isSimulating, initialConditions]);
 
-  // Losing the selection closes the drawer, so that the next component tapped
-  // does not reopen it unasked — below `lg` it is opened from the bar, never as
-  // a side effect of touching the circuit. Inert at `lg`, where the inspector
-  // is a column and this flag is not read.
-  useEffect(() => {
-    if (!nodes.some(n => n.selected)) setIsPropertiesOpen(false);
-  }, [nodes]);
+
 
   const deleteSelected = useCallback(() => {
     if (isSimulatingRef.current) return;
@@ -1947,12 +1949,18 @@ export default function App() {
     nodes, edges, isSimulating, selectedPreset, probeMode,
     runSimulation, stopSimulation, resetSimulation,
     setProbeMode,
-    setNodes: (n: any) => setNodes(n),
-    setEdges: (e: any) => setEdges(e),
+    setNodes,
+    setEdges,
     loadPreset,
     onTransactionStart: () => setMcpActiveCount(prev => prev + 1),
     onTransactionEnd: () => setMcpActiveCount(prev => Math.max(0, prev - 1)),
   });
+
+  /*
+   * Memoised: the value is read by every symbol on the canvas, so a fresh object
+   * on each render of App would re-render all of them for nothing.
+   */
+  const canvasState = useMemo(() => ({ isSimulating, simLength, showAura }), [isSimulating, simLength, showAura]);
 
   return (
     /*
@@ -1961,6 +1969,7 @@ export default function App() {
       duration, resolution — sat underneath the browser chrome and could not be
       reached. On a desktop the two are the same number.
     */
+    <CanvasStateProvider value={canvasState}>
     <div className={`flex flex-col h-dvh w-full transition-colors duration-200 ${darkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'} font-sans overflow-hidden`}>
       {/*
         Below `lg` the bar wraps onto as many rows as it needs instead of
@@ -2189,7 +2198,7 @@ export default function App() {
               because the inspector has nothing to show until then.
             */}
             <button
-              onClick={() => setIsPropertiesOpen(!isPropertiesOpen)}
+              onClick={() => setIsPropertiesRequested(!isPropertiesOpen)}
               disabled={!nodes.some(n => n.selected)}
               className={`lg:hidden flex items-center justify-center w-8 h-8 rounded-full border transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs disabled:opacity-40 disabled:cursor-not-allowed ${
                 isPropertiesOpen
@@ -2343,7 +2352,7 @@ export default function App() {
         {isPropertiesOpen && nodes.find(n => n.selected) && (
           <div
             className="lg:hidden absolute inset-0 z-[105] bg-slate-950/30"
-            onClick={() => setIsPropertiesOpen(false)}
+            onClick={() => setIsPropertiesRequested(false)}
           />
         )}
         {nodes.find(n => n.selected) && (
@@ -2355,7 +2364,7 @@ export default function App() {
             runSimulation={runSimulation}
             simLength={simLength}
             isOpen={isPropertiesOpen}
-            onClose={() => setIsPropertiesOpen(false)}
+            onClose={() => setIsPropertiesRequested(false)}
           />
         )}
         {noteCards.map(card => (
@@ -2696,5 +2705,6 @@ export default function App() {
         </div>
       </footer>
     </div>
+    </CanvasStateProvider>
   );
 }

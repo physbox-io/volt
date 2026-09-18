@@ -1,7 +1,8 @@
 import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
-import type { CutoutNodeData, RawNodeData } from '../../types/nodes';
+import type { CutoutNodeData } from '../../types/nodes';
 import { NumberInput } from '@physbox-io/ui';
+import { getCutoutGeometry, getCutoutSize } from './boardGeometry';
 
 /**
  * A hole milled clean through the board — a slot for a connector to poke
@@ -11,46 +12,6 @@ import { NumberInput } from '@physbox-io/ui';
  * it is a routing keepout and an extra profile contour in the G-code, cut with
  * the profile end mill at the profile depth.
  */
-
-export interface CutoutGeometry {
-  shape: 'rect' | 'circle';
-  widthMm: number;
-  heightMm: number;
-}
-
-export function cutoutDefaultData(label?: string) {
-  return {
-    label: label || 'Cutout',
-    cutoutShape: 'rect' as const,
-    cutoutWidthMm: 10,
-    cutoutHeightMm: 6,
-  };
-}
-
-/**
- * Reads the geometry off a node's data, clamped to something millable.
- *
- * Called from edge routing and the PCB exporter as well as from the symbol, so
- * what arrives is `Node['data']` — a bag of `unknown` that may have come from a
- * saved file or an MCP agent. `Math.max` did this conversion implicitly while
- * the parameter was `any`.
- */
-export function getCutoutGeometry(data?: RawNodeData): CutoutGeometry {
-  const shape = data?.cutoutShape === 'circle' ? 'circle' : 'rect';
-  const widthMm = Math.max(1, Number(data?.cutoutWidthMm ?? 10));
-  // A circular cutout is defined by its diameter alone.
-  const heightMm = shape === 'circle' ? widthMm : Math.max(1, Number(data?.cutoutHeightMm ?? 6));
-  return { shape, widthMm, heightMm };
-}
-
-/** On-canvas pixel size, at roughly 2px per mm. */
-export function getCutoutSize(data?: RawNodeData): { width: number; height: number } {
-  const { widthMm, heightMm } = getCutoutGeometry(data);
-  return {
-    width: Math.max(24, Math.min(160, widthMm * 2)),
-    height: Math.max(20, Math.min(160, heightMm * 2)),
-  };
-}
 
 export function CutoutProperties({ node, updateData }: NodePropertiesProps) {
   const geom = getCutoutGeometry(node.data);

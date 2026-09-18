@@ -5,6 +5,7 @@ import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
 import type { Node, NodeProps } from '@xyflow/react';
+import { useCanvasState } from '../canvasState';
 import type { LedNodeData } from '../../types/nodes';
 
 export function LEDProperties({ node, updateData, webcam }: NodePropertiesProps) {
@@ -143,7 +144,7 @@ export const LEDNode = memo(function LEDNode({ data, selected }: NodeProps<Node<
   const glowRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
 
-  const isSimulating = !!data.isSimulating;
+  const { isSimulating } = useCanvasState();
   
   useEffect(() => {
     // Held in locals so the ticker callback keeps the arrays the guard below

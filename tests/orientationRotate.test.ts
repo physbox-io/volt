@@ -8,7 +8,7 @@ import {
   remapHandleForReverse,
   reverseOrientation,
 } from '../src/utils/nodeGeometry';
-import { pinHeaderPadOffset } from '../src/components/nodes/PinHeaderNode';
+import { pinHeaderPadOffset } from '../src/components/nodes/boardGeometry';
 
 const header = (orientation?: string, rows = 1, cols = 5) => ({
   id: 'h1',

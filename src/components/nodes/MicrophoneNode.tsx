@@ -1,9 +1,11 @@
 import { Handle, Position, useReactFlow } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
+import { useCanvasState } from '../canvasState';
 import { useState, useRef, useCallback } from 'react';
 import { Mic, Square } from 'lucide-react';
 import type { NodePropertiesProps } from './registry';
-import { DEVICE_CARD, DEVICE_TITLE, resolveOrientation } from './schematic';
+import { DEVICE_CARD, DEVICE_TITLE } from './schematicStyle';
+import { resolveOrientation } from './orientation';
 import { NumberInput } from '@physbox-io/ui';
 import type { MicrophoneNodeData } from '../../types/nodes';
 
@@ -22,6 +24,7 @@ export function MicrophoneProperties({ node, updateData }: NodePropertiesProps) 
 
 export function MicrophoneNode({ id, data }: NodeProps<Node<MicrophoneNodeData>>) {
   const { isVertical } = resolveOrientation(data.orientation);
+  const { simLength } = useCanvasState();
   const [isRecording, setIsRecording] = useState(false);
   const [hasData, setHasData] = useState(!!data.pwlData);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
@@ -90,7 +93,7 @@ export function MicrophoneNode({ id, data }: NodeProps<Node<MicrophoneNodeData>>
         setIsRecording(true);
         
         // Auto stop after the simulation duration (capped at 5s)
-        const recordMs = Math.min((data.simLength ?? 1.0) * 1000, 5000);
+        const recordMs = Math.min(simLength * 1000, 5000);
         setTimeout(() => {
            if (mediaRecorder.current && mediaRecorder.current.state === 'recording') {
               mediaRecorder.current.stop();

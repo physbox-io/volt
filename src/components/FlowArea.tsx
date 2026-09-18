@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef, useContext, type DragEvent } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, useContext, type DragEvent, type Dispatch, type SetStateAction } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -6,6 +6,11 @@ import {
   ViewportPortal,
   type Node,
   type Edge,
+  type OnConnect,
+  type OnConnectStart,
+  type OnConnectEnd,
+  type OnNodesChange,
+  type OnEdgesChange,
   useReactFlow,
   useUpdateNodeInternals,
   ConnectionMode,
@@ -54,10 +59,12 @@ import { ViaNode } from './nodes/ViaNode';
 import { MountingHoleNode } from './nodes/MountingHoleNode';
 import { JumperNode } from './nodes/JumperNode';
 import { CutoutNode } from './nodes/CutoutNode';
-import { AuraEdge, EdgePathContext } from './AuraEdge';
+import { AuraEdge } from './AuraEdge';
+import { EdgePathContext } from './edgePathContext';
 import { findNearestEdgeAtPoint, getHandleCoord } from '../utils/nodeGeometry';
 import { computeBranchDots } from '../utils/branchDots';
 import { isPortConnected, mergeOverlappingNodesAndJunctions, splitEdgesOnOverlappingNodes, simplifyEdges } from '../utils/graphTopology';
+import type { AnyNodeData } from '../types/nodes';
 
 const edgeTypes = {
   aura: AuraEdge,
@@ -112,11 +119,34 @@ const nodeTypes = {
 
 let nodeId = 1;
 
+export interface FlowAreaProps {
+  nodes: Node[];
+  edges: Edge[];
+  setNodes: Dispatch<SetStateAction<Node[]>>;
+  setEdges: Dispatch<SetStateAction<Edge[]>>;
+  onNodesChange: OnNodesChange;
+  onEdgesChange: OnEdgesChange;
+  onConnect: OnConnect;
+  onNodeClick: (event: React.MouseEvent, node: Node) => void;
+  /** Clicking a wire reads its voltage instead of selecting it. */
+  probeMode?: boolean;
+  onEdgeProbe?: (edgeId: string, event: React.MouseEvent) => void;
+  isSimulating?: boolean;
+  /** Changes when a different circuit is loaded, which is what re-fits the view. */
+  fitKey?: string;
+  hasNoteCard?: boolean;
+  /** Read live rather than passed, so the fit leaves room for a card that moved. */
+  noteCardRect?: () => DOMRect | null;
+  /** A palette entry tapped on a touch device, to be dropped at the middle. */
+  pickedPart?: { type: string; label?: string; seq: number } | null;
+  onPickedPartPlaced?: () => void;
+}
+
 export function FlowArea({
   nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange, onConnect, onNodeClick,
   probeMode, onEdgeProbe, isSimulating, fitKey, hasNoteCard, noteCardRect,
   pickedPart, onPickedPartPlaced,
-}: any) {
+}: FlowAreaProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, getViewport, setViewport, getNodes, getInternalNode } = useReactFlow();
 
@@ -173,8 +203,13 @@ export function FlowArea({
   }, [nodes, updateNodeInternals]);
 
   // Supplied by App so FlowArea doesn't need to know how note cards are rendered.
+  // Held in a ref, and written from an effect rather than during render, so that
+  // a parent handing over a fresh closure every render does not re-frame the
+  // canvas underneath whoever is drawing on it.
   const cardRectRef = useRef<(() => DOMRect | null) | null>(null);
-  cardRectRef.current = noteCardRect ?? null;
+  useEffect(() => {
+    cardRectRef.current = noteCardRect ?? null;
+  }, [noteCardRect]);
 
   // `fitView` as a prop only runs on mount, so every preset after the first was
   // framed by whatever fit the *previous* circuit — usually a zoomed-in corner
@@ -232,6 +267,19 @@ export function FlowArea({
 
   // T-taps where a same-net wire branches off a shared trunk (see branchDots.ts).
   const contextPaths = context?.paths;
+  /*
+   * Every wire on this canvas is drawn by AuraEdge whatever it is called — the
+   * four names in `edgeTypes` are historical. A preset or an older file can
+   * carry an edge with no type at all, which React Flow would otherwise draw as
+   * a plain bezier. App used to fix that by rewriting every edge's `type`
+   * whenever the aura setting changed; the name is normalised here instead, on
+   * the way to the canvas, and whether the glow is drawn is read from context.
+   */
+  const drawnEdges = useMemo(
+    () => edges.map(e => (e.type && e.type in edgeTypes ? e : { ...e, type: 'aura' })),
+    [edges],
+  );
+
   const branchDots = useMemo(
     () => computeBranchDots(edges, contextPaths || {}),
     [edges, contextPaths]
@@ -240,8 +288,10 @@ export function FlowArea({
   const [previewJunction, setPreviewJunction] = useState<{ x: number; y: number } | null>(null);
   const connectingStartRef = useRef<{ nodeId: string; handleId: string; handleType: string } | null>(null);
 
-  const onConnectStart = useCallback((_event: any, { nodeId, handleId, handleType }: any) => {
-    connectingStartRef.current = { nodeId, handleId, handleType };
+  const onConnectStart = useCallback<OnConnectStart>((_event, { nodeId, handleId, handleType }) => {
+    // React Flow allows all three to be null on a start it could not resolve;
+    // every reader below re-checks, and the ref is cleared on connect end.
+    connectingStartRef.current = { nodeId: nodeId ?? '', handleId: handleId ?? '', handleType: handleType ?? '' };
   }, []);
 
   const handleMouseMove = useCallback((event: React.MouseEvent) => {
@@ -263,7 +313,7 @@ export function FlowArea({
     }
   }, [nodes, edges, screenToFlowPosition, setHoveredEdgeId, context?.hoveredEdgeId, previewJunction, contextPaths]);
 
-  const onConnectEnd = useCallback((event: any) => {
+  const onConnectEnd = useCallback<OnConnectEnd>((event) => {
     if (setHoveredEdgeId) setHoveredEdgeId(null);
     setPreviewJunction(null);
 
@@ -273,10 +323,10 @@ export function FlowArea({
     // they never kept: every branch below either assigns both or returns.
     let clientX: number;
     let clientY: number;
-    if (event.clientX !== undefined) {
+    if ('clientX' in event) {
       clientX = event.clientX;
       clientY = event.clientY;
-    } else if (event.changedTouches && event.changedTouches.length > 0) {
+    } else if (event.changedTouches.length > 0) {
       clientX = event.changedTouches[0].clientX;
       clientY = event.changedTouches[0].clientY;
     } else {
@@ -307,7 +357,7 @@ export function FlowArea({
 
     // Find if the drop point is close to any existing edge
     const edgeMatch = findNearestEdgeAtPoint(nodes, edges, dropPoint, connectingStartRef.current.nodeId, 16, contextPaths);
-    const matchedEdge: any = edgeMatch?.edge ?? null;
+    const matchedEdge: Edge | null = edgeMatch?.edge ?? null;
     const projectionPoint = edgeMatch?.projectionPoint ?? { x: Math.round(dropPoint.x / 8) * 8, y: Math.round(dropPoint.y / 8) * 8 };
 
     if (matchedEdge) {
@@ -325,7 +375,7 @@ export function FlowArea({
 
       // Split the matchedEdge by creating a new junction node
       const junctionId = `junction-${Date.now()}`;
-      const newJunctionNode: any = {
+      const newJunctionNode: Node = {
         id: junctionId,
         type: 'junction',
         position: projectionPoint,
@@ -335,7 +385,7 @@ export function FlowArea({
       const edgeType = matchedEdge.type || 'aura';
 
       // Create new edges — preserve original edge type and style
-      const edgeToJunction: any = {
+      const edgeToJunction: Edge = {
         id: `e-${matchedEdge.source}-${junctionId}`,
         source: matchedEdge.source,
         sourceHandle: matchedEdge.sourceHandle,
@@ -344,7 +394,7 @@ export function FlowArea({
         type: edgeType,
       };
 
-      const edgeFromJunction: any = {
+      const edgeFromJunction: Edge = {
         id: `e-${junctionId}-${matchedEdge.target}`,
         source: junctionId,
         sourceHandle: 'out',
@@ -354,7 +404,7 @@ export function FlowArea({
       };
 
       // Edge from the dragged handle to junction
-      const newConnectionEdge: any = draggedHandleType === 'source' ? {
+      const newConnectionEdge: Edge = draggedHandleType === 'source' ? {
         id: `e-${draggedNodeId}-${junctionId}`,
         source: draggedNodeId,
         sourceHandle: draggedHandleId,
@@ -371,8 +421,8 @@ export function FlowArea({
       };
 
       // Update state
-      setNodes((nds: any[]) => [...nds, newJunctionNode]);
-      setEdges((eds: any[]) => [
+      setNodes(nds => [...nds, newJunctionNode]);
+      setEdges(eds => [
         ...eds.filter(e => e.id !== matchedEdge.id),
         edgeToJunction,
         edgeFromJunction,
@@ -391,16 +441,23 @@ export function FlowArea({
   const addPart = useCallback(
     (type: string, label: string | undefined, position: { x: number; y: number }) => {
       const defaultDataFn = nodeRegistry[type]?.defaultData;
-      const initialData: any = defaultDataFn ? defaultDataFn(label) : { label, isOn: false };
+      /*
+       * `isOn` is seeded on every part that has no `defaultData` of its own and
+       * is read by nothing — a switch's own field is `isOpen`. It stays because
+       * dropping it changes what a saved circuit contains, which is a migration
+       * and not a tidy-up.
+       */
+      const initialData: AnyNodeData & { isOn?: boolean } =
+        defaultDataFn ? defaultDataFn(label) : { label, isOn: false };
 
-      const newNode: any = {
+      const newNode: Node = {
         id: `${type}-${nodeId++}`,
         type,
         position,
         data: initialData,
       };
 
-      setNodes((nds: any[]) => nds.concat(newNode));
+      setNodes(nds => nds.concat(newNode));
     },
     [setNodes]
   );
@@ -443,7 +500,7 @@ export function FlowArea({
     onPickedPartPlaced?.();
   }, [pickedPart, isSimulating, screenToFlowPosition, addPart, onPickedPartPlaced]);
 
-  const onNodeDragStop = useCallback((_event: any, draggedNode: Node) => {
+  const onNodeDragStop = useCallback((_event: React.MouseEvent, draggedNode: Node) => {
     const updatedNodes = nodes.map(n => n.id === draggedNode.id ? draggedNode : n);
     const merged = mergeOverlappingNodesAndJunctions(updatedNodes, edges, measuredHandleCoord);
     const split = splitEdgesOnOverlappingNodes(merged.nodes, merged.edges, contextPaths);
@@ -471,7 +528,7 @@ export function FlowArea({
     >
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={drawnEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}

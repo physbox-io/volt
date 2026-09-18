@@ -3,17 +3,8 @@ import { parseEngValue } from '../../utils/engValue';
 import type { NodePropertiesProps } from './registry';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { LdrNodeData } from '../../types/nodes';
-import {
-  LeadHandles,
-  RotatedSymbol,
-  SchematicLabel,
-  leadBoxStyle,
-  resolveOrientation,
-} from './schematic';
-
-export function ldrDefaultData() {
-  return { label: 'LDR', r_dark: 100000, r_dark_label: '100k', lightLevel: 0.5 };
-}
+import { LeadHandles, RotatedSymbol, SchematicLabel } from './schematic';
+import { leadBoxStyle, resolveOrientation } from './orientation';
 
 export function LDRProperties({ node, updateData, webcam }: NodePropertiesProps) {
   const { stream, videoRef, isRecordingWebcam, startRecordingWebcam } = webcam;

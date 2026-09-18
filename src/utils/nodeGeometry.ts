@@ -1,6 +1,6 @@
 import type { Node, Edge } from '@xyflow/react';
 import type { RawNodeData } from '../types/nodes';
-import { getNodeDimensions, getSchematicPath } from '../components/AuraEdge';
+import { getNodeDimensions, getSchematicPath } from './edgeRouting';
 
 // Component types the rotate control is offered for: every part whose symbol
 // and handle geometry follow `data.orientation`. Two-terminal passives and
@@ -152,7 +152,7 @@ import {
   getPinHeaderHandles,
   pinHeaderPadOffset,
   pinHeaderPadSide,
-} from '../components/nodes/PinHeaderNode';
+} from '../components/nodes/boardGeometry';
 
 export function getHandlesForNode(node: Node): string[] {
   if (node.type === 'timer555') {
@@ -231,16 +231,19 @@ export function getHandlesForNode(node: Node): string[] {
   return ['in', 'out'];
 }
 
-export function getHandleCoord(node: any, handleId: string): { x: number; y: number } {
-  const orientation = node.data?.orientation || 'horizontal';
+export function getHandleCoord(node: Node, handleId: string): { x: number; y: number } {
+  // `data` is a bag of `unknown`, and a node out of a saved file or an MCP
+  // agent is not obliged to have written a string here — reading it as one is
+  // what the `||` fallback below was always doing.
+  const orientation = (node.data?.orientation as string) || 'horizontal';
   const isLeft = orientation === 'left';
   const isUp = orientation === 'up';
   const isVertical = orientation === 'vertical' || isUp;
 
   const x = node.position.x;
   const y = node.position.y;
-  const w = node.measured?.width || getNodeDimensions(node.type, node.data).width;
-  const h = node.measured?.height || getNodeDimensions(node.type, node.data).height;
+  const w = node.measured?.width || getNodeDimensions(node.type ?? '', node.data).width;
+  const h = node.measured?.height || getNodeDimensions(node.type ?? '', node.data).height;
 
   // Diode/LED pins are electrically named but sit where in/out sit; without
   // this mapping they fell through to the node-center fallback, which put
@@ -337,7 +340,7 @@ export function getHandleCoord(node: any, handleId: string): { x: number; y: num
   }
 
   // Logic Gates (AND, OR, NAND, NOR, XOR)
-  if (['and', 'or', 'nand', 'nor', 'xor'].includes(node.type)) {
+  if (['and', 'or', 'nand', 'nor', 'xor'].includes(node.type ?? '')) {
     if (handleId === 'in1') return { x, y: y + h * 0.3 };
     if (handleId === 'in2') return { x, y: y + h * 0.7 };
     if (handleId === 'out') return { x: x + w, y: y + h * 0.5 };
@@ -462,7 +465,7 @@ export function getHandleCoord(node: any, handleId: string): { x: number; y: num
   return { x: x + w / 2, y: y + h / 2 };
 }
 
-export const getHandlePosition = (node: any, handleId: string): string => {
+export const getHandlePosition = (node: Node, handleId: string): string => {
   if (node.type === 'mcu') {
     const cfg = getEffectiveMcuConfig(node.data);
     const pin = cfg.pins.find(p => p.id === handleId);
@@ -621,8 +624,8 @@ export function findNearestEdgeAtPoint(
 
     let points = renderedPaths?.[edge.id];
     if (!points || points.length < 2) {
-      const srcNode: any = nodes.find(n => n.id === edge.source);
-      const tgtNode: any = nodes.find(n => n.id === edge.target);
+      const srcNode = nodes.find(n => n.id === edge.source);
+      const tgtNode = nodes.find(n => n.id === edge.target);
       if (!srcNode || !tgtNode) continue;
 
       const sourceHandle = edge.sourceHandle || 'out';

@@ -3,44 +3,11 @@ import type { Node, NodeProps } from '@xyflow/react';
 import { Wifi, WifiOff, ExternalLink } from 'lucide-react';
 import { memo } from 'react';
 import type { NodePropertiesProps } from './registry';
-import { DEVICE_CARD_DARK } from './schematic';
+import { DEVICE_CARD_DARK } from './schematicStyle';
 import { NumberInput } from '@physbox-io/ui';
 import type { HeltecV4NodeData } from '../../types/nodes';
+import { HELTEC_V4_GPIO_PINS } from './partDefaults';
 
-export const HELTEC_V4_GPIO_PINS = ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41'];
-
-export function heltecV4DefaultData(): HeltecV4NodeData {
-  return {
-    label: 'Heltec V4',
-    ip: '192.168.1.244',
-    hilExecutionMode: 'native',
-    hilMemoizationEnabled: true,
-    hilInputDP: 3,
-    hilIcDP: 3,
-    hilMaxConsecutiveHits: 50,
-    pins: {
-      GPIO_1: 'analog_in',
-      GPIO_3: 'digital_out',
-      GPIO_33: 'digital_in',
-      GPIO_36: 'digital_in',
-      GPIO_37: 'digital_in',
-      GPIO_41: 'digital_in'
-    },
-    pinVoltages: {
-      GPIO_1: 0.0,
-      GPIO_3: 0.0,
-      GPIO_33: 0.0,
-      GPIO_36: 0.0,
-      GPIO_37: 0.0,
-      GPIO_41: 0.0
-    },
-    // Opt-in: nothing contacts the board over ws:// until the user clicks Connect on
-    // the node (or starts a HIL run). Auto-connecting from an https page is blocked as
-    // mixed content and can take WebSerial down with it.
-    hilEnabled: false,
-    isConnected: false
-  };
-}
 
 export function HeltecV4Properties({ node, updateData, isSimulating }: NodePropertiesProps) {
   const memoEnabled = node.data.hilMemoizationEnabled ?? true;
