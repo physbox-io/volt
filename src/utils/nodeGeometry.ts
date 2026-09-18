@@ -1,4 +1,5 @@
 import type { Node, Edge } from '@xyflow/react';
+import type { RawNodeData } from '../types/nodes';
 import { getNodeDimensions, getSchematicPath } from '../components/AuraEdge';
 
 // Component types the rotate control is offered for: every part whose symbol
@@ -80,7 +81,7 @@ const REVERSIBLE_TYPES = [
  * numbering runs the other way, which is what happens when a ribbon cable is
  * seated from the opposite end. A 1x1 header has nothing to reverse.
  */
-export function canReverseLeads(nodeType: string, data?: unknown): boolean {
+export function canReverseLeads(nodeType: string, data?: RawNodeData): boolean {
   if (nodeType === 'pinheader') return pinHeaderPadCount(data) > 1;
   return REVERSIBLE_TYPES.includes(nodeType);
 }
@@ -89,7 +90,7 @@ export function canReverseLeads(nodeType: string, data?: unknown): boolean {
 export function remapHandleForReverse(
   nodeType: string,
   handleId: string,
-  data?: unknown
+  data?: RawNodeData
 ): string | null {
   if (!canReverseLeads(nodeType, data)) return null;
   if (nodeType === 'pinheader') {
@@ -108,7 +109,7 @@ export function remapHandleForReverse(
   return next && next !== handleId ? next : null;
 }
 
-function pinHeaderPadCount(data?: unknown): number {
+function pinHeaderPadCount(data?: RawNodeData): number {
   const { rows, cols } = getPinHeaderGeometry(data);
   return rows * cols;
 }

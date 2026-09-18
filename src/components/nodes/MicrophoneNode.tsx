@@ -1,9 +1,11 @@
 import { Handle, Position, useReactFlow } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import { useState, useRef, useCallback } from 'react';
 import { Mic, Square } from 'lucide-react';
 import type { NodePropertiesProps } from './registry';
 import { DEVICE_CARD, DEVICE_TITLE, resolveOrientation } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
+import type { MicrophoneNodeData } from '../../types/nodes';
 
 export function MicrophoneProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -18,7 +20,7 @@ export function MicrophoneProperties({ node, updateData }: NodePropertiesProps) 
   );
 }
 
-export function MicrophoneNode({ id, data }: any) {
+export function MicrophoneNode({ id, data }: NodeProps<Node<MicrophoneNodeData>>) {
   const { isVertical } = resolveOrientation(data.orientation);
   const [isRecording, setIsRecording] = useState(false);
   const [hasData, setHasData] = useState(!!data.pwlData);
@@ -28,7 +30,7 @@ export function MicrophoneNode({ id, data }: any) {
 
   const gain = data.amplification ?? 100;
 
-  const updateNodeData = useCallback((updates: Record<string, any>) => {
+  const updateNodeData = useCallback((updates: Partial<MicrophoneNodeData>) => {
     setNodes(nds => nds.map(n =>
       n.id === id
         ? { ...n, data: { ...n.data, ...updates } }
@@ -55,7 +57,7 @@ export function MicrophoneNode({ id, data }: any) {
         mediaRecorder.current.onstop = async () => {
           const blob = new Blob(chunks.current, { type: 'audio/webm' });
           const arrayBuffer = await blob.arrayBuffer();
-          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const audioCtx = new (window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)();
           const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
           
           const rawData = audioBuffer.getChannelData(0);

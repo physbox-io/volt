@@ -1,6 +1,8 @@
 import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
+import type { ZenerDiodeNodeData } from '../../types/nodes';
 
 export function ZenerDiodeProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -12,7 +14,7 @@ export function ZenerDiodeProperties({ node, updateData }: NodePropertiesProps) 
   );
 }
 
-export function ZenerDiodeNode({ data, selected }: any) {
+export function ZenerDiodeNode({ data, selected }: NodeProps<Node<ZenerDiodeNodeData>>) {
   const orientation = data.orientation || 'horizontal';
   const isVertical = orientation === 'vertical' || orientation === 'up';
   const isLeft = orientation === 'left';

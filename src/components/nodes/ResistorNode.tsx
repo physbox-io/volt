@@ -1,8 +1,10 @@
 import { useCallback } from 'react';
 import { Handle, Position, useReactFlow } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import { getNodeDefaultName } from '../../utils/nodeNaming';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel, EngField } from './schematic';
+import type { ResistorNodeData } from '../../types/nodes';
 
 export function ResistorProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -13,7 +15,7 @@ export function ResistorProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function ResistorNode({ id, data, selected }: any) {
+export function ResistorNode({ id, data, selected }: NodeProps<Node<ResistorNodeData>>) {
   const orientation = data.orientation || 'horizontal';
   const isVertical = orientation === 'vertical' || orientation === 'up';
   const isLeft = orientation === 'left';
@@ -21,8 +23,8 @@ export function ResistorNode({ id, data, selected }: any) {
 
   const name = data.name !== undefined ? data.name : getNodeDefaultName(id, 'resistor');
   const { setNodes } = useReactFlow();
-  const update = useCallback((patch: Record<string, any>) => {
-    setNodes((nds: any[]) => nds.map(n => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
+  const update = useCallback((patch: Partial<ResistorNodeData>) => {
+    setNodes(nds => nds.map(n => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
   }, [id, setNodes]);
 
   return (

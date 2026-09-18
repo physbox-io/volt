@@ -1,10 +1,12 @@
 import { Handle, Position, NodeResizer } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import { useMemo } from 'react';
 import { computeFFT } from '../../utils/fft';
 import { detectPeriod } from '../../utils/periodDetect';
 import type { NodePropertiesProps } from './registry';
 import { DEVICE_CARD_DARK, pinRow } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
+import type { ScopeNodeData } from '../../types/nodes';
 
 export function ScopeProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -68,7 +70,7 @@ function pickStep(range: number, divs: number, steps: number[]): number {
   return steps[steps.length - 1];
 }
 
-export function ScopeNode({ data, selected }: any) {
+export function ScopeNode({ data, selected }: NodeProps<Node<ScopeNodeData>>) {
   const points1: { t: number; v: number }[] = data.voltageData1 || data.voltageData || [];
   const points2: { t: number; v: number }[] = data.voltageData2 || [];
   const showFFT = data.showFFT || false;
@@ -161,7 +163,7 @@ export function ScopeNode({ data, selected }: any) {
         isVisible={selected}
         lineClassName="!border-indigo-400"
         handleClassName="!w-2 !h-2 !bg-indigo-400 !border-indigo-600"
-        onResize={(_e: any, params: any) => {
+        onResize={(_e, params) => {
           if (data.onResize) data.onResize(params.width, params.height);
         }}
       />

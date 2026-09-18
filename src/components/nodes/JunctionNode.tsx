@@ -1,6 +1,8 @@
 import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
+import type { BaseNodeData } from '../../types/nodes';
 
-export function JunctionNode({ selected }: any) {
+export function JunctionNode({ selected }: NodeProps<Node<BaseNodeData>>) {
   return (
     <div className="w-[1px] h-[1px] flex items-center justify-center relative select-none">
       <style>{`

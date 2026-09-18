@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { DEVICE_CARD_DARK } from './schematic';
 import {
@@ -12,9 +13,11 @@ import {
   type McuPinDef,
   type McuPinSide,
   type McuPinType,
+  type McuPackageStyle,
 } from '../../utils/mcuConfig';
 import { Plus, Trash2, Cpu, Wrench } from 'lucide-react';
 import { NumberInput } from '@physbox-io/ui';
+import type { McuNodeData } from '../../types/nodes';
 
 /**
  * Reads the pad-number field. Kept as a number when it is one, so a part typed
@@ -351,7 +354,7 @@ export function MicrocontrollerProperties({ node, updateData }: NodePropertiesPr
             <select
               value={config.style}
               onChange={e => {
-                const style = e.target.value as any;
+                const style = e.target.value as McuPackageStyle;
                 const newCfg = createCustomMcuConfig(config.pins.length, style, {
                   widthMm: config.widthMm,
                   heightMm: config.heightMm,
@@ -436,7 +439,7 @@ export function MicrocontrollerProperties({ node, updateData }: NodePropertiesPr
   );
 }
 
-export function MicrocontrollerNode({ data, selected }: any) {
+export function MicrocontrollerNode({ data, selected }: NodeProps<Node<McuNodeData>>) {
   const config = getEffectiveMcuConfig(data);
   const { pins } = config;
 

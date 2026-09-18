@@ -1,7 +1,9 @@
 import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
+import type { ACVoltageNodeData } from '../../types/nodes';
 
 export function ACVoltageProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -36,7 +38,7 @@ export function ACVoltageProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function ACVoltageNode({ data, selected }: any) {
+export function ACVoltageNode({ data, selected }: NodeProps<Node<ACVoltageNodeData>>) {
   const isHorizontal = data.orientation === 'horizontal';
 
   return (

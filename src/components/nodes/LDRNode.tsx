@@ -1,5 +1,8 @@
 import { sanitizeSpiceValue } from '../../utils/spice';
+import { parseEngValue } from '../../utils/engValue';
 import type { NodePropertiesProps } from './registry';
+import type { Node, NodeProps } from '@xyflow/react';
+import type { LdrNodeData } from '../../types/nodes';
 import {
   LeadHandles,
   RotatedSymbol,
@@ -14,6 +17,10 @@ export function ldrDefaultData() {
 
 export function LDRProperties({ node, updateData, webcam }: NodePropertiesProps) {
   const { stream, videoRef, isRecordingWebcam, startRecordingWebcam } = webcam;
+  // `r_dark` is the sanitized label — "100k" — not a number, so the readout
+  // below used to subtract 100 from a string and print "R: NaN Ω" the moment
+  // anyone typed a dark resistance. See the same fix in spice.ts.
+  const rDark = parseEngValue(String(node.data.r_dark ?? '')) ?? 100000;
   return (
     <>
       <div className="mb-3">
@@ -89,14 +96,14 @@ export function LDRProperties({ node, updateData, webcam }: NodePropertiesProps)
         />
         <div className="text-[10px] text-gray-500 dark:text-gray-400 font-mono mt-1 flex justify-between">
           <span>Light: {Math.round((node.data.lightLevel ?? 0.5) * 100)}%</span>
-          <span>R: {Math.round(100 + ((node.data.r_dark ?? 100000) - 100) * (1 - (node.data.lightLevel ?? 0.5))).toLocaleString()} Ω</span>
+          <span>R: {Math.round(100 + (rDark - 100) * (1 - (node.data.lightLevel ?? 0.5))).toLocaleString()} Ω</span>
         </div>
       </div>
     </>
   );
 }
 
-export function LDRNode({ data, selected }: any) {
+export function LDRNode({ data, selected }: NodeProps<Node<LdrNodeData>>) {
   // const rDarkLabel = data.r_dark_label || '100k';
   const lightLevel = data.lightLevel ?? 0;
   const isWebcamActive = !!data.isWebcamActive;

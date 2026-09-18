@@ -1,7 +1,9 @@
 import { Handle, Position } from '@xyflow/react';
 import { SchematicLabel } from './schematic';
+import type { Node, NodeProps } from '@xyflow/react';
+import type { MosfetNodeData } from '../../types/nodes';
 
-export function PmosNode({ data, selected }: any) {
+export function PmosNode({ data, selected }: NodeProps<Node<MosfetNodeData>>) {
   return (
     <div className="schematic-node w-[48px] h-[48px] flex items-center justify-center relative select-none">
       <Handle type="target" position={Position.Top} id="s" className="w-2 h-2 bg-emerald-500 !border-0" style={{ left: '75%' }} />

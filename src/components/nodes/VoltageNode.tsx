@@ -1,6 +1,8 @@
 import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
+import type { VoltageNodeData } from '../../types/nodes';
 
 export function VoltageProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -11,7 +13,7 @@ export function VoltageProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function VoltageNode({ data, selected }: any) {
+export function VoltageNode({ data, selected }: NodeProps<Node<VoltageNodeData>>) {
   const isHorizontal = data.orientation === 'horizontal';
 
   return (

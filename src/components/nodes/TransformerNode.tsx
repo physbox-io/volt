@@ -1,8 +1,10 @@
 import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import { sanitizeSpiceValue } from '../../utils/spice';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
+import type { TransformerNodeData } from '../../types/nodes';
 
 export function transformerDefaultData() {
   return { label: 'Transformer', l_pri: '10m', l_sec: '10m', k: 0.99, l_pri_label: '10mH', l_sec_label: '10mH' };
@@ -50,7 +52,7 @@ export function TransformerProperties({ node, updateData }: NodePropertiesProps)
   );
 }
 
-export function TransformerNode({ data, selected }: any) {
+export function TransformerNode({ data, selected }: NodeProps<Node<TransformerNodeData>>) {
   const lPri = data.l_pri_label || '10mH';
   const lSec = data.l_sec_label || '10mH';
 

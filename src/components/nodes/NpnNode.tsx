@@ -5,6 +5,8 @@ import { NumberInput } from '@physbox-io/ui';
 
 import { useState } from 'react';
 import { BJT_NPN_MODELS, BJT_PNP_MODELS, getBjtModel, resolveBjtParams } from '../../utils/deviceModels';
+import type { Node, NodeProps } from '@xyflow/react';
+import type { BjtNodeData } from '../../types/nodes';
 
 /** Shared by NpnNode and PnpNode — both BJT types expose model presets and physical SPICE parameters. */
 export function BJTProperties({ node, updateData }: NodePropertiesProps) {
@@ -157,7 +159,7 @@ export function BJTProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function NpnNode({ data, selected }: any) {
+export function NpnNode({ data, selected }: NodeProps<Node<BjtNodeData>>) {
   return (
     <div className="schematic-node w-[32px] h-[32px] flex items-center justify-center relative select-none">
       <Handle type="target" position={Position.Top} id="c" className="w-2 h-2 bg-emerald-500 !border-0" style={{ left: '75%' }} />

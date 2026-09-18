@@ -1,4 +1,6 @@
+import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
+import type { CutoutNodeData, RawNodeData } from '../../types/nodes';
 import { NumberInput } from '@physbox-io/ui';
 
 /**
@@ -25,17 +27,24 @@ export function cutoutDefaultData(label?: string) {
   };
 }
 
-/** Reads the geometry off a node's data, clamped to something millable. */
-export function getCutoutGeometry(data?: any): CutoutGeometry {
+/**
+ * Reads the geometry off a node's data, clamped to something millable.
+ *
+ * Called from edge routing and the PCB exporter as well as from the symbol, so
+ * what arrives is `Node['data']` — a bag of `unknown` that may have come from a
+ * saved file or an MCP agent. `Math.max` did this conversion implicitly while
+ * the parameter was `any`.
+ */
+export function getCutoutGeometry(data?: RawNodeData): CutoutGeometry {
   const shape = data?.cutoutShape === 'circle' ? 'circle' : 'rect';
-  const widthMm = Math.max(1, data?.cutoutWidthMm ?? 10);
+  const widthMm = Math.max(1, Number(data?.cutoutWidthMm ?? 10));
   // A circular cutout is defined by its diameter alone.
-  const heightMm = shape === 'circle' ? widthMm : Math.max(1, data?.cutoutHeightMm ?? 6);
+  const heightMm = shape === 'circle' ? widthMm : Math.max(1, Number(data?.cutoutHeightMm ?? 6));
   return { shape, widthMm, heightMm };
 }
 
 /** On-canvas pixel size, at roughly 2px per mm. */
-export function getCutoutSize(data?: any): { width: number; height: number } {
+export function getCutoutSize(data?: RawNodeData): { width: number; height: number } {
   const { widthMm, heightMm } = getCutoutGeometry(data);
   return {
     width: Math.max(24, Math.min(160, widthMm * 2)),
@@ -98,7 +107,7 @@ export function CutoutProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function CutoutNode({ data }: { data?: any }) {
+export function CutoutNode({ data }: NodeProps<Node<CutoutNodeData>>) {
   const geom = getCutoutGeometry(data);
   const { width, height } = getCutoutSize(data);
   return (

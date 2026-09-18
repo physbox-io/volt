@@ -3,6 +3,8 @@ import { useState } from 'react';
 import type { NodePropertiesProps } from './registry';
 import { NumberInput } from '@physbox-io/ui';
 import { OPAMP_MODELS, getOpAmpModel, resolveOpAmpParams } from '../../utils/deviceModels';
+import type { Node, NodeProps } from '@xyflow/react';
+import type { OpAmpNodeData } from '../../types/nodes';
 
 export function OpAmpProperties({ node, updateData }: NodePropertiesProps) {
   const currentModelId = (node.data?.model as string) || 'ideal';
@@ -133,7 +135,7 @@ export function OpAmpProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function OpAmpNode({ data, selected }: any) {
+export function OpAmpNode({ data, selected }: NodeProps<Node<OpAmpNodeData>>) {
   const displayLabel = data?.label || (data?.model && data.model !== 'ideal' ? (getOpAmpModel(data.model)?.name.split(' ')[0] || data.model.toUpperCase()) : 'LM358');
 
   return (

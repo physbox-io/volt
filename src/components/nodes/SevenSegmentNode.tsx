@@ -1,8 +1,10 @@
 import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import { useEffect, useState, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
 import type { NodePropertiesProps } from './registry';
 import { DEVICE_CARD_DARK, pinRow } from './schematic';
+import type { SevenSegmentNodeData } from '../../types/nodes';
 
 export function SevenSegmentProperties(_props: NodePropertiesProps) {
   return (
@@ -28,7 +30,7 @@ const SEG_COLORS: Record<string, string> = {
   d: 'bg-green-400', e: 'bg-teal-400', f: 'bg-emerald-400', g: 'bg-purple-400',
 };
 
-export const SevenSegmentNode = memo(function SevenSegmentNode({ data }: any) {
+export const SevenSegmentNode = memo(function SevenSegmentNode({ data }: NodeProps<Node<SevenSegmentNodeData>>) {
   const segs = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
   const [currentVoltages, setCurrentVoltages] = useState<Record<string, number>>(data.segmentVoltages || {});
   const isSimulating = !!data.isSimulating;

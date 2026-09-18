@@ -1,6 +1,8 @@
 import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
+import type { SwitchNodeData } from '../../types/nodes';
 
 export function SwitchProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -25,7 +27,7 @@ export function SwitchProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function SwitchNode({ data, selected }: any) {
+export function SwitchNode({ data, selected }: NodeProps<Node<SwitchNodeData>>) {
   const isOpen = data.isOpen !== false; // Default to open
   const orientation = data.orientation || 'horizontal';
   const isVertical = orientation === 'vertical' || orientation === 'up';

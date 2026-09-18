@@ -1,6 +1,8 @@
 import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
+import type { PotentiometerNodeData } from '../../types/nodes';
 
 export function PotentiometerProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -17,7 +19,7 @@ export function PotentiometerProperties({ node, updateData }: NodePropertiesProp
   );
 }
 
-export function PotentiometerNode({ data, selected }: any) {
+export function PotentiometerNode({ data, selected }: NodeProps<Node<PotentiometerNodeData>>) {
   const position = data.position ?? 50; // wiper position 0-100%
   const label = data.label || '10k';
   const isVertical = data.orientation === 'vertical';

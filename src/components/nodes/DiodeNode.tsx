@@ -1,7 +1,9 @@
 import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
+import type { DiodeNodeData } from '../../types/nodes';
 
 export function DiodeProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -17,7 +19,7 @@ export function DiodeProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function DiodeNode({ data, selected }: any) {
+export function DiodeNode({ data, selected }: NodeProps<Node<DiodeNodeData>>) {
   const orientation = data.orientation || 'horizontal';
   const isVertical = orientation === 'vertical' || orientation === 'up';
   const isLeft = orientation === 'left';

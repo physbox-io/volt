@@ -1,13 +1,15 @@
 import { Handle, Position, useReactFlow } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import { Wifi, WifiOff, ExternalLink } from 'lucide-react';
 import { memo } from 'react';
 import type { NodePropertiesProps } from './registry';
 import { DEVICE_CARD_DARK } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
+import type { HeltecV4NodeData } from '../../types/nodes';
 
 export const HELTEC_V4_GPIO_PINS = ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41'];
 
-export function heltecV4DefaultData() {
+export function heltecV4DefaultData(): HeltecV4NodeData {
   return {
     label: 'Heltec V4',
     ip: '192.168.1.244',
@@ -185,13 +187,13 @@ export function HeltecV4Properties({ node, updateData, isSimulating }: NodePrope
   );
 }
 
-export const HeltecV4Node = memo(function HeltecV4Node({ id, data, selected }: any) {
+export const HeltecV4Node = memo(function HeltecV4Node({ id, data, selected }: NodeProps<Node<HeltecV4NodeData>>) {
   const { setNodes } = useReactFlow();
   const isConnected = !!data.isConnected;
   const hilEnabled = !!data.hilEnabled;
 
   const toggleHil = () => {
-    setNodes((nds: any[]) => nds.map(n =>
+    setNodes(nds => nds.map(n =>
       n.id === id ? { ...n, data: { ...n.data, hilEnabled: !hilEnabled } } : n
     ));
   };

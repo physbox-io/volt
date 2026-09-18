@@ -1,4 +1,6 @@
+import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
+import type { JumperNodeData } from '../../types/nodes';
 import { LeadHandles, RotatedSymbol, leadBoxStyle, resolveOrientation } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
 
@@ -65,7 +67,7 @@ export function JumperProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function JumperNode({ data }: any) {
+export function JumperNode({ data }: NodeProps<Node<JumperNodeData>>) {
   const orientation = resolveOrientation(data?.orientation);
 
   return (

@@ -1,8 +1,10 @@
 import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import { useEffect, useRef } from 'react';
 import type { NodePropertiesProps } from './registry';
 import { DEVICE_CARD, resolveOrientation } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
+import type { SpeakerNodeData } from '../../types/nodes';
 
 
 export function SpeakerProperties({ node, updateData }: NodePropertiesProps) {
@@ -38,14 +40,14 @@ export function SpeakerProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function SpeakerNode({ data }: any) {
+export function SpeakerNode({ data }: NodeProps<Node<SpeakerNodeData>>) {
   const { isVertical } = resolveOrientation(data.orientation);
   const audioCtx = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     if (data.voltageData && data.voltageData.length > 0 && data.outputTarget !== 'cyd') {
       if (!audioCtx.current) {
-        audioCtx.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioCtx.current = new (window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)();
       }
       const ctx = audioCtx.current;
       if (ctx.state === 'suspended') ctx.resume();

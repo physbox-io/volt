@@ -1,9 +1,11 @@
 import { Handle, Position, useReactFlow } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import { AlertCircle } from 'lucide-react';
 import type { NodePropertiesProps } from './registry';
 import { useCallback } from 'react';
 import { NumberInput } from '@physbox-io/ui';
 import { DEVICE_CARD, DEVICE_SCREEN, DEVICE_TITLE, DeviceField, STROKE, resolveOrientation } from './schematic';
+import type { SignalGeneratorNodeData } from '../../types/nodes';
 
 export function SignalGeneratorProperties({ node, updateData, simLength }: NodePropertiesProps) {
   return (
@@ -78,7 +80,7 @@ function WaveformPath({ type }: { type: string }) {
   );
 }
 
-export function SignalGeneratorNode({ id, data }: any) {
+export function SignalGeneratorNode({ id, data }: NodeProps<Node<SignalGeneratorNodeData>>) {
   const { isVertical } = resolveOrientation(data.orientation);
   const { setNodes } = useReactFlow();
   const type = data.waveform || 'sine';
@@ -87,8 +89,8 @@ export function SignalGeneratorNode({ id, data }: any) {
   const freq = Number.isFinite(data.frequency) ? (data.frequency as number) : 1;
   const amp = Number.isFinite(data.amplitude) ? (data.amplitude as number) : 5;
 
-  const update = useCallback((patch: Record<string, any>) => {
-    setNodes((nds: any[]) => nds.map(n => n.id === id ? { ...n, data: { ...n.data, ...patch } } : n));
+  const update = useCallback((patch: Partial<SignalGeneratorNodeData>) => {
+    setNodes(nds => nds.map(n => n.id === id ? { ...n, data: { ...n.data, ...patch } } : n));
   }, [id, setNodes]);
 
   /*

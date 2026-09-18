@@ -1,7 +1,9 @@
 import { Handle, Position } from '@xyflow/react';
 import { SchematicLabel } from './schematic';
+import type { Node, NodeProps } from '@xyflow/react';
+import type { BjtNodeData } from '../../types/nodes';
 
-export function PnpNode({ data, selected }: any) {
+export function PnpNode({ data, selected }: NodeProps<Node<BjtNodeData>>) {
   return (
     <div className="schematic-node w-[32px] h-[32px] flex items-center justify-center relative select-none">
       <Handle type="target" position={Position.Top} id="e" className="w-2 h-2 bg-emerald-500 !border-0" style={{ left: '75%' }} />

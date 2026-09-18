@@ -1,5 +1,7 @@
 import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
+import type { PinHeaderNodeData, RawNodeData } from '../../types/nodes';
 import { NumberInput } from '@physbox-io/ui';
 
 /**
@@ -32,27 +34,37 @@ export function pinHeaderDefaultData(label?: string) {
   };
 }
 
+/**
+ * Coerces the way the arithmetic below used to coerce on its own.
+ *
+ * These helpers are called from edge routing and the PCB exporter as well as
+ * from the symbol, so what arrives is `Node['data']` — a bag of `unknown` that
+ * may have come from a saved file or an MCP agent. `Math.round` and `>` both
+ * did this conversion implicitly while the parameter was `any`.
+ */
+const num = (v: unknown): number => Number(v);
+
 /** Reads the geometry off a node's data, clamped to something buildable. */
-export function getPinHeaderGeometry(data?: any): PinHeaderGeometry {
+export function getPinHeaderGeometry(data?: RawNodeData): PinHeaderGeometry {
   const rows = Math.min(
     PIN_HEADER_LIMITS.maxRows,
-    Math.max(PIN_HEADER_LIMITS.minRows, Math.round(data?.rows ?? 1))
+    Math.max(PIN_HEADER_LIMITS.minRows, Math.round(num(data?.rows ?? 1)))
   );
   const cols = Math.min(
     PIN_HEADER_LIMITS.maxCols,
-    Math.max(PIN_HEADER_LIMITS.minCols, Math.round(data?.cols ?? 8))
+    Math.max(PIN_HEADER_LIMITS.minCols, Math.round(num(data?.cols ?? 8)))
   );
-  const pitchMm = data?.pitchMm > 0 ? data.pitchMm : 2.54;
+  const pitchMm = num(data?.pitchMm) > 0 ? num(data?.pitchMm) : 2.54;
   return {
     rows,
     cols,
     pitchMm,
-    rowSpacingMm: data?.rowSpacingMm > 0 ? data.rowSpacingMm : pitchMm,
+    rowSpacingMm: num(data?.rowSpacingMm) > 0 ? num(data?.rowSpacingMm) : pitchMm,
   };
 }
 
 /** Pad numbers, row-major from 1 — the handle ids for this node. */
-export function getPinHeaderHandles(data?: any): string[] {
+export function getPinHeaderHandles(data?: RawNodeData): string[] {
   const { rows, cols } = getPinHeaderGeometry(data);
   return Array.from({ length: rows * cols }, (_, i) => String(i + 1));
 }
@@ -70,19 +82,19 @@ export function getPinHeaderHandles(data?: any): string[] {
  * The pad *numbering* never changes — pin 1 stays pin 1 — so nothing wired to
  * the header comes loose, and the footprint keeps its row-major order.
  */
-export function pinHeaderQuarterTurns(data?: any): 0 | 1 | 2 | 3 {
-  const i = ['horizontal', 'vertical', 'left', 'up'].indexOf(data?.orientation);
+export function pinHeaderQuarterTurns(data?: RawNodeData): 0 | 1 | 2 | 3 {
+  const i = ['horizontal', 'vertical', 'left', 'up'].indexOf(String(data?.orientation));
   return (i < 0 ? 0 : i) as 0 | 1 | 2 | 3;
 }
 
 /** True when the strip runs down the canvas rather than across it. */
-export function isPinHeaderVertical(data?: any): boolean {
+export function isPinHeaderVertical(data?: RawNodeData): boolean {
   return pinHeaderQuarterTurns(data) % 2 === 1;
 }
 
 /** On-canvas pixel size. Kept in one place so edge routing can agree with it. */
 export const PIN_HEADER_CELL_PX = 16;
-export function getPinHeaderSize(data?: any): { width: number; height: number } {
+export function getPinHeaderSize(data?: RawNodeData): { width: number; height: number } {
   const { rows, cols } = getPinHeaderGeometry(data);
   const across = isPinHeaderVertical(data) ? rows : cols;
   const down = isPinHeaderVertical(data) ? cols : rows;
@@ -99,7 +111,7 @@ export function getPinHeaderSize(data?: any): { width: number; height: number } 
  * where the pads used to be.
  */
 export function pinHeaderPadOffset(
-  data: any,
+  data: RawNodeData | undefined,
   pin: number
 ): { dx: number; dy: number } | null {
   const { rows, cols } = getPinHeaderGeometry(data);
@@ -125,7 +137,7 @@ export function pinHeaderPadOffset(
  * near long edge and every other row by the far one, turned along with the body.
  */
 export function pinHeaderPadSide(
-  data: any,
+  data: RawNodeData | undefined,
   pin: number
 ): 'top' | 'bottom' | 'left' | 'right' {
   const { cols } = getPinHeaderGeometry(data);
@@ -139,7 +151,7 @@ export function pinHeaderPadSide(
   return firstRow ? sides[0] : sides[1];
 }
 
-export function PinHeaderNode({ data }: { data?: any }) {
+export function PinHeaderNode({ data }: NodeProps<Node<PinHeaderNodeData>>) {
   const { rows, cols } = getPinHeaderGeometry(data);
   const { width, height } = getPinHeaderSize(data);
 

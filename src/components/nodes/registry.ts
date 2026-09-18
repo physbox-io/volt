@@ -1,8 +1,17 @@
 import type { ComponentType } from 'react';
+import type { Node } from '@xyflow/react';
+import type { AnyNodeData } from '../../types/nodes';
 
 export interface NodePropertiesProps {
-  node: any;
-  updateData: (key: string, value: any) => void;
+  /*
+   * Every field of every part, rather than the one kind this panel is for.
+   * `nodeRegistry` below is a `Record<string, NodeMeta>` dispatched on
+   * `node.type` at run time, so there is no point at which the compiler knows
+   * which entry the panel was handed — a per-kind type here would have to be
+   * cast back out at the registry, which is the same hole with more ceremony.
+   */
+  node: Node<AnyNodeData>;
+  updateData: (key: string, value: unknown) => void;
   isSimulating: boolean;
   simLength: number;
   webcam: {
@@ -16,7 +25,7 @@ export interface NodePropertiesProps {
 export interface NodeMeta {
   Properties?: ComponentType<NodePropertiesProps>;
   /** Extra `data` fields to seed on the node when it's dropped onto the canvas, beyond the sidebar's base label/data. */
-  defaultData?: (label?: string) => Record<string, any>;
+  defaultData?: (label?: string) => AnyNodeData;
 }
 
 import { VoltageProperties } from './VoltageNode';

@@ -4,6 +4,8 @@ import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
+import type { Node, NodeProps } from '@xyflow/react';
+import type { LedNodeData } from '../../types/nodes';
 
 export function LEDProperties({ node, updateData, webcam }: NodePropertiesProps) {
   const { stream, videoRef, isRecordingWebcam, startRecordingWebcam } = webcam;
@@ -129,7 +131,7 @@ export function LEDProperties({ node, updateData, webcam }: NodePropertiesProps)
   );
 }
 
-export const LEDNode = memo(function LEDNode({ data, selected }: any) {
+export const LEDNode = memo(function LEDNode({ data, selected }: NodeProps<Node<LedNodeData>>) {
   const orientation = data.orientation || 'horizontal';
   const isHorizontal = orientation === 'horizontal' || orientation === 'left';
   const isLeft = orientation === 'left';
@@ -144,19 +146,24 @@ export const LEDNode = memo(function LEDNode({ data, selected }: any) {
   const isSimulating = !!data.isSimulating;
   
   useEffect(() => {
-    if (!isSimulating || isExploded || !data.current_array || !data.time_points) {
-      if (textRef.current && !isSimulating && data.current_array) {
+    // Held in locals so the ticker callback keeps the arrays the guard below
+    // checked: a property read inside a closure is re-checked on every tick and
+    // the run can clear `data.current_array` between frames.
+    const currentArray = data.current_array;
+    const timePoints = data.time_points;
+    if (!isSimulating || isExploded || !currentArray || !timePoints) {
+      if (textRef.current && !isSimulating && currentArray) {
         // show final value when stopped
-        const finalmA = data.current_array[data.current_array.length-1] * 1000;
+        const finalmA = currentArray[currentArray.length-1] * 1000;
         textRef.current.innerText = finalmA.toFixed(1) + 'mA';
       }
       return;
     }
-    
+
     const unsubscribe = playbackTicker.subscribe((elapsedMs) => {
-      const idx = findIndexForTime(data.time_points, elapsedMs);
-      
-      const currentmA = (data.current_array[idx] || 0) * 1000;
+      const idx = findIndexForTime(timePoints, elapsedMs);
+
+      const currentmA = (currentArray[idx] || 0) * 1000;
       let brightness = 0;
       if (currentmA > 0.5) {
         brightness = Math.min(1, currentmA / max_current);

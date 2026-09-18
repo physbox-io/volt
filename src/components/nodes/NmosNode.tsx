@@ -5,6 +5,8 @@ import { NumberInput } from '@physbox-io/ui';
 
 import { useState } from 'react';
 import { MOSFET_NMOS_MODELS, MOSFET_PMOS_MODELS, getMosfetModel, resolveMosfetParams } from '../../utils/deviceModels';
+import type { Node, NodeProps } from '@xyflow/react';
+import type { MosfetNodeData } from '../../types/nodes';
 
 /** Shared by NmosNode and PmosNode — both MOSFET types expose model presets and physical SPICE parameters. */
 export function MosfetProperties({ node, updateData }: NodePropertiesProps) {
@@ -152,7 +154,7 @@ export function MosfetProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function NmosNode({ data, selected }: any) {
+export function NmosNode({ data, selected }: NodeProps<Node<MosfetNodeData>>) {
   return (
     <div className="schematic-node w-[48px] h-[48px] flex items-center justify-center relative select-none">
       <Handle type="target" position={Position.Top} id="d" className="w-2 h-2 bg-emerald-500 !border-0" style={{ left: '75%' }} />

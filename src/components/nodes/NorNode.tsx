@@ -1,6 +1,8 @@
 import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
+import type { BaseNodeData } from '../../types/nodes';
 
-export function NorNode({ selected }: any) {
+export function NorNode({ selected }: NodeProps<Node<BaseNodeData>>) {
   return (
     <div className="schematic-node bg-transparent w-[80px] h-[80px] relative flex items-center justify-center select-none">
       <svg 

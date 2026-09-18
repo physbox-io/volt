@@ -2,6 +2,7 @@ import { type Node, type Edge } from '@xyflow/react';
 import { executeMcuCode, type PWLPoint } from './mcu';
 import { getEffectiveMcuConfig } from './mcuConfig';
 import { resolveBjtParams, resolveMosfetParams, resolveOpAmpParams } from './deviceModels';
+import { parseEngValue } from './engValue';
 
 /** Strip Unicode symbols from component labels to produce valid SPICE values.
  *  e.g. '47kΩ' → '47k', '10µF' → '10uF' */
@@ -455,7 +456,14 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
     else if (node.type === 'ldr') {
       const n1 = getNet(node.id, 'in');
       const n2 = getNet(node.id, 'out');
-      const rDark = node.data.r_dark !== undefined ? parseFloat(sanitizeSpiceValue(String(node.data.r_dark))) : 100000;
+      /*
+       * `r_dark` is stored as the sanitized *label* — the properties panel
+       * writes sanitizeSpiceValue("100k"), which is "100k". parseFloat read
+       * that as 100, so every LDR whose dark resistance had ever been edited
+       * simulated as a 100 ohm resistor. parseEngValue is what reads a
+       * component value everywhere else on the canvas, suffix and all.
+       */
+      const rDark = parseEngValue(String(node.data.r_dark ?? '')) ?? 100000;
       const lightLevel = node.data.lightLevel !== undefined ? Number(node.data.lightLevel) : 0;
       
       const pwlData = node.data.pwlData as { t: number; v: number }[] | undefined;

@@ -1,6 +1,8 @@
 import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
+import type { CurrentSourceNodeData } from '../../types/nodes';
 
 export function CurrentSourceProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -12,7 +14,7 @@ export function CurrentSourceProperties({ node, updateData }: NodePropertiesProp
   );
 }
 
-export function CurrentSourceNode({ data, selected }: any) {
+export function CurrentSourceNode({ data, selected }: NodeProps<Node<CurrentSourceNodeData>>) {
   const label = data.label || '10mA';
   const isHorizontal = data.orientation === 'horizontal';
 

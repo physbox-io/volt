@@ -1,5 +1,7 @@
 import { Handle, Position } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
+import type { Node, NodeProps } from '@xyflow/react';
+import type { BaseNodeData } from '../../types/nodes';
 
 export function dffDefaultData() {
   return { label: 'DFF' };
@@ -14,7 +16,7 @@ export function DFlipFlopProperties(_props: NodePropertiesProps) {
   );
 }
 
-export function DFlipFlopNode({ selected }: any) {
+export function DFlipFlopNode({ selected }: NodeProps<Node<BaseNodeData>>) {
   return (
     <div className="schematic-node bg-transparent w-[80px] h-[80px] relative flex items-center justify-center select-none">
       <svg 

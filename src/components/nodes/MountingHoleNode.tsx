@@ -1,4 +1,6 @@
+import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
+import type { MountingHoleNodeData } from '../../types/nodes';
 import { NumberInput } from '@physbox-io/ui';
 
 /**
@@ -92,7 +94,7 @@ export function MountingHoleProperties({ node, updateData }: NodePropertiesProps
   );
 }
 
-export function MountingHoleNode({ data }: { data?: any }) {
+export function MountingHoleNode({ data }: NodeProps<Node<MountingHoleNodeData>>) {
   const label = data?.screwSize && data.screwSize !== 'custom' ? data.screwSize : '';
   return (
     <div className="schematic-node relative w-[24px] h-[24px] flex items-center justify-center">
