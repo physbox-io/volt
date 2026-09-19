@@ -1,0 +1,77 @@
+# Tests, and the gate in front of the deploy.
+#
+# Cloud Build used to build straight off a push to main, so nothing ever ran
+# the suite before a deploy: the image was typechecked and bundled and that was
+# all. The trigger now watches the `deploy` branch instead, and the only thing
+# that writes to `deploy` is the job below, after the tests have passed. A red
+# main therefore stays on main.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: read
+
+# A second push while the first is still running makes the first irrelevant:
+# only the newest commit on a branch is a deploy candidate.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # The app depends on the engine by file: path, so it has to be built
+      # before the root install can resolve it. Same order as the Dockerfile.
+      - name: Build the ngspice engine
+        working-directory: ngspice-wasm/EEcircuit-engine
+        run: |
+          npm ci
+          npm run build
+
+      # `ci`, not `install`: the lockfile is what the tests are meant to run
+      # against, and @physbox-io packages sit on a caret range.
+      - name: Install
+        run: npm ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+  # Hands the tested commit to Cloud Build. The trigger watches `deploy`.
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Forced because `deploy` is not a branch anyone works on - it is a
+      # pointer at the last commit that passed, and it only ever moves to a
+      # commit that is already on main.
+      - name: Release to Cloud Build
+        run: git push --force origin ${{ github.sha }}:refs/heads/deploy
