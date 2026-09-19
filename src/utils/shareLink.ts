@@ -89,10 +89,23 @@ export class ShareTooLargeError extends Error {
  * run there. What is left in the wrapper is three lines of address bar.
  */
 export async function encodeShareFragment(circuit: CircuitPreset): Promise<string> {
-  // `savedAt` is left out on purpose: it is how the cloud merge tells two
-  // copies of a preset apart, and a shared circuit is a new thing on the
-  // receiving machine, not an older copy of one it already has.
-  const json = JSON.stringify(circuit, (key, value) => (key === 'savedAt' ? undefined : value));
+  /*
+   * Two fields are dropped on the way into a link.
+   *
+   * `savedAt` because it is how the cloud merge tells two copies of a preset
+   * apart, and a shared circuit is a new thing on the receiving machine, not
+   * an older copy of one it already has.
+   *
+   * `pcbLayout` because a routed board is tens of kilobytes and a link has a
+   * hard ceiling measured in the same units — carrying one would push ordinary
+   * circuits past the limit and turn sharing into an error. The receiver lays
+   * the board out themselves, which is what sharing a circuit has always
+   * meant; saving to the account is the path that carries the board, and it
+   * has no such ceiling.
+   */
+  const json = JSON.stringify(circuit, (key, value) =>
+    key === 'savedAt' || key === 'pcbLayout' ? undefined : value
+  );
   const packed = await gzip(json);
   return new URLSearchParams({
     v: SHARE_VERSION,

@@ -1633,6 +1633,36 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                         2 Layer (Double)
                       </button>
                     </div>
+                    {(options.layers ?? 1) === 1 && (
+                      <div className="mt-2.5 pt-2 border-t border-slate-200 dark:border-slate-800">
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={options.mirrorSingleSided !== false}
+                            onChange={e => setOptions({ ...options, mirrorSingleSided: e.target.checked })}
+                            className="mt-0.5 accent-emerald-600 cursor-pointer"
+                          />
+                          <span className="text-[11px] text-slate-600 dark:text-slate-300">
+                            <span className="font-semibold flex items-center gap-1">
+                              Mirror for assembly from the bare face
+                              <InfoTip>
+                                The mill cuts copper-up, but a through-hole part is inserted from
+                                the other face and soldered to the copper &mdash; so the side the
+                                parts land on is the mirror of the side that was cut. Mirroring
+                                the board puts the layout back the right way round once it is
+                                turned over. Clear this only if you seat parts on the copper face.
+                              </InfoTip>
+                            </span>
+                            <span className="block text-slate-500 dark:text-slate-400 mt-0.5">
+                              {options.mirrorSingleSided !== false
+                                ? 'Copper side is cut mirrored; seat parts against the component side view.'
+                                : 'Cut as drawn \u2014 parts will seat mirrored, and an inline header reverses end-for-end.'}
+                            </span>
+                          </span>
+                        </label>
+                      </div>
+                    )}
+
                     {options.layers === 2 && (
                       <div className="mt-2.5 pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
                         <div className="grid grid-cols-2 gap-2">

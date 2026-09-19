@@ -8,8 +8,8 @@ import {
 } from '@physbox-io/machining';
 import type { Edge, Node } from '@xyflow/react';
 import { webSerialManager, type ProbeGrid } from './webSerialManager';
-import { generatePcbLayout, type PcbOptions } from './pcbExporter';
-import { loadMachiningSettings } from './storage';
+import type { PcbOptions } from './pcbExporter';
+import { layoutForCircuit } from './pcbLayoutStore';
 import { fetchMachineDevices } from './apiClient';
 
 // ---------------------------------------------------------------------------
@@ -70,7 +70,7 @@ export function setActiveHeightmap(grid: ProbeGrid | null): void {
 function boardBounds(): { minX: number; minY: number; maxX: number; maxY: number } | null {
   const { nodes, edges } = currentCircuit;
   if (nodes.length === 0) return null;
-  const result = generatePcbLayout(nodes, edges, loadMachiningSettings());
+  const result = layoutForCircuit(nodes, edges);
   if (result.error) return null;
   return {
     minX: 0,
@@ -94,7 +94,7 @@ async function millCurrentBoard(args: Record<string, unknown>): Promise<{ summar
   }
 
   const overrides = (args.options ?? {}) as Partial<PcbOptions>;
-  const result = generatePcbLayout(nodes, edges, { ...loadMachiningSettings(), ...overrides });
+  const result = layoutForCircuit(nodes, edges, overrides);
   if (result.error) throw new Error(result.error);
 
   // A board with a net that would not route is not a board. Milling it produces

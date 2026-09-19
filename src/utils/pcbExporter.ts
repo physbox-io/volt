@@ -56,6 +56,29 @@ import {
 
 export interface PcbOptions {
   layers?: 1 | 2;              // 1 = single-sided (default), 2 = double-sided
+  /**
+   * Cut a single-sided board as the mirror of its layout.
+   *
+   * The mill works copper-up, but a through-hole part is inserted from the bare
+   * face and soldered to the copper - so the face the parts land on is the
+   * mirror of the face that was cut. Milling the layout as drawn therefore
+   * seats every part mirrored: an inline header reverses end-for-end, and a
+   * module with two pin rows puts each row in the other row's holes. On a
+   * Heltec carrier that reads as GPIO26/GPIO21 where GPIO4/GPIO5 were drawn,
+   * and the part cannot be flipped to compensate - a module has a fixed
+   * handedness, and turning it 180 degrees reverses the pin order within each
+   * row instead.
+   *
+   * Mirroring the toolpaths puts the copper on the far side of the laminate
+   * from where the layout drew it, so assembling from the other face reproduces
+   * the layout exactly. Defaults to true: that is how the boards this app mills
+   * are actually built.
+   *
+   * Two-layer boards ignore it. Their parts sit on the top copper, which is cut
+   * first, copper-up, on the same face the parts go into - nothing to mirror -
+   * and the bottom layer already mirrors for its own flip.
+   */
+  mirrorSingleSided?: boolean;
   viaPadMm?: number;           // Via pad diameter in mm (default 1.4)
   viaDrillMm?: number;         // Via drill diameter in mm (default 0.8)
   spoilboardRegistrationDepthMm?: number; // Extra depth into spoilboard for registration pins in mm (default 2.0)
@@ -304,6 +327,7 @@ export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   maxAutoJumpers: 4,
   channelMarginMm: 0.05,
   layers: 1 as 1 | 2,
+  mirrorSingleSided: true,
   viaPadMm: 1.4,
   viaDrillMm: 0.8,
   spoilboardRegistrationDepthMm: 2.0,
@@ -488,6 +512,11 @@ export interface PcbLayoutResult {
    */
   copperByNet: Map<string, Poly[]>;
   bottomCopperByNet?: Map<string, Poly[]>;
+  /**
+   * What this board would have to be saved as for another machine to rebuild
+   * it without routing it again. See {@link PcbLayoutSnapshot}.
+   */
+  snapshot?: PcbLayoutSnapshot;
 }
 
 /**
@@ -1343,6 +1372,159 @@ export function layoutArrangement(
   };
 }
 
+/**
+ * Reflects a finished layout across the board's vertical centreline, in place.
+ *
+ * A single-sided board is milled copper-up, but a through-hole part is inserted
+ * from the bare face and soldered to the copper - so the face the parts land on
+ * is the mirror of the face that was cut. Milling the layout as drawn seats
+ * every part handed: an inline header reverses end-for-end, and a module with
+ * two pin rows drops each row into the other row's holes. The parts cannot be
+ * turned over to compensate, because a module has a fixed handedness and
+ * rotating it 180 degrees reverses the pin order within each row instead.
+ *
+ * A reflection is an isometry, so routing, clearances and DRC carry over
+ * untouched; nothing needs re-solving.
+ *
+ * Aliasing is why this guards with a Set. `topTraces` and `bottomTraces` are
+ * filtered views holding the *same* TraceSegment objects as `traces`, and
+ * `isolationPaths` and `topIsolationPaths` are the same array. Mirroring by
+ * walking each field in turn would move the shared ones twice and put them
+ * back where they started.
+ */
+function mirrorLayoutInX(result: PcbLayoutResult): void {
+  const mid = result.boardOriginMm + result.boardWidthMm / 2;
+  const fx = (x: number) => 2 * mid - x;
+  const seen = new Set<object>();
+  const once = <T extends object>(o: T): boolean => {
+    if (seen.has(o)) return false;
+    seen.add(o);
+    return true;
+  };
+  const mirrorPts = (ps: Pt[]): Pt[] => ps.map(pt => ({ ...pt, x: fx(pt.x) }));
+
+  for (const c of result.components) {
+    if (!once(c)) continue;
+    c.x = fx(c.x);
+    // Reflecting about a vertical axis takes a heading of t to 180 - t, which
+    // maps the four right angles onto themselves: 0 and 180 swap, 90 and 270
+    // are unchanged.
+    c.rotationDeg = ((((180 - c.rotationDeg) % 360) + 360) % 360) as Rotation;
+  }
+  for (const pad of result.pads) if (once(pad)) pad.x = fx(pad.x);
+  for (const d of result.drills) if (once(d)) d.x = fx(d.x);
+  for (const cut of result.cutouts) if (once(cut)) cut.x = fx(cut.x);
+  for (const v of result.vias ?? []) if (once(v)) v.x = fx(v.x);
+
+  const traceLists = [result.traces, result.topTraces, result.bottomTraces];
+  for (const list of traceLists) {
+    for (const t of list ?? []) if (once(t)) t.points = mirrorPts(t.points);
+  }
+  const pathLists = [
+    result.isolationPaths,
+    result.topIsolationPaths,
+    result.bottomIsolationPaths,
+  ];
+  for (const list of pathLists) {
+    for (const path of list ?? []) if (once(path)) path.points = mirrorPts(path.points);
+  }
+
+  // The copper polygons are handed to the renderers as their own map, so they
+  // are rewritten in place: the caller is holding this same Map.
+  for (const map of [result.copperByNet, result.bottomCopperByNet]) {
+    if (!map) continue;
+    for (const [netId, polys] of map) map.set(netId, polys.map(mirrorPts));
+  }
+}
+
+/**
+ * Strips anything a layout request cannot carry across a `postMessage` or into
+ * a fingerprint: React Flow node data holds callbacks and, in a few places,
+ * back-references to other nodes.
+ */
+function sanitizeForLayout<T>(value: T, seen = new WeakSet<object>()): T {
+  if (value === null || typeof value !== 'object') {
+    return typeof value === 'function' ? (undefined as T) : value;
+  }
+  if (seen.has(value as object)) return undefined as T;
+  seen.add(value as object);
+
+  if (Array.isArray(value)) {
+    return value.map(v => sanitizeForLayout(v, seen)) as unknown as T;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v === 'function') continue;
+    out[k] = sanitizeForLayout(v, seen);
+  }
+  return out as T;
+}
+
+/** A circuit node, reduced to the parts a board is laid out from. */
+export const projectLayoutNodes = (nodes: Node[]) =>
+  nodes.map(n => sanitizeForLayout({ id: n.id, type: n.type, position: n.position, data: n.data }));
+
+/** A circuit edge, reduced to the parts a board is laid out from. */
+export const projectLayoutEdges = (edges: Edge[]) =>
+  edges.map(e =>
+    sanitizeForLayout({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle,
+      targetHandle: e.targetHandle,
+      type: e.type,
+      data: e.data,
+    })
+  );
+
+/**
+ * The options that decide what the board *is*, as opposed to how it is written
+ * out or how long the router is given to think about it.
+ */
+export function boardShapingOptions(options: Partial<PcbOptions>): Partial<PcbOptions> {
+  const geometry: Record<string, unknown> = { ...options };
+  for (const key of GCODE_ONLY_OPTIONS) delete geometry[key];
+  // How long the search ran is not part of what the board is. It is also what
+  // differs between the machine that laid a board out and the one reopening
+  // it, which is the entire point of being able to save one.
+  delete geometry.routingBudgetMs;
+  return geometry as Partial<PcbOptions>;
+}
+
+/**
+ * A fingerprint of everything that can move a feature on the board: the
+ * circuit, and every option that is not purely about emitting G-code.
+ *
+ * 128 bits, in four independent 32-bit passes. A 32-bit hash would have been
+ * shorter and is what the rest of this app uses for change detection, but the
+ * consequence of a collision here is not a stale preview — it is a saved
+ * layout being replayed onto a circuit it does not belong to, and milled.
+ * Four passes make that outcome impossible in practice rather than merely
+ * unlikely.
+ */
+export function layoutBoardKey(
+  nodes: Node[],
+  edges: Edge[],
+  options: Partial<PcbOptions>
+): string {
+  const text = JSON.stringify({
+    nodes: projectLayoutNodes(nodes || []),
+    edges: projectLayoutEdges(edges || []),
+    options: boardShapingOptions({ ...DEFAULT_PCB_OPTIONS, ...options }),
+  });
+  const SEEDS = [0x811c9dc5, 0x01000193, 0x9e3779b9, 0x85ebca6b];
+  const out = SEEDS.map(seed => {
+    let h = seed >>> 0;
+    for (let i = 0; i < text.length; i++) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h.toString(36).padStart(7, '0');
+  });
+  return `${text.length.toString(36)}-${out.join('')}`;
+}
+
 export function generatePcbLayout(
   circuitNodes: Node[],
   circuitEdges: Edge[],
@@ -1352,9 +1534,6 @@ export function generatePcbLayout(
   const options: PcbOptions = { ...DEFAULT_PCB_OPTIONS, ...userOptions };
   const warnings: string[] = [];
   const violations: DrcViolation[] = [];
-  // Grown pad copper affects both the geometry and what the router treats as
-  // occupied, so it is resolved once here and passed to both.
-  const padMargin = Math.max(0, options.padMarginMm ?? 0);
 
   const nodes = circuitNodes || [];
   const edges = circuitEdges || [];
@@ -1653,7 +1832,6 @@ export function generatePcbLayout(
 
   const { placed, pads, cutouts, routing } = best!;
   let { boardWidthMm, boardHeightMm } = best!;
-  const compById = new Map(placed.map(c => [c.id, c]));
   violations.push(...best!.violations);
   warnings.push(...best!.warnings);
 
@@ -1679,15 +1857,136 @@ export function generatePcbLayout(
     );
   }
 
-  const isTwoLayer = options.layers === 2;
-  const traces: TraceSegment[] = routing.traces.map((t: RoutedTrace) => ({
-    netId: t.netId,
-    points: t.points,
-    width: t.widthMm,
-    layer: t.layer ?? 'top',
-  }));
+  return finishLayout(
+    {
+      placed,
+      pads,
+      cutouts,
+      traces: routing.traces.map((t: RoutedTrace) => ({
+        netId: t.netId,
+        points: t.points,
+        width: t.widthMm,
+        layer: t.layer ?? 'top',
+      })),
+      vias: routing.vias,
+      unrouted: routing.unrouted,
+      completion: routing.completion,
+      nets,
+      boardWidthMm,
+      boardHeightMm,
+      boardOriginMm,
+      violations,
+      warnings,
+    },
+    options,
+    layoutBoardKey(nodes, edges, options)
+  );
+}
 
-  for (const u of routing.unrouted) {
+/**
+ * The board, as placement and routing decided it, before any of it is turned
+ * into copper — and before the single-sided assembly mirror, which is applied
+ * when copper is built rather than being baked in here.
+ *
+ * This is the boundary between the expensive half of the pipeline and the
+ * cheap one. Everything above it — placement, the placement search, the maze
+ * router, the auto-jumper hunt — is a search against a wall-clock budget, so
+ * it answers differently on a fast desktop than on a slow laptop. Everything
+ * below it is arithmetic: the same core yields the same copper, the same
+ * toolpaths and the same program, on any machine, every time.
+ *
+ * That is what makes it the thing worth saving. A board laid out once travels
+ * as a few tens of kilobytes of this and is rebuilt exactly, rather than being
+ * re-searched somewhere it would come out worse.
+ */
+export interface LayoutCore {
+  placed: PlacedComponent[];
+  pads: PlacedPad[];
+  cutouts: BoardCutout[];
+  traces: TraceSegment[];
+  vias?: RouteVia[];
+  unrouted: UnroutedConnection[];
+  completion: number;
+  nets: PcbNet[];
+  boardWidthMm: number;
+  boardHeightMm: number;
+  boardOriginMm: number;
+  /** Everything placement and routing had to say, before copper. */
+  violations: DrcViolation[];
+  warnings: string[];
+}
+
+/**
+ * A routed board, stored so another machine does not have to route it again.
+ *
+ * `boardKey` is the guard, and the whole reason keeping one is safe: it
+ * fingerprints the circuit and every option that can move a feature, so a
+ * snapshot can only ever be replayed onto the board it came from. Edit a
+ * component, change the trace width, and the key stops matching and the router
+ * runs — because the alternative, milling yesterday's copper for today's
+ * schematic, is a board that is wrong in a way nobody can see until it is
+ * assembled.
+ */
+export interface PcbLayoutSnapshot {
+  version: number;
+  boardKey: string;
+  core: LayoutCore;
+}
+
+/** Bumped when {@link LayoutCore} changes shape; older snapshots are ignored. */
+export const SNAPSHOT_VERSION = 1;
+
+/**
+ * Copper, toolpaths, drills and the program, from a board already decided.
+ *
+ * Split out of {@link generatePcbLayout} so a snapshot can re-enter the
+ * pipeline exactly where the router left off, rather than through a second
+ * implementation that would drift from this one.
+ */
+function finishLayout(
+  core: LayoutCore,
+  options: PcbOptions,
+  boardKey: string
+): PcbLayoutResult {
+  /*
+   * Everything below works on a copy, and the caller's `core` — the board
+   * before the mirror — is what the result carries as its snapshot.
+   *
+   * Both halves of that are load-bearing. The mirror stage rewrites
+   * coordinates in place, so working on the caller's object would reflect a
+   * stored snapshot every time it was replayed.
+   *
+   * And the snapshot has to be taken before the mirror, not after, because
+   * reflecting a finished board and building one from reflected geometry are
+   * not the same operation. The copper flood advances in discrete steps,
+   * clipping each against where its neighbours stood, and Clipper resolves
+   * those boundaries on an integer grid — so mirrored inputs round
+   * differently and yield different copper, different isolation paths and a
+   * different program. Captured here, a restore runs the same arithmetic on
+   * the same numbers.
+   */
+  const work: LayoutCore = structuredClone(core);
+  const {
+    placed,
+    pads,
+    cutouts,
+    traces,
+    nets,
+    boardWidthMm,
+    boardHeightMm,
+    boardOriginMm,
+  } = work;
+  const vias = work.vias;
+  // Copied rather than appended to: `core` is what a snapshot is made of, and
+  // a restore that folded this stage's findings back into it would accumulate
+  // a fresh set of the same DRC messages every time the board was reopened.
+  const violations: DrcViolation[] = [...work.violations];
+  const warnings: string[] = [...work.warnings];
+  const compById = new Map(placed.map(c => [c.id, c]));
+  const padMargin = Math.max(0, options.padMarginMm ?? 0);
+  const isTwoLayer = options.layers === 2;
+
+  for (const u of work.unrouted) {
     violations.push({
       severity: 'error',
       message:
@@ -1743,9 +2042,9 @@ export function generatePcbLayout(
     }
   }
 
-  if (isTwoLayer && routing.vias) {
+  if (isTwoLayer && vias) {
     const viaPadR = (options.viaPadMm ?? 1.4) / 2;
-    for (const v of routing.vias) {
+    for (const v of vias) {
       const poly = circlePoly(v.x, v.y, viaPadR);
       addTrackTop(v.netId, [poly]);
       addTrackBottom(v.netId, [poly]);
@@ -2082,9 +2381,9 @@ export function generatePcbLayout(
   }
 
   if (isTwoLayer) {
-    if (routing.vias) {
-      for (let i = 0; i < routing.vias.length; i++) {
-        const v = routing.vias[i];
+    if (vias) {
+      for (let i = 0; i < vias.length; i++) {
+        const v = vias[i];
         drills.push({
           x: v.x,
           y: v.y,
@@ -2118,10 +2417,10 @@ export function generatePcbLayout(
     isolationPaths: topIsolationPaths,
     drills,
     cutouts,
-    unrouted: routing.unrouted,
+    unrouted: work.unrouted,
     violations,
     warnings,
-    completion: routing.completion,
+    completion: work.completion,
     effectiveToolDiaMm,
     copperFloodMm: appliedFloodMm,
     padReliefMm: padRelief.clearanceMm,
@@ -2132,7 +2431,7 @@ export function generatePcbLayout(
     svgComponentSide: '',
     gcode: '',
     layers: options.layers ?? 1,
-    vias: routing.vias,
+    vias,
     topTraces: traces.filter(t => t.layer !== 'bottom'),
     bottomTraces: traces.filter(t => t.layer === 'bottom'),
     topIsolationPaths,
@@ -2141,13 +2440,68 @@ export function generatePcbLayout(
     bottomCopperByNet: isTwoLayer ? copperByNetBottom : undefined,
   };
 
+  // Cut mirrored so the board reproduces this layout when it is turned over to
+  // be assembled. Two-layer boards are exempt: their parts sit on the top
+  // copper, which is cut first, copper-up, on the face the parts go into, and
+  // the bottom pass already mirrors for its own flip.
+  if (!isTwoLayer && options.mirrorSingleSided !== false) {
+    mirrorLayoutInX(result);
+  }
+
+  if (!isTwoLayer && options.mirrorSingleSided === false) {
+    // Turning the mirror off is legitimate - some people seat parts on the
+    // copper face - but on a board with legs through it, it is nearly always a
+    // mistake, and one that stays invisible until the parts are in. Said here
+    // so it reaches the export panel and every MCP caller, instead of living in
+    // documentation somebody has to already suspect they need.
+    const throughHole = result.drills.filter(d => !d.isVia && !d.isRegistration);
+    if (throughHole.length > 0) {
+      const parts = new Set(throughHole.map(d => d.componentId));
+      result.warnings.push(
+        `Mirror is off and this board has ${throughHole.length} through-hole pad(s) ` +
+        `across ${parts.size} part(s). Parts are inserted from the bare face and ` +
+        `soldered to the copper, so they will seat MIRRORED: an inline header ` +
+        `reverses end-for-end, and a two-row module drops each row into the other ` +
+        `row's holes. Turn the mirror back on unless you are seating parts on the ` +
+        `copper face.`
+      );
+    }
+  }
+
   result.svg = renderPcbSvg(result, copperByNet, options, 'copper');
   result.svgComponentSide = renderPcbSvg(result, copperByNet, options, 'component');
   if (isTwoLayer) {
     result.svgBottomSide = renderPcbSvg(result, copperByNetBottom, options, 'bottom');
     result.svgComposite = renderPcbSvg(result, copperByNet, options, 'composite', copperByNetBottom);
   }
+  result.snapshot = { version: SNAPSHOT_VERSION, boardKey, core };
   return withGcodeFor(result, options);
+}
+
+/**
+ * Rebuilds a board from a saved layout, for the current options.
+ *
+ * Nothing is searched: the placement and the routes are read back as they
+ * were, and only the arithmetic below them is run again — copper, isolation
+ * toolpaths, drills, previews and the program. So a board laid out on a fast
+ * machine mills identically on a slow one, and the feeds, depths and tabs it
+ * is milled with are today's rather than the ones it happened to be routed
+ * under.
+ *
+ * Returns null for a snapshot this build cannot read, or one belonging to a
+ * different board. The caller routes from scratch in that case; it must never
+ * fall back to milling this.
+ */
+export function restorePcbLayout(
+  snapshot: PcbLayoutSnapshot | undefined | null,
+  nodes: Node[],
+  edges: Edge[],
+  userOptions?: Partial<PcbOptions>
+): PcbLayoutResult | null {
+  if (!snapshot || snapshot.version !== SNAPSHOT_VERSION || !snapshot.core) return null;
+  const options: PcbOptions = { ...DEFAULT_PCB_OPTIONS, ...userOptions };
+  if (snapshot.boardKey !== layoutBoardKey(nodes, edges, options)) return null;
+  return finishLayout(snapshot.core, options, snapshot.boardKey);
 }
 
 /**

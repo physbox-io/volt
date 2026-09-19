@@ -414,3 +414,167 @@ describe('the placement search, on arrangements of known routability', () => {
     expect(r.warnings.some(w => /overlap/i.test(w))).toBe(false);
   });
 });
+
+/**
+ * The mirror that makes a single-sided board assemble the right way round.
+ *
+ * The mill works copper-up, but a through-hole part is inserted from the bare
+ * face and soldered to the copper, so the face the parts land on is the mirror
+ * of the face that was cut. Cutting the layout as drawn seats every part
+ * handed, and the part cannot be turned over to compensate: a module has a
+ * fixed handedness, and rotating it 180 degrees reverses the pin order within
+ * each row instead. On a Heltec carrier that reads as the wrong row of GPIOs
+ * reaching the breakout header.
+ *
+ * What is pinned here is that the mirror is a *pure reflection*. It moves every
+ * feature to 2*mid - x and changes nothing else — a board whose mirror also
+ * moved a net, a clearance or a route would be a different board, and the whole
+ * point is that it is the same board, handed. It is applied to the layout
+ * rather than to the emitted program precisely so that the previews, the
+ * toolpath preview and the Gerber package inherit it; the last case here is
+ * what would have caught doing it in the G-code alone.
+ */
+describe('single-sided assembly mirror', () => {
+  const MIRROR_SAMPLE = BOARDS
+    .map(([key, preset]) => ({
+      key,
+      preset,
+      plain: generatePcbLayout(preset.nodes, preset.edges, {
+        ...OPTS, layers: 1, mirrorSingleSided: false,
+      }),
+    }))
+    .filter(b => b.plain.success && b.plain.pads.length >= 4)
+    .slice(0, 6);
+
+  it('has boards to check', () => {
+    expect(MIRROR_SAMPLE.length).toBeGreaterThan(0);
+  });
+
+  for (const { key, preset, plain } of MIRROR_SAMPLE) {
+    it(`${key}: reflects every feature and disturbs nothing else`, () => {
+      const mirrored = generatePcbLayout(preset.nodes, preset.edges, {
+        ...OPTS, layers: 1, mirrorSingleSided: true,
+      });
+      const mid = plain.boardOriginMm + plain.boardWidthMm / 2;
+      const rx = (x: number) => 2 * mid - x;
+
+      expect(mirrored.boardWidthMm).toBe(plain.boardWidthMm);
+      expect(mirrored.boardHeightMm).toBe(plain.boardHeightMm);
+      expect(mirrored.completion).toBe(plain.completion);
+      expect(mirrored.violations.length).toBe(plain.violations.length);
+      expect(mirrored.pads.length).toBe(plain.pads.length);
+      expect(mirrored.drills.length).toBe(plain.drills.length);
+
+      // A pad keeps its net, its pin and its Y, and lands at the reflected X.
+      // Net identity is the assertion that matters: a mirror that renamed or
+      // re-paired a net would be a rewiring wearing a reflection's clothes.
+      plain.pads.forEach((pad, i) => {
+        const m = mirrored.pads[i];
+        expect(m.netId).toBe(pad.netId);
+        expect(m.componentId).toBe(pad.componentId);
+        expect(m.handleId).toBe(pad.handleId);
+        expect(m.y).toBeCloseTo(pad.y, 6);
+        expect(m.x).toBeCloseTo(rx(pad.x), 6);
+      });
+
+      plain.drills.forEach((d, i) => {
+        expect(mirrored.drills[i].diameter).toBeCloseTo(d.diameter, 6);
+        expect(mirrored.drills[i].y).toBeCloseTo(d.y, 6);
+        expect(mirrored.drills[i].x).toBeCloseTo(rx(d.x), 6);
+      });
+
+      // Shared objects: topTraces/bottomTraces are filtered views over the same
+      // TraceSegment instances as traces, and isolationPaths and
+      // topIsolationPaths are the same array. Walking each field in turn would
+      // reflect those twice and put them back where they started.
+      plain.traces.forEach((t, i) => {
+        t.points.forEach((pt, j) => {
+          expect(mirrored.traces[i].points[j].x).toBeCloseTo(rx(pt.x), 6);
+        });
+      });
+      plain.isolationPaths.forEach((path, i) => {
+        path.points.forEach((pt, j) => {
+          expect(mirrored.isolationPaths[i].points[j].x).toBeCloseTo(rx(pt.x), 6);
+        });
+      });
+    });
+  }
+
+  it('leaves a two-layer board alone — its parts sit on the copper cut first', () => {
+    const { preset } = MIRROR_SAMPLE[0];
+    const off = generatePcbLayout(preset.nodes, preset.edges, {
+      ...OPTS, layers: 2, mirrorSingleSided: false,
+    });
+    const on = generatePcbLayout(preset.nodes, preset.edges, {
+      ...OPTS, layers: 2, mirrorSingleSided: true,
+    });
+    expect(on.pads.map(p => p.x)).toEqual(off.pads.map(p => p.x));
+  });
+
+  it('mirrors by default, because that is how these boards are built', () => {
+    expect(DEFAULT_PCB_OPTIONS.mirrorSingleSided).toBe(true);
+    const { preset } = MIRROR_SAMPLE[0];
+    const dflt = generatePcbLayout(preset.nodes, preset.edges, { ...OPTS, layers: 1 });
+    const explicit = generatePcbLayout(preset.nodes, preset.edges, {
+      ...OPTS, layers: 1, mirrorSingleSided: true,
+    });
+    expect(dflt.pads.map(p => p.x)).toEqual(explicit.pads.map(p => p.x));
+  });
+
+  it('drills the program where the mirrored pads are, not where the layout drew them', () => {
+    const { preset, plain } = MIRROR_SAMPLE[0];
+    const mirrored = generatePcbLayout(preset.nodes, preset.edges, {
+      ...OPTS, layers: 1, mirrorSingleSided: true,
+    });
+    const gcode = generatePcbGcode(mirrored, { ...OPTS, layers: 1, mirrorSingleSided: true });
+    const mid = plain.boardOriginMm + plain.boardWidthMm / 2;
+
+    // A hole off the centreline, so the mirrored and unmirrored X differ enough
+    // to tell apart at the 3dp the emitter writes.
+    const hole = plain.drills.find(d => Math.abs(d.x - mid) > 1);
+    expect(hole).toBeDefined();
+    expect(gcode).toContain(`X${(2 * mid - hole!.x).toFixed(3)}`);
+  });
+});
+
+/**
+ * The warning that carries the mirror to someone who did not read the docs.
+ *
+ * Turning the mirror off is a real choice - it is right if the parts are being
+ * seated on the copper face - but on a board with legs through it, it is nearly
+ * always a mistake that stays invisible until the parts are in and the pins are
+ * in the wrong holes. The layout says so itself, so the export panel and every
+ * MCP caller get it without going looking.
+ */
+describe('mirror-off warning', () => {
+  const withPads = BOARDS
+    .map(([key, preset]) => ({ key, preset }))
+    .find(({ preset }) => {
+      const r = generatePcbLayout(preset.nodes, preset.edges, { ...OPTS, layers: 1 });
+      return r.success && r.drills.some(d => !d.isVia && !d.isRegistration);
+    });
+
+  it('warns when a through-hole board is cut unmirrored', () => {
+    expect(withPads).toBeDefined();
+    const r = generatePcbLayout(withPads!.preset.nodes, withPads!.preset.edges, {
+      ...OPTS, layers: 1, mirrorSingleSided: false,
+    });
+    const warning = r.warnings.find(w => w.startsWith('Mirror is off'));
+    expect(warning).toBeDefined();
+    expect(warning).toMatch(/seat MIRRORED/);
+  });
+
+  it('stays quiet on a board that is mirrored', () => {
+    const r = generatePcbLayout(withPads!.preset.nodes, withPads!.preset.edges, {
+      ...OPTS, layers: 1, mirrorSingleSided: true,
+    });
+    expect(r.warnings.some(w => w.startsWith('Mirror is off'))).toBe(false);
+  });
+
+  it('stays quiet on a two-layer board, which is never mirrored', () => {
+    const r = generatePcbLayout(withPads!.preset.nodes, withPads!.preset.edges, {
+      ...OPTS, layers: 2, mirrorSingleSided: false,
+    });
+    expect(r.warnings.some(w => w.startsWith('Mirror is off'))).toBe(false);
+  });
+});

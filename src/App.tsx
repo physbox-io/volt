@@ -42,7 +42,7 @@ import { EdgePathProvider } from './components/AuraEdge';
 import { SettingsModal } from './components/SettingsModal';
 import { UserProfileButton } from './components/UserProfileButton';
 import { AgentMachineBanner } from './components/AgentMachineBanner';
-import { loadSettings, saveSettings, loadMachiningSettings, type CircuitPreset } from './utils/storage';
+import { loadSettings, saveSettings, loadMachiningSettings, loadLayoutSnapshot, type CircuitPreset } from './utils/storage';
 import { cloudAutosave } from './utils/cloudDocuments';
 import { useMCPBridge } from './hooks/useMCPBridge';
 import { usePresets } from './hooks/usePresets';
@@ -393,6 +393,10 @@ export default function App() {
         data: e.data?.waypoints ? { waypoints: e.data.waypoints } : undefined,
       })),
       pcbOptions: loadMachiningSettings(),
+      // The routed board travels too. Laying one out is a search against the
+      // clock, so it comes out worse on slower hardware — carrying it is what
+      // lets a board be laid out on one machine and milled from another.
+      pcbLayout: loadLayoutSnapshot(),
       // Carried through for the same reason the hand-save carries it: a circuit
       // restored from the account should still explain itself.
       noteCard: userPresets[selectedPreset]?.noteCard,

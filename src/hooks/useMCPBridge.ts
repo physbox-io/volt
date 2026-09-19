@@ -7,9 +7,10 @@ import { getStoredAuthToken } from '../utils/apiClient';
 import { getNodesBounds, getViewportForBounds, type Node, type Edge } from '@xyflow/react';
 import { toPng } from 'html-to-image';
 import { presets as builtinPresets } from '../utils/presets';
-import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey, loadMachiningSettings } from '../utils/storage';
+import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey, loadMachiningSettings, loadLayoutSnapshot } from '../utils/storage';
+import { layoutForCircuit } from '../utils/pcbLayoutStore';
 import type { NoteCard } from './useNoteCards';
-import { generatePcbLayout, type PcbOptions } from '../utils/pcbExporter';
+import type { PcbOptions } from '../utils/pcbExporter';
 import { createVoltMachineHandlers, setCurrentCircuit } from '../utils/machineMcp';
 import {
   MCU_PACKAGE_STYLES,
@@ -702,6 +703,9 @@ export function useMCPBridge(props: BridgeProps) {
             // same as the in-app save. Leaving them off here meant an agent
             // re-saving a board silently dropped how it was set up to cut.
             pcbOptions: loadMachiningSettings(),
+            // As does the routed board, so an agent saving a design does not
+            // quietly throw away the layout the user has open.
+            pcbLayout: loadLayoutSnapshot(),
           };
           addUserPreset(key, presetObj);
           return { ok: true, name, key };
@@ -823,7 +827,7 @@ export function useMCPBridge(props: BridgeProps) {
         case 'GET_PCB_LAYOUT': {
           if (nodes.length === 0) return { ok: false, error: 'The canvas is empty — there is no board to lay out' };
           const overrides = (msg.options ?? {}) as Partial<PcbOptions>;
-          const result = generatePcbLayout(nodes, edges, { ...loadMachiningSettings(), ...overrides });
+          const result = layoutForCircuit(nodes, edges, overrides);
           if (result.error) return { ok: false, error: result.error };
 
           const wanted = String(msg.component || '').trim();
@@ -898,7 +902,7 @@ export function useMCPBridge(props: BridgeProps) {
           if (nodes.length === 0) return { ok: false, error: 'The canvas is empty — there is no board to photograph' };
           const view = msg.view === 'component' ? 'component' : 'copper';
           const overrides = (msg.options ?? {}) as Partial<PcbOptions>;
-          const result = generatePcbLayout(nodes, edges, { ...loadMachiningSettings(), ...overrides });
+          const result = layoutForCircuit(nodes, edges, overrides);
           if (result.error) return { ok: false, error: result.error };
 
           let svg = view === 'component' ? result.svgComponentSide : result.svg;

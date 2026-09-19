@@ -1,4 +1,4 @@
-import type { PcbOptions } from './pcbExporter';
+import type { PcbLayoutSnapshot, PcbOptions } from './pcbExporter';
 import { type Node, type Edge } from '@xyflow/react';
 import { saveCloudPreset, removeCloudPreset, PRESETS_UPDATED_EVENT } from './cloudSync';
 
@@ -30,6 +30,22 @@ export interface CircuitPreset {
    * whatever this preset happened to freeze.
    */
   pcbOptions?: Partial<PcbOptions>;
+  /**
+   * The board as it was actually placed and routed, if it has been.
+   *
+   * The CAM settings above say how to cut a board; this says what the board
+   * *is*. They are separate because laying one out is a search against a
+   * wall-clock budget — the placement hunt, the maze router, the jumper
+   * search all stop when time runs out — so the same circuit genuinely does
+   * come out differently on a fast desktop and a slow laptop, and worse on
+   * the laptop. Carrying the decided board means a design is laid out once,
+   * where there is machine to do it well, and milled anywhere.
+   *
+   * Optional, and self-invalidating: it carries a fingerprint of the circuit
+   * and the board settings it was routed from, and is ignored the moment
+   * either has moved. A preset saved before this existed simply has none.
+   */
+  pcbLayout?: PcbLayoutSnapshot;
 }
 
 export interface AppSettings {
@@ -41,6 +57,7 @@ export interface AppSettings {
 const SETTINGS_KEY = 'circuitexpt_settings';
 const MACHINING_KEY = 'circuitexpt_machining_options';
 const USER_PRESETS_KEY = 'circuitexpt_user_presets';
+const PCB_LAYOUT_KEY = 'circuitexpt_pcb_layout';
 
 // ─── Settings ────────────────────────────────────────────────────────────────
 
@@ -193,5 +210,46 @@ export function saveMachiningSettings(options: Partial<PcbOptions>): void {
     localStorage.setItem(MACHINING_KEY, JSON.stringify(options));
   } catch {
     // Non-fatal: the settings just will not survive a reload.
+  }
+}
+
+// ─── The routed board ────────────────────────────────────────────────────────
+//
+// Kept beside the machining settings and for the same reason: the export
+// dialog is mounted on demand, so there is nowhere to hand this through props
+// when a preset is loaded. One slot, holding the last board that was routed —
+// which is the board on the canvas, since a snapshot that does not match what
+// is on the canvas is refused by the exporter rather than used.
+
+export function loadLayoutSnapshot(): PcbLayoutSnapshot | undefined {
+  try {
+    const raw = localStorage.getItem(PCB_LAYOUT_KEY);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as PcbLayoutSnapshot) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Stores a routed board, or clears the slot when handed nothing.
+ *
+ * Clearing matters on load: opening a preset that has no saved layout has to
+ * take the previous circuit's board away, or the slot goes on describing a
+ * circuit that is no longer open. Nothing unsafe would come of leaving it —
+ * the fingerprint would reject it — but a stale entry is a megabyte of
+ * somebody else's board sitting in a quota this app shares with its presets.
+ */
+export function saveLayoutSnapshot(snapshot: PcbLayoutSnapshot | undefined | null): void {
+  try {
+    if (!snapshot) {
+      localStorage.removeItem(PCB_LAYOUT_KEY);
+      return;
+    }
+    localStorage.setItem(PCB_LAYOUT_KEY, JSON.stringify(snapshot));
+  } catch {
+    // Out of quota: the board is rebuilt by routing it again, which is slow
+    // but correct. Never worth failing a save the user asked for.
   }
 }

@@ -8,6 +8,8 @@ import {
   nameToKey,
   loadMachiningSettings,
   saveMachiningSettings,
+  loadLayoutSnapshot,
+  saveLayoutSnapshot,
   type CircuitPreset,
 } from '../utils/storage';
 import { PRESETS_UPDATED_EVENT } from '../utils/cloudSync';
@@ -67,6 +69,12 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     if (preset.pcbOptions && Object.keys(preset.pcbOptions).length > 0) {
       saveMachiningSettings(preset.pcbOptions);
     }
+    // And the board itself, if this circuit was ever laid out. Written
+    // unconditionally so that opening a circuit that has no saved board also
+    // takes the previous one away: the exporter would refuse to use it, but a
+    // slot that describes a circuit nobody has open is just a board's worth of
+    // storage held against the presets.
+    saveLayoutSnapshot(preset.pcbLayout);
   }, [stopSimulation, setInitialConditions, setNodes, setEdges, setSimLength]);
 
   const loadPreset = useCallback((key: string) => {
@@ -99,6 +107,9 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     // for, so the CAM settings travel with the circuit rather than being
     // re-derived every time it is opened.
     pcbOptions: loadMachiningSettings(),
+    // The board as it was placed and routed, so a design laid out on a fast
+    // machine is milled from a slow one rather than re-searched there.
+    pcbLayout: loadLayoutSnapshot(),
     // Saving over a preset keeps its note card. There is no way to write one
     // from the save dialog, so rebuilding the preset without it meant pressing
     // Save silently threw away the card the preset opened with.

@@ -3,12 +3,17 @@ import type { Edge, Node } from '@xyflow/react';
 import {
   emptyPcbLayout,
   generatePcbLayout,
+  layoutBoardKey,
+  projectLayoutEdges,
+  projectLayoutNodes,
   reemitPcbGcode,
+  restorePcbLayout,
   GCODE_ONLY_OPTIONS,
   type LayoutProgress,
   type PcbLayoutResult,
   type PcbOptions,
 } from '../utils/pcbExporter';
+import { loadLayoutSnapshot, saveLayoutSnapshot } from '../utils/storage';
 import type { PcbLayoutRequest, PcbLayoutResponse } from '../workers/pcbLayout.worker';
 
 export interface PcbLayoutState {
@@ -68,45 +73,6 @@ export function wantsMoreEffort(result: PcbLayoutResult): boolean {
 }
 
 /**
- * Strips anything the worker cannot structured-clone. React Flow node data can
- * hold callbacks and, in a few places, back-references to other nodes, either
- * of which would make postMessage throw.
- */
-function sanitize<T>(value: T, seen = new WeakSet<object>()): T {
-  if (value === null || typeof value !== 'object') {
-    return typeof value === 'function' ? (undefined as T) : value;
-  }
-  if (seen.has(value as object)) return undefined as T;
-  seen.add(value as object);
-
-  if (Array.isArray(value)) {
-    return value.map(v => sanitize(v, seen)) as unknown as T;
-  }
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof v === 'function') continue;
-    out[k] = sanitize(v, seen);
-  }
-  return out as T;
-}
-
-const projectNodes = (nodes: Node[]) =>
-  nodes.map(n => sanitize({ id: n.id, type: n.type, position: n.position, data: n.data }));
-
-const projectEdges = (edges: Edge[]) =>
-  edges.map(e =>
-    sanitize({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      sourceHandle: e.sourceHandle,
-      targetHandle: e.targetHandle,
-      type: e.type,
-      data: e.data,
-    })
-  );
-
-/**
  * Completed layouts, keyed by the inputs that produced them.
  *
  * Module-level, because the hook unmounts with the export dialog: without this
@@ -127,6 +93,13 @@ const layoutCache = new Map<string, CachedLayout>();
 // re-run them from scratch on the way back.
 const LAYOUT_CACHE_LIMIT = 8;
 
+/**
+ * The board most recently written to storage, so reopening the panel on a
+ * board that came out of storage does not serialise it straight back. Tens of
+ * kilobytes, on a path that runs every time the dialog is mounted.
+ */
+let lastSavedBoardKey: string | null = null;
+
 function rememberLayout(key: string, entry: CachedLayout) {
   layoutCache.delete(key);
   layoutCache.set(key, entry);
@@ -138,16 +111,6 @@ function rememberLayout(key: string, entry: CachedLayout) {
 /** Identity of the options that only decide how a layout is written out. */
 const gcodeKeyOf = (options: Partial<PcbOptions>) =>
   JSON.stringify(GCODE_ONLY_OPTIONS.map(k => options[k] ?? null));
-
-/** The options that decide what the board *is*, which is what a cached layout answers. */
-function boardOptionsOf(options: Partial<PcbOptions>): Partial<PcbOptions> {
-  const geometry: Record<string, unknown> = { ...options };
-  for (const key of GCODE_ONLY_OPTIONS) delete geometry[key];
-  // Decided by the ladder below, not by the caller, and a board is the same
-  // board at every rung.
-  delete geometry.routingBudgetMs;
-  return geometry as Partial<PcbOptions>;
-}
 
 /**
  * Runs `generatePcbLayout` in a worker, keeping the UI responsive while a dense
@@ -198,8 +161,8 @@ export function usePcbLayout(
    */
   const payload = useMemo(
     () => ({
-      nodes: projectNodes(nodes),
-      edges: projectEdges(edges),
+      nodes: projectLayoutNodes(nodes),
+      edges: projectLayoutEdges(edges),
       options: { ...options, routingBudgetMs: budgetMs },
     }),
     [nodes, edges, options, budgetMs]
@@ -210,15 +173,7 @@ export function usePcbLayout(
    * routed without them is still the right answer, and the program is rewritten
    * from it in about four milliseconds rather than re-routed in seconds.
    */
-  const boardKey = useMemo(
-    () =>
-      JSON.stringify({
-        nodes: payload.nodes,
-        edges: payload.edges,
-        options: boardOptionsOf(payload.options),
-      }),
-    [payload]
-  );
+  const boardKey = useMemo(() => layoutBoardKey(nodes, edges, options), [nodes, edges, options]);
   const gcodeKey = useMemo(() => gcodeKeyOf(payload.options), [payload]);
   const cacheKey = `${boardKey}|${budgetMs}`;
 
@@ -253,6 +208,21 @@ export function usePcbLayout(
   const settle = useCallback(
     (result: PcbLayoutResult) => {
       const climbing = wantsMoreEffort(result) && rung < ROUTING_BUDGET_LADDER.length - 1;
+      /*
+       * Keep the board once the search has actually stopped.
+       *
+       * Not mid-climb: an 82% board on its way to 100% is not the answer, and
+       * writing it would leave the slow machine restoring the rung the fast
+       * one had already abandoned. A board that finishes the ladder still
+       * incomplete is kept, though — it is the best answer anyone is going to
+       * get for that circuit, the app refuses to mill it either way, and
+       * re-deriving it elsewhere only spends four budgets to arrive somewhere
+       * no better.
+       */
+      if (!climbing && result.snapshot && result.snapshot.boardKey !== lastSavedBoardKey) {
+        saveLayoutSnapshot(result.snapshot);
+        lastSavedBoardKey = result.snapshot.boardKey;
+      }
       setState({
         result,
         isRouting: climbing,
@@ -272,6 +242,30 @@ export function usePcbLayout(
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
+
+    /*
+     * Laid out already, on this machine or another one.
+     *
+     * Ahead of the in-memory cache because it survives a reload and a
+     * different computer, and costs about as little: restoring replays only
+     * the arithmetic below the router — copper, toolpaths, drills, previews,
+     * the program — which is the same work re-emitting a cached board does.
+     * This is the path that matters for laying a board out on a fast machine
+     * and milling it from a slow one: the router never runs there at all.
+     *
+     * `restorePcbLayout` returns null unless the snapshot fingerprints as this
+     * exact board, so an edited circuit falls through to the router below.
+     */
+    if (!layoutCache.has(cacheKey)) {
+      const stored = loadLayoutSnapshot();
+      const restored = restorePcbLayout(stored, nodes, edges, payload.options);
+      if (restored) {
+        lastSavedBoardKey = stored!.boardKey;
+        rememberLayout(cacheKey, { result: restored, gcodeKey });
+        settle(restored);
+        return;
+      }
+    }
 
     // Already routed these exact inputs — show that result rather than paying
     // for the same search again.
@@ -391,7 +385,7 @@ export function usePcbLayout(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [enabled, payload, cacheKey, gcodeKey, debounceMs, settle]);
+  }, [enabled, nodes, edges, payload, cacheKey, gcodeKey, debounceMs, settle]);
 
   useEffect(() => () => workerRef.current?.terminate(), []);
 
