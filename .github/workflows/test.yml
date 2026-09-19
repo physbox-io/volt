@@ -46,10 +46,18 @@ jobs:
 
       # `ci`, not `install`: the lockfile is what the tests are meant to run
       # against, and @physbox-io packages sit on a caret range.
+      #
+      # @physbox-io/ui and @physbox-io/machining are private packages owned by
+      # the ui and machining repos. The built-in GITHUB_TOKEN is scoped to this
+      # repo, so it cannot read them, and npm ci fails on 401. Either works:
+      #   - grant the volt repo read access to each package (Package settings ->
+      #     Manage Actions access), and the built-in token below is enough; or
+      #   - set a PACKAGES_TOKEN secret to a PAT with read:packages.
+      # Preferring the first: no secret to rotate.
       - name: Install
         run: npm ci
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Typecheck
         run: npm run typecheck
