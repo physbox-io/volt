@@ -8,6 +8,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   vBitWidthAtDepth,
+  padReliefPlan,
+  ISOLATION_STEPOVER,
   effectivePadMarginMm,
   padPolygon,
   boardOriginOffsetMm,
@@ -16,6 +18,7 @@ import {
   sortPathsNearestNeighbor,
   groupDrillsByBit,
   generatePcbLayout,
+  floodCopperByNet,
   emptyPcbLayout,
   reemitPcbGcode,
   GCODE_ONLY_OPTIONS,
@@ -29,7 +32,18 @@ import {
 } from '../src/utils/pcbExporter';
 import { presets } from '../src/utils/presets';
 import { generateQuadFamilyFootprint, generateDIPFootprint } from '../src/utils/pcbFootprints';
-import { polysBounds } from '../src/utils/pcbGeometry';
+import {
+  circlePoly,
+  differencePolys,
+  offsetPolys,
+  pointInPolys,
+  polysBounds,
+  polysOverlap,
+  rectPoly,
+  strokeToPoly,
+  unionPolys,
+  type Poly,
+} from '../src/utils/pcbGeometry';
 
 describe('vBitWidthAtDepth', () => {
   it('returns the tip width at zero depth', () => {
@@ -451,5 +465,146 @@ describe('reusesLayoutAcross — the G-code-only option allowlist', () => {
   it('hands back a placeholder result untouched rather than emitting over it', () => {
     const empty = emptyPcbLayout(base, 'No placeable components.');
     expect(reemitPcbGcode(empty, base)).toBe(empty);
+  });
+});
+
+describe('padReliefPlan', () => {
+  const CH = vBitWidthAtDepth(0.1, 30, -0.2);
+
+  it('leaves no relief at all when the copper is not flooded', () => {
+    // Without a flood the copper beside a pad is a dead island anyway.
+    expect(padReliefPlan(0.5, CH, 0)).toEqual({ clearanceMm: 0, passes: 0 });
+  });
+
+  it('cannot make the ring narrower than the channel the bit already cuts', () => {
+    const plan = padReliefPlan(0.05, CH, 0.6);
+    expect(plan.passes).toBe(0);
+    expect(plan.clearanceMm).toBeCloseTo(CH, 9);
+  });
+
+  it('rounds a wider request up to what a whole number of passes clears', () => {
+    const step = CH * ISOLATION_STEPOVER;
+    const plan = padReliefPlan(0.5, CH, 0.6);
+    expect(plan.clearanceMm).toBeCloseTo(CH + plan.passes * step, 9);
+    // Up, never down: the figure is a minimum, and the point of it is solder
+    // not reaching the flood.
+    expect(plan.clearanceMm).toBeGreaterThanOrEqual(0.5);
+    expect(plan.clearanceMm - step).toBeLessThan(0.5);
+  });
+
+  it('bounds the passes a single number in a box can buy', () => {
+    expect(padReliefPlan(50, CH, 0.6).passes).toBe(12);
+  });
+});
+
+describe('a flooded pad keeps its footprint shape', () => {
+  /*
+   * The flood grows a net's copper outwards up to its budget. Grown from the
+   * pad as well as the track, every pad swells into a blob the size of the
+   * budget, flattened wherever a neighbour caught it; grown from the track
+   * cut off at the pad's rim, the track's rounded end sits on the rim and
+   * pokes out sideways as a shoulder. Grown from the track as routed - to the
+   * pad centre - the fat track lands on the pad and the pad stays a pad.
+   */
+  const padR = 0.8;
+  const pad = circlePoly(0, 0, padR);
+  const track = strokeToPoly([{ x: 0, y: 0 }, { x: 6, y: 0 }], 0.4);
+  const flood = 0.6;
+  const { copper } = floodCopperByNet(new Map([['n', unionPolys([pad, ...track])]]), {
+    maxFloodMm: flood,
+    channelMm: 0.2,
+    pads: [pad],
+    padsByNet: new Map([['n', [pad]]]),
+    seedsByNet: new Map([['n', track]]),
+  });
+  const polys = copper.get('n')!;
+
+  it('floods the track to full width right up to the pad', () => {
+    expect(pointInPolys(polys, { x: 3, y: 0.2 + flood - 0.02 })).toBe(true);
+    expect(pointInPolys(polys, { x: padR + 0.05, y: 0.2 + flood - 0.05 })).toBe(true);
+  });
+
+  it('does not grow the pad on the side away from the track', () => {
+    expect(pointInPolys(polys, { x: -padR - 0.05, y: 0 })).toBe(false);
+    expect(pointInPolys(polys, { x: 0, y: padR + 0.05 })).toBe(false);
+  });
+
+  it('leaves no shoulder where the track meets the pad', () => {
+    // Nothing near the pad beyond the pad itself and the fat track.
+    const near = offsetPolys([pad], flood);
+    const allowed = unionPolys([pad, ...offsetPolys(track, flood)]);
+    const extra = differencePolys(
+      differencePolys(polys, offsetPolys(allowed, 0.02)),
+      differencePolys(polys, near)
+    );
+    expect(extra.reduce((a, p) => a + p.length, 0)).toBe(0);
+  });
+});
+
+describe('the bare ring around a pad is milled, not just outlined', () => {
+  /*
+   * padClearanceMm holds the flood off a pad so solder cannot bridge to it.
+   * Holding the flood off is only half the job: the isolation pass cuts a
+   * channel at each *edge* of that ring, and unless the middle is cleared too
+   * it stays on the blank as a rib of copper a channel's width from the pad —
+   * which is the bridge the clearance was meant to prevent, moved outwards.
+   * The symptom is a gap that visibly pinches as it reaches a pin, and it got
+   * worse the more clearance you asked for.
+   */
+  const board = presets.basicBlink ?? Object.values(presets).find(p => p.nodes.length > 0)!;
+  const options: PcbOptions = { ...DEFAULT_PCB_OPTIONS, autoGrowBoard: true };
+  const result = generatePcbLayout(board.nodes as never, board.edges as never, options);
+
+  /** The copper left on the blank once every isolation path has been cut. */
+  const milledCopper = () => {
+    const cut: Poly[] = [];
+    for (const path of result.isolationPaths) {
+      cut.push(...strokeToPoly(path.points, result.effectiveToolDiaMm));
+    }
+    const o = result.boardOriginMm;
+    const blank = [
+      rectPoly(
+        o + result.boardWidthMm / 2,
+        o + result.boardHeightMm / 2,
+        result.boardWidthMm,
+        result.boardHeightMm
+      ),
+    ];
+    return differencePolys(blank, unionPolys(cut));
+  };
+
+  /** Copper that survives the mill but belongs to no net — leftover foil. */
+  const strayCopper = (milled: Poly[]) => {
+    const modelled: Poly[] = [];
+    for (const polys of result.copperByNet!.values()) modelled.push(...polys);
+    // A hair of tolerance: the pass is offset by exactly a tool radius, so
+    // every net's own edge sits on the cut and Clipper rounds it either way.
+    return differencePolys(milled, offsetPolys(unionPolys(modelled), 0.02));
+  };
+
+  const padPolys = () => {
+    const byId = new Map(result.components.map(c => [c.id, c]));
+    const margin = Math.max(0, options.padMarginMm ?? 0);
+    return result.pads.flatMap(pad => {
+      const comp = byId.get(pad.componentId);
+      if (!comp) return [];
+      return [padPolygon(pad, comp.rotationDeg, effectivePadMarginMm(comp.footprint, margin))];
+    });
+  };
+
+  it('is wide enough to be worth having', () => {
+    expect(result.padReliefMm).toBeGreaterThan(result.effectiveToolDiaMm);
+  });
+
+  it('leaves no unattached foil inside the ring around any pad', () => {
+    const stray = strayCopper(milledCopper());
+    const pads = padPolys();
+    expect(pads.length).toBeGreaterThan(0);
+    // The outermost pass cuts to exactly the relief, so the foil beyond it
+    // shares an edge with the ring; a hair inside that edge is what matters.
+    const ringed = pads.filter(pad =>
+      polysOverlap(offsetPolys([pad], result.padReliefMm - 0.01), stray, 1e-6)
+    );
+    expect(ringed, `${ringed.length} of ${pads.length} pads still have foil in their relief`).toEqual([]);
   });
 });

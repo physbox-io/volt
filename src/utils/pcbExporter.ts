@@ -31,6 +31,7 @@ import {
   intersectPolys,
   offsetPolys,
   ovalPoly,
+  pointInPolys,
   polysBounds,
   polysOverlap,
   polysToSvgPath,
@@ -163,16 +164,26 @@ export interface PcbOptions {
    */
   copperFloodMm?: number;
   /**
-   * Bare laminate kept around every pad when copper is flooded, in mm.
+   * Bare laminate kept between every pad and the copper of any *other* net,
+   * when copper is flooded, in mm.
    *
    * A milled board has no solder mask, so the only thing between a pad and
-   * the flooded copper beside it is the isolation channel: a fraction of a
-   * millimetre of laminate that a blob of solder crosses without trying. This
-   * holds every net's flood, the pad's own included, this far off the pad's
-   * outline. The pad itself and the trace feeding it are nominal copper and
-   * always survive, so the ring ends up as a thermal relief with a spoke where
-   * the track enters. It has no effect when the flood is off, since without a
-   * flood the copper next to a pad is a dead island anyway.
+   * the copper beside it is the isolation channel: a fraction of a millimetre
+   * of laminate that a blob of solder crosses without trying. This widens
+   * that channel wherever it runs past a pad.
+   *
+   * Only against *other* nets. An earlier version held the pad's own net off
+   * too, on the reasoning that solder wetting out onto its own flood would
+   * reach the channel edge anyway - which ringed every pad in bare laminate
+   * and left the pin joined to its own track by a neck of nominal trace
+   * width, a tenth of a millimetre of cutter wander away from being severed.
+   * Solder running from a pad onto the net that pad is already part of
+   * connects nothing new; foreign copper is the whole hazard, so foreign
+   * copper is what gets pushed back.
+   *
+   * The ring is milled out rather than merely outlined - see
+   * {@link padReliefPlan}. It has no effect when the flood is off, since
+   * without a flood the copper next to a pad is a dead island anyway.
    */
   padClearanceMm?: number;
   /**
@@ -443,6 +454,13 @@ export interface PcbLayoutResult {
    * room before the budget did.
    */
   copperFloodMm: number;
+  /**
+   * Bare laminate actually left around every pad, per side, in mm — the
+   * requested {@link PcbOptions.padClearanceMm} rounded up to a width the
+   * isolation passes clear outright. 0 when the flood is off, since there is
+   * then no flooded copper for the ring to hold back.
+   */
+  padReliefMm: number;
   cycleTimeSec: number;
   travelDistanceMm: number;
   cutDistanceMm: number;
@@ -483,6 +501,54 @@ export function vBitWidthAtDepth(
 ): number {
   const halfAngle = ((includedAngleDeg / 2) * Math.PI) / 180;
   return tipMm + 2 * Math.abs(depthMm) * Math.tan(halfAngle);
+}
+
+/**
+ * Overlap between consecutive isolation passes, as a fraction of the channel
+ * the bit cuts. Below 1 so passes overlap rather than leaving a rib between
+ * them; the board margin, the flood's edge keepout and the passes themselves
+ * all have to agree on it.
+ */
+export const ISOLATION_STEPOVER = 0.8;
+
+/**
+ * The pad relief the mill can actually leave, and the extra concentric passes
+ * it takes to clear it.
+ *
+ * {@link PcbOptions.padClearanceMm} asks for a ring of bare laminate around
+ * every pad, wider than the channel between two nets. Holding the flood off
+ * that ring is only half the job: a single isolation pass cuts a channel at
+ * each *edge* of the ring and leaves the middle standing as a floating sliver
+ * of copper, a channel's width from the pad. Solder crosses that without
+ * trying, so the ring made the pad harder to solder rather than easier - and
+ * the wider the ring, the worse, which is why turning the clearance down to
+ * zero appears to fix it.
+ *
+ * So the ring is cleared with concentric passes stepped out from the pad, and
+ * its width is rounded up to what a whole number of those passes covers:
+ * `channel + n * stepover`. Rounded up rather than down because the figure is
+ * a minimum - the point of it is solder not reaching the flood.
+ *
+ * Returns a zero-width relief when the flood is off: without a flood the
+ * copper beside a pad is a dead island anyway, and there is nothing to hold
+ * back.
+ */
+export function padReliefPlan(
+  requestedMm: number,
+  channelMm: number,
+  floodMm: number
+): { clearanceMm: number; passes: number } {
+  if (!(requestedMm > 0) || !(floodMm > 0) || !(channelMm > 0)) {
+    return { clearanceMm: 0, passes: 0 };
+  }
+  // Pass 0 already cuts a channel-wide ring round the pad, so that is the
+  // narrowest relief there is; asking for less cannot make it narrower.
+  if (requestedMm <= channelMm) return { clearanceMm: channelMm, passes: 0 };
+  const stepover = channelMm * ISOLATION_STEPOVER;
+  // A ceiling on the cutting a single number in a box can buy: 12 passes is
+  // already ~2mm of relief on a default V-bit.
+  const passes = Math.min(12, Math.ceil((requestedMm - channelMm) / stepover));
+  return { clearanceMm: channelMm + passes * stepover, passes };
 }
 
 const minPadGapCache = new WeakMap<ComponentFootprint, number>();
@@ -953,8 +1019,16 @@ function cropBoardToContent(
   // isolation pass is offset by a tool radius plus the stepovers, and that pass
   // is itself a tool-width wide.
   const isoDia = vBitWidthAtDepth(opts.vBitTipMm, opts.vBitAngleDeg, opts.isolationDepthZ);
-  const passes = Math.max(1, Math.min(3, opts.isolationPasses));
-  const isolationReach = isoDia + (passes - 1) * isoDia * 0.8;
+  const relief = padReliefPlan(
+    opts.padClearanceMm ?? 0,
+    isoDia,
+    Math.max(0, opts.copperFloodMm ?? 0)
+  );
+  const passes = Math.max(
+    Math.max(1, Math.min(3, opts.isolationPasses)),
+    1 + relief.passes
+  );
+  const isolationReach = isoDia + (passes - 1) * isoDia * ISOLATION_STEPOVER;
   const margin =
     isolationReach +
     0.3 +
@@ -1015,13 +1089,32 @@ export function floodCopperByNet(
     /** Copper that must be kept clear but never grows: unassigned pads, cutouts. */
     blockers?: Poly[];
     /**
-     * Pads that get soldered. No net's flood, the pad's own included, comes
-     * within {@link padClearanceMm} of them. Copper the layout already had
-     * inside that ring - the pad, the trace feeding it - is kept, which is
-     * what turns the ring into a thermal relief rather than a cut.
+     * Pads that get soldered. No *other* net's copper comes within
+     * {@link padClearanceMm} of one.
+     *
+     * The pad's own net is deliberately not held off: solder running from a
+     * pad onto the net that pad is already part of connects nothing that was
+     * not connected, and ringing the pad to stop it is what leaves the pin
+     * hanging off a nominal-width neck.
      */
     pads?: Poly[];
-    /** Laminate kept between a pad's outline and any flooded copper, in mm. */
+    /**
+     * Those same pads, grouped by the net each one belongs to. A pad on no
+     * net belongs to nobody and is foreign to everything.
+     */
+    padsByNet?: Map<string, Poly[]>;
+    /**
+     * The copper each net grows *from*, typically its tracks and vias as
+     * routed, running to the pad centres. When absent the whole of the net's
+     * copper grows, pads included - which turns every pad into a blob the
+     * size of the flood budget. Given, the pads are kept as they are and the
+     * flood reaches them along the track.
+     */
+    seedsByNet?: Map<string, Poly[]>;
+    /**
+     * Laminate kept between a pad's outline and copper belonging to any
+     * *other* net, in mm.
+     */
     padClearanceMm?: number;
     /** Region copper is allowed to occupy, typically the board minus toolpath room. */
     bounds?: Poly[];
@@ -1057,10 +1150,36 @@ export function floodCopperByNet(
     padClearance > 0 && opts.pads && opts.pads.length > 0
       ? offsetPolys(unionPolys(opts.pads), padClearance)
       : [];
+  // One keepout per net, holding it off everyone else's pads and leaving its
+  // own alone, so a net floods into its own pads at full width and a pin is
+  // joined to its track by as much copper as the track has. Pads never move,
+  // so this is done once rather than once per step.
+  const padKeepoutByNet = new Map<string, Poly[]>();
+  if (padKeepout.length > 0) {
+    for (const netId of netIds) {
+      const own = opts.padsByNet?.get(netId);
+      if (!own?.length) continue;
+      const foreign = (opts.pads ?? []).filter(poly => !own.includes(poly));
+      padKeepoutByNet.set(
+        netId,
+        foreign.length > 0 ? offsetPolys(unionPolys(foreign), padClearance) : []
+      );
+    }
+  }
   const bounds = opts.bounds && opts.bounds.length > 0 ? opts.bounds : null;
   const boundsBox = bounds ? polysBounds(bounds) : null;
 
   let cur = copperByNet;
+  // What actually grows. A pad that seeds the flood swells by the whole
+  // budget in every direction and stops being recognisable as a pad: a blob,
+  // flattened wherever a neighbour's keepout caught it. So where the caller
+  // says which copper is track, only the track grows - up to, into and across
+  // its pads, since a routed track runs to the pad centre and its rounded end
+  // lands there - and the pad keeps the shape the footprint gave it.
+  const seed = new Map<string, Poly[]>();
+  for (const netId of netIds) {
+    seed.set(netId, opts.seedsByNet?.get(netId) ?? cur.get(netId)!);
+  }
   let applied = 0;
   // Growth is monotone — a neighbour's keepout only ever expands and the bounds
   // never move — so a net that failed to grow this step can never grow again.
@@ -1086,7 +1205,7 @@ export function floodCopperByNet(
       const own = cur.get(netId)!;
       if (!live.has(netId)) continue;
 
-      let grown = offsetPolys(own, stepMm);
+      let grown = offsetPolys(seed.get(netId)!, stepMm);
       const grownBox = polysBounds(grown);
       if (bounds && boundsBox) {
         // Clipping against the board is only needed once the net is close
@@ -1105,7 +1224,7 @@ export function floodCopperByNet(
       // Only the neighbours this net could actually reach this step matter, and
       // on any board bigger than a stamp that is a handful of them. Skipping
       // the rest keeps the clip small, which is where Clipper spends its time.
-      const clip: Poly[] = [...blockerKeepout, ...padKeepout];
+      const clip: Poly[] = [...blockerKeepout, ...(padKeepoutByNet.get(netId) ?? padKeepout)];
       for (const otherId of netIds) {
         if (otherId === netId) continue;
         const box = keepoutBox.get(otherId)!;
@@ -1124,10 +1243,12 @@ export function floodCopperByNet(
       // Clipping can bite into copper that was already there on a board whose
       // nominal geometry is tighter than the channel. Never remove copper the
       // layout asked for; the DRC is what reports that case.
+      const grownSeed = unionPolys([...grown, ...seed.get(netId)!]);
       grown = unionPolys([...grown, ...own]);
 
       if (totalArea(grown) > totalArea(own) + 1e-4) {
         grewAny = true;
+        seed.set(netId, grownSeed);
         next.set(netId, grown);
       } else {
         live.delete(netId);
@@ -1591,6 +1712,17 @@ export function generatePcbLayout(
   const addCopperBottom = (netId: string, polys: Poly[]) => {
     copperByNetBottom.set(netId, (copperByNetBottom.get(netId) || []).concat(polys));
   };
+  // Tracks and vias, without the pads: what the flood below grows from.
+  const trackByNetTop = new Map<string, Poly[]>();
+  const trackByNetBottom = new Map<string, Poly[]>();
+  const addTrackTop = (netId: string, polys: Poly[]) => {
+    addCopperTop(netId, polys);
+    trackByNetTop.set(netId, (trackByNetTop.get(netId) || []).concat(polys));
+  };
+  const addTrackBottom = (netId: string, polys: Poly[]) => {
+    addCopperBottom(netId, polys);
+    trackByNetBottom.set(netId, (trackByNetBottom.get(netId) || []).concat(polys));
+  };
 
   for (const pad of pads) {
     if (!pad.netId) continue;
@@ -1605,9 +1737,9 @@ export function generatePcbLayout(
   for (const trace of traces) {
     const polys = strokeToPoly(trace.points, trace.width);
     if (isTwoLayer && trace.layer === 'bottom') {
-      addCopperBottom(trace.netId, polys);
+      addTrackBottom(trace.netId, polys);
     } else {
-      addCopperTop(trace.netId, polys);
+      addTrackTop(trace.netId, polys);
     }
   }
 
@@ -1615,17 +1747,23 @@ export function generatePcbLayout(
     const viaPadR = (options.viaPadMm ?? 1.4) / 2;
     for (const v of routing.vias) {
       const poly = circlePoly(v.x, v.y, viaPadR);
-      addCopperTop(v.netId, [poly]);
-      addCopperBottom(v.netId, [poly]);
+      addTrackTop(v.netId, [poly]);
+      addTrackBottom(v.netId, [poly]);
     }
   }
 
   for (const [netId, polys] of copperByNet) {
     copperByNet.set(netId, unionPolys(polys));
   }
+  for (const [netId, polys] of trackByNetTop) {
+    trackByNetTop.set(netId, unionPolys(polys));
+  }
   if (isTwoLayer) {
     for (const [netId, polys] of copperByNetBottom) {
       copperByNetBottom.set(netId, unionPolys(polys));
+    }
+    for (const [netId, polys] of trackByNetBottom) {
+      trackByNetBottom.set(netId, unionPolys(polys));
     }
   }
 
@@ -1633,15 +1771,40 @@ export function generatePcbLayout(
   // Everything outside the nominal trace is about to be milled away, so any gap
   // wider than the bit's channel is copper thrown out for nothing. Grow it back.
   const floodBudgetMm = Math.max(0, options.copperFloodMm ?? 0);
+  // The flood stops at the pad relief and the isolation stage clears it, so
+  // both have to work from the same width — and it is the width the mill can
+  // actually produce, not the one that was typed in.
+  const padRelief = padReliefPlan(
+    options.padClearanceMm ?? 0,
+    effectiveToolDiaMm,
+    floodBudgetMm
+  );
+  const isolationPassCount = Math.max(
+    Math.max(1, Math.min(3, options.isolationPasses)),
+    1 + padRelief.passes
+  );
+  // The outermost relief pass reaches exactly padRelief.clearanceMm from the
+  // pad. Holding the flood off by that same figure leaves the two edges
+  // coincident and lets Clipper's rounding decide whether a hair of copper
+  // survives between them, so the flood stops a channel margin short and the
+  // last pass overlaps it — the same trade the channel itself makes.
+  const padReliefFloodMm =
+    padRelief.clearanceMm > 0
+      ? Math.max(0, padRelief.clearanceMm - Math.max(0, options.channelMarginMm ?? 0.05))
+      : 0;
+  // Every pad, netted or not, gets a solderable ring of laminate around it.
+  // Held out here because the isolation stage needs to know where those rings
+  // are in order to cut them.
+  const solderPadsTop: Poly[] = [];
+  const solderPadsBottom: Poly[] = [];
+  const solderPadsByNetTop = new Map<string, Poly[]>();
+  const solderPadsByNetBottom = new Map<string, Poly[]>();
   let appliedFloodMm = 0;
   if (floodBudgetMm > 0 && copperByNet.size > 0) {
     // A pad with no net is never isolated, so it is not copper to grow — but
     // flooding across one would bury a hole that still has to be soldered.
     const blockersTop: Poly[] = [];
     const blockersBottom: Poly[] = [];
-    // Every pad, netted or not, gets a solderable ring of laminate around it.
-    const solderPadsTop: Poly[] = [];
-    const solderPadsBottom: Poly[] = [];
     for (const pad of pads) {
       const comp = compById.get(pad.componentId);
       if (!comp) continue;
@@ -1649,6 +1812,12 @@ export function generatePcbLayout(
       const isTht = pad.spec.drillDiameter && pad.spec.drillDiameter > 0;
       solderPadsTop.push(poly);
       if (isTwoLayer && isTht) solderPadsBottom.push(poly);
+      if (pad.netId) {
+        solderPadsByNetTop.set(pad.netId, [...(solderPadsByNetTop.get(pad.netId) ?? []), poly]);
+        if (isTwoLayer && isTht) {
+          solderPadsByNetBottom.set(pad.netId, [...(solderPadsByNetBottom.get(pad.netId) ?? []), poly]);
+        }
+      }
       if (pad.netId) continue;
       blockersTop.push(poly);
       if (isTwoLayer && isTht) blockersBottom.push(poly);
@@ -1664,9 +1833,10 @@ export function generatePcbLayout(
 
     // Copper may not run out past the room the isolation passes need inside the
     // board edge, or the outermost ring would be commanded off the stock.
-    const floodPasses = Math.max(1, Math.min(3, options.isolationPasses));
     const edgeKeepout =
-      effectiveToolDiaMm + (floodPasses - 1) * effectiveToolDiaMm * 0.8 + 0.2;
+      effectiveToolDiaMm +
+      (isolationPassCount - 1) * effectiveToolDiaMm * ISOLATION_STEPOVER +
+      0.2;
     const bounds = [
       rectPoly(
         boardOriginMm + boardWidthMm / 2,
@@ -1682,7 +1852,9 @@ export function generatePcbLayout(
       channelMarginMm: Math.max(0, options.channelMarginMm ?? 0.05),
       blockers: blockersTop,
       pads: solderPadsTop,
-      padClearanceMm: options.padClearanceMm,
+      padsByNet: solderPadsByNetTop,
+      seedsByNet: trackByNetTop,
+      padClearanceMm: padReliefFloodMm,
       bounds,
     });
     copperByNet = flooded.copper;
@@ -1695,7 +1867,9 @@ export function generatePcbLayout(
         channelMarginMm: Math.max(0, options.channelMarginMm ?? 0.05),
         blockers: blockersBottom,
         pads: solderPadsBottom,
-        padClearanceMm: options.padClearanceMm,
+        padsByNet: solderPadsByNetBottom,
+        seedsByNet: trackByNetBottom,
+        padClearanceMm: padReliefFloodMm,
         bounds,
       });
       copperByNetBottom = floodedBottom.copper;
@@ -1720,6 +1894,40 @@ export function generatePcbLayout(
       }
     }
   }
+
+  // 5d. Seal the cracks -------------------------------------------------
+  // The flood advances in discrete steps and clips each one against where the
+  // neighbours stood when the step began, so two fronts of the *same* net
+  // coming round opposite sides of an obstacle meet along a boundary Clipper
+  // rounds to its micron grid. What is left is a hairline: a sliver of
+  // "laminate" straight through a conductor, a few microns wide.
+  //
+  // No bit can cut it. A gap narrower than the channel is one the mill will
+  // never open, so a model that contains one describes a board nobody can
+  // make - and every consumer of that model is then wrong in the same way:
+  // the preview draws a severed trace, the Gerber exports one, and the
+  // isolation pass wastes a plunge trying to run down it.
+  //
+  // Copper is only ever added, and never closer to another net than the
+  // flood's own channel allows, so this cannot bridge two nets - it can only
+  // make one net whole.
+  const sealCracks = (copperMap: Map<string, Poly[]>) => {
+    const closeMm = effectiveToolDiaMm / 2;
+    const keepClear = effectiveToolDiaMm + 2 * Math.max(0, options.channelMarginMm ?? 0.05);
+    for (const [netId, polys] of [...copperMap]) {
+      const closed = offsetPolys(offsetPolys(polys, closeMm), -closeMm);
+      if (closed.length === 0) continue;
+      const others: Poly[] = [];
+      for (const [otherId, otherPolys] of copperMap) {
+        if (otherId !== netId) others.push(...otherPolys);
+      }
+      const forbidden = others.length > 0 ? offsetPolys(unionPolys(others), keepClear) : [];
+      const filled = forbidden.length > 0 ? differencePolys(closed, forbidden) : closed;
+      copperMap.set(netId, unionPolys([...polys, ...filled]));
+    }
+  };
+  sealCracks(copperByNet);
+  if (isTwoLayer) sealCracks(copperByNetBottom);
 
   // 6. Design rule check: no two nets' copper may touch, on either layer.
   const checkOverlaps = (copperMap: Map<string, Poly[]>, layerLabel: string) => {
@@ -1804,10 +2012,25 @@ export function generatePcbLayout(
     }
   }
 
-  const computePassesFor = (copperMap: Map<string, Poly[]>): IsolationPath[] => {
+  const computePassesFor = (
+    copperMap: Map<string, Poly[]>,
+    layerPads: Poly[]
+  ): IsolationPath[] => {
     const paths: IsolationPath[] = [];
-    const stepover = effectiveToolDiaMm * 0.8;
+    const stepover = effectiveToolDiaMm * ISOLATION_STEPOVER;
     const passes = Math.max(1, Math.min(3, options.isolationPasses));
+    // Where the relief passes are allowed to cut. Beyond it the board is
+    // either already bare or belongs to the flood, and a pass taken right
+    // round the net there is minutes of cutting for nothing. The zone is the
+    // ring grown by a tool radius because what is clipped to it is the
+    // cutter's centreline: stopped where the centreline leaves the ring, the
+    // cut's outer edge stops a radius short, and beside the track feeding the
+    // pad that leaves a wedge of foil inside the ring.
+    const reliefZone =
+      padRelief.passes > 0 && layerPads.length > 0
+        ? offsetPolys(unionPolys(layerPads), padRelief.clearanceMm + toolRadius)
+        : [];
+    const totalPasses = reliefZone.length > 0 ? isolationPassCount : passes;
 
     for (const [netId, copper] of copperMap) {
       // Copper belonging to every other net, grown by a tool radius. The cutter
@@ -1818,20 +2041,31 @@ export function generatePcbLayout(
       }
       const forbidden = others.length > 0 ? offsetPolys(unionPolys(others), toolRadius) : [];
 
-      for (let pass = 0; pass < passes; pass++) {
+      for (let pass = 0; pass < totalPasses; pass++) {
         const loop = offsetPolys(copper, toolRadius + pass * stepover);
         const safe = forbidden.length > 0 ? differencePolys(loop, forbidden) : loop;
         for (const ring of safe) {
           if (ring.length < 3) continue;
-          paths.push({ netId, pass, points: [...ring, ring[0]] });
+          if (pass < passes) {
+            paths.push({ netId, pass, points: [...ring, ring[0]] });
+            continue;
+          }
+          for (const arc of arcsInside(ring, reliefZone, toolRadius)) {
+            // A stub shorter than the bit is width the neighbouring pass
+            // already covered; cutting it costs a plunge and buys nothing.
+            if (pathLengthMm(arc) < effectiveToolDiaMm) continue;
+            paths.push({ netId, pass, points: arc });
+          }
         }
       }
     }
     return sortPathsNearestNeighbor(paths);
   };
 
-  const topIsolationPaths = computePassesFor(copperByNet);
-  const bottomIsolationPaths = isTwoLayer ? computePassesFor(copperByNetBottom) : [];
+  const topIsolationPaths = computePassesFor(copperByNet, solderPadsTop);
+  const bottomIsolationPaths = isTwoLayer
+    ? computePassesFor(copperByNetBottom, solderPadsBottom)
+    : [];
 
   // 8. Drills -----------------------------------------------------------
   const drills: DrillPoint[] = [];
@@ -1890,6 +2124,7 @@ export function generatePcbLayout(
     completion: routing.completion,
     effectiveToolDiaMm,
     copperFloodMm: appliedFloodMm,
+    padReliefMm: padRelief.clearanceMm,
     cycleTimeSec: 0,
     travelDistanceMm: 0,
     cutDistanceMm: 0,
@@ -2455,6 +2690,7 @@ function emptyResult(options: PcbOptions, error: string): PcbLayoutResult {
     completion: 0,
     effectiveToolDiaMm: 0,
     copperFloodMm: 0,
+    padReliefMm: 0,
     cycleTimeSec: 0,
     travelDistanceMm: 0,
     cutDistanceMm: 0,
@@ -2781,6 +3017,67 @@ export function generateAirCutGcode(gcode: string, zOffsetMm = 20): string {
   });
 
   return `; --- AIR CUT DRY RUN PROGRAM (+${zOffsetMm}mm Z-Offset) ---\n` + transformed.join('\n');
+}
+
+/** Length of a polyline in mm. */
+function pathLengthMm(points: Pt[]): number {
+  let len = 0;
+  for (let i = 1; i < points.length; i++) {
+    len += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+  }
+  return len;
+}
+
+/**
+ * The parts of a closed toolpath that fall inside `zone`, as open arcs.
+ *
+ * A pad-relief pass exists only to clear the ring of laminate around a pad;
+ * the same offset taken right round the net would also rake every patch of
+ * open board the flood could not reach. Every point of the ring handed in here
+ * is already clear of copper by a tool radius, so trimming it is an economy
+ * and never a safety decision - which is why sampling points along it is
+ * enough and a run with one end inside is kept to its next sample.
+ */
+function arcsInside(ring: Poly, zone: Poly[], maxSegMm: number): Poly[] {
+  if (zone.length === 0) return [];
+  // The test is per vertex, and a long straight run - the flank of a track
+  // leaving a pad - is a single segment. With both of its ends outside the
+  // zone it would be dropped whole, along with the stretch of it that runs
+  // through the zone. Break long segments up so no stretch longer than the
+  // bit goes untested.
+  const dense: Poly = [];
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / maxSegMm));
+    for (let k = 0; k < n; k++) {
+      dense.push(k === 0 ? a : { x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n });
+    }
+  }
+  ring = dense;
+  const inside = ring.map(pt => pointInPolys(zone, pt));
+  if (!inside.some(Boolean)) return [];
+  if (inside.every(Boolean)) return [[...ring, ring[0]]];
+
+  // Start walking from a point outside the zone, so a run that straddles the
+  // ring's own start index comes out as one arc rather than two.
+  const n = ring.length;
+  const start = inside.indexOf(false);
+  const arcs: Poly[] = [];
+  let cur: Poly | null = null;
+  for (let i = 0; i < n; i++) {
+    const idx = (start + i) % n;
+    if (inside[idx]) {
+      if (!cur) cur = [ring[(idx - 1 + n) % n]];
+      cur.push(ring[idx]);
+    } else if (cur) {
+      cur.push(ring[idx]);
+      arcs.push(cur);
+      cur = null;
+    }
+  }
+  if (cur) arcs.push(cur);
+  return arcs.filter(a => a.length >= 2);
 }
 
 /**

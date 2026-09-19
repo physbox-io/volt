@@ -1841,10 +1841,11 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
                       Pad Clearance (mm)
                       <InfoTip>
-                        Bare laminate kept between every pad and the flooded copper around it. There is
+                        Bare laminate kept between every pad and the copper of any other net. There is
                         no solder mask on a milled board, so without this the only thing between a pad
-                        and the ground flood is the isolation channel, which solder bridges easily. The
-                        pad and the trace feeding it are kept, so the ring is a thermal relief, not a cut.
+                        and the ground flood is the isolation channel, which solder bridges easily. A
+                        pad's own net still floods right into it at full width, so the pin is never left
+                        hanging off a thin neck, and the wider gap is milled out rather than outlined.
                       </InfoTip>
                     </label>
                     <NumberInput
