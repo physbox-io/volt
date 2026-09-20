@@ -230,6 +230,21 @@ export function runErc({ nodes, pins, portToNet, nameOf }: ErcInput): Advisory[]
     if (list) list.push(p.handleId);
     else handlesByNode.set(p.nodeId, [p.handleId]);
   }
+  /*
+   * A power rail is a source against ground, so it references its net — but it
+   * has no device of its own and therefore no terminals in the pin list, which
+   * would leave an op-amp fed only by a `+12V` flag looking unreferenced. The
+   * rail nets are joined to ground here, matching the `V_rail_<net> <net> 0`
+   * card `spice.ts` emits for each of them.
+   */
+  for (const node of nodes) {
+    if (node.type !== 'powerrail') continue;
+    const name = nodeNetName(node.type, node.data);
+    if (!name) continue;
+    const net = portToNet[`${node.id}-in`] ?? portToNet[virtualNetPort(name)];
+    if (net) ds.union(net, GND);
+  }
+
   for (const [nodeId, handles] of handlesByNode) {
     const node = nodeById.get(nodeId);
     const type = node?.type ?? '';

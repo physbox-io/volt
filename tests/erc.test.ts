@@ -251,6 +251,28 @@ describe('DC paths', () => {
     expect(titles(found)).toContain('R3');
   });
 
+  it('counts a power rail as the reference it is', () => {
+    // A rail symbol has no device and so no terminals in the pin list, but
+    // `spice.ts` emits a source from its net to ground for it. Without that,
+    // an op-amp fed its supplies by two rail flags reads as unreferenced —
+    // which is every properly drawn analog circuit on the canvas.
+    const nodes = [
+      node('U1', 'opamp'),
+      node('PR1', 'powerrail', { rail: '+12V', voltage: 12 }),
+      node('PR2', 'powerrail', { rail: '-12V', voltage: -12 }),
+      node('SG1', 'signalgen', { frequency: 100, amplitude: 1 }),
+      node('GND1', 'ground'),
+    ];
+    const edges = [
+      wire('SG1', 'out', 'U1', 'in_non'),
+      wire('U1', 'out', 'U1', 'in_inv'),
+      wire('U1', 'vcc', 'PR1', 'in'),
+      wire('U1', 'vee', 'PR2', 'in'),
+      wire('SG1', 'gnd', 'GND1', 'in'),
+    ];
+    expect(check(nodes, edges)).toEqual([]);
+  });
+
   it('does not report a net whose floating pin has already been named', () => {
     // One unconnected resistor lead. It is reported once, as a floating pin,
     // and not a second time as a net with no DC path.

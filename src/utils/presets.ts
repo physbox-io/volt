@@ -1014,10 +1014,63 @@ export const voltageComparator: CircuitPreset = {
 
 
 
+/*
+ * Sallen-Key low-pass — the circuit the frequency sweep exists for.
+ *
+ * Unity-gain, equal resistors: fc = 1 / (2*pi*R*sqrt(C1*C2)) and Q =
+ * sqrt(C1/C2) / 2. With 10k, 22n and 10n that is about 1.07kHz at Q 0.74,
+ * which is close enough to Butterworth to look flat in the passband and still
+ * show a little lift at the corner. Second order, so it falls at 40dB per
+ * decade and the phase runs all the way to -180 - both of which are things a
+ * transient trace cannot show you and a Bode plot says at a glance.
+ */
+export const sallenKeyFilter: CircuitPreset = {
+  name: 'Sallen-Key Low-Pass (Bode)',
+  recommendedSimLength: 0.02,
+  nodes: [
+    { id: 'sg1', type: 'signalgen', position: { x: 60, y: 200 }, data: { label: 'SIGNALGEN', waveform: 'sine', frequency: 300, amplitude: 1 } },
+    { id: 'r1', type: 'resistor', position: { x: 280, y: 220 }, data: { label: '10kΩ' } },
+    { id: 'r2', type: 'resistor', position: { x: 420, y: 220 }, data: { label: '10kΩ' } },
+    { id: 'c1', type: 'capacitor', position: { x: 360, y: 100 }, data: { label: '22nF' } },
+    { id: 'c2', type: 'capacitor', position: { x: 512, y: 300 }, data: { label: '10nF', orientation: 'vertical' } },
+    { id: 'u1', type: 'opamp', position: { x: 600, y: 190 }, data: { label: 'OPAMP' } },
+    { id: 'pr1', type: 'powerrail', position: { x: 600, y: 90 }, data: { rail: '+12V', voltage: 12 } },
+    { id: 'pr2', type: 'powerrail', position: { x: 600, y: 320 }, data: { rail: '-12V', voltage: -12 } },
+    { id: 'scope1', type: 'scope', position: { x: 800, y: 150 }, data: { label: 'SCOPE' } },
+    { id: 'g1', type: 'ground', position: { x: 92, y: 300 }, data: { label: 'GND' } },
+    { id: 'g2', type: 'ground', position: { x: 516, y: 390 }, data: { label: 'GND' } },
+    { id: 'g3', type: 'ground', position: { x: 804, y: 300 }, data: { label: 'GND' } },
+  ],
+  edges: [
+    { id: 'e-sg1-r1', source: 'sg1', target: 'r1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-sg1-g1', source: 'sg1', target: 'g1', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-r1-r2', source: 'r1', target: 'r2', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    // C1 is the feedback leg: from the node between the resistors back to the
+    // output. That is what makes this second order rather than two RCs in a row.
+    { id: 'e-r1-c1', source: 'r1', target: 'c1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-c1-u1out', source: 'c1', target: 'u1', sourceHandle: 'out', targetHandle: 'out', type: 'smoothstep' },
+    { id: 'e-r2-u1', source: 'r2', target: 'u1', sourceHandle: 'out', targetHandle: 'in_non', type: 'smoothstep' },
+    { id: 'e-r2-c2', source: 'r2', target: 'c2', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-c2-g2', source: 'c2', target: 'g2', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+    // Unity-gain follower: the output is the inverting input.
+    { id: 'e-u1-fb', source: 'u1', target: 'u1', sourceHandle: 'out', targetHandle: 'in_inv', type: 'smoothstep' },
+    { id: 'e-u1-vcc', source: 'u1', target: 'pr1', sourceHandle: 'vcc', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-u1-vee', source: 'u1', target: 'pr2', sourceHandle: 'vee', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-u1-scope', source: 'u1', target: 'scope1', sourceHandle: 'out', targetHandle: 'ch1', type: 'smoothstep' },
+    { id: 'e-sg1-scope', source: 'sg1', target: 'scope1', sourceHandle: 'out', targetHandle: 'ch2', type: 'smoothstep' },
+    { id: 'e-scope-g3', source: 'scope1', target: 'g3', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
+  ]
+};
+
+
 export const presets: Record<string, CircuitPreset> = {
   empty: {
     ...empty,
     noteCard: `# Empty Canvas ⬜\n\nDrag and drop components from the left sidebar to start building your own custom circuits!\n\n- Click and drag components to move them.\n- Hover over handles and drag to make wire connections.\n- Click components to edit their properties in the sidebar.\n- Click **Run** in the toolbar to start simulating.`
+  },
+  sallenKeyFilter: {
+    ...sallenKeyFilter,
+    noteCard: `# Sallen-Key Low-Pass 〰️\n\nA second-order active filter — the circuit to have open when you press **Bode**.\n\n### Try this first\n1. Click **Bode** in the status bar along the bottom.\n2. It sweeps straight away. Read the **−3dB** badge in the panel header: about **1.07 kHz**.\n3. Hover the plot to read frequency, gain and phase at any point.\n\n### What you are looking at\n- **Magnitude** is flat at 0dB through the passband, then falls at **40dB per decade** — twice the slope of a plain RC, because there are two poles.\n- **Phase** runs all the way to **−180°**. That is the thing a transient trace cannot show you, and the reason a filter can turn into an oscillator when you wrap feedback around it.\n\n### The design\n- \`fc = 1 / (2π·R·√(C1·C2))\` → 10kΩ with 22nF and 10nF gives **1.07 kHz**.\n- \`Q = ½·√(C1/C2)\` → **0.74**, near Butterworth, so the corner has only a little lift.\n- **Change a value and sweep again.** Make C1 100nF and Q climbs to 1.6 — the peak at the corner appears and the passband stops being flat.\n\n### The rest of the bar\n- **Run** still does what it always did: a transient run, here 20ms of a 300Hz sine. The scope shows input on ch2 and output on ch1, barely attenuated at 300Hz.\n- **DC** paints the bias point onto the wires — all zero here, because a filter at rest is a filter with nothing in it. It earns its keep on an amplifier.`
   },
   voltageComparator: {
     ...voltageComparator,

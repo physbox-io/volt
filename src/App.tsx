@@ -73,7 +73,8 @@ import type { PWLPoint } from './utils/mcu';
 import { NumberInput } from '@physbox-io/ui';
 import type { Advisory } from './types/advisories';
 import { sortAdvisories } from './types/advisories';
-import { pinLabel, runErc } from './utils/erc';
+import { runErc } from './utils/erc';
+import { AC_DRIVE_TYPES, buildProbePoints } from './utils/probePoints';
 import { checkComponentRatings } from './utils/powerRatings';
 import {
   SpiceRunError,
@@ -170,9 +171,6 @@ const makeNameOf = (nodes: Node[]) => {
     return map[nodeId] || getNodeDefaultName(nodeId, node?.type ?? '');
   };
 };
-
-/** Sources an AC sweep can be driven from — anything that emits a `V` card. */
-const AC_DRIVE_TYPES = new Set(['signalgen', 'acvoltage', 'voltage']);
 
 export default function App() {
   // ── Initialise from localStorage ────────────────────────────────────────────
@@ -1979,18 +1977,10 @@ export default function App() {
    * `N7` is not. Scope channels sort first — a scope on the canvas is someone
    * having already said where they are looking.
    */
-  const probePoints = useMemo(() => {
-    const nameOf = makeNameOf(nodes);
-    const seen = new Set<string>();
-    const points: { net: string; label: string; rank: number }[] = [];
-    for (const pin of topology.pins) {
-      if (!pin.connected || pin.net === '0' || seen.has(pin.net)) continue;
-      seen.add(pin.net);
-      const rank = pin.nodeType === 'scope' ? 0 : pin.nodeType === 'multimeter' ? 1 : 2;
-      points.push({ net: pin.net, label: `${nameOf(pin.nodeId)} ${pinLabel(pin.nodeType, pin.handleId)}`, rank });
-    }
-    return points.sort((a, b) => a.rank - b.rank).map(({ net, label }) => ({ net, label }));
-  }, [nodes, topology]);
+  const probePoints = useMemo(
+    () => buildProbePoints(topology.pins, makeNameOf(nodes)),
+    [nodes, topology],
+  );
 
   const selectNodeById = useCallback((nodeId: string) => {
     setNodes(nds => nds.map(n => (n.id === nodeId ? { ...n, selected: true } : n.selected ? { ...n, selected: false } : n)));

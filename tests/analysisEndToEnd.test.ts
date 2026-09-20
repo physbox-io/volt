@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import type { Node, Edge } from '@xyflow/react';
 import { Simulation } from 'eecircuit-engine';
 import { generateSpiceNetlist, type SpiceAnalysis } from '../src/utils/spice';
+import { presets } from '../src/utils/presets';
+import { runErc } from '../src/utils/erc';
 import { buildBodeTrace, cornerFrequencyHz, readOperatingPoint } from '../src/utils/analysisResults';
 import { EXPECTED_PLOT, cleanSpiceMessages, plotNameOf } from '../src/utils/simDiagnostics';
 import type { SpiceComplexResult, SpiceResult } from '../src/types/simulation';
@@ -159,5 +161,67 @@ describe('a circuit the solver refuses', () => {
     const good = await solve<SpiceResult>(nodes, edges, { kind: 'op' });
     expect(good.plot).toBe(EXPECTED_PLOT.op);
     expect(readOperatingPoint(good.result)[good.portToNet['R1-out'].toLowerCase()]).toBeCloseTo(6, 4);
+  });
+});
+
+
+/*
+ * The preset that ships to demonstrate the sweep.
+ *
+ * Its values are a design, not a decoration: 10k with 22n and 10n is a corner
+ * at 1/(2*pi*R*sqrt(C1*C2)) and a Q of sqrt(C1/C2)/2. If an edit to the netlist
+ * builder, the op-amp model or the sweep ever moves either, the note card on
+ * that preset starts telling people a number the app no longer produces.
+ */
+describe('the Sallen-Key preset', () => {
+  const preset = presets.sallenKeyFilter;
+
+  it('is wired up completely, with nothing for the rules check to say', () => {
+    const { portToNet, pins } = generateSpiceNetlist(
+      preset.nodes, preset.edges, 1, 'normal', {}, undefined, undefined,
+      { kind: 'op' }, { skipMcuExecution: true },
+    );
+    const found = runErc({ nodes: preset.nodes, pins, portToNet, nameOf: id => id });
+    expect(found.map(a => a.title)).toEqual([]);
+  });
+
+  it('sweeps to the corner its component values were chosen for', async () => {
+    const R = 10e3, C1 = 22e-9, C2 = 10e-9;
+    const designed = 1 / (2 * Math.PI * R * Math.sqrt(C1 * C2));
+    expect(designed).toBeGreaterThan(1000);
+    expect(designed).toBeLessThan(1150);
+
+    const { result, portToNet, plot } = await solve<SpiceComplexResult>(preset.nodes, preset.edges, {
+      kind: 'ac', sourceNodeId: 'sg1', fStart: 10, fStop: 1e6, pointsPerDecade: 40,
+    });
+    expect(plot).toBe(EXPECTED_PLOT.ac);
+
+    const trace = buildBodeTrace(result, portToNet['u1-out'])!;
+    expect(trace).not.toBeNull();
+
+    // Unity gain in the passband: a follower, so 0dB and no phase shift.
+    expect(trace.magDb[0]).toBeCloseTo(0, 1);
+    expect(Math.abs(trace.phaseDeg[0])).toBeLessThan(2);
+
+    const corner = cornerFrequencyHz(trace)!;
+    expect(corner / designed).toBeGreaterThan(0.9);
+    expect(corner / designed).toBeLessThan(1.1);
+
+    const at = (f: number) => {
+      let best = 0;
+      for (let i = 0; i < trace.freqHz.length; i++) {
+        if (Math.abs(Math.log10(trace.freqHz[i] / f)) < Math.abs(Math.log10(trace.freqHz[best] / f))) best = i;
+      }
+      return best;
+    };
+    // Two poles, so forty dB per decade rather than twenty.
+    const drop = trace.magDb[at(1e4)] - trace.magDb[at(1e5)];
+    expect(drop).toBeGreaterThan(35);
+    expect(drop).toBeLessThan(45);
+
+    // And the phase runs to -180, which is the half of the plot a transient
+    // trace cannot show and the reason the unwrapping has to be right.
+    expect(Math.min(...trace.phaseDeg)).toBeLessThan(-170);
+    expect(Math.min(...trace.phaseDeg)).toBeGreaterThan(-190);
   });
 });

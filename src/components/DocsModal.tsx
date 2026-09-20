@@ -312,6 +312,56 @@ export function DocsModal({ onClose }: DocsModalProps) {
                 <p className="mb-4">
                   If an MCU relies on analog inputs (like reading a voltage divider), the engine can perform additional simulation passes, feeding the SPICE outputs back into the JavaScript context to ensure both domains are fully synchronized!
                 </p>
+                <h4 className="text-xl font-semibold mb-2 mt-6">Beyond the transient run</h4>
+                <p className="mb-4">
+                  <strong>Run</strong> solves the circuit in the time domain and animates the result — that is
+                  what the Duration and Resolution boxes below describe, and it is unchanged. Two other ways of
+                  looking at the same circuit sit beside <strong>Probe</strong> in the status bar. Both are off
+                  until you ask for them, and neither changes what Run does.
+                </p>
+                <ul className="list-disc pl-6 mb-4 space-y-1">
+                  <li>
+                    <strong>DC</strong> — the operating point. One solve at a single instant, painted onto the
+                    wires as a voltage chip per net. This is the quiescent bias: what a meter would read with
+                    the circuit sitting still. Use it to check a transistor stage is biased where you meant it
+                    to be, instead of scrubbing a waveform to find the level it settles at. It re-solves as you
+                    change values, and clears when you switch it off.
+                  </li>
+                  <li>
+                    <strong>Bode</strong> — a small-signal frequency sweep, plotted as magnitude in dB and phase
+                    in degrees against a log frequency axis. Pick which source to <em>drive</em> from, which point
+                    to <em>measure</em> at, and the range; press <strong>Sweep</strong>. The header reports the
+                    −3dB corner, and hovering the plot reads out frequency, gain and phase. This is the honest way
+                    to measure a filter: an FFT of a transient pulse is noisy and depends on the window you chose,
+                    where a sweep does not.
+                  </li>
+                </ul>
+                <p className="mb-4">
+                  A sweep needs something to drive — a signal generator, an AC source or a DC supply. The chosen
+                  source is given a 1V small-signal stimulus for the measurement and every other source
+                  contributes nothing, so the circuit itself is never edited and there is nothing to put back.
+                  Load the <strong>Sallen-Key Low-Pass (Bode)</strong> preset for a filter built to show what the
+                  plot is for.
+                </p>
+
+                <h4 className="text-xl font-semibold mb-2 mt-6">What Volt checks, and where it says so</h4>
+                <p className="mb-4">
+                  Every pin with nothing wired to it is held at ground through a 1GΩ resistor, because ngspice
+                  refuses a circuit whose matrix is singular and a circuit that will not solve is less useful than
+                  one that solves oddly. The cost is that a floating op-amp input or an unwired supply pin runs
+                  anyway and produces a believable waveform for a circuit nobody drew — so Volt says which of those
+                  a run is standing on.
+                </p>
+                <ul className="list-disc pl-6 mb-4 space-y-1">
+                  <li><strong>Rules check</strong>, as you draw: unconnected terminals, no ground, a net label nothing else answers to, and a section reachable only through capacitors.</li>
+                  <li><strong>Component ratings</strong>, after a run: dissipation averaged across the run against what the chosen package is sold at, plus capacitor working voltage and LED reverse voltage. Set your own figures under <em>Advanced: ratings &amp; checks</em> in the properties panel — and tick <em>Don&rsquo;t warn about unconnected pins</em> there for a board whose spare pins are deliberate.</li>
+                  <li><strong>Solver failures</strong>: if ngspice refuses the circuit, the reason is turned into the one thing most likely to fix it, with its own words kept alongside.</li>
+                </ul>
+                <p className="mb-4">
+                  None of it interrupts and none of it changes what is simulated. It is a count at the left of the
+                  status bar, and it is not there at all when there is nothing to say.
+                </p>
+
                 <h4 className="text-xl font-semibold mb-2 mt-6">Duration, Resolution, and Looping</h4>
                 <ul className="list-disc pl-6 mb-4 space-y-1">
                   <li><strong>Duration:</strong> Controls the total physical time the simulation models. A 1.0s simulation calculates exactly 1 second of electrical behavior.</li>
