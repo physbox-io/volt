@@ -1,5 +1,6 @@
 import {
   BaseEdge,
+  EdgeLabelRenderer,
   type Edge,
   type EdgeProps,
   useReactFlow,
@@ -9,6 +10,7 @@ import { playbackTicker, findIndexForTime } from '../utils/playbackTicker';
 import { getHandleCoord } from '../utils/nodeGeometry';
 import { EdgePathContext } from './edgePathContext';
 import { useCanvasState } from './canvasState';
+import { formatVolts } from '../utils/analysisResults';
 import {
   getSchematicPath,
   getOrthogonalPathThroughWaypoint,
@@ -243,6 +245,36 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     // structurally identical, so the key bought nothing but a missing dep.
   }, [id, points, registerPath, unregisterPath]);
 
+  /*
+   * The DC overlay's chip.
+   *
+   * Written onto one wire per net by the operating-point solve, so a rail
+   * reaching six parts is labelled once rather than six times. It is placed at
+   * the halfway point along the wire as drawn — not the midpoint of its two
+   * ends, which for an L-shaped route is a spot the wire never passes through.
+   */
+  const dcVoltage = data?.dcVoltage as number | undefined;
+  const dcLabelPoint = (() => {
+    if (dcVoltage === undefined || points.length === 0) return null;
+    if (points.length === 1) return points[0];
+    let total = 0;
+    for (let i = 1; i < points.length; i++) total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    if (total === 0) return points[0];
+    let walked = 0;
+    for (let i = 1; i < points.length; i++) {
+      const seg = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+      if (walked + seg >= total / 2) {
+        const k = seg === 0 ? 0 : (total / 2 - walked) / seg;
+        return {
+          x: points[i - 1].x + (points[i].x - points[i - 1].x) * k,
+          y: points[i - 1].y + (points[i].y - points[i - 1].y) * k,
+        };
+      }
+      walked += seg;
+    }
+    return points[points.length - 1];
+  })();
+
   const { showAura } = useCanvasState();
   const isAuraEnabled = showAura;
   const auraClass = isAuraEnabled
@@ -364,6 +396,22 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
         onMouseDown={handleWireMouseDown}
         onDoubleClick={handleWireDoubleClick}
       />
+      {dcVoltage !== undefined && dcLabelPoint && (
+        <EdgeLabelRenderer>
+          {/* Never a hit target: the wire underneath is draggable, and a chip
+              that swallowed the grab would make the rail with the label on it
+              the one wire that could not be moved. */}
+          <div
+            className="nodrag nopan absolute px-1 py-[1px] rounded-[3px] text-[9px] font-mono font-semibold bg-sky-50/95 dark:bg-sky-950/90 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 shadow-xs"
+            style={{
+              transform: `translate(-50%, -50%) translate(${dcLabelPoint.x}px, ${dcLabelPoint.y}px)`,
+              pointerEvents: 'none',
+            }}
+          >
+            {formatVolts(dcVoltage)}
+          </div>
+        </EdgeLabelRenderer>
+      )}
     </>
   );
 });

@@ -25,7 +25,7 @@ import {
   type ClipboardContents,
 } from './utils/selectionEdit';
 import { QuickAddPalette } from './components/QuickAddPalette';
-import { assignDesignators } from './utils/nodeNaming';
+import { assignDesignators, getNodeDefaultName } from './utils/nodeNaming';
 import { createPortal } from 'react-dom';
 import {
   buildShareLink,
@@ -41,7 +41,7 @@ import {
 } from './utils/shareLink';
 import { revokeShare, isProRequired } from './utils/apiClient';
 import { SIGN_IN_REQUESTED_EVENT, SIGNED_IN_EVENT } from './components/UserProfileButton';
-import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight, Wrench, Share2, Copy, Check } from 'lucide-react';
+import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight, Wrench, Share2, Copy, Check, Gauge, Waves } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
 import { ExportPcbModal } from './components/ExportPcbModal';
 import { webSerialManager, type MachineState } from './utils/webSerialManager';
@@ -73,11 +73,12 @@ import type { PWLPoint } from './utils/mcu';
 import { NumberInput } from '@physbox-io/ui';
 import type { Advisory } from './types/advisories';
 import { sortAdvisories } from './types/advisories';
-import { runErc } from './utils/erc';
+import { pinLabel, runErc } from './utils/erc';
 import { checkComponentRatings } from './utils/powerRatings';
 import {
   SpiceRunError,
   explainSpiceFailure,
+  messagesFromError,
   summariseSpiceWarnings,
   type SpiceAnalysisKind,
 } from './utils/simDiagnostics';
@@ -153,6 +154,25 @@ const runSimInWorker = <T = SpiceResult,>(
   });
 };
 
+
+/**
+ * How a part is named in a warning: what it was renamed to, else the
+ * designator the canvas gave it. A warning that says "node_17" is a warning
+ * about a thing nobody can find on the schematic.
+ */
+const makeNameOf = (nodes: Node[]) => {
+  const map = assignDesignators(nodes);
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  return (nodeId: string) => {
+    const node = byId.get(nodeId);
+    const custom = node?.data?.name;
+    if (typeof custom === 'string' && custom.trim()) return custom.trim();
+    return map[nodeId] || getNodeDefaultName(nodeId, node?.type ?? '');
+  };
+};
+
+/** Sources an AC sweep can be driven from — anything that emits a `V` card. */
+const AC_DRIVE_TYPES = new Set(['signalgen', 'acvoltage', 'voltage']);
 
 export default function App() {
   // ── Initialise from localStorage ────────────────────────────────────────────
@@ -255,6 +275,28 @@ export default function App() {
     y: number;
   } | null>(null);
   const simResultRef = useRef<{ portToNet: Record<string, string>; result: SpiceResult } | null>(null);
+
+  /*
+   * What the app has to say about the circuit, in three streams that share one
+   * panel in the status bar.
+   *
+   * `checkAdvisories` is the rules and ratings check and belongs to the circuit
+   * as drawn, so it survives a run being stopped. `runAdvisories` belongs to
+   * the last solve and is cleared when a new one starts — a convergence
+   * complaint about a circuit that has since been rewired is just noise.
+   */
+  const [ratingAdvisories, setRatingAdvisories] = useState<Advisory[]>([]);
+  const [runAdvisories, setRunAdvisories] = useState<Advisory[]>([]);
+
+  /*
+   * The DC overlay: a second, independent solve.
+   *
+   * Nothing about Run changes when this is on. It is a `.op` of the same
+   * circuit whose answers are painted onto the wires, so the quiescent voltages
+   * can be read without scrubbing a transient waveform to find them.
+   */
+  const [dcMode, setDcMode] = useState(false);
+  const [isBodeOpen, setIsBodeOpen] = useState(false);
   const [initialConditions, setInitialConditions] = useState<Record<string, number>>({});
   
   // Hardware-in-the-Loop (HIL) state refs
@@ -1374,6 +1416,8 @@ export default function App() {
 
       setIsSpiceRunning(true);
       setIsSimulating(true);
+      // Whatever the last solve complained about was about the last circuit.
+      setRunAdvisories([]);
       // Yield to allow React/browser to render the "SPICE Simulating" notice
       await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -1543,6 +1587,29 @@ export default function App() {
       setNodes(updatedNodes);
       simResultRef.current = { portToNet, result };
 
+      /*
+       * The checks, on the run that just finished.
+       *
+       * Deliberately after the canvas has been updated rather than before the
+       * solve: the rules check needs the pin list the netlist was built from,
+       * and the ratings check needs the currents the run produced. Neither of
+       * them can stop or change a run, which is the point — the waveform is
+       * still on screen, and this only says what it cost.
+       */
+      setRatingAdvisories(
+        checkComponentRatings({ nodes: updatedNodes, portToNet, result, nameOf: makeNameOf(updatedNodes) }),
+      );
+
+      const warning = summariseSpiceWarnings(runMessages);
+      setRunAdvisories(warning
+        ? [{
+            id: 'run:warnings',
+            severity: 'warning',
+            title: 'The solver had something to say about this run',
+            detail: warning,
+          }]
+        : []);
+
       const updatedEdges = edges.map(e => {
         const srcNode = updatedNodes.find(n => n.id === e.source);
         const tgtNode = updatedNodes.find(n => n.id === e.target);
@@ -1596,6 +1663,16 @@ export default function App() {
       console.error("Simulation failed:", e);
       setIsSpiceRunning(false);
       setIsSimulating(false);
+      /*
+       * A failed run used to end here, with a line in the console.
+       *
+       * The Play button clicked, the badge cleared, and nothing on the canvas
+       * changed — which is indistinguishable from a circuit that simulates to
+       * nothing. The reason ngspice gave is turned into the one thing most
+       * likely to fix it and put where it can be read.
+       */
+      const explained = explainSpiceFailure(messagesFromError(e));
+      setRunAdvisories([{ id: 'run:failed', severity: 'error', ...explained }]);
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     } finally {
       simInFlightRef.current = false;
@@ -1622,6 +1699,11 @@ export default function App() {
   const resetSimulation = () => {
     stopSimulation();
     setInitialConditions({});
+    // Reset is a clean slate, and what the last run complained about belongs to
+    // the last run. The rules check is not cleared: it is about the circuit as
+    // drawn, which reset does not change.
+    setRunAdvisories([]);
+    setRatingAdvisories([]);
     setNodes(nds => nds.map(n => {
       const {
         voltage: _v, voltageData: _vd, voltageData1: _vd1, voltageData2: _vd2,
@@ -1730,6 +1812,190 @@ export default function App() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [netlistSignature]);
+
+  /*
+   * The circuit's shape, without solving it.
+   *
+   * An operating-point netlist built with the sketch left unrun: the cards are
+   * thrown away and only the two by-products are kept — which port is on which
+   * net, and the list of device terminals the builder asked for. Both are what
+   * the rules check reads, and both are exact by construction, because they
+   * come from the same function that writes the netlist rather than from a
+   * second description of the same parts that could drift away from it.
+   *
+   * Keyed on the netlist signature, so it is rebuilt when the circuit changes
+   * and not when a run writes its results back onto the nodes.
+   */
+  const topology = useMemo(() => {
+    try {
+      const { portToNet, pins } = generateSpiceNetlist(
+        nodes, edges, simLength, simResolution, {}, undefined, undefined,
+        { kind: 'op' }, { skipMcuExecution: true },
+      );
+      return { portToNet, pins };
+    } catch {
+      // A circuit the builder cannot describe is one the solver will complain
+      // about in a moment, in better words than anything that could be said here.
+      return { portToNet: {} as Record<string, string>, pins: [] };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [netlistSignature, simLength, simResolution]);
+
+  /*
+   * The rules check, on every edit rather than on every run.
+   *
+   * A floating pin is a fact about the drawing, so it is worth knowing before
+   * anything is solved — that is what makes it a pre-flight check rather than a
+   * post-mortem. It is a pure function of the circuit, so it is derived rather
+   * than stored, and there is no way for it to be left showing an answer to a
+   * circuit that has since been rewired.
+   */
+  const ercAdvisories = useMemo(
+    () => runErc({ nodes, pins: topology.pins, portToNet: topology.portToNet, nameOf: makeNameOf(nodes) }),
+    [nodes, topology],
+  );
+
+  /*
+   * The ratings check belongs to a run, and the run belongs to a circuit. When
+   * the circuit moves on, last run's dissipation figures are about a part that
+   * may no longer carry that current — dropped during render for the same
+   * reason the initial conditions above are.
+   */
+  const [ratedSignature, setRatedSignature] = useState(netlistSignature);
+  if (ratedSignature !== netlistSignature) {
+    setRatedSignature(netlistSignature);
+    if (ratingAdvisories.length > 0) setRatingAdvisories([]);
+  }
+
+  const advisories = useMemo(
+    () => sortAdvisories([...runAdvisories, ...ercAdvisories, ...ratingAdvisories]),
+    [runAdvisories, ercAdvisories, ratingAdvisories],
+  );
+
+  /*
+   * The DC overlay.
+   *
+   * A `.op` is one solve of one instant, so it is cheap enough to re-take as
+   * values are scrubbed and there is nothing to play back. It writes only
+   * `dcVoltage` onto one wire per net, which is a field the transient path
+   * never reads and never clears, so the two overlays coexist rather than
+   * taking turns.
+   */
+  const paintDcVoltages = useCallback((volts: Record<string, number> | null) => {
+    const currentEdges = edgesRef.current;
+    const portToNet = topology.portToNet;
+    const byEdge = new Map<string, number | undefined>();
+    const claimed = new Set<string>();
+    if (volts) {
+      // One chip per net. Every wire on a rail carries the same voltage, and a
+      // number repeated down the length of it is not more information.
+      for (const e of [...currentEdges].sort((a, b) => a.id.localeCompare(b.id))) {
+        const net = portToNet[`${e.source}-${e.sourceHandle || 'out'}`]
+          ?? portToNet[`${e.target}-${e.targetHandle || 'in'}`];
+        if (!net || net === '0' || claimed.has(net)) continue;
+        const v = volts[net.toLowerCase()];
+        if (v === undefined) continue;
+        claimed.add(net);
+        byEdge.set(e.id, v);
+      }
+    }
+    setEdges(eds => {
+      let changed = false;
+      const next = eds.map(e => {
+        const want = byEdge.get(e.id);
+        const have = (e.data as { dcVoltage?: number } | undefined)?.dcVoltage;
+        if (want === have) return e;
+        changed = true;
+        return { ...e, data: { ...e.data, dcVoltage: want } };
+      });
+      return changed ? next : eds;
+    });
+  }, [setEdges, topology]);
+
+  const dcSeqRef = useRef(0);
+  useEffect(() => {
+    // Turning the overlay off clears it from the toggle, not from here: this
+    // effect exists to take a measurement, and wiping the canvas is something
+    // the person did rather than something that fell out of a render.
+    if (!dcMode || hilRunningRef.current) return;
+    const seq = ++dcSeqRef.current;
+    const t = setTimeout(async () => {
+      try {
+        const { netlist } = generateSpiceNetlist(
+          nodesRef.current, edgesRef.current, simLength, simResolution, {}, undefined, undefined,
+          { kind: 'op' }, { skipMcuExecution: true },
+        );
+        const { result } = await runSimInWorker<SpiceResult>(netlist, 'op', 20_000);
+        if (seq !== dcSeqRef.current) return;
+        paintDcVoltages(readOperatingPoint(result));
+        setRunAdvisories(prev => (prev.some(a => a.id === 'dc:failed') ? prev.filter(a => a.id !== 'dc:failed') : prev));
+      } catch (e) {
+        if (seq !== dcSeqRef.current) return;
+        paintDcVoltages(null);
+        const explained = explainSpiceFailure(messagesFromError(e));
+        setRunAdvisories(prev => [
+          ...prev.filter(a => a.id !== 'dc:failed'),
+          { id: 'dc:failed', severity: 'warning', title: `DC voltages: ${explained.title}`, detail: explained.detail },
+        ]);
+      }
+    }, 200);
+    return () => clearTimeout(t);
+  }, [dcMode, netlistSignature, simLength, simResolution, paintDcVoltages]);
+
+  /*
+   * A small-signal sweep of the circuit as drawn.
+   *
+   * The chosen source is given a 1V AC magnitude and every other source keeps
+   * its own card, which is what makes them contribute nothing — a source with
+   * no AC magnitude has one of zero. So nothing about the circuit is edited to
+   * take the measurement, and there is nothing to put back afterwards.
+   */
+  const runAcSweep = useCallback(async (params: {
+    sourceNodeId: string; fStart: number; fStop: number; pointsPerDecade: number;
+  }): Promise<SpiceComplexResult> => {
+    const { netlist } = generateSpiceNetlist(
+      nodesRef.current, edgesRef.current, simLength, simResolution, {}, undefined, undefined,
+      { kind: 'ac', ...params }, { skipMcuExecution: true },
+    );
+    try {
+      const { result } = await runSimInWorker<SpiceComplexResult>(netlist, 'ac', 30_000);
+      return result;
+    } catch (e) {
+      const { title, detail } = explainSpiceFailure(messagesFromError(e));
+      throw new Error(`${title}\n\n${detail}`, { cause: e });
+    }
+  }, [simLength, simResolution]);
+
+  const sweepSources = useMemo(() => {
+    const nameOf = makeNameOf(nodes);
+    return nodes
+      .filter(n => AC_DRIVE_TYPES.has(n.type ?? ''))
+      .map(n => ({ id: n.id, label: nameOf(n.id) }));
+  }, [nodes]);
+
+  /*
+   * Where a sweep can be measured: one entry per net, named after a pin on it,
+   * because "the output of U1" is how someone says which node they mean and
+   * `N7` is not. Scope channels sort first — a scope on the canvas is someone
+   * having already said where they are looking.
+   */
+  const probePoints = useMemo(() => {
+    const nameOf = makeNameOf(nodes);
+    const seen = new Set<string>();
+    const points: { net: string; label: string; rank: number }[] = [];
+    for (const pin of topology.pins) {
+      if (!pin.connected || pin.net === '0' || seen.has(pin.net)) continue;
+      seen.add(pin.net);
+      const rank = pin.nodeType === 'scope' ? 0 : pin.nodeType === 'multimeter' ? 1 : 2;
+      points.push({ net: pin.net, label: `${nameOf(pin.nodeId)} ${pinLabel(pin.nodeType, pin.handleId)}`, rank });
+    }
+    return points.sort((a, b) => a.rank - b.rank).map(({ net, label }) => ({ net, label }));
+  }, [nodes, topology]);
+
+  const selectNodeById = useCallback((nodeId: string) => {
+    setNodes(nds => nds.map(n => (n.id === nodeId ? { ...n, selected: true } : n.selected ? { ...n, selected: false } : n)));
+    setIsPropertiesRequested(true);
+  }, [setNodes]);
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     if (node.type === 'switch') {
@@ -2726,6 +2992,16 @@ export default function App() {
           </div>
         )}
 
+        {isBodeOpen && (
+          <BodePanel
+            sources={sweepSources}
+            probePoints={probePoints}
+            runSweep={runAcSweep}
+            darkMode={darkMode}
+            onClose={() => setIsBodeOpen(false)}
+          />
+        )}
+
         {/* Probe Tooltip */}
         {probeData && (
           <ProbeTooltip probeData={probeData} isSimulating={isSimulating} onClose={() => setProbeData(null)} />
@@ -2739,8 +3015,8 @@ export default function App() {
         drop on a narrow screen.
       */}
       <footer className="h-8 shrink-0 w-full bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800/80 px-4 flex items-center justify-between z-20 text-[11px] text-slate-500 dark:text-slate-400 font-mono select-none transition-colors max-lg:h-auto max-lg:flex-wrap max-lg:justify-start max-lg:px-2 max-lg:py-1 max-lg:gap-x-3 max-lg:gap-y-1">
-        {/* Left: Probe Toggle & Circuit Metrics */}
-        <div className="flex items-center gap-3 max-lg:shrink-0">
+        {/* Left: ways of looking at the circuit, and what Volt noticed about it */}
+        <div className="flex items-center gap-3 max-lg:flex-wrap max-lg:gap-y-1 max-lg:shrink">
           <button
             onClick={() => { setProbeMode(!probeMode); setProbeData(null); }}
             className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] transition-colors cursor-pointer ${
@@ -2754,13 +3030,52 @@ export default function App() {
             <span>Probe</span>
           </button>
 
+          {/*
+            Two more ways of looking at the same circuit, beside the one that
+            was already here. Neither touches Run: DC paints the bias point onto
+            the wires from its own one-shot solve, and the sweep is taken in a
+            panel of its own. Turn both off and the app is what it was.
+          */}
+          <button
+            onClick={() => {
+              const next = !dcMode;
+              setDcMode(next);
+              if (!next) {
+                paintDcVoltages(null);
+                setRunAdvisories(prev => prev.filter(a => a.id !== 'dc:failed'));
+              }
+            }}
+            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] transition-colors cursor-pointer ${
+              dcMode
+                ? 'bg-sky-600 border-sky-650 text-white font-semibold shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+            }`}
+            title="DC operating point — the steady voltage on every wire, without scrubbing a waveform to find it"
+          >
+            <Gauge className="w-3.5 h-3.5" />
+            <span>DC</span>
+          </button>
+
+          <button
+            onClick={() => setIsBodeOpen(!isBodeOpen)}
+            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] transition-colors cursor-pointer ${
+              isBodeOpen
+                ? 'bg-violet-600 border-violet-650 text-white font-semibold shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+            }`}
+            title="Frequency response — a small-signal sweep, plotted as magnitude and phase"
+          >
+            <Waves className="w-3.5 h-3.5" />
+            <span>Bode</span>
+          </button>
+
           <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
             <span>Nodes: {nodes.length}</span>
             <span>·</span>
             <span>Wires: {edges.length}</span>
           </div>
 
-
+          <AdvisoryPanel advisories={advisories} onSelectNode={selectNodeById} />
         </div>
 
         {/* Right: Simulation Parameters (Duration & Resolution) */}

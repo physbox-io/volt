@@ -30,7 +30,60 @@ export const NON_SIMULATING_TYPES = new Set([
   'netlabel', 'powerrail',
 ]);
 
-export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: number = 1.0, simResolution: 'normal' | 'high' = 'normal', mcuWaveforms: Record<string, Record<string, PWLPoint[]>> = {}, initialConditions?: Record<string, number>, hilMaxStepMs?: number): { netlist: string; portToNet: Record<string, string>; mcuLogs: Record<string, string[]> } {
+/**
+ * Which analysis the netlist ends in.
+ *
+ * `tran` is what Run has always emitted and stays the default, so a call that
+ * names no analysis gets exactly the netlist it used to. The other two are the
+ * same circuit solved a different way: `op` for the quiescent bias point, `ac`
+ * for a small-signal sweep driven from one chosen source.
+ */
+export type SpiceAnalysis =
+  | { kind: 'tran' }
+  | { kind: 'op' }
+  | {
+      kind: 'ac';
+      /** The source given `AC 1`. Every other source contributes nothing. */
+      sourceNodeId: string;
+      fStart: number;
+      fStop: number;
+      pointsPerDecade: number;
+    };
+
+/**
+ * One terminal of one device, as the netlist builder saw it.
+ *
+ * Recorded by `getNet` rather than derived from a second table of pins per part
+ * type: this is the list of terminals that actually reached SPICE, so it cannot
+ * drift out of step with the netlist the way a hand-maintained copy would, and
+ * a part added later is covered without being added anywhere.
+ */
+export type PinRef = {
+  nodeId: string;
+  nodeType: string;
+  handleId: string;
+  net: string;
+  /** False when no wire and no net label puts this pin on a net. */
+  connected: boolean;
+};
+
+/**
+ * Knobs that are about how the netlist is built rather than what it contains.
+ */
+export type NetlistOptions = {
+  /**
+   * Enumerate the microcontroller's pins without running its sketch.
+   *
+   * `executeMcuCode` is the expensive part of building a netlist and it is not
+   * a pure function — it advances the sketch's variables and writes them back
+   * onto the node. So anything that builds a netlist it is not going to solve
+   * in the time domain has to say so, or an operating point taken between two
+   * transient runs would step the program on behind them.
+   */
+  skipMcuExecution?: boolean;
+};
+
+export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: number = 1.0, simResolution: 'normal' | 'high' = 'normal', mcuWaveforms: Record<string, Record<string, PWLPoint[]>> = {}, initialConditions?: Record<string, number>, hilMaxStepMs?: number, analysis: SpiceAnalysis = { kind: 'tran' }, options: NetlistOptions = {}): { netlist: string; portToNet: Record<string, string>; mcuLogs: Record<string, string[]>; pins: PinRef[] } {
   let netlist = "Circuit Simulation\n";
   const mcuLogs: Record<string, string[]> = {};
   
@@ -109,16 +162,38 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
   });
 
   const unconnectedNets = new Set<string>();
+  const nodeTypeById = new Map<string, string>();
+  nodes.forEach(n => nodeTypeById.set(n.id, n.type ?? ''));
+  /** Every terminal `getNet` was asked for, in the order it was asked for. */
+  const pinsByPort = new Map<string, PinRef>();
+
   // Helper to get net for a node's handle
   const getNet = (nodeId: string, handleId: string) => {
     const port = `${nodeId}-${handleId}`;
-    if (portToNet[port]) {
-      return portToNet[port];
+    const existing = portToNet[port];
+    const net = existing || `NC_${nodeId}_${handleId}`;
+    if (!existing) unconnectedNets.add(net);
+    if (!pinsByPort.has(port)) {
+      pinsByPort.set(port, {
+        nodeId,
+        nodeType: nodeTypeById.get(nodeId) ?? '',
+        handleId,
+        net,
+        connected: !!existing,
+      });
     }
-    const ncNet = `NC_${nodeId}_${handleId}`;
-    unconnectedNets.add(ncNet);
-    return ncNet;
+    return net;
   };
+
+  /*
+   * ` AC 1` on the one source an AC sweep is driven from. Appended to the card
+   * rather than woven into each source's spelling: ngspice takes the AC
+   * magnitude in any position on the line, and every other source is left
+   * exactly as it was — which is what makes them contribute nothing to the
+   * sweep, since a source with no AC magnitude has one of zero.
+   */
+  const acDrive = (nodeId: string) =>
+    analysis.kind === 'ac' && analysis.sourceNodeId === nodeId ? ' AC 1' : '';
 
   let has555 = false;
   let hasOpAmp = false;
@@ -159,14 +234,14 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       const val = node.data.voltage !== undefined ? node.data.voltage : sanitizeSpiceValue(String(node.data.label || '5'));
       const n1 = getNet(node.id, 'pos');
       const n2 = getNet(node.id, 'neg');
-      netlist += `V_${node.id} ${n1} ${n2} DC ${val}\n`;
+      netlist += `V_${node.id} ${n1} ${n2} DC ${val}${acDrive(node.id)}\n`;
     }
     else if (node.type === 'acvoltage') {
       const amp = node.data.amplitude !== undefined ? Number(node.data.amplitude) : 10;
       const freq = node.data.frequency !== undefined ? Number(node.data.frequency) : 60;
       const n1 = getNet(node.id, 'pos');
       const n2 = getNet(node.id, 'neg');
-      netlist += `V_${node.id} ${n1} ${n2} SINE(0 ${amp} ${freq})\n`;
+      netlist += `V_${node.id} ${n1} ${n2} SINE(0 ${amp} ${freq})${acDrive(node.id)}\n`;
     }
     else if (node.type === 'led') {
       const n1 = getNet(node.id, 'anode');
@@ -265,7 +340,7 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
           : `SINE(0 ${amp} ${freq})`;
       const n1 = getNet(node.id, 'out');
       const n2 = getNet(node.id, 'gnd');
-      netlist += `V_${node.id} ${n1} ${n2} ${type}\n`;
+      netlist += `V_${node.id} ${n1} ${n2} ${type}${acDrive(node.id)}\n`;
     }
     else if (node.type === 'scope') {
       const ch1 = getNet(node.id, 'ch1');
@@ -412,9 +487,20 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       const code = (node.data.code as string) || '';
       const inputWaveforms = mcuWaveforms[node.id] || {};
       const mcuState = node.data.state || {};
-      const { pwlOutputs, pinModes, logs, newState } = executeMcuCode(code, simLength, inputWaveforms, mcuState);
-      node.data.state = newState;
-      mcuLogs[node.id] = logs;
+      let pwlOutputs: Record<string, PWLPoint[]> = {};
+      let pinModes: Record<string, 'INPUT' | 'OUTPUT'> = {};
+      if (options.skipMcuExecution) {
+        // Every pin then takes the input branch below, which is an idle GPIO:
+        // the right model for a bias point or a small-signal sweep, and the
+        // only one that does not require running the sketch to find out.
+        mcuLogs[node.id] = [];
+      } else {
+        const run = executeMcuCode(code, simLength, inputWaveforms, mcuState);
+        pwlOutputs = run.pwlOutputs;
+        pinModes = run.pinModes;
+        node.data.state = run.newState;
+        mcuLogs[node.id] = run.logs;
+      }
 
       const mcuConfig = getEffectiveMcuConfig(node.data);
       const pins = mcuConfig.pins;
@@ -673,6 +759,27 @@ B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
   // Save all voltages to ensure they are returned
   netlist += `.save all\n`;
   
+  /*
+   * Everything from here down is transient-only.
+   *
+   * An operating point and an AC sweep are both solved at a single instant, so
+   * a `.ic` — which seeds a transient run's starting state — means nothing to
+   * either, and handing one to ngspice alongside `.op` only invites it to
+   * disagree with the bias point it is being asked to find.
+   */
+  if (analysis.kind === 'op') {
+    netlist += `.op\n`;
+    netlist += `.end\n`;
+    return { netlist, portToNet, mcuLogs, pins: [...pinsByPort.values()] };
+  }
+
+  if (analysis.kind === 'ac') {
+    const decades = Math.max(1, Math.round(analysis.pointsPerDecade));
+    netlist += `.ac dec ${decades} ${analysis.fStart} ${analysis.fStop}\n`;
+    netlist += `.end\n`;
+    return { netlist, portToNet, mcuLogs, pins: [...pinsByPort.values()] };
+  }
+
   // Apply initial conditions if present
   if (initialConditions && Object.keys(initialConditions).length > 0) {
     const icParts = Object.entries(initialConditions)
@@ -703,5 +810,5 @@ B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
   }
   netlist += `.end\n`;
 
-  return { netlist, portToNet, mcuLogs };
+  return { netlist, portToNet, mcuLogs, pins: [...pinsByPort.values()] };
 }

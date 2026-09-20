@@ -45,6 +45,23 @@ export type BaseNodeData = {
   /** Reference designator override; absent means `getNodeDefaultName()`. */
   name?: string;
   orientation?: Orientation;
+  /**
+   * Stop the rules check mentioning this part's unconnected pins.
+   *
+   * For the parts where a bare pin is the design — a dev board with sixteen
+   * GPIOs and three of them wired, a spare gate in a quad package. Silences
+   * nothing else about the part, and does not change what is simulated.
+   */
+  ercIgnore?: boolean;
+  /**
+   * Continuous dissipation this part is rated for, in watts. Absent means the
+   * figure its package is sold at; see `powerRatings.ts`.
+   */
+  powerRatingW?: number;
+  /** Working voltage printed on the part. Absent means it is not checked. */
+  voltageRatingV?: number;
+  /** Reverse voltage an LED is specified to. Absent means 5V. */
+  reverseRatingV?: number;
 };
 
 /* ── Passives ─────────────────────────────────────────────────────────── */

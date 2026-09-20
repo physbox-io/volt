@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 import type { AnyNodeData, RawNodeData } from '../types/nodes';
-import { X, Trash2, RotateCw, ArrowLeftRight } from 'lucide-react';
+import { X, Trash2, RotateCw, ArrowLeftRight, ChevronRight } from 'lucide-react';
 import {
   ORIENTABLE_NODE_TYPES,
   canReverseLeads,
@@ -25,6 +25,7 @@ import { isPhysical } from '../utils/pcbNets';
 import { minPadGapMm } from '../utils/pcbTooling';
 import { nodeRegistry } from './nodes/registry';
 import { getBjtModel, getMosfetModel, getOpAmpModel } from '../utils/deviceModels';
+import { powerRatingFor } from '../utils/powerRatings';
 
 /** Sentinel package id that switches the node over to `data.footprintParams`. */
 const CUSTOM_PACKAGE_ID = 'CUSTOM-PARAMETRIC';
@@ -94,6 +95,73 @@ function isCatalogPart(nodeType: string | undefined, modelId: unknown): boolean 
   if (nodeType === 'opamp') return !!getOpAmpModel(modelId);
   return false;
 }
+
+/**
+ * The collapsed tail of the inspector, in the shape Etch and Mesh use it: the
+ * fields whose defaults are already right, out of the way of the value and the
+ * footprint that are why the panel was opened.
+ */
+function Advanced({ label = 'Advanced', children }: { label?: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 cursor-pointer transition-colors"
+      >
+        <ChevronRight className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-90' : ''}`} />
+        <span>{label}</span>
+      </button>
+      {open && <div className="mt-2.5 space-y-2.5">{children}</div>}
+    </div>
+  );
+}
+
+/**
+ * A rating box that is empty until someone fills it in.
+ *
+ * Blank is a value, not a missing one: it means "hold this part to what its
+ * package is normally sold at", and the placeholder says what that works out to
+ * rather than leaving it to be guessed. A figure that does not parse, or one
+ * that is zero or negative, clears the override rather than becoming a rating
+ * nothing could ever be inside.
+ */
+function RatingField({
+  label, hint, placeholder, value, step, onChange,
+}: {
+  label: string;
+  hint?: string;
+  placeholder: string;
+  value: number | undefined;
+  step: number;
+  onChange: (v: number | undefined) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-0.5">{label}</span>
+      <input
+        type="number"
+        step={step}
+        min={0}
+        value={value ?? ''}
+        placeholder={placeholder}
+        onChange={e => {
+          const raw = e.target.value.trim();
+          if (raw === '') return onChange(undefined);
+          const n = parseFloat(raw);
+          onChange(Number.isFinite(n) && n > 0 ? n : undefined);
+        }}
+        className={FOOTPRINT_INPUT_CLASS}
+      />
+      {hint && <span className="block mt-0.5 text-[10px] text-slate-400 dark:text-slate-500 leading-snug">{hint}</span>}
+    </label>
+  );
+}
+
+/** Parts whose limit is watts, and which the ratings check watches. */
+const DISSIPATING_TYPES = new Set(['resistor', 'potentiometer']);
 
 export function PropertiesPanel({ selectedNode, designator, setNodes, setEdges, isSimulating, runSimulation, simLength, isOpen, onClose }: {
   /*
@@ -651,6 +719,82 @@ export function PropertiesPanel({ selectedNode, designator, setNodes, setEdges, 
           webcam={{ stream, videoRef, isRecordingWebcam, startRecordingWebcam }}
         />
       )}
+
+      {/*
+        Ratings and checks.
+        
+        Under Advanced because none of it has to be touched: every dissipating
+        part already has a rating from its package, an LED already has the 5V
+        reverse figure almost all of them are specified to, and the rules check
+        already knows which pins are bare. This is where those are overridden
+        for the part in hand — the drawer of 1/8W resistors, the 16V
+        electrolytic, the dev board with twelve pins nobody is going to wire.
+      */}
+      {isPhysical(selectedNode.type) && (() => {
+        const type = selectedNode.type || '';
+        const dissipates = DISSIPATING_TYPES.has(type);
+        const derived = powerRatingFor(selectedNode as Node);
+        const ratingData = selectedNode.data as RawNodeData;
+        const asNumber = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+        return (
+          <Advanced label="Advanced: ratings & checks">
+            {dissipates && (
+              <RatingField
+                label="Power rating (W)"
+                placeholder={String(derived.watts)}
+                hint={
+                  derived.source === 'package'
+                    ? `Blank uses ${derived.watts}W, what a ${derived.packageId} is sold at.`
+                    : derived.source === 'default'
+                      ? 'Blank uses 0.25W, a through-hole quarter-watt part.'
+                      : undefined
+                }
+                value={asNumber(ratingData.powerRatingW)}
+                step={0.05}
+                onChange={v => updateData('powerRatingW', v)}
+              />
+            )}
+
+            {type === 'capacitor' && (
+              <RatingField
+                label="Voltage rating (V)"
+                placeholder="not checked"
+                hint="The working voltage printed on the part. Left blank, nothing is checked — a guess here would invent a failure."
+                value={asNumber(ratingData.voltageRatingV)}
+                step={1}
+                onChange={v => updateData('voltageRatingV', v)}
+              />
+            )}
+
+            {type === 'led' && !selectedNode.data.photodiodeMode && (
+              <RatingField
+                label="Reverse voltage rating (V)"
+                placeholder="5"
+                hint="What the part survives the wrong way round. Most LEDs are specified to 5V."
+                value={asNumber(ratingData.reverseRatingV)}
+                step={1}
+                onChange={v => updateData('reverseRatingV', v)}
+              />
+            )}
+
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={ratingData.ercIgnore === true}
+                onChange={e => updateData('ercIgnore', e.target.checked ? true : undefined)}
+                className="mt-0.5 accent-emerald-600 cursor-pointer"
+              />
+              <span className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+                Don&rsquo;t warn about unconnected pins on this part
+                <span className="block text-[10px] text-slate-400 dark:text-slate-500">
+                  For a board where most of the pins are deliberately spare. Nothing about the
+                  simulation changes either way.
+                </span>
+              </span>
+            </label>
+          </Advanced>
+        );
+      })()}
 
       {/* Datasheet Section */}
       {selectedNode.type && datasheets[selectedNode.type] && (() => {
