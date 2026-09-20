@@ -7,6 +7,7 @@ import { NumberInput } from '@physbox-io/ui';
 import type { Node, NodeProps } from '@xyflow/react';
 import { useCanvasState } from '../canvasState';
 import type { LedNodeData } from '../../types/nodes';
+import { useDesignator } from './designatorContext';
 
 export function LEDProperties({ node, updateData, webcam }: NodePropertiesProps) {
   const { stream, videoRef, isRecordingWebcam, startRecordingWebcam } = webcam;
@@ -132,7 +133,8 @@ export function LEDProperties({ node, updateData, webcam }: NodePropertiesProps)
   );
 }
 
-export const LEDNode = memo(function LEDNode({ data, selected }: NodeProps<Node<LedNodeData>>) {
+export const LEDNode = memo(function LEDNode({ id, data, selected }: NodeProps<Node<LedNodeData>>) {
+  const designator = useDesignator(id, 'led', data.name);
   const orientation = data.orientation || 'horizontal';
   const isHorizontal = orientation === 'horizontal' || orientation === 'left';
   const isLeft = orientation === 'left';
@@ -282,7 +284,7 @@ export const LEDNode = memo(function LEDNode({ data, selected }: NodeProps<Node<
       {/* Name and live current share one caption block. Kept out of the top-right
           quadrant, which is where the emission arrows overhang the node box. */}
       <SchematicLabel placement={isHorizontal ? 'below' : 'right'}>
-        <div>{data.label || 'LED'}</div>
+        <div>{designator} {data.label || 'LED'}</div>
         <div ref={textRef} className="text-slate-400 dark:text-slate-500 empty:hidden" />
       </SchematicLabel>
 

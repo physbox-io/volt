@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { MOSFET_NMOS_MODELS, MOSFET_PMOS_MODELS, getMosfetModel, resolveMosfetParams } from '../../utils/deviceModels';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { MosfetNodeData } from '../../types/nodes';
+import { useDesignator } from './designatorContext';
 
 /** Shared by NmosNode and PmosNode — both MOSFET types expose model presets and physical SPICE parameters. */
 export function MosfetProperties({ node, updateData }: NodePropertiesProps) {
@@ -154,7 +155,8 @@ export function MosfetProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function NmosNode({ data, selected }: NodeProps<Node<MosfetNodeData>>) {
+export function NmosNode({ id, data, selected }: NodeProps<Node<MosfetNodeData>>) {
+  const designator = useDesignator(id, 'nmos', data.name);
   return (
     <div className="schematic-node w-[48px] h-[48px] flex items-center justify-center relative select-none">
       <Handle type="target" position={Position.Top} id="d" className="w-2 h-2 bg-emerald-500 !border-0" style={{ left: '75%' }} />
@@ -190,9 +192,11 @@ export function NmosNode({ data, selected }: NodeProps<Node<MosfetNodeData>>) {
         <path d="M 20 20 L 26 17 M 20 20 L 26 23" strokeWidth="1.17" />
       </svg>
 
-      <SchematicLabel placement="right">
-        {data.label || 'NMOS'}
-      </SchematicLabel>
+      <SchematicLabel
+        placement="right"
+        name={designator}
+        value={data.label || 'NMOS'}
+      />
     </div>
   );
 }

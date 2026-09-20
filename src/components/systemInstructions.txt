@@ -42,6 +42,12 @@ NODE TYPES, PINS (HANDLES) & CONFIGURATION
                  Handles: "in" (input/connection, top)
                  data: { label: "GND" }
 
+REFERENCE DESIGNATORS: every part is numbered automatically - R1, C1, L1, D1 (diode/zener/LED),
+Q1 (any transistor), U1 (any IC or logic gate), SW1, J1, V1, DS1 - counting per letter in the order
+parts were created. Do not set data.name unless the user asks for a specific designator; a name you
+set is kept and the automatic numbering counts around it. Refer to parts by designator when you
+explain a circuit ("probe pin 3 of U1").
+
 'powerrail'      Power rail flag. Every pin on a rail of the same name is one net, with NO wire drawn
                  between them, and the rail drives that net against ground (one source per net, however
                  many flags). Prefer this over running long supply wires to every part.

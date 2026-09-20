@@ -4,10 +4,11 @@ import { AlertCircle } from 'lucide-react';
 import type { NodePropertiesProps } from './registry';
 import { useCallback } from 'react';
 import { NumberInput } from '@physbox-io/ui';
-import { DeviceField } from './schematic';
+import { DeviceField, SchematicLabel } from './schematic';
 import { DEVICE_CARD, DEVICE_SCREEN, DEVICE_TITLE, STROKE } from './schematicStyle';
 import { resolveOrientation } from './orientation';
 import type { SignalGeneratorNodeData } from '../../types/nodes';
+import { useDesignator } from './designatorContext';
 
 export function SignalGeneratorProperties({ node, updateData, simLength }: NodePropertiesProps) {
   return (
@@ -83,6 +84,7 @@ function WaveformPath({ type }: { type: string }) {
 }
 
 export function SignalGeneratorNode({ id, data }: NodeProps<Node<SignalGeneratorNodeData>>) {
+  const designator = useDesignator(id, 'signalgen', data?.name);
   const { isVertical } = resolveOrientation(data.orientation);
   const { setNodes } = useReactFlow();
   const type = data.waveform || 'sine';
@@ -146,6 +148,7 @@ export function SignalGeneratorNode({ id, data }: NodeProps<Node<SignalGenerator
       <Handle type="source" position={isVertical ? Position.Top : Position.Right} id="out" className="w-3 h-3 bg-emerald-500" />
       <Handle type="source" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
       <Handle type="target" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
+      <SchematicLabel placement="above" name={designator} />
     </div>
   );
 }

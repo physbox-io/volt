@@ -6,6 +6,8 @@ import { DEVICE_CARD } from './schematicStyle';
 import { resolveOrientation } from './orientation';
 import { NumberInput } from '@physbox-io/ui';
 import type { SpeakerNodeData } from '../../types/nodes';
+import { SchematicLabel } from './schematic';
+import { useDesignator } from './designatorContext';
 
 
 export function SpeakerProperties({ node, updateData }: NodePropertiesProps) {
@@ -41,7 +43,8 @@ export function SpeakerProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function SpeakerNode({ data }: NodeProps<Node<SpeakerNodeData>>) {
+export function SpeakerNode({ id, data }: NodeProps<Node<SpeakerNodeData>>) {
+  const designator = useDesignator(id, 'speaker', data?.name);
   const { isVertical } = resolveOrientation(data.orientation);
   const audioCtx = useRef<AudioContext | null>(null);
 
@@ -148,6 +151,7 @@ export function SpeakerNode({ data }: NodeProps<Node<SpeakerNodeData>>) {
       )}
       <Handle type="source" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
       <Handle type="target" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
+      <SchematicLabel placement="above" name={designator} />
     </div>
   );
 }

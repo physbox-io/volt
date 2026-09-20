@@ -3,6 +3,8 @@ import type { NodePropertiesProps } from './registry';
 import type { MountingHoleNodeData } from '../../types/nodes';
 import { NumberInput } from '@physbox-io/ui';
 import { MOUNTING_HOLE_PRESETS } from './partDefaults';
+import { SchematicLabel } from './schematic';
+import { useDesignator } from './designatorContext';
 
 /**
  * An unplated screw / mounting hole. It carries no net and has no handles, so
@@ -78,7 +80,8 @@ export function MountingHoleProperties({ node, updateData }: NodePropertiesProps
   );
 }
 
-export function MountingHoleNode({ data }: NodeProps<Node<MountingHoleNodeData>>) {
+export function MountingHoleNode({ id, data }: NodeProps<Node<MountingHoleNodeData>>) {
+  const designator = useDesignator(id, 'mountinghole', data?.name);
   const label = data?.screwSize && data.screwSize !== 'custom' ? data.screwSize : '';
   return (
     <div className="schematic-node relative w-[24px] h-[24px] flex items-center justify-center">
@@ -104,6 +107,7 @@ export function MountingHoleNode({ data }: NodeProps<Node<MountingHoleNodeData>>
           {label}
         </div>
       )}
+      <SchematicLabel placement="above" name={designator} />
     </div>
   );
 }

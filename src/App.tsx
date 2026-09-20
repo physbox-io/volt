@@ -25,6 +25,7 @@ import {
   type ClipboardContents,
 } from './utils/selectionEdit';
 import { QuickAddPalette } from './components/QuickAddPalette';
+import { assignDesignators } from './utils/nodeNaming';
 import { createPortal } from 'react-dom';
 import {
   buildShareLink,
@@ -66,29 +67,43 @@ import { FlowArea } from './components/FlowArea';
 import { ProbeTooltip } from './components/ProbeTooltip';
 import { HILMemoizer } from './utils/hilMemoizer';
 import { CanvasStateProvider } from './components/canvasState';
-import type { SpiceResult } from './types/simulation';
+import type { SpiceComplexResult, SpiceResult } from './types/simulation';
 import type { PwlPoint } from './types/nodes';
 import type { PWLPoint } from './utils/mcu';
 import { NumberInput } from '@physbox-io/ui';
+import type { Advisory } from './types/advisories';
+import { sortAdvisories } from './types/advisories';
+import { runErc } from './utils/erc';
+import { checkComponentRatings } from './utils/powerRatings';
+import {
+  SpiceRunError,
+  explainSpiceFailure,
+  summariseSpiceWarnings,
+  type SpiceAnalysisKind,
+} from './utils/simDiagnostics';
+import { readOperatingPoint } from './utils/analysisResults';
+import { AdvisoryPanel } from './components/AdvisoryPanel';
+import { BodePanel } from './components/BodePanel';
 
 
 
 let simulationWorker: Worker | null = null;
-const pendingSimulations = new Map<string, { resolve: (res: SpiceResult) => void; reject: (err: unknown) => void }>();
+type SpiceRun<T> = { result: T; messages: string[] };
+const pendingSimulations = new Map<string, { resolve: (res: SpiceRun<never>) => void; reject: (err: unknown) => void }>();
 
 const getSimulationWorker = () => {
   if (!simulationWorker) {
     simulationWorker = new Worker(new URL('./workers/simulation.worker.ts', import.meta.url), { type: 'module' });
     simulationWorker.onmessage = (evt) => {
-      const { type, id, result, ok, error } = evt.data;
+      const { type, id, result, ok, error, messages } = evt.data;
       if (type === 'RESULT') {
         const pending = pendingSimulations.get(id);
         if (pending) {
           pendingSimulations.delete(id);
           if (ok) {
-            pending.resolve(result);
+            pending.resolve({ result, messages: messages ?? [] } as SpiceRun<never>);
           } else {
-            pending.reject(new Error(error));
+            pending.reject(new SpiceRunError(error, messages));
           }
         }
       }
@@ -107,18 +122,31 @@ const terminateWorker = () => {
     simulationWorker = null;
   }
   for (const pending of pendingSimulations.values()) {
-    pending.reject(new Error("Simulation worker terminated."));
+    pending.reject(new SpiceRunError("Simulation worker terminated."));
   }
   pendingSimulations.clear();
 };
 
-const runSimInWorker = (netlist: string): Promise<SpiceResult> => {
+/**
+ * One solve.
+ *
+ * `analysis` is what the netlist ends in, and the worker checks the plot it got
+ * back against it — a circuit ngspice refuses resolves with the *previous*
+ * run's data rather than rejecting, and only the analysis name tells the two
+ * apart. `messages` is whatever the solver said on the way, which is empty on
+ * almost every run and is the whole story on the ones where it is not.
+ */
+const runSimInWorker = <T = SpiceResult,>(
+  netlist: string,
+  analysis: SpiceAnalysisKind = 'tran',
+  timeoutMs?: number,
+): Promise<SpiceRun<T>> => {
   return new Promise((resolve, reject) => {
     const id = Math.random().toString(36).slice(2);
-    pendingSimulations.set(id, { resolve, reject });
+    pendingSimulations.set(id, { resolve: resolve as (res: SpiceRun<never>) => void, reject });
     try {
       const worker = getSimulationWorker();
-      worker.postMessage({ type: 'RUN', id, netlist });
+      worker.postMessage({ type: 'RUN', id, netlist, analysis, timeoutMs });
     } catch (err) {
       reject(err);
     }
@@ -1060,7 +1088,7 @@ export default function App() {
         const netlistRes = generateSpiceNetlist(nextNodes, edgesRef.current, netlistDurationMs / 1000, 'normal', mcuWaveforms, hilInitialConditionsRef.current, hilMaxStepMs);
         portToNet = netlistRes.portToNet;
 
-        result = await runSimInWorker(netlistRes.netlist);
+        result = (await runSimInWorker(netlistRes.netlist)).result;
         const resultIndex = buildNetlistResultIndex(result);
 
         const lastIndex = result.numPoints - 1;
@@ -1357,7 +1385,9 @@ export default function App() {
         return code.includes('Read');
       });
 
-      let result = await runSimInWorker(netlist);
+      const firstRun = await runSimInWorker(netlist);
+      let result = firstRun.result;
+      let runMessages = firstRun.messages;
 
       if (needsTwoPass) {
          const mcuWaveforms: Record<string, Record<string, PWLPoint[]>> = {};
@@ -1380,7 +1410,9 @@ export default function App() {
          netlist = pass2.netlist;
          portToNet = pass2.portToNet;
          mcuLogs = pass2.mcuLogs;
-         result = await runSimInWorker(netlist);
+         const secondRun = await runSimInWorker(netlist);
+         result = secondRun.result;
+         runMessages = secondRun.messages;
       }
       
       const findGraph = (netName: string) => findNetGraph(result, netName);
@@ -1730,6 +1762,14 @@ export default function App() {
    * out of a properties field, and pasting cannot try to make a circuit out of
    * whatever text happens to be on the system clipboard.
    */
+  /*
+   * Reference designators, numbered per letter across the whole canvas, so no
+   * symbol can derive its own: R3 is R3 only relative to the other resistors.
+   * Computed once here and read by the symbols through a context, and by the
+   * properties panel and the board exporter directly.
+   */
+  const designators = useMemo(() => assignDesignators(nodes), [nodes]);
+
   const clipboardRef = useRef<ClipboardContents>({ nodes: [], edges: [] });
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
 
@@ -2393,6 +2433,7 @@ export default function App() {
           <ReactFlowProvider>
             <FlowArea
             nodes={nodes} edges={edges}
+            designators={designators}
             fitKey={selectedPreset}
             hasNoteCard={noteCards.length > 0}
             noteCardRect={() => document.querySelector('[data-note-card]')?.getBoundingClientRect() ?? null}
@@ -2450,6 +2491,7 @@ export default function App() {
         {nodes.find(n => n.selected) && (
           <PropertiesPanel
             selectedNode={nodes.find(n => n.selected)!}
+            designator={designators[nodes.find(n => n.selected)!.id]}
             setNodes={setNodes}
             setEdges={setEdges}
             isSimulating={isSimulating}

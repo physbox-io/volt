@@ -7,6 +7,8 @@ import { DEVICE_CARD_DARK } from './schematicStyle';
 import { NumberInput } from '@physbox-io/ui';
 import type { HeltecV4NodeData } from '../../types/nodes';
 import { HELTEC_V4_GPIO_PINS } from './partDefaults';
+import { SchematicLabel } from './schematic';
+import { useDesignator } from './designatorContext';
 
 
 export function HeltecV4Properties({ node, updateData, isSimulating }: NodePropertiesProps) {
@@ -155,6 +157,7 @@ export function HeltecV4Properties({ node, updateData, isSimulating }: NodePrope
 }
 
 export const HeltecV4Node = memo(function HeltecV4Node({ id, data, selected }: NodeProps<Node<HeltecV4NodeData>>) {
+  const designator = useDesignator(id, 'heltec_v4', data?.name);
   const { setNodes } = useReactFlow();
   const isConnected = !!data.isConnected;
   const hilEnabled = !!data.hilEnabled;
@@ -203,7 +206,8 @@ export const HeltecV4Node = memo(function HeltecV4Node({ id, data, selected }: N
   };
 
   return (
-    <div className={`${DEVICE_CARD_DARK} w-44 text-slate-100 flex flex-col transition-all duration-300 ${selected ? '!border-violet-500' : ''}`}>
+    <div className={`${DEVICE_CARD_DARK} relative w-44 text-slate-100 flex flex-col transition-all duration-300 ${selected ? '!border-violet-500' : ''}`}>
+      <SchematicLabel placement="above" name={designator} />
       
       {/* Header */}
       <div className="bg-slate-950 text-[10px] font-bold text-center py-2 px-3 uppercase tracking-wider rounded-t-lg flex items-center justify-between border-b border-slate-800">

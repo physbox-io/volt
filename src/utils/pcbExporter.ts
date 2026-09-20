@@ -24,6 +24,7 @@ import {
   type PadSpec,
 } from './pcbFootprints';
 import { extractNets, isPhysical, resolveHandleToPin, type PcbNet } from './pcbNets';
+import { assignDesignators } from './nodeNaming';
 import { minPadGapMm } from './pcbTooling';
 import {
   circlePoly,
@@ -1343,8 +1344,16 @@ export interface LayoutProgress extends RouteProgress {
   totalAttempts: number;
 }
 
-/** One placement input per physical node: footprint, size and orientation. */
-function placementInputs(physicalNodes: Node[]): PlacementInput[] {
+/**
+ * One placement input per physical node: footprint, size and orientation.
+ *
+ * `allNodes` is the whole schematic rather than only what gets placed, because
+ * a designator is numbered across the drawing: R3 is R3 relative to every other
+ * resistor, placed or not, and the board has to call a part what the schematic
+ * calls it or matching a footprint back to the symbol is guesswork.
+ */
+function placementInputs(physicalNodes: Node[], allNodes: Node[] = physicalNodes): PlacementInput[] {
+  const designators = assignDesignators(allNodes);
   return physicalNodes.map((node, idx) => {
     const data = (node.data ?? {}) as {
       orientation?: string;
@@ -1359,7 +1368,7 @@ function placementInputs(physicalNodes: Node[]): PlacementInput[] {
     const footprint = resolveFootprint(data.packageId, node.type, data.pins || 2, node.data);
     return {
       id: node.id || `comp_${idx}`,
-      name: data.label || data.name || node.id || `C${idx + 1}`,
+      name: designators[node.id] || data.name || data.label || node.id || `C${idx + 1}`,
       type: node.type || 'unknown',
       schematicX: node.position?.x ?? 0,
       schematicY: node.position?.y ?? 0,
@@ -1395,7 +1404,7 @@ export function layoutArrangement(
   const options: PcbOptions = { ...DEFAULT_PCB_OPTIONS, ...userOptions };
   const physicalNodes = (circuitNodes || []).filter(n => isPhysical(n.type));
   const { nets } = extractNets(circuitNodes || [], circuitEdges || []);
-  const inputs = placementInputs(physicalNodes);
+  const inputs = placementInputs(physicalNodes, circuitNodes || []);
   // The tightest spread whose courtyards do not collide, as the search does.
   let attempt: LayoutAttempt | null = null;
   for (const spread of [1, 1.4, 1.8]) {
@@ -1588,7 +1597,7 @@ export function generatePcbLayout(
   const { nets, warnings: netWarnings } = extractNets(nodes, edges);
   warnings.push(...netWarnings);
 
-  const inputs = placementInputs(physicalNodes);
+  const inputs = placementInputs(physicalNodes, nodes);
 
   // 2-4. Place and route. An unroutable net is usually a space problem, so
   // retry on a progressively larger board and keep the best attempt.

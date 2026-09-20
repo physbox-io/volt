@@ -11,7 +11,7 @@ import {
   reverseOrientation,
   rotateOrientation,
 } from '../utils/nodeGeometry';
-import { getNodeDefaultName } from '../utils/nodeNaming';
+import { designatorPrefix, getNodeDefaultName } from '../utils/nodeNaming';
 import { datasheets } from '../utils/datasheets';
 import {
   defaultPackageForType,
@@ -25,8 +25,6 @@ import { isPhysical } from '../utils/pcbNets';
 import { minPadGapMm } from '../utils/pcbTooling';
 import { nodeRegistry } from './nodes/registry';
 import { getBjtModel, getMosfetModel, getOpAmpModel } from '../utils/deviceModels';
-
-const PASSIVE_NAMED_TYPES = ['resistor', 'capacitor', 'inductor'];
 
 /** Sentinel package id that switches the node over to `data.footprintParams`. */
 const CUSTOM_PACKAGE_ID = 'CUSTOM-PARAMETRIC';
@@ -97,13 +95,15 @@ function isCatalogPart(nodeType: string | undefined, modelId: unknown): boolean 
   return false;
 }
 
-export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating, runSimulation, simLength, isOpen, onClose }: {
+export function PropertiesPanel({ selectedNode, designator, setNodes, setEdges, isSimulating, runSimulation, simLength, isOpen, onClose }: {
   /*
    * Every field of every part, for the reason given on `NodePropertiesProps`:
    * this panel is dispatched on `node.type` at run time, so the compiler never
    * knows which kind it was handed.
    */
   selectedNode: Node<AnyNodeData> | null,
+  /** The part's reference designator as the canvas numbered it, e.g. `R3`. */
+  designator?: string,
   setNodes: Dispatch<SetStateAction<Node[]>>,
   setEdges: Dispatch<SetStateAction<Edge[]>>,
   isSimulating: boolean,
@@ -626,12 +626,16 @@ export function PropertiesPanel({ selectedNode, setNodes, setEdges, isSimulating
         </div>
       )}
 
-      {PASSIVE_NAMED_TYPES.includes(selectedNode.type || '') && (
+      {/* Every part that is numbered can be renamed; the box shows the
+          designator the canvas gave it until someone types over it. */}
+      {designatorPrefix(selectedNode.type) && (
         <div className="mb-3">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Name</label>
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Designator</label>
           <input
             type="text"
-            value={selectedNode.data.name !== undefined ? selectedNode.data.name : getNodeDefaultName(selectedNode.id, selectedNode.type)}
+            value={selectedNode.data.name !== undefined
+              ? selectedNode.data.name
+              : (designator ?? getNodeDefaultName(selectedNode.id, selectedNode.type || ''))}
             onChange={e => updateData('name', e.target.value)}
             className="w-full text-xs border border-gray-300 dark:border-slate-800 rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-emerald-500 focus:outline-none"
           />

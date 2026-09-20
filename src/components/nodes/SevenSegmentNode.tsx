@@ -6,6 +6,8 @@ import { playbackTicker, findIndexForTime } from '../../utils/playbackTicker';
 import type { NodePropertiesProps } from './registry';
 import { DEVICE_CARD_DARK, pinRow } from './schematicStyle';
 import type { SevenSegmentNodeData } from '../../types/nodes';
+import { SchematicLabel } from './schematic';
+import { useDesignator } from './designatorContext';
 
 export function SevenSegmentProperties(_props: NodePropertiesProps) {
   return (
@@ -34,7 +36,8 @@ const SEG_COLORS: Record<string, string> = {
 /** Module scope so the ticker subscription below does not restart every render. */
 const segs = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
 
-export const SevenSegmentNode = memo(function SevenSegmentNode({ data }: NodeProps<Node<SevenSegmentNodeData>>) {
+export const SevenSegmentNode = memo(function SevenSegmentNode({ id, data }: NodeProps<Node<SevenSegmentNodeData>>) {
+  const designator = useDesignator(id, 'sevenseg', data?.name);
   const { isSimulating } = useCanvasState();
   const arrays = data.segmentVoltageArrays;
   const timePoints = data.timePoints;
@@ -84,6 +87,7 @@ export const SevenSegmentNode = memo(function SevenSegmentNode({ data }: NodePro
         })}
       </svg>
       <div className="text-[8px] text-gray-500 font-mono mt-0.5">7-SEG</div>
+      <SchematicLabel placement="above" name={designator} />
     </div>
   );
 });

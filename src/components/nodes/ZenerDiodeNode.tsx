@@ -3,6 +3,7 @@ import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import type { ZenerDiodeNodeData } from '../../types/nodes';
+import { useDesignator } from './designatorContext';
 
 export function ZenerDiodeProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -14,7 +15,8 @@ export function ZenerDiodeProperties({ node, updateData }: NodePropertiesProps) 
   );
 }
 
-export function ZenerDiodeNode({ data, selected }: NodeProps<Node<ZenerDiodeNodeData>>) {
+export function ZenerDiodeNode({ id, data, selected }: NodeProps<Node<ZenerDiodeNodeData>>) {
+  const designator = useDesignator(id, 'zener', data.name);
   const orientation = data.orientation || 'horizontal';
   const isVertical = orientation === 'vertical' || orientation === 'up';
   const isLeft = orientation === 'left';
@@ -79,9 +81,11 @@ export function ZenerDiodeNode({ data, selected }: NodeProps<Node<ZenerDiodeNode
         )}
       </svg>
 
-      <SchematicLabel placement={isVertical ? 'right' : 'below'}>
-        {data.label || '5.1V'}
-      </SchematicLabel>
+      <SchematicLabel
+        placement={isVertical ? 'right' : 'below'}
+        name={designator}
+        value={data.label || '5.1V'}
+      />
       
       <Handle 
         type="source" 

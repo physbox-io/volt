@@ -3,6 +3,7 @@ import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import type { CurrentSourceNodeData } from '../../types/nodes';
+import { useDesignator } from './designatorContext';
 
 export function CurrentSourceProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -14,7 +15,8 @@ export function CurrentSourceProperties({ node, updateData }: NodePropertiesProp
   );
 }
 
-export function CurrentSourceNode({ data, selected }: NodeProps<Node<CurrentSourceNodeData>>) {
+export function CurrentSourceNode({ id, data, selected }: NodeProps<Node<CurrentSourceNodeData>>) {
+  const designator = useDesignator(id, 'currentsource', data.name);
   const label = data.label || '10mA';
   const isHorizontal = data.orientation === 'horizontal';
 
@@ -72,9 +74,11 @@ export function CurrentSourceNode({ data, selected }: NodeProps<Node<CurrentSour
         )}
       </svg>
 
-      <SchematicLabel placement={isHorizontal ? 'below' : 'right'}>
-        {label}
-      </SchematicLabel>
+      <SchematicLabel
+        placement={isHorizontal ? 'below' : 'right'}
+        name={designator}
+        value={label}
+      />
       
       <Handle 
         type="source" 

@@ -4,6 +4,7 @@ import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
 import type { DiodeNodeData } from '../../types/nodes';
+import { useDesignator } from './designatorContext';
 
 export function DiodeProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -19,7 +20,8 @@ export function DiodeProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function DiodeNode({ data, selected }: NodeProps<Node<DiodeNodeData>>) {
+export function DiodeNode({ id, data, selected }: NodeProps<Node<DiodeNodeData>>) {
+  const designator = useDesignator(id, 'diode', data.name);
   const orientation = data.orientation || 'horizontal';
   const isVertical = orientation === 'vertical' || orientation === 'up';
   const isLeft = orientation === 'left';
@@ -79,9 +81,11 @@ export function DiodeNode({ data, selected }: NodeProps<Node<DiodeNodeData>>) {
         )}
       </svg>
 
-      <SchematicLabel placement={isVertical ? 'right' : 'below'}>
-        {data.label || '1N4148'}
-      </SchematicLabel>
+      <SchematicLabel
+        placement={isVertical ? 'right' : 'below'}
+        name={designator}
+        value={data.label || '1N4148'}
+      />
       
       <Handle 
         type="source" 

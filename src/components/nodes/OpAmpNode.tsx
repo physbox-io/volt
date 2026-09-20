@@ -5,6 +5,8 @@ import { NumberInput } from '@physbox-io/ui';
 import { OPAMP_MODELS, getOpAmpModel, resolveOpAmpParams } from '../../utils/deviceModels';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { OpAmpNodeData } from '../../types/nodes';
+import { SchematicLabel } from './schematic';
+import { useDesignator } from './designatorContext';
 
 export function OpAmpProperties({ node, updateData }: NodePropertiesProps) {
   const currentModelId = (node.data?.model as string) || 'ideal';
@@ -135,7 +137,8 @@ export function OpAmpProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function OpAmpNode({ data, selected }: NodeProps<Node<OpAmpNodeData>>) {
+export function OpAmpNode({ id, data, selected }: NodeProps<Node<OpAmpNodeData>>) {
+  const designator = useDesignator(id, 'opamp', data?.name);
   const displayLabel = data?.label || (data?.model && data.model !== 'ideal' ? (getOpAmpModel(data.model)?.name.split(' ')[0] || data.model.toUpperCase()) : 'LM358');
 
   return (
@@ -196,6 +199,7 @@ export function OpAmpNode({ data, selected }: NodeProps<Node<OpAmpNodeData>>) {
       <Handle type="source" position={Position.Top} id="vcc" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !left-[50%]" />
       <Handle type="target" position={Position.Bottom} id="vee" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !left-[50%]" />
       <Handle type="source" position={Position.Bottom} id="vee" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !left-[50%]" />
+      <SchematicLabel placement="above" name={designator} />
     </div>
   );
 }

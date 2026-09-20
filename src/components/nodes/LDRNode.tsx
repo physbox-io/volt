@@ -5,6 +5,7 @@ import type { Node, NodeProps } from '@xyflow/react';
 import type { LdrNodeData } from '../../types/nodes';
 import { LeadHandles, RotatedSymbol, SchematicLabel } from './schematic';
 import { leadBoxStyle, resolveOrientation } from './orientation';
+import { useDesignator } from './designatorContext';
 
 export function LDRProperties({ node, updateData, webcam }: NodePropertiesProps) {
   const { stream, videoRef, isRecordingWebcam, startRecordingWebcam } = webcam;
@@ -94,7 +95,8 @@ export function LDRProperties({ node, updateData, webcam }: NodePropertiesProps)
   );
 }
 
-export function LDRNode({ data, selected }: NodeProps<Node<LdrNodeData>>) {
+export function LDRNode({ id, data, selected }: NodeProps<Node<LdrNodeData>>) {
+  const designator = useDesignator(id, 'ldr', data.name);
   // const rDarkLabel = data.r_dark_label || '100k';
   const lightLevel = data.lightLevel ?? 0;
   const isWebcamActive = !!data.isWebcamActive;
@@ -142,9 +144,11 @@ export function LDRNode({ data, selected }: NodeProps<Node<LdrNodeData>>) {
       </RotatedSymbol>
 
       {/* Label and light level status */}
-      <SchematicLabel placement={orientation.labelPlacement}>
-        LDR • {isWebcamActive ? '📹 ' : ''}{Math.round(lightLevel * 100)}%
-      </SchematicLabel>
+      <SchematicLabel
+        placement={orientation.labelPlacement}
+        name={designator}
+        value={<>{isWebcamActive ? '📹 ' : ''}{Math.round(lightLevel * 100)}%</>}
+      />
     </div>
   );
 }

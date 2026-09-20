@@ -2,8 +2,10 @@ import { Handle, Position } from '@xyflow/react';
 import { SchematicLabel } from './schematic';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { MosfetNodeData } from '../../types/nodes';
+import { useDesignator } from './designatorContext';
 
-export function PmosNode({ data, selected }: NodeProps<Node<MosfetNodeData>>) {
+export function PmosNode({ id, data, selected }: NodeProps<Node<MosfetNodeData>>) {
+  const designator = useDesignator(id, 'pmos', data.name);
   return (
     <div className="schematic-node w-[48px] h-[48px] flex items-center justify-center relative select-none">
       <Handle type="target" position={Position.Top} id="s" className="w-2 h-2 bg-emerald-500 !border-0" style={{ left: '75%' }} />
@@ -40,9 +42,11 @@ export function PmosNode({ data, selected }: NodeProps<Node<MosfetNodeData>>) {
         <path d="M 30 20 L 24 17 M 30 20 L 24 23" strokeWidth="1.17" />
       </svg>
 
-      <SchematicLabel placement="right">
-        {data.label || 'PMOS'}
-      </SchematicLabel>
+      <SchematicLabel
+        placement="right"
+        name={designator}
+        value={data.label || 'PMOS'}
+      />
     </div>
   );
 }

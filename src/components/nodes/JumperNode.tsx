@@ -1,9 +1,10 @@
 import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import type { JumperNodeData } from '../../types/nodes';
-import { LeadHandles, RotatedSymbol } from './schematic';
+import { LeadHandles, RotatedSymbol, SchematicLabel } from './schematic';
 import { leadBoxStyle, resolveOrientation } from './orientation';
 import { NumberInput } from '@physbox-io/ui';
+import { useDesignator } from './designatorContext';
 
 /**
  * A wire jumper: two pads bridged by a hand-fitted wire after milling.
@@ -60,7 +61,8 @@ export function JumperProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function JumperNode({ data }: NodeProps<Node<JumperNodeData>>) {
+export function JumperNode({ id, data }: NodeProps<Node<JumperNodeData>>) {
+  const designator = useDesignator(id, 'jumper', data?.name);
   const orientation = resolveOrientation(data?.orientation);
 
   return (
@@ -85,6 +87,7 @@ export function JumperNode({ data }: NodeProps<Node<JumperNodeData>>) {
         <circle cx="38" cy="14" r="3.2" className="fill-amber-400 stroke-slate-600" strokeWidth="1.2" />
       </svg>
       </RotatedSymbol>
+      <SchematicLabel placement="above" name={designator} />
     </div>
   );
 }

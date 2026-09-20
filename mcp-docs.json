@@ -467,6 +467,12 @@
       ],
       "note": "Placed, drilled and routed on the board but emitting no SPICE device. Edges to a pin header or via still join nets — the part itself just contributes no component. 'jumper' is the exception: the router draws no copper for it, but electrically it is a wire (a 1 milliohm resistor between its 'a' and 'b' terminals) and it does simulate."
     },
+    "referenceDesignators": {
+      "description": "Every part is numbered automatically and shown beside its symbol: R (resistor, LDR), RV (potentiometer), C, L, T, D (diode, zener, LED), Q (any transistor), U (any IC or logic gate), DS (seven-segment), LS (speaker), MK (microphone), SW (switch), V (voltage, AC and signal generator), I (current source), J (pin header), JP (jumper), MH (mounting hole).",
+      "numbering": "Per letter, from 1, in the order parts were created, so adding a part never renumbers the drawing. Ground, junctions, net labels, power rails, vias, cutouts and the instruments are not numbered.",
+      "override": "Set data.name to pin a designator by hand; it is kept and the automatic numbering counts around it. Leave it unset otherwise. The board layout, the DRC messages and the export report use the same name, which is how a footprint is matched back to a symbol.",
+      "note": "Refer to parts by designator when explaining a circuit - 'probe pin 3 of U1', 'swap R2 for 10k'."
+    },
     "namedNets": {
       "types": [
         "netlabel",

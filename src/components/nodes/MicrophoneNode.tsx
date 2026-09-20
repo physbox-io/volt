@@ -8,6 +8,8 @@ import { DEVICE_CARD, DEVICE_TITLE } from './schematicStyle';
 import { resolveOrientation } from './orientation';
 import { NumberInput } from '@physbox-io/ui';
 import type { MicrophoneNodeData } from '../../types/nodes';
+import { SchematicLabel } from './schematic';
+import { useDesignator } from './designatorContext';
 
 export function MicrophoneProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -23,6 +25,7 @@ export function MicrophoneProperties({ node, updateData }: NodePropertiesProps) 
 }
 
 export function MicrophoneNode({ id, data }: NodeProps<Node<MicrophoneNodeData>>) {
+  const designator = useDesignator(id, 'microphone', data?.name);
   const { isVertical } = resolveOrientation(data.orientation);
   const { simLength } = useCanvasState();
   const [isRecording, setIsRecording] = useState(false);
@@ -131,6 +134,7 @@ export function MicrophoneNode({ id, data }: NodeProps<Node<MicrophoneNodeData>>
       <Handle type="source" position={isVertical ? Position.Top : Position.Right} id="out" className="w-3 h-3 bg-emerald-500" />
       <Handle type="source" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
       <Handle type="target" position={Position.Bottom} id="gnd" className="w-3 h-3 bg-black" style={isVertical ? { left: '50%' } : undefined} />
+      <SchematicLabel placement="above" name={designator} />
     </div>
   );
 }

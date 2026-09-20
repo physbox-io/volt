@@ -3,6 +3,7 @@ import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import type { VoltageNodeData } from '../../types/nodes';
+import { useDesignator } from './designatorContext';
 
 export function VoltageProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -13,7 +14,8 @@ export function VoltageProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function VoltageNode({ data, selected }: NodeProps<Node<VoltageNodeData>>) {
+export function VoltageNode({ id, data, selected }: NodeProps<Node<VoltageNodeData>>) {
+  const designator = useDesignator(id, 'voltage', data.name);
   const isHorizontal = data.orientation === 'horizontal';
 
   return (
@@ -74,9 +76,11 @@ export function VoltageNode({ data, selected }: NodeProps<Node<VoltageNodeData>>
         )}
       </svg>
 
-      <SchematicLabel placement={isHorizontal ? 'below' : 'right'}>
-        {data.label || '5V'}
-      </SchematicLabel>
+      <SchematicLabel
+        placement={isHorizontal ? 'below' : 'right'}
+        name={designator}
+        value={data.label || '5V'}
+      />
       
       <Handle 
         type="source" 

@@ -230,6 +230,14 @@ export function DocsModal({ onClose }: DocsModalProps) {
                   <li><strong>Resolution:</strong> Use <em>Normal</em> for logic/LEDs (faster) and <em>High</em> for audio or fast oscillators (more accurate).</li>
                 </ul>
 
+                <h4 className="text-xl font-semibold mb-2 mt-6">Reference Designators</h4>
+                <ul className="list-disc pl-6 mb-4 space-y-1">
+                  <li><strong>Every part is numbered:</strong> R1, C1, L1, D1 (diodes, zeners and LEDs), Q1 (any transistor), U1 (any IC, logic gates included), SW1, J1, V1, DS1. Each letter counts from 1 independently, and the number is shown beside the symbol.</li>
+                  <li><strong>Adding a part never renumbers the drawing:</strong> designators follow the order parts were placed, so the next resistor takes the next free R.</li>
+                  <li><strong>Rename one</strong> in the <em>Designator</em> box in the properties panel. A name you set is kept, and the automatic numbering counts around it — set one part to R7 and nothing else will be R7.</li>
+                  <li><strong>The board uses the same name:</strong> the layout, the DRC messages and the export report all call a part R1 rather than “10u”, so a footprint on the board can be matched back to the symbol on the schematic.</li>
+                </ul>
+
                 <h4 className="text-xl font-semibold mb-2 mt-6">Named Nets &amp; Power Rails</h4>
                 <ul className="list-disc pl-6 mb-4 space-y-1">
                   <li><strong>Power Rails:</strong> Drop a <strong>+5V</strong> or <strong>+3.3V</strong> rail from the <em>Nets &amp; Power</em> section of the palette. Every pin on a rail of the same name shares one net with no wire drawn between them, and the rail supplies that voltage against ground — however many flags you place, they are one supply.</li>

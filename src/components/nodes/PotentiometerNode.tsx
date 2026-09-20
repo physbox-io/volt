@@ -3,6 +3,7 @@ import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import type { PotentiometerNodeData } from '../../types/nodes';
+import { useDesignator } from './designatorContext';
 
 export function PotentiometerProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -19,7 +20,8 @@ export function PotentiometerProperties({ node, updateData }: NodePropertiesProp
   );
 }
 
-export function PotentiometerNode({ data, selected }: NodeProps<Node<PotentiometerNodeData>>) {
+export function PotentiometerNode({ id, data, selected }: NodeProps<Node<PotentiometerNodeData>>) {
+  const designator = useDesignator(id, 'potentiometer', data.name);
   const position = data.position ?? 50; // wiper position 0-100%
   const label = data.label || '10k';
   const isVertical = data.orientation === 'vertical';
@@ -111,9 +113,11 @@ export function PotentiometerNode({ data, selected }: NodeProps<Node<Potentiomet
         )}
       </svg>
 
-      <SchematicLabel placement={isVertical ? 'right' : 'below'}>
-        {label} • {position}%
-      </SchematicLabel>
+      <SchematicLabel
+        placement={isVertical ? 'right' : 'below'}
+        name={designator}
+        value={<>{label} • {position}%</>}
+      />
     </div>
   );
 }

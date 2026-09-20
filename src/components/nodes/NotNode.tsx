@@ -1,8 +1,11 @@
 import { Handle, Position } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { BaseNodeData } from '../../types/nodes';
+import { SchematicLabel } from './schematic';
+import { useDesignator } from './designatorContext';
 
-export function NotNode({ selected }: NodeProps<Node<BaseNodeData>>) {
+export function NotNode({ id, data, selected }: NodeProps<Node<BaseNodeData>>) {
+  const designator = useDesignator(id, 'not', data?.name);
   return (
     <div className="schematic-node bg-transparent w-[80px] h-[80px] relative flex items-center justify-center select-none">
       <svg 
@@ -59,6 +62,7 @@ export function NotNode({ selected }: NodeProps<Node<BaseNodeData>>) {
       {/* Output */}
       <Handle type="source" position={Position.Right} id="out" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[50%]" />
       <Handle type="target" position={Position.Right} id="out" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[50%]" />
+      <SchematicLabel placement="above" name={designator} />
     </div>
   );
 }

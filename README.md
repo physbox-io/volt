@@ -87,6 +87,23 @@ palette as data. `tests/partCatalog.test.ts` scrapes `Sidebar.tsx` and holds the
 two together, so a part added to the palette and not to the catalog fails the
 suite rather than going missing from search.
 
+## 🔖 Reference designators
+
+`src/utils/nodeNaming.ts` owns the numbering: `DESIGNATOR_PREFIXES` maps a node
+type to its letter (R, C, L, D for every diode, Q for every transistor, U for
+every IC), and `assignDesignators()` numbers each letter from 1 across the whole
+canvas in creation order — the number in the node id — so adding a part never
+renumbers what is already drawn. A part with `data.name` keeps that name *and*
+reserves its number, so hand-naming one part R7 cannot leave a second R7 beside
+it.
+
+The table is computed once in `App.tsx` and reaches the symbols through
+`DesignatorContext`; `useDesignator(id, type, data.name)` is what each symbol
+calls, and it falls back to the id-derived `getNodeDefaultName()` when rendered
+outside the provider. `placementInputs()` in `pcbExporter.ts` names board parts
+the same way, so the layout, the DRC messages and the export report call a part
+R1 rather than `10u`.
+
 ## 🏷️ Named nets and power rails
 
 Ground was the only implicit net: every ground symbol joins one global net with

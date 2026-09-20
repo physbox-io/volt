@@ -2,8 +2,10 @@ import { Handle, Position } from '@xyflow/react';
 import { SchematicLabel } from './schematic';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { BjtNodeData } from '../../types/nodes';
+import { useDesignator } from './designatorContext';
 
-export function PnpNode({ data, selected }: NodeProps<Node<BjtNodeData>>) {
+export function PnpNode({ id, data, selected }: NodeProps<Node<BjtNodeData>>) {
+  const designator = useDesignator(id, 'pnp', data.name);
   return (
     <div className="schematic-node w-[32px] h-[32px] flex items-center justify-center relative select-none">
       <Handle type="target" position={Position.Top} id="e" className="w-2 h-2 bg-emerald-500 !border-0" style={{ left: '75%' }} />
@@ -37,9 +39,11 @@ export function PnpNode({ data, selected }: NodeProps<Node<BjtNodeData>>) {
         <path d="M 15 10 L 20 10 M 15 10 L 17 6" strokeWidth="1.4" />
       </svg>
 
-      <SchematicLabel placement="below">
-        {data.label || 'PNP'}
-      </SchematicLabel>
+      <SchematicLabel
+        placement="below"
+        name={designator}
+        value={data.label || 'PNP'}
+      />
     </div>
   );
 }

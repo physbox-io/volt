@@ -4,6 +4,8 @@ import type { NodePropertiesProps } from './registry';
 import type { PinHeaderNodeData } from '../../types/nodes';
 import { NumberInput } from '@physbox-io/ui';
 import { PIN_HEADER_LIMITS } from './partDefaults';
+import { SchematicLabel } from './schematic';
+import { useDesignator } from './designatorContext';
 import {
   getPinHeaderGeometry,
   getPinHeaderSize,
@@ -22,7 +24,8 @@ import {
  * handle-to-pad resolution fall out with no mapping table.
  */
 
-export function PinHeaderNode({ data }: NodeProps<Node<PinHeaderNodeData>>) {
+export function PinHeaderNode({ id, data }: NodeProps<Node<PinHeaderNodeData>>) {
+  const designator = useDesignator(id, 'pinheader', data?.name);
   const { rows, cols } = getPinHeaderGeometry(data);
   const { width, height } = getPinHeaderSize(data);
 
@@ -79,6 +82,7 @@ export function PinHeaderNode({ data }: NodeProps<Node<PinHeaderNodeData>>) {
       <div className="absolute left-0 right-0 -bottom-4 text-center text-[9px] text-slate-500 dark:text-slate-400 pointer-events-none">
         {rows}x{cols}
       </div>
+      <SchematicLabel placement="above" name={designator} />
     </div>
   );
 }

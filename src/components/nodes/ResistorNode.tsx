@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { Handle, Position, useReactFlow } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
-import { getNodeDefaultName } from '../../utils/nodeNaming';
+import { useDesignator } from './designatorContext';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel, EngField } from './schematic';
 import type { ResistorNodeData } from '../../types/nodes';
@@ -21,7 +21,7 @@ export function ResistorNode({ id, data, selected }: NodeProps<Node<ResistorNode
   const isLeft = orientation === 'left';
   const isUp = orientation === 'up';
 
-  const name = data.name !== undefined ? data.name : getNodeDefaultName(id, 'resistor');
+  const name = useDesignator(id, 'resistor', data.name);
   const { setNodes } = useReactFlow();
   const update = useCallback((patch: Partial<ResistorNodeData>) => {
     setNodes(nds => nds.map(n => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));

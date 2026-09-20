@@ -5,6 +5,7 @@ import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
 import type { TransformerNodeData } from '../../types/nodes';
+import { useDesignator } from './designatorContext';
 
 export function TransformerProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -48,7 +49,8 @@ export function TransformerProperties({ node, updateData }: NodePropertiesProps)
   );
 }
 
-export function TransformerNode({ data, selected }: NodeProps<Node<TransformerNodeData>>) {
+export function TransformerNode({ id, data, selected }: NodeProps<Node<TransformerNodeData>>) {
+  const designator = useDesignator(id, 'transformer', data.name);
   const lPri = data.l_pri_label || '10mH';
   const lSec = data.l_sec_label || '10mH';
 
@@ -149,9 +151,11 @@ export function TransformerNode({ data, selected }: NodeProps<Node<TransformerNo
       </svg>
 
       {/* Label and parameters */}
-      <SchematicLabel placement="below">
-        {data.label || `${lPri}:${lSec}`}
-      </SchematicLabel>
+      <SchematicLabel
+        placement="below"
+        name={designator}
+        value={data.label || `${lPri}:${lSec}`}
+      />
     </div>
   );
 }

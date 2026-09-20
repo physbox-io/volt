@@ -68,6 +68,7 @@ import { computeBranchDots } from '../utils/branchDots';
 import { isPortConnected, mergeOverlappingNodesAndJunctions, splitEdgesOnOverlappingNodes, simplifyEdges } from '../utils/graphTopology';
 import type { AnyNodeData } from '../types/nodes';
 import { nextNetLabelName } from '../utils/netNaming';
+import { DesignatorContext } from './nodes/designatorContext';
 
 const edgeTypes = {
   aura: AuraEdge,
@@ -124,6 +125,10 @@ const nodeTypes = {
 
 let nodeId = 1;
 
+/** One frozen empty table, so a canvas with no designators re-renders no more
+ *  often than one with them. */
+const EMPTY_DESIGNATORS: Record<string, string> = {};
+
 export interface FlowAreaProps {
   nodes: Node[];
   edges: Edge[];
@@ -142,6 +147,8 @@ export interface FlowAreaProps {
   hasNoteCard?: boolean;
   /** Read live rather than passed, so the fit leaves room for a card that moved. */
   noteCardRect?: () => DOMRect | null;
+  /** Every part's reference designator, keyed by node id (see App). */
+  designators?: Record<string, string>;
   /** A palette entry tapped on a touch device, to be dropped at the middle. */
   pickedPart?: { type: string; label?: string; seq: number } | null;
   onPickedPartPlaced?: () => void;
@@ -150,7 +157,7 @@ export interface FlowAreaProps {
 export function FlowArea({
   nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange, onConnect, onNodeClick,
   probeMode, onEdgeProbe, isSimulating, fitKey, hasNoteCard, noteCardRect,
-  pickedPart, onPickedPartPlaced,
+  pickedPart, onPickedPartPlaced, designators,
 }: FlowAreaProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, getViewport, setViewport, getNodes, getInternalNode } = useReactFlow();
@@ -536,6 +543,7 @@ export function FlowArea({
   const { zoom, x: vpX, y: vpY } = getViewport();
 
   return (
+    <DesignatorContext.Provider value={designators ?? EMPTY_DESIGNATORS}>
     <div 
       className="flex-1 h-full relative" 
       ref={reactFlowWrapper} 
@@ -601,5 +609,6 @@ export function FlowArea({
         </>
       )}
     </div>
+    </DesignatorContext.Provider>
   );
 }

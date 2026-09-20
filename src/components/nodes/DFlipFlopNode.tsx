@@ -2,6 +2,8 @@ import { Handle, Position } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { BaseNodeData } from '../../types/nodes';
+import { SchematicLabel } from './schematic';
+import { useDesignator } from './designatorContext';
 
 export function DFlipFlopProperties(_props: NodePropertiesProps) {
   return (
@@ -12,7 +14,8 @@ export function DFlipFlopProperties(_props: NodePropertiesProps) {
   );
 }
 
-export function DFlipFlopNode({ selected }: NodeProps<Node<BaseNodeData>>) {
+export function DFlipFlopNode({ id, data, selected }: NodeProps<Node<BaseNodeData>>) {
+  const designator = useDesignator(id, 'dff', data?.name);
   return (
     <div className="schematic-node bg-transparent w-[80px] h-[80px] relative flex items-center justify-center select-none">
       <svg 
@@ -96,6 +99,7 @@ export function DFlipFlopNode({ selected }: NodeProps<Node<BaseNodeData>>) {
       {/* Q_bar Output */}
       <Handle type="source" position={Position.Right} id="qbar" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[70%]" />
       <Handle type="target" position={Position.Right} id="qbar" className="w-2.5 h-2.5 bg-emerald-500 !border-0 !top-[70%]" />
+      <SchematicLabel placement="above" name={designator} />
     </div>
   );
 }

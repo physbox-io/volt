@@ -18,6 +18,8 @@ import {
 import { Plus, Trash2, Cpu, Wrench } from 'lucide-react';
 import { NumberInput } from '@physbox-io/ui';
 import type { McuNodeData } from '../../types/nodes';
+import { SchematicLabel } from './schematic';
+import { useDesignator } from './designatorContext';
 
 /**
  * Reads the pad-number field. Kept as a number when it is one, so a part typed
@@ -439,7 +441,8 @@ export function MicrocontrollerProperties({ node, updateData }: NodePropertiesPr
   );
 }
 
-export function MicrocontrollerNode({ data, selected }: NodeProps<Node<McuNodeData>>) {
+export function MicrocontrollerNode({ id, data, selected }: NodeProps<Node<McuNodeData>>) {
+  const designator = useDesignator(id, 'mcu', data?.name);
   const config = getEffectiveMcuConfig(data);
   const { pins } = config;
 
@@ -485,6 +488,7 @@ export function MicrocontrollerNode({ data, selected }: NodeProps<Node<McuNodeDa
       <div className="bg-gray-900 text-white text-[9px] font-bold text-center h-5 uppercase tracking-wider rounded-t border-b border-gray-800 flex items-center justify-center px-1 truncate">
         {displayName}
       </div>
+      <SchematicLabel placement="above" name={designator} />
 
       {/* Top Pins Row */}
       {topPins.length > 0 && (

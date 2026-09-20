@@ -4,6 +4,7 @@ import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
 import type { ACVoltageNodeData } from '../../types/nodes';
+import { useDesignator } from './designatorContext';
 
 export function ACVoltageProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -38,7 +39,8 @@ export function ACVoltageProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function ACVoltageNode({ data, selected }: NodeProps<Node<ACVoltageNodeData>>) {
+export function ACVoltageNode({ id, data, selected }: NodeProps<Node<ACVoltageNodeData>>) {
+  const designator = useDesignator(id, 'acvoltage', data.name);
   const isHorizontal = data.orientation === 'horizontal';
 
   return (
@@ -91,9 +93,11 @@ export function ACVoltageNode({ data, selected }: NodeProps<Node<ACVoltageNodeDa
         <path d="M 16 24 C 18 16, 22 16, 24 24 C 26 32, 30 32, 32 24" />
       </svg>
 
-      <SchematicLabel placement={isHorizontal ? 'below' : 'right'}>
-        {data.label || '10V 60Hz'}
-      </SchematicLabel>
+      <SchematicLabel
+        placement={isHorizontal ? 'below' : 'right'}
+        name={designator}
+        value={data.label || '10V 60Hz'}
+      />
       
       <Handle 
         type="source" 

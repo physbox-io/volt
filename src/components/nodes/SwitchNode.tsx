@@ -3,6 +3,7 @@ import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import type { SwitchNodeData } from '../../types/nodes';
+import { useDesignator } from './designatorContext';
 
 export function SwitchProperties({ node, updateData }: NodePropertiesProps) {
   return (
@@ -27,7 +28,8 @@ export function SwitchProperties({ node, updateData }: NodePropertiesProps) {
   );
 }
 
-export function SwitchNode({ data, selected }: NodeProps<Node<SwitchNodeData>>) {
+export function SwitchNode({ id, data, selected }: NodeProps<Node<SwitchNodeData>>) {
+  const designator = useDesignator(id, 'switch', data.name);
   const isOpen = data.isOpen !== false; // Default to open
   const orientation = data.orientation || 'horizontal';
   const isVertical = orientation === 'vertical' || orientation === 'up';
@@ -102,9 +104,7 @@ export function SwitchNode({ data, selected }: NodeProps<Node<SwitchNodeData>>) 
         )}
       </svg>
 
-      <SchematicLabel placement="above">
-        {data.label || 'Switch'}
-      </SchematicLabel>
+      <SchematicLabel placement="above" name={designator} value={data.label || 'Switch'} />
       
       <div className={`absolute -bottom-4 text-[8px] font-extrabold tracking-wider ${isOpen ? 'text-rose-500' : 'text-emerald-500'} pointer-events-none`}>
         {isOpen ? 'OPEN' : 'CLOSED'}

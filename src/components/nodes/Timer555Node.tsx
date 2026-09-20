@@ -1,7 +1,12 @@
 import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
+import type { BaseNodeData } from '../../types/nodes';
 import { DEVICE_CARD_DARK } from './schematicStyle';
+import { SchematicLabel } from './schematic';
+import { useDesignator } from './designatorContext';
 
-export function Timer555Node() {
+export function Timer555Node({ id, data }: NodeProps<Node<BaseNodeData>>) {
+  const designator = useDesignator(id, 'timer555', data?.name);
   return (
     <div className={`${DEVICE_CARD_DARK} px-2 pt-[3px] pb-2 w-24 flex flex-col relative`}>
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-1.5 bg-slate-900 rounded-b-full"></div>
@@ -55,6 +60,7 @@ export function Timer555Node() {
           </div>
         </div>
       </div>
+      <SchematicLabel placement="above" name={designator} />
     </div>
   );
 }
