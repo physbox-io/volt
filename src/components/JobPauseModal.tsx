@@ -1,4 +1,5 @@
 import React from 'react';
+import { ProbeCircuitStatus } from './ProbeCircuitStatus';
 import { AlertCircle, Play, RefreshCw } from 'lucide-react';
 
 export interface JobPauseModalProps {
@@ -26,6 +27,8 @@ export interface JobPauseModalProps {
    * cuts against it rather than after.
    */
   zeroScatterMm?: number;
+  /** Live state of the continuity circuit the re-zero probe depends on. */
+  probeCircuit?: { active?: boolean; seen?: boolean };
   /** Non-empty while some machine action is in flight; buttons lock. */
   busy: string;
   /**
@@ -61,6 +64,7 @@ export const JobPauseModal: React.FC<JobPauseModalProps> = ({
   touchPlateMm,
   spindleRpm,
   zeroScatterMm,
+  probeCircuit,
   busy,
   needsZero,
   error,
@@ -122,6 +126,7 @@ export const JobPauseModal: React.FC<JobPauseModalProps> = ({
                 Auto-Zero Z ({touchPlateMm}mm Touch Plate)
               </button>
             </div>
+            <ProbeCircuitStatus active={probeCircuit?.active} seen={probeCircuit?.seen} />
 
             {/* XY needs no such care: every operation opens with an absolute
                 `G0 X.. Y..` before it plunges, so jogging here is undone by

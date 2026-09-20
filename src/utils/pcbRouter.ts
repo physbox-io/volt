@@ -57,6 +57,17 @@ export interface RouterOptions {
   viaDrillMm?: number;
   /** A* step penalty for placing a layer-change via (default: 18). */
   viaCost?: number;
+  /**
+   * Copper already committed on this board that the pass must route around
+   * without re-routing: the traces and vias of the nets an incremental move
+   * left alone.
+   *
+   * Stamped as keepout rather than as their own net, because nothing here is
+   * routed to them — a net whose copper is in this list has no pins in `pins`,
+   * so the only thing the grid needs to know is that the space is taken.
+   */
+  keepTraces?: RoutedTrace[];
+  keepVias?: RouteVia[];
 }
 
 /**
@@ -690,6 +701,23 @@ function singlePassRoute(
     }
   }
 
+  // Copper this pass is not allowed to move. Stamped with the same geometry
+  // the router uses for its own tracks, so a re-routed net is held exactly the
+  // clearance away from them that a full pass would have held.
+  for (const t of opts.keepTraces ?? []) {
+    const l = grid.layerCount === 2 && t.layer === 'bottom' ? 1 : 0;
+    const r = t.widthMm / 2 + keepout;
+    for (let i = 0; i + 1 < t.points.length; i++) {
+      stampSegment(grid, t.points[i].x, t.points[i].y, t.points[i + 1].x, t.points[i + 1].y, r, CONFLICT, l);
+    }
+    // A single-point trace is degenerate but cheap to honour.
+    if (t.points.length === 1) stampDisc(grid, t.points[0].x, t.points[0].y, r, CONFLICT, l);
+  }
+  // A via pierces both faces, so it is keepout on both.
+  for (const v of opts.keepVias ?? []) {
+    stampDisc(grid, v.x, v.y, v.padMm / 2 + keepout, CONFLICT);
+  }
+
   // Stamp every pad's keepout before routing anything.
   for (const pin of pins) {
     const targetLayer = pin.layer === 'top' ? 0 : pin.layer === 'bottom' ? 1 : undefined;
@@ -861,6 +889,31 @@ function singlePassRoute(
 /**
  * Routes every net using multi-order strategy exploration & rip-up retry.
  */
+/**
+ * How many connections a set of pins demands, counted exactly as a routing
+ * pass counts them: one per MST edge per net, less any edge a soldered link
+ * already closes.
+ *
+ * Exported so an incremental re-route can state completion over the whole
+ * board. Its own pass only sees the nets it moved, and a fraction of those is
+ * not a figure anybody can act on.
+ */
+export function requiredConnections(pins: RoutePin[], linkedPairs?: [string, string][]): number {
+  const links = new Set((linkedPairs ?? []).map(([a, b]) => linkPairKey(a, b)));
+  const byNet = new Map<string, RoutePin[]>();
+  for (const pin of pins) {
+    if (!byNet.has(pin.netId)) byNet.set(pin.netId, []);
+    byNet.get(pin.netId)!.push(pin);
+  }
+  let required = 0;
+  for (const netPins of byNet.values()) {
+    for (const [i, j] of buildMst(netPins, links)) {
+      if (!links.has(linkPairKey(netPins[i].key, netPins[j].key))) required++;
+    }
+  }
+  return required;
+}
+
 export function routeBoard(pins: RoutePin[], opts: RouterOptions): RouteResult {
   const byNet = new Map<string, RoutePin[]>();
   for (const pin of pins) {

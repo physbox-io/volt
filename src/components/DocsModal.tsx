@@ -287,6 +287,25 @@ export function DocsModal({ onClose }: DocsModalProps) {
                   the file for those.
                 </p>
 
+                <h4 className="text-xl font-semibold mb-2 mt-6">Putting a part where you want it</h4>
+                <p className="mb-4">
+                  <strong>Drag a part on the board preview</strong> to move it, and press <strong>R</strong>
+                  to turn it a quarter turn. Placement is a search, and it answers &ldquo;can this be
+                  routed&rdquo; rather than &ldquo;is this the board I want to solder&rdquo; &mdash; the
+                  connector usually wants to be on the edge the cable comes in from, and nothing in the
+                  schematic says so.
+                </p>
+                <p className="mb-4">
+                  The rest of the board stays where it is. Only the nets the part touches &mdash; plus any
+                  net whose copper it is dropped on top of &mdash; are ripped up and routed again, against
+                  every other track held fixed, so moving one part does not re-decide the other ten. The
+                  board keeps its size, and a move that will not fit is refused with the outline red under
+                  the cursor rather than half made. Hand placements are part of the board: they are saved
+                  with it, carried to another machine with it, and re-applied if the circuit changes and the
+                  board has to be routed again. <strong>Auto-place</strong>, next to the view buttons, throws
+                  them all away and goes back to the board the router decided.
+                </p>
+
                 <h4 className="text-xl font-semibold mb-2 mt-6">How much copper you keep</h4>
                 <p className="mb-4">
                   <strong>Trace Width</strong> is a routing figure &mdash; the width the router reserves when
@@ -390,7 +409,7 @@ export function DocsModal({ onClose }: DocsModalProps) {
                   <li><strong>The probe only searches 3&nbsp;mm below Z0.</strong> That covers normal FR4 bow. A badly warped offcut reports "probe did not contact the surface" and aborts rather than plunging.</li>
                   <li><strong>A reading of exactly 0.000&nbsp;mm warp</strong> usually indicates the probe circuit did not close. Check continuity if the heightmap shows no variation across points.</li>
                   <li><strong>Resizing the board discards the heightmap.</strong> A map only describes the board it was probed on, and stretching it over a larger area would silently apply edge values to the new region.</li>
-                  <li><strong>Dry-run the first time.</strong> Do the Zero Z step with the bit a few mm clear of the board and touch it to the copper by hand &mdash; it should stop instantly.</li>
+                  <li><strong>Prove the probe circuit first.</strong> With the clip on, touch the bit to the copper by hand until the machine dialog reports the circuit closed. Every probe stops only when that circuit closes, so Volt refuses to probe until it has seen it close once on this connection.</li>
                 </ul>
 
                 <h4 className="text-xl font-semibold mb-2 mt-6">Solder paste stencils</h4>

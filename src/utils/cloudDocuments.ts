@@ -139,6 +139,9 @@ class CloudAutosave {
     conflictRevision: null,
   };
 
+  /** What the open circuit is called, as last offered to `schedule`. */
+  private documentName: string | null = null;
+
   private listeners = new Set<Listener>();
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private maxWaitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -180,6 +183,14 @@ class CloudAutosave {
     return this.status;
   }
 
+  /**
+   * The open circuit's name, for labelling something other than a save — a
+   * machine run, in practice. Null until the canvas has been offered once.
+   */
+  getDocumentName(): string | null {
+    return this.documentName;
+  }
+
   private set(patch: Partial<AutosaveStatus>): void {
     this.status = { ...this.status, ...patch };
     for (const listener of this.listeners) listener(this.status);
@@ -199,6 +210,10 @@ class CloudAutosave {
    * store a reference.
    */
   schedule(name: string, data: unknown): void {
+    // Kept whatever happens to the save. It is the only place this module is
+    // ever told what the open circuit is called, and a run started from a
+    // signed-out session still wants a name on it the moment one signs in.
+    this.documentName = name;
     if (!this.enabled()) {
       if (this.status.state !== 'disabled') {
         this.set({ state: 'disabled', message: null });

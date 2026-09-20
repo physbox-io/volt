@@ -121,6 +121,15 @@ async function completeZeroZ(fake: FakeController, contactZ = -5) {
   fake.say(`[PRB:0.000,0.000,${(contactZ - 0.002).toFixed(3)}:1]\n`);
 }
 
+/**
+ * The operator touching the bit to the copper: one report with the probe pin
+ * asserted, then one with it released.
+ */
+function proveProbeCircuit(fake: FakeController) {
+  fake.say('<Idle|MPos:0,0,0|WCO:0,0,0|Pn:P>\n');
+  fake.say('<Idle|MPos:0,0,0|WCO:0,0,0>\n');
+}
+
 let fake: FakeController;
 let machine: TestManager;
 
@@ -130,6 +139,97 @@ beforeEach(async () => {
   machine = new TestManager(fake);
   await machine.connect();
   await tick();
+  proveProbeCircuit(fake);
+});
+
+describe('no probe runs on a circuit nobody has proved', () => {
+  /*
+   * A probe is a G38.2, which stops when the probe input closes — and only
+   * then. The one way it drives the bit through the board is a circuit that
+   * never closes, which the controller cannot tell from "not there yet" until
+   * the search runs out. So the circuit has to be seen closed, by hand, before
+   * the first stab of a connection.
+   */
+  beforeEach(async () => {
+    await machine.disconnect();
+    fake = new FakeController();
+    machine = new TestManager(fake);
+    await machine.connect();
+    await tick();
+  });
+
+  it('refuses to zero Z until the probe input has been seen closed', async () => {
+    fake.say('<Idle|MPos:0,0,0|WCO:0,0,0>\n');
+    await expect(machine.zeroZOnSurface(0)).rejects.toThrow(/has not been proved/);
+    await expect(machine.zeroZ(12, 0)).rejects.toThrow(/has not been proved/);
+    expect(fake.written.some(l => l.includes('G38.2'))).toBe(false);
+  });
+
+  it('refuses the mesh probe on the same grounds', async () => {
+    await expect(
+      machine.probeSurfaceMesh({ minX: 0, minY: 0, maxX: 10, maxY: 10, probeDepthMm: 5, clearanceMm: 2 })
+    ).rejects.toThrow(/has not been proved/);
+  });
+
+  it('refuses while the input reads closed with nothing touching', async () => {
+    fake.say('<Idle|MPos:0,0,0|WCO:0,0,0|Pn:P>\n');
+    expect(machine.getState().probeCircuitSeen).toBe(true);
+    await expect(machine.zeroZOnSurface(0)).rejects.toThrow(/already reads closed/);
+  });
+
+  it('probes once the circuit has closed and opened again', async () => {
+    proveProbeCircuit(fake);
+    const zeroing = machine.zeroZOnSurface(0);
+    await completeZeroZ(fake);
+    fake.say('<Idle|MPos:0,0,-5|WCO:0,0,-5>\n');
+    await zeroing;
+    expect(machine.getState().zeroZSet).toBe(true);
+  });
+
+  it('forgets the proof on a fresh connection', async () => {
+    proveProbeCircuit(fake);
+    expect(machine.getState().probeCircuitSeen).toBe(true);
+    await machine.disconnect();
+    await machine.connect();
+    await tick();
+    expect(machine.getState().probeCircuitSeen).toBe(false);
+  });
+});
+
+describe('how far a probe searches', () => {
+  it('zeroes with a short search: the bit is parked close, and an open circuit is a plunge', async () => {
+    const zeroing = machine.zeroZOnSurface(0);
+    await completeZeroZ(fake);
+    fake.say('<Idle|MPos:0,0,-5|WCO:0,0,-5>\n');
+    await zeroing;
+    expect(fake.written.find(l => l.startsWith('G91 G38.2'))).toBe('G91 G38.2 Z-10.000 F50');
+  });
+
+  it('stretches the mesh search to reach copper the tool was parked well above', async () => {
+    const zeroing = machine.zeroZOnSurface(0);
+    await completeZeroZ(fake);
+    fake.say('<Idle|MPos:0,0,-5|WCO:0,0,-5>\n');
+    await zeroing;
+    // Parked 5mm above the copper after the zero's own retract.
+    fake.say('<Idle|MPos:0,0,0|WCO:0,0,-5>\n');
+    const probes = () => fake.written.filter(l => l.startsWith('G91 G38.2'));
+    const before = probes().length;
+    const mesh = machine.probeSurfaceMesh({
+      minX: 0, minY: 0, maxX: 10, maxY: 10, cols: 2, rows: 2, probeDepthMm: 3, clearanceMm: 2,
+    });
+    mesh.catch(() => {});
+    // The routine reads the work offset off the status stream before it
+    // moves, so keep the reports coming as a polled controller would.
+    const poll = setInterval(() => fake.say('<Run|MPos:0,0,0|WCO:0,0,-5>\n'), 5);
+    try {
+      await vi.waitFor(() => expect(probes().length).toBe(before + 1));
+    } finally {
+      clearInterval(poll);
+    }
+    // 5 up + 2 of lift + 1 of margin, rather than the 3 asked for.
+    expect(probes()[before]).toBe('G91 G38.2 Z-8.000 F50');
+    await machine.disconnect();
+  });
 });
 
 describe('the Z datum may not be trusted just because it reads back', () => {

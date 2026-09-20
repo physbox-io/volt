@@ -6,7 +6,8 @@
 // show routing progress while the board is being solved.
 // ---------------------------------------------------------------------------
 
-import { generatePcbLayout, type PcbOptions, type LayoutProgress } from '../utils/pcbExporter';
+import type { PcbOptions, LayoutProgress } from '../utils/pcbExporter';
+import { layoutWithOverrides } from '../utils/pcbNudge';
 
 export interface PcbLayoutRequest {
   type: 'LAYOUT';
@@ -44,7 +45,7 @@ self.onmessage = (evt: MessageEvent<PcbLayoutRequest>) => {
   };
 
   try {
-    const result = generatePcbLayout(nodes as never, edges as never, options, onProgress);
+    const result = layoutWithOverrides(nodes as never, edges as never, options, onProgress);
     if (currentId !== id) return;
     self.postMessage({ type: 'RESULT', id, ok: true, result } satisfies PcbLayoutResponse);
   } catch (err) {

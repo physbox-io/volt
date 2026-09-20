@@ -16,6 +16,7 @@ import {
   generateAirCutGcode,
   generateAirCutPerimeterGcode,
   sortPathsNearestNeighbor,
+  orderHolesNearestNeighbor,
   groupDrillsByBit,
   generatePcbLayout,
   floodCopperByNet,
@@ -325,6 +326,29 @@ describe('sortPathsNearestNeighbor', () => {
       return d;
     };
     expect(travel(sortPathsNearestNeighbor(paths))).toBeLessThan(travel(paths));
+  });
+
+  it('enters a closed ring at the vertex nearest the tool, keeping its direction', () => {
+    const square: IsolationPath = {
+      netId: 'r', pass: 0,
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 0, y: 0 }],
+    };
+    const [ring] = sortPathsNearestNeighbor([square, at(50, 50)], { x: 10.2, y: 9.8 });
+    expect(ring.points[0]).toEqual({ x: 10, y: 10 });
+    expect(ring.points[ring.points.length - 1]).toEqual({ x: 10, y: 10 });
+    expect(ring.points).toHaveLength(5);
+    // Still the same loop walked the same way round.
+    expect(ring.points.slice(0, 4)).toEqual([
+      { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 0, y: 0 }, { x: 10, y: 0 },
+    ]);
+  });
+});
+
+describe('orderHolesNearestNeighbor', () => {
+  it('walks the holes from the start point rather than in component order', () => {
+    const holes = [{ x: 100, y: 0 }, { x: 1, y: 0 }, { x: 99, y: 0 }, { x: 2, y: 0 }];
+    expect(orderHolesNearestNeighbor(holes, { x: 0, y: 0 }).map(h => h.x)).toEqual([1, 2, 99, 100]);
+    expect(orderHolesNearestNeighbor([], { x: 0, y: 0 })).toEqual([]);
   });
 });
 

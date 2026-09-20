@@ -11,6 +11,10 @@ import { webSerialManager, type ProbeGrid } from './webSerialManager';
 import type { PcbOptions } from './pcbExporter';
 import { layoutForCircuit } from './pcbLayoutStore';
 import { fetchMachineDevices } from './apiClient';
+import { cloudAutosave } from './cloudDocuments';
+import { loadSelectedMaterialId } from './pcbTooling';
+import { loadMachiningSettings } from './storage';
+import { pcbJobName, pcbRunSettings } from './pcbRunSettings';
 
 // ---------------------------------------------------------------------------
 // Driving Volt's machine from MCP
@@ -95,6 +99,9 @@ async function millCurrentBoard(args: Record<string, unknown>): Promise<{ summar
 
   const overrides = (args.options ?? {}) as Partial<PcbOptions>;
   const result = layoutForCircuit(nodes, edges, overrides);
+  // The same merge `layoutForCircuit` makes internally: what the board was
+  // actually laid out and cut with, for the archive.
+  const options = { ...loadMachiningSettings(), ...overrides };
   if (result.error) throw new Error(result.error);
 
   // A board with a net that would not route is not a board. Milling it produces
@@ -141,7 +148,18 @@ async function millCurrentBoard(args: Record<string, unknown>): Promise<{ summar
   // startJob makes the remaining checks itself — the machine must not be in
   // alarm, and work Z0 must have been confirmed this session rather than left
   // over in the controller's EEPROM from another board.
-  await webSerialManager.startJob(gcode);
+  await webSerialManager.startJob(gcode, {
+    name: pcbJobName(cloudAutosave.getDocumentName()),
+    // An agent never opens the CAM dialog, so the laminate is whatever was last
+    // chosen there. It is a property of what is in the machine rather than of
+    // this board, and recording it is the difference between a run that says
+    // what it cut and one that says nothing.
+    settings: pcbRunSettings({
+      materialId: loadSelectedMaterialId(),
+      options,
+      result,
+    }),
+  });
 
   const levelled = heightmap ? 'levelled against the probed height map' : 'not levelled';
   return {

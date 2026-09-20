@@ -267,7 +267,48 @@ export interface PcbOptions {
    * nets shorted.
    */
   channelMarginMm?: number;
+  /**
+   * Parts the user has placed by hand, keyed by component id.
+   *
+   * Placement is a search, and a search answers the question it was asked —
+   * "can this route" — not "is this the board I want to solder". Moving one
+   * part is otherwise only expressible by moving it in the schematic and
+   * paying for a whole new place-and-route, which re-decides every other part
+   * at the same time and hands back a board that is unrecognisable.
+   *
+   * An override is applied after the board has been decided and cropped, and
+   * only the nets the moved part touches are routed again — so everything else
+   * on the board stays exactly where it was. It is part of the board's
+   * fingerprint, so a hand-placed board saves and restores like any other.
+   *
+   * See {@link PlacementOverride} for the frame the coordinates are in.
+   */
+  placementOverrides?: PlacementOverrides;
 }
+
+/**
+ * Where a hand-placed part sits.
+ *
+ * In board-frame millimetres — measured from the board's lower-left corner
+ * rather than from the program origin — and before the single-sided assembly
+ * mirror, which is the frame {@link LayoutCore} is in. Both matter: the origin
+ * inset changes with the profile tool and the layer count, and the mirror is a
+ * view of the board rather than a property of it, so neither should move a
+ * part the user put somewhere.
+ *
+ * `type` is the node type the override was recorded against. Component ids are
+ * only unique within a circuit, and these are stored with the machining
+ * settings, which are not — so an override is ignored unless the part it names
+ * is still the same kind of part.
+ */
+export interface PlacementOverride {
+  xMm: number;
+  yMm: number;
+  rotationDeg: Rotation;
+  type?: string;
+}
+
+export type PlacementOverrides = Record<string, PlacementOverride>;
 
 /**
  * Extra stock left on every side of a double-sided board, so the two
@@ -610,7 +651,7 @@ export function effectivePadMarginMm(footprint: ComponentFootprint, requestedMm:
  */
 export type Rotation = 0 | 90 | 180 | 270;
 
-function padOffset(
+export function padOffset(
   spec: PadSpec,
   rotationDeg: Rotation
 ): { dx: number; dy: number; w: number; h: number } {
@@ -623,7 +664,7 @@ function padOffset(
 }
 
 /** Courtyard size of a footprint turned by `rot`. */
-function turnedSize(footprint: ComponentFootprint, rot: Rotation): { widthMm: number; heightMm: number } {
+export function turnedSize(footprint: ComponentFootprint, rot: Rotation): { widthMm: number; heightMm: number } {
   const swap = rot === 90 || rot === 270;
   return {
     widthMm: swap ? footprint.heightMm : footprint.widthMm,
@@ -1933,8 +1974,20 @@ export interface PcbLayoutSnapshot {
   core: LayoutCore;
 }
 
-/** Bumped when {@link LayoutCore} changes shape; older snapshots are ignored. */
-export const SNAPSHOT_VERSION = 1;
+/**
+ * Bumped when {@link LayoutCore} changes shape — and once because the code
+ * that wrote it was wrong.
+ *
+ * Version 1 is refused rather than read for the second reason. The first
+ * version of the hand-placement move accepted a board whose re-route had
+ * dropped a connection, and a saved one of those goes on being restored for
+ * exactly as long as the circuit and the settings stay put — the fix cannot
+ * reach a board that has already been written. Nothing is lost that cannot be
+ * recomputed: a discarded snapshot costs one routing pass, and hand placements
+ * live in the options rather than in here, so they are re-applied to whatever
+ * the router comes back with.
+ */
+export const SNAPSHOT_VERSION = 2;
 
 /**
  * Copper, toolpaths, drills and the program, from a board already decided.
@@ -2313,7 +2366,8 @@ function finishLayout(
 
   const computePassesFor = (
     copperMap: Map<string, Poly[]>,
-    layerPads: Poly[]
+    layerPads: Poly[],
+    start: Pt
   ): IsolationPath[] => {
     const paths: IsolationPath[] = [];
     const stepover = effectiveToolDiaMm * ISOLATION_STEPOVER;
@@ -2358,12 +2412,18 @@ function finishLayout(
         }
       }
     }
-    return sortPathsNearestNeighbor(paths);
+    return sortPathsNearestNeighbor(paths, start);
   };
 
-  const topIsolationPaths = computePassesFor(copperByNet, solderPadsTop);
+  const topIsolationPaths = computePassesFor(copperByNet, solderPadsTop, { x: 0, y: 0 });
+  // The bottom side is cut mirrored about the board's centreline after the
+  // flip pause parks the tool at X0 Y0, so in the unmirrored space these paths
+  // are held in, that parking spot is the far side of the board.
   const bottomIsolationPaths = isTwoLayer
-    ? computePassesFor(copperByNetBottom, solderPadsBottom)
+    ? computePassesFor(copperByNetBottom, solderPadsBottom, {
+        x: 2 * (boardOriginMm + boardWidthMm / 2),
+        y: 0,
+      })
     : [];
 
   // 8. Drills -----------------------------------------------------------
@@ -2476,6 +2536,36 @@ function finishLayout(
   }
   result.snapshot = { version: SNAPSHOT_VERSION, boardKey, core };
   return withGcodeFor(result, options);
+}
+
+/**
+ * Copper, toolpaths, drills, previews and the program, from a board already
+ * decided — the public door onto {@link finishLayout}.
+ *
+ * For a caller that has edited a {@link LayoutCore} itself, which today means
+ * an incremental move. `boardKey` is what the rebuilt board will be saved and
+ * matched under, so it has to be the fingerprint of the circuit and the
+ * options this core belongs to, overrides included.
+ */
+export function rebuildLayoutFromCore(
+  core: LayoutCore,
+  userOptions: Partial<PcbOptions> | undefined,
+  boardKey: string
+): PcbLayoutResult {
+  return finishLayout(core, { ...DEFAULT_PCB_OPTIONS, ...userOptions }, boardKey);
+}
+
+/**
+ * Whether a finished board is drawn as the mirror of its core.
+ *
+ * A single-sided board is cut mirrored so it reads correctly once turned over
+ * to be assembled, so everything in a {@link PcbLayoutResult} for such a board
+ * is the reflection of what the core holds. Anything mapping a position in the
+ * result back onto the core — a part dragged in the preview, for one — has to
+ * undo that first.
+ */
+export function layoutIsMirrored(options: Partial<PcbOptions>): boolean {
+  return (options.layers ?? 1) !== 2 && options.mirrorSingleSided !== false;
 }
 
 /**
@@ -3434,54 +3524,140 @@ function arcsInside(ring: Poly, zone: Poly[], maxSegMm: number): Poly[] {
   return arcs.filter(a => a.length >= 2);
 }
 
+/** How far above the last peck's floor the bit rapids to before feeding again. */
+const PECK_REENTRY_MM = 0.2;
+
+/** A ring closed by repeating its first point, as the isolation offsets are. */
+function isClosedPath(points: Pt[]): boolean {
+  if (points.length < 4) return false;
+  const a = points[0];
+  const b = points[points.length - 1];
+  return Math.abs(a.x - b.x) < 1e-6 && Math.abs(a.y - b.y) < 1e-6;
+}
+
+/** Distance from a point to a box, zero inside it: a floor on the distance to anything the box holds. */
+function boxDistance(box: { minX: number; minY: number; maxX: number; maxY: number }, p: Pt): number {
+  const dx = p.x < box.minX ? box.minX - p.x : p.x > box.maxX ? p.x - box.maxX : 0;
+  const dy = p.y < box.minY ? box.minY - p.y : p.y > box.maxY ? p.y - box.maxY : 0;
+  return Math.hypot(dx, dy);
+}
+
 /**
- * Sorts isolation paths using a greedy nearest-neighbor algorithm to minimize rapid travel distances.
+ * Orders paths greedily by nearest neighbour to cut the rapids between them.
+ *
+ * An open path may be cut from either end. A closed ring may be *entered at
+ * any vertex*, and the offsets that make up an isolation job are nearly all
+ * rings — so treating the ring's arbitrary first vertex as its only door left
+ * the tool crossing the whole loop to a point it was already sitting beside.
+ * The ring is rotated to start where the tool arrives.
+ *
+ * `start` is where the tool is when the first path begins.
  */
-export function sortPathsNearestNeighbor(paths: IsolationPath[]): IsolationPath[] {
+export function sortPathsNearestNeighbor(paths: IsolationPath[], start: Pt = { x: 0, y: 0 }): IsolationPath[] {
   if (paths.length <= 1) return paths;
 
-  const remaining = [...paths];
+  const remaining = paths
+    .filter(path => path.points && path.points.length > 0)
+    .map(path => {
+      const box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+      for (const pt of path.points) {
+        if (pt.x < box.minX) box.minX = pt.x;
+        if (pt.y < box.minY) box.minY = pt.y;
+        if (pt.x > box.maxX) box.maxX = pt.x;
+        if (pt.y > box.maxY) box.maxY = pt.y;
+      }
+      return { path, box, closed: isClosedPath(path.points) };
+    });
   const sorted: IsolationPath[] = [];
 
-  let currentPt: Pt = { x: 0, y: 0 };
+  let currentPt: Pt = start;
 
   while (remaining.length > 0) {
     let bestIdx = -1;
     let bestDist = Infinity;
-    let reverseBest = false;
+    // Which vertex to begin at: for an open path 0 or the last (reversed), for
+    // a ring any of its distinct vertices.
+    let bestEntry = 0;
 
     for (let i = 0; i < remaining.length; i++) {
-      const path = remaining[i];
-      if (!path.points || path.points.length === 0) continue;
-      const startPt = path.points[0];
-      const endPt = path.points[path.points.length - 1];
+      const { path, box, closed } = remaining[i];
+      // Nothing in this path can beat the best so far.
+      if (boxDistance(box, currentPt) >= bestDist) continue;
+      const points = path.points;
 
+      if (closed) {
+        for (let k = 0; k < points.length - 1; k++) {
+          const d = Math.hypot(points[k].x - currentPt.x, points[k].y - currentPt.y);
+          if (d < bestDist) {
+            bestDist = d;
+            bestIdx = i;
+            bestEntry = k;
+          }
+        }
+        continue;
+      }
+
+      const startPt = points[0];
+      const endPt = points[points.length - 1];
       const dStart = Math.hypot(startPt.x - currentPt.x, startPt.y - currentPt.y);
       const dEnd = Math.hypot(endPt.x - currentPt.x, endPt.y - currentPt.y);
-
       if (dStart < bestDist) {
         bestDist = dStart;
         bestIdx = i;
-        reverseBest = false;
+        bestEntry = 0;
       }
       if (dEnd < bestDist) {
         bestDist = dEnd;
         bestIdx = i;
-        reverseBest = true;
+        bestEntry = points.length - 1;
       }
     }
 
     if (bestIdx < 0) break;
 
     const chosen = remaining.splice(bestIdx, 1)[0];
-    if (reverseBest) {
-      chosen.points = [...chosen.points].reverse();
+    const pts = chosen.path.points;
+    if (chosen.closed) {
+      if (bestEntry > 0) {
+        // Same loop, same direction, opened at the vertex the tool is nearest.
+        const ring = pts.slice(0, -1);
+        const rotated = [...ring.slice(bestEntry), ...ring.slice(0, bestEntry)];
+        chosen.path.points = [...rotated, rotated[0]];
+      }
+    } else if (bestEntry > 0) {
+      chosen.path.points = [...pts].reverse();
     }
-    sorted.push(chosen);
-    currentPt = chosen.points[chosen.points.length - 1];
+    sorted.push(chosen.path);
+    currentPt = chosen.path.points[chosen.path.points.length - 1];
   }
 
   return sorted;
+}
+
+/**
+ * Orders holes greedily by nearest neighbour from wherever the tool is.
+ * Holes arrive grouped by component, which walks the bit back and forth
+ * across the board once per part.
+ */
+export function orderHolesNearestNeighbor<T extends { x: number; y: number }>(holes: T[], start: Pt): T[] {
+  const remaining = [...holes];
+  const ordered: T[] = [];
+  let cur = start;
+  while (remaining.length > 0) {
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const d = Math.hypot(remaining[i].x - cur.x, remaining[i].y - cur.y);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+    const next = remaining.splice(bestIdx, 1)[0];
+    ordered.push(next);
+    cur = next;
+  }
+  return ordered;
 }
 
 export interface PcbMachiningMetrics {
@@ -3733,6 +3909,13 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   }
   g.push(`G0 Z${f3(options.safeZ)}`);
 
+  // Where the tool is left in XY, so the next operation can start nearby.
+  let cursor: Pt = { x: 0, y: 0 };
+  {
+    const last = topPaths[topPaths.length - 1];
+    if (last && last.points.length) cursor = last.points[last.points.length - 1];
+  }
+
   // --- Operation 2: drilling ---
   if (result.drills.length > 0) {
     g.push(``);
@@ -3765,9 +3948,11 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
       loadedBitMm = bitMm;
 
       const depth = options.drillDepthZ;
+      const ordered = orderHolesNearestNeighbor(holes, cursor);
+      if (ordered.length) cursor = ordered[ordered.length - 1];
 
       if (interpolated) {
-        for (const hole of holes) {
+        for (const hole of ordered) {
           const holeDepth = hole.isRegistration
             ? options.drillDepthZ - Math.abs(options.spoilboardRegistrationDepthMm ?? 2.0)
             : depth;
@@ -3786,16 +3971,19 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
         continue;
       }
 
-      for (const hole of holes) {
+      for (const hole of ordered) {
         const holeDepth = hole.isRegistration
           ? options.drillDepthZ - Math.abs(options.spoilboardRegistrationDepthMm ?? 2.0)
           : depth;
         g.push(`; ${hole.componentId} pin ${hole.pinNumber}${hole.isRegistration ? ' [Registration Pin - Spoilboard Depth]' : ''}`);
         g.push(`G0 X${f3(hole.x)} Y${f3(hole.y)}`);
-        // Peck drill so swarf clears instead of binding the bit.
+        // Peck drill so swarf clears instead of binding the bit. Each peck
+        // after the first rapids back to just above the hole's floor rather
+        // than feeding the whole way down through air.
         const peck = Math.max(0.4, Math.abs(holeDepth) / 3);
         let z = 0;
         while (z > holeDepth) {
+          if (z < 0) g.push(`G0 Z${f3(z + PECK_REENTRY_MM)}`);
           z = Math.max(holeDepth, z - peck);
           g.push(`G1 Z${f3(z)} F${options.drillFeedrate}`);
           g.push(`G0 Z${f3(options.safeZ)}`);

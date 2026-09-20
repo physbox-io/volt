@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { loadMachiningSettings, saveMachiningSettings } from '../utils/storage';
+import { loadMachiningSettings, saveMachiningSettings, saveLayoutSnapshot } from '../utils/storage';
 import type { Node, Edge } from '@xyflow/react';
 import {
   X,
@@ -18,6 +18,8 @@ import {
   Plug,
   Settings2,
   Map,
+  Move3d,
+  Undo2,
 } from 'lucide-react';
 import {
   generateAirCutPerimeterGcode,
@@ -25,9 +27,14 @@ import {
   groupDrillsByBit,
   DEFAULT_PCB_OPTIONS,
   type PcbOptions,
+  type Rotation,
 } from '../utils/pcbExporter';
+import { coreFrameMove, nudgeLayout } from '../utils/pcbNudge';
+import { PcbPlacementOverlay } from './PcbPlacementOverlay';
 import { generateGerberZip } from '../utils/gerberExporter';
 import { isProAccount } from '../utils/apiClient';
+import { cloudAutosave } from '../utils/cloudDocuments';
+import { pcbJobName, pcbRunSettings } from '../utils/pcbRunSettings';
 import {
   PCB_TOOL_PRESETS,
   PCB_MATERIAL_PRESETS,
@@ -40,6 +47,12 @@ import {
   minIsolationChannelMm,
   autoIsolationDepthMm,
   isolationFlatnessAllowanceMm,
+  loadSelectedMaterialId,
+  saveSelectedMaterialId,
+  loadSelectedToolIds,
+  saveSelectedToolId,
+  loadAutoIsolationDepth,
+  saveAutoIsolationDepth,
   type PcbToolPreset,
   type ToolType,
   type CustomToolInput,
@@ -306,8 +319,17 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const [hoveredFooterHint, setHoveredFooterHint] = useState<string | null>(null);
   const [heightmap, setHeightmap] = useState<ProbeGrid | null>(null);
 
-  const [selectedToolId, setSelectedToolId] = useState<string>('t1_vbit_30');
-  const [profileToolId, setProfileToolId] = useState<string>('t6b_endmill_15');
+  /*
+   * The bits this board is cut with, remembered rather than reset.
+   *
+   * These were component state seeded with a constant, so closing the dialog
+   * put the 30-degree V-bit and the 1.5mm end mill back every time — and with
+   * them the feeds, speeds and depths the pickers derive on change. They are
+   * also what a saved circuit now carries, so the board opens on another
+   * machine set up the way it was milled.
+   */
+  const [selectedToolId, setSelectedToolId] = useState<string>(() => loadSelectedToolIds().isolation);
+  const [profileToolId, setProfileToolId] = useState<string>(() => loadSelectedToolIds().profile);
   const [customTools, setCustomTools] = useState<PcbToolPreset[]>(() => loadCustomTools());
   const [showToolEditor, setShowToolEditor] = useState(false);
   const [toolDraft, setToolDraft] = useState<CustomToolInput>({
@@ -318,15 +340,13 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     fluteCount: 1,
     recommendedRpm: 12000,
   });
-  const [selectedMaterialId, setSelectedMaterialId] = useState<string>('fr4_1oz');
+  const [selectedMaterialId, setSelectedMaterialId] = useState<string>(loadSelectedMaterialId);
   /**
    * When on, the isolation depth is derived from the copper thickness and the
    * board's measured flatness instead of the tool catalogue's blanket figure.
    * Shallower means a narrower channel from a V-bit, which is copper kept.
    */
-  const [autoIsolationDepth, setAutoIsolationDepth] = useState<boolean>(
-    () => localStorage.getItem('pcbAutoIsolationDepth') !== '0'
-  );
+  const [autoIsolationDepth, setAutoIsolationDepth] = useState<boolean>(loadAutoIsolationDepth);
   const [jogStep, setJogStep] = useState<number>(1.0);
 
   // How the machine is reached: a USB cable to this computer, or a Tekno Box
@@ -454,6 +474,49 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     { enabled: !machineOnly }
   );
 
+  /**
+   * Moving a part on the board, without laying the board out again.
+   *
+   * The move is applied to the routed board directly — only the nets the part
+   * touches are ripped up and routed again — and the result is written to the
+   * layout slot before the options are updated. The hook then finds a snapshot
+   * that fingerprints as the board it is being asked for and restores it, so
+   * the board on screen is the board the drag produced rather than a fresh
+   * place-and-route that would move everything else with it.
+   */
+  const [placementNote, setPlacementNote] = useState<string | null>(null);
+  const handPlacedCount = Object.keys(options.placementOverrides || {}).length;
+
+  const moveComponent = (
+    componentId: string,
+    xMm: number,
+    yMm: number,
+    rotationDeg: Rotation
+  ) => {
+    const moved = nudgeLayout(
+      result,
+      layoutNodes,
+      layoutEdges,
+      options,
+      // The preview of a single-sided board is the mirror of the board the
+      // layout holds, so what was dragged has to be reflected back first.
+      coreFrameMove(result.boardWidthMm, options, { componentId, xMm, yMm, rotationDeg })
+    );
+    if (!moved.result) {
+      setPlacementNote(moved.reason);
+      return;
+    }
+    setPlacementNote(null);
+    saveLayoutSnapshot(moved.result.snapshot);
+    setOptions(prev => ({ ...prev, placementOverrides: moved.options.placementOverrides }));
+  };
+
+  /** Back to the board the router decided, for every part. */
+  const clearHandPlacement = () => {
+    setPlacementNote(null);
+    setOptions(prev => ({ ...prev, placementOverrides: undefined }));
+  };
+
   const suggestedGrid = useMemo(() => {
     return suggestProbeGrid(options.boardWidthMm, options.boardHeightMm, 4, 8);
   }, [options.boardWidthMm, options.boardHeightMm]);
@@ -549,6 +612,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
   const handleToolPresetChange = (toolId: string) => {
     setSelectedToolId(toolId);
+    saveSelectedToolId('isolation', toolId);
     const tool = availableTools.find(t => t.id === toolId);
     const material = PCB_MATERIAL_PRESETS.find(m => m.id === selectedMaterialId);
     if (tool && material) {
@@ -573,6 +637,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    */
   const handleProfileToolChange = (toolId: string) => {
     setProfileToolId(toolId);
+    saveSelectedToolId('profile', toolId);
     const tool = availableTools.find(t => t.id === toolId);
     if (!tool) return;
     setOptions(prev => ({
@@ -635,6 +700,9 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
   const handleMaterialPresetChange = (matId: string) => {
     setSelectedMaterialId(matId);
+    // Remembered for the next board, and read by the MCP mill verb, which has
+    // no dialog to ask.
+    saveSelectedMaterialId(matId);
     const tool = availableTools.find(t => t.id === selectedToolId);
     const material = PCB_MATERIAL_PRESETS.find(m => m.id === matId);
     if (tool && material) {
@@ -756,6 +824,27 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    */
   const heightmapWontBeApplied = heightmapStale;
 
+  /**
+   * What this run should be remembered as.
+   *
+   * Gathered here, where the board, the laminate and the bits are all in scope,
+   * and handed to `startJob` — the machine layer sees only G-code. It is what
+   * turns "a job ran for 40 minutes" in the archive into "that board was milled
+   * from FR4 with a 30° V-bit", which is the question people come back to their
+   * history with.
+   */
+  const jobContext = (kind?: string) => ({
+    name: pcbJobName(cloudAutosave.getDocumentName(), kind),
+    settings: pcbRunSettings({
+      materialId: selectedMaterialId,
+      options,
+      result: result.success ? result : undefined,
+      isolationToolId: selectedToolId,
+      profileToolId,
+      kind,
+    }),
+  });
+
   const handleMillBoard = async () => {
     if (!result.success || machineBusy) return;
     // Cutting is the CAM view's job: it is the one that follows the machine
@@ -781,7 +870,10 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
     setBusy('milling');
     try {
-      await webSerialManager.startJob(webSerialManager.applyHeightmapToGcode(result.gcode, grid));
+      await webSerialManager.startJob(
+        webSerialManager.applyHeightmapToGcode(result.gcode, grid),
+        jobContext()
+      );
     } catch (e) {
       setMachineError(errorMessage(e) || 'Milling job failed');
     } finally {
@@ -812,7 +904,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       const live = await webSerialManager.refreshPosition();
       const currentZ = live.workOffset ? live.wpos.z : undefined;
       await webSerialManager.startJob(
-        generateAirCutPerimeterGcode(result, options, FRAME_Z_OFFSET_MM, currentZ)
+        generateAirCutPerimeterGcode(result, options, FRAME_Z_OFFSET_MM, currentZ),
+        jobContext('frame')
       );
     } catch (e) {
       setMachineError(errorMessage(e) || 'Framing failed');
@@ -1427,34 +1520,76 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       </button>
                     ))}
                   </div>
-                  <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-500 dark:text-slate-400">
-                    <input
-                      type="checkbox"
-                      checked={showPadNumbers}
-                      onChange={e => setShowPadNumbers(e.target.checked)}
-                      className="accent-emerald-500 cursor-pointer"
-                    />
-                    Pin numbers
-                  </label>
+                  <div className="flex items-center gap-3">
+                    {/* Said plainly, because nothing about a static preview
+                        suggests the parts on it can be picked up. */}
+                    <span
+                      className="hidden sm:flex items-center gap-1 text-slate-500 dark:text-slate-400"
+                      title="Drag a part to move it. Only the nets it touches are routed again — the rest of the board stays as it is."
+                    >
+                      <Move3d className="w-3.5 h-3.5" />
+                      Drag a part to move it · R to turn
+                    </span>
+                    {handPlacedCount > 0 && (
+                      <button
+                        onClick={clearHandPlacement}
+                        title="Throw away every hand placement and lay the board out from scratch"
+                        className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
+                      >
+                        <Undo2 className="w-3.5 h-3.5" />
+                        {handPlacedCount} placed by hand — auto-place
+                      </button>
+                    )}
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-500 dark:text-slate-400">
+                      <input
+                        type="checkbox"
+                        checked={showPadNumbers}
+                        onChange={e => setShowPadNumbers(e.target.checked)}
+                        className="accent-emerald-500 cursor-pointer"
+                      />
+                      Pin numbers
+                    </label>
+                  </div>
                 </div>
 
                 <div className="w-full aspect-[4/3] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-2 shadow-inner flex items-center justify-center overflow-hidden relative">
                   <PanZoomContainer resetKey={`${viewSide}_${options.layers}_${result.boardWidthMm}_${result.boardHeightMm}`}>
-                    <div
-                      className={`w-full h-full flex items-center justify-center ${showPadNumbers ? '' : '[&_.pcb-pad-numbers]:hidden'}`}
-                      dangerouslySetInnerHTML={{
-                        __html:
-                          viewSide === 'component'
-                            ? result.svgComponentSide
-                            : viewSide === 'bottom'
-                            ? (result.svgBottomSide || result.svg)
-                            : viewSide === 'composite'
-                            ? (result.svgComposite || result.svg)
-                            : result.svg,
-                      }}
-                    />
+                    <div className="relative w-full h-full pointer-events-auto">
+                      <div
+                        className={`w-full h-full flex items-center justify-center ${showPadNumbers ? '' : '[&_.pcb-pad-numbers]:hidden'}`}
+                        dangerouslySetInnerHTML={{
+                          __html:
+                            viewSide === 'component'
+                              ? result.svgComponentSide
+                              : viewSide === 'bottom'
+                              ? (result.svgBottomSide || result.svg)
+                              : viewSide === 'composite'
+                              ? (result.svgComposite || result.svg)
+                              : result.svg,
+                        }}
+                      />
+                      {/* Over the board rather than instead of it: the picture
+                          stays the one the exporter drew, and this only adds
+                          the handles. */}
+                      {result.components.length > 0 && (
+                        <PcbPlacementOverlay
+                          className="absolute inset-0"
+                          result={result}
+                          view={viewSide}
+                          busy={isRouting}
+                          onMove={moveComponent}
+                        />
+                      )}
+                    </div>
                   </PanZoomContainer>
                 </div>
+
+                {placementNote && (
+                  <div className="w-full mt-2 flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                    <span>{placementNote}</span>
+                  </div>
+                )}
 
                 <div className="w-full mt-2 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                   <div className="flex items-center gap-3">
@@ -2356,7 +2491,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                           checked={autoIsolationDepth}
                           onChange={e => {
                             setAutoIsolationDepth(e.target.checked);
-                            localStorage.setItem('pcbAutoIsolationDepth', e.target.checked ? '1' : '0');
+                            saveAutoIsolationDepth(e.target.checked);
                           }}
                           className="accent-emerald-500"
                         />
@@ -2540,6 +2675,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
           touchPlateMm={touchPlateMm}
           spindleRpm={options.spindleRpm}
           zeroScatterMm={serialState.zeroZScatterMm}
+          probeCircuit={{ active: serialState.probePinActive, seen: serialState.probeCircuitSeen }}
           busy={busy}
           needsZero={!!serialState.needsZeroBeforeResume}
           error={machineError}

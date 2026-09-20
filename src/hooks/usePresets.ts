@@ -12,6 +12,7 @@ import {
   saveLayoutSnapshot,
   type CircuitPreset,
 } from '../utils/storage';
+import { applyCamSetup, loadCamSetup } from '../utils/pcbTooling';
 import { PRESETS_UPDATED_EVENT } from '../utils/cloudSync';
 import { cloudAutosave } from '../utils/cloudDocuments';
 
@@ -69,6 +70,11 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     if (preset.pcbOptions && Object.keys(preset.pcbOptions).length > 0) {
       saveMachiningSettings(preset.pcbOptions);
     }
+    // And the choices those settings were derived from. Without these the
+    // numbers arrive but the tool and the laminate do not, and the auto
+    // isolation depth immediately recomputes itself from whatever this machine
+    // was last set to.
+    applyCamSetup(preset.camSetup);
     // And the board itself, if this circuit was ever laid out. Written
     // unconditionally so that opening a circuit that has no saved board also
     // takes the previous one away: the exporter would refuse to use it, but a
@@ -107,6 +113,8 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     // for, so the CAM settings travel with the circuit rather than being
     // re-derived every time it is opened.
     pcbOptions: loadMachiningSettings(),
+    // The bit, the laminate and the auto-depth switch behind those numbers.
+    camSetup: loadCamSetup(),
     // The board as it was placed and routed, so a design laid out on a fast
     // machine is milled from a slow one rather than re-searched there.
     pcbLayout: loadLayoutSnapshot(),

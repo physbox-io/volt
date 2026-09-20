@@ -1,4 +1,5 @@
 import type { PcbLayoutSnapshot, PcbOptions } from './pcbExporter';
+import type { CamSetup } from './pcbTooling';
 import { type Node, type Edge } from '@xyflow/react';
 import { saveCloudPreset, removeCloudPreset, PRESETS_UPDATED_EVENT } from './cloudSync';
 
@@ -46,6 +47,17 @@ export interface CircuitPreset {
    * either has moved. A preset saved before this existed simply has none.
    */
   pcbLayout?: PcbLayoutSnapshot;
+  /**
+   * How the CAM tab was set up: which bit, which laminate, and whether the
+   * isolation depth is derived.
+   *
+   * {@link pcbOptions} carries the numbers those choices produced, which is
+   * not the same thing. Opening the circuit on another machine restored the
+   * numbers and then re-derived the auto isolation depth from that machine's
+   * own bit and laminate — so a board milled at one depth came back set to
+   * another, with nothing on screen to say why. See `CamSetup`.
+   */
+  camSetup?: CamSetup;
 }
 
 export interface AppSettings {

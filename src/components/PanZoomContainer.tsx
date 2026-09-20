@@ -187,9 +187,19 @@ export const PanZoomContainer: React.FC<PanZoomContainerProps> = ({
         {children}
       </div>
 
+      {/*
+        The pan drag has to be stopped at `pointerdown`, not at `click`.
+        The container captures the pointer as soon as one goes down anywhere
+        inside it, and a captured pointer delivers its `pointerup` to the
+        container rather than to the button underneath - so the browser finds
+        no common target for the two and never raises a click at all. Every
+        button in here was dead, and looked merely unresponsive.
+      */}
       <div
         className="absolute top-2 right-2 z-20 flex items-center gap-1 bg-slate-900/80 backdrop-blur-sm border border-slate-700/70 rounded-md p-1 shadow-md text-slate-300 pointer-events-auto"
+        onPointerDown={e => e.stopPropagation()}
         onClick={e => e.stopPropagation()}
+        onDoubleClick={e => e.stopPropagation()}
       >
         <button
           type="button"

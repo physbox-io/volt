@@ -1,4 +1,5 @@
 import React from 'react';
+import { ProbeCircuitStatus } from './ProbeCircuitStatus';
 import {
   X,
   AlertTriangle,
@@ -450,6 +451,10 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
                     Probe Z0 on plate
                   </button>
                 </div>
+                <ProbeCircuitStatus
+                  active={serialState.probePinActive}
+                  seen={serialState.probeCircuitSeen}
+                />
 
                 {/* Go to XY zero. Enabled on the *datum*, not on the tool standing
                     at it — the reason to press this is that the tool is somewhere

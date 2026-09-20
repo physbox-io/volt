@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Edge, Node } from '@xyflow/react';
 import {
   emptyPcbLayout,
-  generatePcbLayout,
   layoutBoardKey,
   projectLayoutEdges,
   projectLayoutNodes,
@@ -13,6 +12,7 @@ import {
   type PcbLayoutResult,
   type PcbOptions,
 } from '../utils/pcbExporter';
+import { layoutWithOverrides } from '../utils/pcbNudge';
 import { loadLayoutSnapshot, saveLayoutSnapshot } from '../utils/storage';
 import type { PcbLayoutRequest, PcbLayoutResponse } from '../workers/pcbLayout.worker';
 
@@ -289,7 +289,7 @@ export function usePcbLayout(
 
     const runSync = () => {
       try {
-        const result = generatePcbLayout(
+        const result = layoutWithOverrides(
           payload.nodes as never,
           payload.edges as never,
           payload.options

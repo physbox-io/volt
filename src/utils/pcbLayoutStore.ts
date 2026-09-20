@@ -16,11 +16,11 @@
 
 import type { Edge, Node } from '@xyflow/react';
 import {
-  generatePcbLayout,
   restorePcbLayout,
   type PcbLayoutResult,
   type PcbOptions,
 } from './pcbExporter';
+import { layoutWithOverrides } from './pcbNudge';
 import { loadLayoutSnapshot, loadMachiningSettings } from './storage';
 
 /**
@@ -37,5 +37,5 @@ export function layoutForCircuit(
 ): PcbLayoutResult {
   const options = { ...loadMachiningSettings(), ...overrides };
   const restored = restorePcbLayout(loadLayoutSnapshot(), nodes, edges, options);
-  return restored ?? generatePcbLayout(nodes, edges, options);
+  return restored ?? layoutWithOverrides(nodes, edges, options);
 }

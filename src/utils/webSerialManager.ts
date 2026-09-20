@@ -39,6 +39,23 @@ export type { MachineStatus };
 export type { ProbeGrid, ProbePoint };
 
 /**
+ * What the program being cut is, for whoever is watching it remotely and for
+ * the run archive afterwards.
+ *
+ * The machine layer cannot work any of this out: it is handed a string of
+ * G-code. The CAM panel knows which circuit produced it and what laminate and
+ * bits it was planned for, and passes it to `startJob`.
+ *
+ * The archive opens a run from the *first* telemetry frame of a job and never
+ * revisits its settings, so this has to be in place before the first line goes
+ * out — which is why `startJob` takes it rather than a setter somewhere.
+ */
+export interface JobContext {
+  name?: string;
+  settings?: Record<string, unknown> | null;
+}
+
+/**
  * The work origin in machine coordinates, as remembered between sessions. The
  * axes are independent because XY and Z are zeroed by separate steps, and
  * re-zeroing one must not discard the other.
@@ -117,6 +134,20 @@ export interface MachineState extends BaseMachineState {
    * has already happened by the time this is true.
    */
   zeroRestored?: boolean;
+  /** The controller reports the probe input closed right now (`Pn:P`). */
+  probePinActive?: boolean;
+  /**
+   * The probe input has been seen to close at least once on this connection.
+   *
+   * Every probe here is a `G38.2`, which the controller stops on contact — so
+   * the one way a probe drives the bit through the board is a circuit that
+   * never closes: a clip left off, a lead on the wrong side of the collet, a
+   * tip glazed with resin from the last cut. Nothing in the controller can
+   * tell that apart from "not there yet" until the search runs out. Touching
+   * the bit to the copper by hand before the first stab proves the circuit,
+   * and it is refused until that has happened.
+   */
+  probeCircuitSeen?: boolean;
 }
 
 export interface ProbeMeshOptions {
@@ -137,6 +168,15 @@ export type MachineStateListener = (state: MachineState) => void;
 
 const DEFAULT_TOUCH_PLATE_MM = 12;
 const PROBE_RETRACT_MM = 5;
+/**
+ * How far a Z zeroing probe searches for the surface. The bit is parked a few
+ * millimetres above it first, so this only has to cover that gap; it used to
+ * be 25mm, which on a circuit that failed to close was a 25mm drive through
+ * the board.
+ */
+const ZERO_SEARCH_MM = 10;
+/** The most a mesh point searches, however far up the tool was parked. */
+const MAX_MESH_SEARCH_MM = 15;
 
 /**
  * How far the whole probed surface may sit from work Z0 before the map is
@@ -243,6 +283,9 @@ export class WebSerialManager extends GrblMachine<MachineState> {
    */
   private toolChangesSeen = 0;
 
+  /** What the running job is, as the archive should remember it. */
+  private jobContext: JobContext = {};
+
   private lastTelemetryAt = 0;
   private lastTelemetryStatus: MachineStatus | null = null;
   /** Set while a telemetry post is outstanding — see reportTelemetry. */
@@ -266,7 +309,13 @@ export class WebSerialManager extends GrblMachine<MachineState> {
     this.zeroRestoreDone = false;
     // A new link may be a different machine, or the same one power-cycled. Any
     // datum this session believed in belonged to the old connection.
-    this.updateState({ zeroRestored: false, zeroXYSet: false, zeroZSet: false });
+    this.updateState({
+      zeroRestored: false,
+      zeroXYSet: false,
+      zeroZSet: false,
+      probePinActive: false,
+      probeCircuitSeen: false,
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -278,11 +327,17 @@ export class WebSerialManager extends GrblMachine<MachineState> {
    * where it was asked to be, and remembers it once it has.
    */
   protected onStatusReport(
-    _report: StatusReport,
+    report: StatusReport,
     frames: { wpos: Vec3; wco?: Vec3; framesKnown: boolean }
   ): Partial<MachineState> | void {
     const { wpos, wco: workOffset, framesKnown } = frames;
     const patch: Partial<MachineState> = {};
+
+    // GRBL lists the asserted pins only while one is asserted, so a report
+    // with no `Pn` field means the probe is open.
+    const probePinActive = /P/.test(report.pins ?? '');
+    if (probePinActive !== !!this.state.probePinActive) patch.probePinActive = probePinActive;
+    if (probePinActive && !this.state.probeCircuitSeen) patch.probeCircuitSeen = true;
 
     if (
       framesKnown &&
@@ -445,7 +500,7 @@ export class WebSerialManager extends GrblMachine<MachineState> {
     touchPlateThicknessMm = DEFAULT_TOUCH_PLATE_MM,
     surfaceOffsetMm = 0
   ): Promise<void> {
-    await this.runZeroZ(touchPlateThicknessMm + surfaceOffsetMm, 30);
+    await this.runZeroZ(touchPlateThicknessMm + surfaceOffsetMm, ZERO_SEARCH_MM);
   }
 
   /**
@@ -463,7 +518,33 @@ export class WebSerialManager extends GrblMachine<MachineState> {
    * parked and the job carries on cutting to the same plane.
    */
   public async zeroZOnSurface(surfaceOffsetMm = 0): Promise<void> {
-    await this.runZeroZ(surfaceOffsetMm, 25);
+    await this.runZeroZ(surfaceOffsetMm, ZERO_SEARCH_MM);
+  }
+
+  /**
+   * Refuses to probe on a circuit nobody has proved. See `probeCircuitSeen`.
+   *
+   * The opposite state is refused too: an input that reads closed with the
+   * bit in the air is a lead shorted to the frame or `$6` set the wrong way,
+   * and the controller would alarm on the first stab (ALARM:4) rather than
+   * measure anything.
+   */
+  private assertProbeCircuit(): void {
+    if (this.state.probePinActive) {
+      throw new Error(
+        'The probe input already reads closed. If the bit is not touching the copper, the ' +
+          'lead is shorted or the probe pin invert ($6) is set the wrong way — either way a ' +
+          'probe cannot tell contact from open air, so it is not started.'
+      );
+    }
+    if (!this.state.probeCircuitSeen) {
+      throw new Error(
+        'The probe circuit has not been proved on this connection. Clip the continuity lead ' +
+          'on, touch the bit to the copper by hand until the probe light comes on, then try ' +
+          'again. A probe stops only when that circuit closes; without it the bit is driven ' +
+          'into the board.'
+      );
+    }
   }
 
   /**
@@ -476,6 +557,7 @@ export class WebSerialManager extends GrblMachine<MachineState> {
    */
   private async runZeroZ(targetZmm: number, searchDepthMm: number): Promise<void> {
     this.assertUnlocked();
+    this.assertProbeCircuit();
     const resumeStatus = this.state.status;
     this.updateState({
       status: 'PROBING',
@@ -530,6 +612,20 @@ export class WebSerialManager extends GrblMachine<MachineState> {
 
   protected onJobStarted(_parsed: ParsedJob): void {
     this.toolChangesSeen = 0;
+  }
+
+  /**
+   * Streams a program, recorded as whatever the caller says it is.
+   *
+   * The context is taken here rather than set separately because it has to be
+   * in place before the first line goes out: the archive opens a run from the
+   * first telemetry frame and keeps the settings it arrived with. A caller that
+   * passes nothing — a test, a bare jog program — clears whatever the last job
+   * left, so a run is never filed under the one before it.
+   */
+  override async startJob(gcode: string, job: JobContext = {}): Promise<void> {
+    this.jobContext = job;
+    await super.startJob(gcode);
   }
 
   protected describePause(
@@ -640,10 +736,11 @@ export class WebSerialManager extends GrblMachine<MachineState> {
    */
   public async probeSurfaceMesh(opts: ProbeMeshOptions): Promise<ProbeGrid> {
     this.assertUnlocked();
+    this.assertProbeCircuit();
 
     const cols = Math.max(2, Math.round(opts.cols ?? 4));
     const rows = Math.max(2, Math.round(opts.rows ?? 4));
-    const probeDepth = opts.probeDepthMm ?? 3;
+    let probeDepth = opts.probeDepthMm ?? 3;
     const clearance = opts.clearanceMm ?? 2;
     const probeFeed = opts.probeFeed ?? 50;
     const travelFeed = opts.travelFeed ?? 1500;
@@ -673,6 +770,21 @@ export class WebSerialManager extends GrblMachine<MachineState> {
       // Z0 plane" — which is exactly the number warpGcode adds. Read once, up
       // front: nothing in the loop below changes a work offset.
       const workOffset = await this.awaitWorkOffset();
+
+      // Zeroing leaves the tool parked PROBE_RETRACT_MM up, and the first point
+      // then lifts a further clearance before it searches — more than the
+      // default search covers, so the first point alarmed out with nothing
+      // touched. When Z0 was set on this connection the live work Z says how
+      // far down the copper is, and the search is stretched to reach it, plus
+      // a little for the surface being lower here than where Z0 was taken.
+      // Bounded, and a longer search is only ever a longer G38.2: it still
+      // stops on contact, and the contact circuit was proved before starting.
+      if (this.state.zeroZSet && this.state.wpos.z > 0) {
+        probeDepth = Math.min(
+          MAX_MESH_SEARCH_MM,
+          Math.max(probeDepth, this.state.wpos.z + clearance + 1)
+        );
+      }
 
       /*
        * Relative, and every lift below it is too.
@@ -884,6 +996,10 @@ export class WebSerialManager extends GrblMachine<MachineState> {
 
     void postMachineTelemetry('circuit', {
       status: this.telemetryStatus(state.status),
+      jobName: this.jobContext.name,
+      // What the board was cut from and with. Without it an archived run says
+      // how long it took and nothing about what it produced.
+      settings: this.jobContext.settings ?? null,
       progressPercent: state.progressPercent,
       currentLine: state.currentLine,
       totalLines: state.totalLines,

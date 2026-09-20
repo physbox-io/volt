@@ -365,6 +365,167 @@ export const PCB_MATERIAL_PRESETS: PcbMaterialPreset[] = [
   },
 ];
 
+const MATERIAL_STORAGE_KEY = 'circuit.pcb.materialId.v1';
+
+/** The default, and the fallback for a stored id that is no longer in the catalogue. */
+export const DEFAULT_MATERIAL_ID = 'fr4_1oz';
+
+export function findMaterial(id: string): PcbMaterialPreset | undefined {
+  return PCB_MATERIAL_PRESETS.find(m => m.id === id);
+}
+
+/**
+ * The laminate the CAM tab is set up for.
+ *
+ * Persisted because it is a property of the drawer rather than of the board:
+ * whoever mills on FR1 mills the next one on FR1 too. It also has to outlive
+ * the dialog, because an agent milling through MCP never opens it and would
+ * otherwise record a run against a material nobody chose.
+ */
+export function loadSelectedMaterialId(): string {
+  if (typeof localStorage === 'undefined') return DEFAULT_MATERIAL_ID;
+  try {
+    const id = localStorage.getItem(MATERIAL_STORAGE_KEY);
+    return id && findMaterial(id) ? id : DEFAULT_MATERIAL_ID;
+  } catch {
+    return DEFAULT_MATERIAL_ID;
+  }
+}
+
+export function saveSelectedMaterialId(id: string): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(MATERIAL_STORAGE_KEY, id);
+  } catch {
+    // Quota or private-browsing failure. The choice still holds this session.
+  }
+}
+
+/** The bits the CAM tab opens on, and the fallback for an id no longer present. */
+export const DEFAULT_ISOLATION_TOOL_ID = 't1_vbit_30';
+export const DEFAULT_PROFILE_TOOL_ID = 't6b_endmill_15';
+
+const ISOLATION_TOOL_STORAGE_KEY = 'circuit.pcb.isolationToolId.v1';
+const PROFILE_TOOL_STORAGE_KEY = 'circuit.pcb.profileToolId.v1';
+const AUTO_DEPTH_STORAGE_KEY = 'pcbAutoIsolationDepth';
+
+/**
+ * How the CAM tab is set up, as opposed to what it computed.
+ *
+ * The numbers the tab produces - feeds, speeds, depths, the V-bit's geometry -
+ * are all in {@link PcbOptions} and travel with a saved circuit already. The
+ * *choices* they were derived from did not: which bit, which laminate, and
+ * whether the isolation depth is being derived at all. On a second machine
+ * that meant a preset restored the numbers and then quietly recomputed the
+ * auto depth from whatever bit and board that machine happened to be set to,
+ * which is a different depth from the one the board was milled at.
+ *
+ * So they travel too. A tool the user defined themselves travels with them,
+ * because an id for a bit the other machine has never heard of restores
+ * nothing.
+ */
+export interface CamSetup {
+  isolationToolId?: string;
+  profileToolId?: string;
+  materialId?: string;
+  autoIsolationDepth?: boolean;
+  /** Definitions for any custom bits the ids above name. */
+  customTools?: PcbToolPreset[];
+}
+
+/** The CAM tab's current setup, for saving with a circuit. */
+export function loadCamSetup(): CamSetup {
+  const isolationToolId = readToolId(ISOLATION_TOOL_STORAGE_KEY, DEFAULT_ISOLATION_TOOL_ID);
+  const profileToolId = readToolId(PROFILE_TOOL_STORAGE_KEY, DEFAULT_PROFILE_TOOL_ID);
+  const named = new Set([isolationToolId, profileToolId]);
+  return {
+    isolationToolId,
+    profileToolId,
+    materialId: loadSelectedMaterialId(),
+    autoIsolationDepth: loadAutoIsolationDepth(),
+    // Only the ones this setup actually names. A preset is not a backup of
+    // somebody's whole tool drawer, and the rest are no use to the machine
+    // opening it.
+    customTools: loadCustomTools().filter(t => named.has(t.id)),
+  };
+}
+
+/**
+ * Puts a saved setup back, on whatever machine is opening the circuit.
+ *
+ * Custom bits are folded into this machine's drawer rather than replacing it:
+ * they are equipment, and arriving with a circuit is no reason to take away a
+ * tool somebody defined here.
+ */
+export function applyCamSetup(setup: CamSetup | undefined): void {
+  if (!setup) return;
+  if (setup.customTools?.length) {
+    const mine = loadCustomTools();
+    const merged = [...mine];
+    for (const tool of setup.customTools) {
+      if (!merged.some(t => t.id === tool.id)) merged.push(createCustomTool(tool as unknown as CustomToolInput, tool.id));
+    }
+    if (merged.length !== mine.length) saveCustomTools(merged);
+  }
+  if (setup.materialId && findMaterial(setup.materialId)) saveSelectedMaterialId(setup.materialId);
+  if (setup.isolationToolId) writeSetting(ISOLATION_TOOL_STORAGE_KEY, setup.isolationToolId);
+  if (setup.profileToolId) writeSetting(PROFILE_TOOL_STORAGE_KEY, setup.profileToolId);
+  if (setup.autoIsolationDepth !== undefined) saveAutoIsolationDepth(setup.autoIsolationDepth);
+}
+
+/**
+ * The bit the CAM tab is set to, by role.
+ *
+ * Persisted for the same reason the laminate is, and it was not: the pickers
+ * were component state, so every close of the dialog put the 30 degree V-bit
+ * and the 1.5mm end mill back and threw away whatever had been chosen — along
+ * with the feeds and depths the next open would derive from them.
+ */
+export function loadSelectedToolIds(): { isolation: string; profile: string } {
+  return {
+    isolation: readToolId(ISOLATION_TOOL_STORAGE_KEY, DEFAULT_ISOLATION_TOOL_ID),
+    profile: readToolId(PROFILE_TOOL_STORAGE_KEY, DEFAULT_PROFILE_TOOL_ID),
+  };
+}
+
+export function saveSelectedToolId(role: 'isolation' | 'profile', id: string): void {
+  writeSetting(role === 'isolation' ? ISOLATION_TOOL_STORAGE_KEY : PROFILE_TOOL_STORAGE_KEY, id);
+}
+
+/** Whether the isolation depth is derived rather than typed in. */
+export function loadAutoIsolationDepth(): boolean {
+  if (typeof localStorage === 'undefined') return true;
+  try {
+    return localStorage.getItem(AUTO_DEPTH_STORAGE_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function saveAutoIsolationDepth(on: boolean): void {
+  writeSetting(AUTO_DEPTH_STORAGE_KEY, on ? '1' : '0');
+}
+
+/** A stored tool id, or the fallback when the bit is not in this drawer. */
+function readToolId(key: string, fallback: string): string {
+  if (typeof localStorage === 'undefined') return fallback;
+  try {
+    const id = localStorage.getItem(key);
+    return id && findTool(id) ? id : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeSetting(key: string, value: string): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Quota or private-browsing failure. The choice still holds this session.
+  }
+}
+
 /**
  * Derives effective cutting width for a V-bit at a given cut depth:
  *   tip + 2 * depth * tan(includedAngle / 2)
