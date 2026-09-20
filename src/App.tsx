@@ -17,6 +17,14 @@ import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
 import { getEffectiveMcuConfig } from './utils/mcuConfig';
 import { buildNetlistResultIndex, findNetGraph } from './utils/netlistResult';
 import { isPortConnected } from './utils/graphTopology';
+import {
+  copySelection,
+  duplicateSelection,
+  pasteClipboard,
+  rotateSelectedNodes,
+  type ClipboardContents,
+} from './utils/selectionEdit';
+import { QuickAddPalette } from './components/QuickAddPalette';
 import { createPortal } from 'react-dom';
 import {
   buildShareLink,
@@ -1712,6 +1720,42 @@ export default function App() {
 
 
 
+  /*
+   * Canvas hotkeys.
+   *
+   * Placing and turning parts is most of a capture session, and every one of
+   * those actions used to be a trip to the properties drawer and back. The
+   * clipboard is this app's own — a React ref rather than the system
+   * clipboard — so that copying a part cannot interfere with copying the value
+   * out of a properties field, and pasting cannot try to make a circuit out of
+   * whatever text happens to be on the system clipboard.
+   */
+  const clipboardRef = useRef<ClipboardContents>({ nodes: [], edges: [] });
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+
+  const rotateSelected = useCallback(() => {
+    setNodes(nds => rotateSelectedNodes(nds));
+  }, [setNodes]);
+
+  const copySelected = useCallback(() => {
+    clipboardRef.current = copySelection(nodesRef.current, edgesRef.current);
+  }, []);
+
+  const pasteClipboardNodes = useCallback(() => {
+    if (isSimulatingRef.current) return;
+    if (!clipboardRef.current.nodes.length) return;
+    const next = pasteClipboard(nodesRef.current, edgesRef.current, clipboardRef.current);
+    setNodes(next.nodes);
+    setEdges(next.edges);
+  }, [setNodes, setEdges]);
+
+  const duplicateSelected = useCallback(() => {
+    if (isSimulatingRef.current) return;
+    const next = duplicateSelection(nodesRef.current, edgesRef.current);
+    setNodes(next.nodes);
+    setEdges(next.edges);
+  }, [setNodes, setEdges]);
+
   const deleteSelected = useCallback(() => {
     if (isSimulatingRef.current) return;
     setNodes(nds => nds.filter(n => !n.selected));
@@ -1743,12 +1787,46 @@ export default function App() {
         return;
       }
 
+      if (isModifier && e.key.toLowerCase() === 'c') {
+        copySelected();
+        return;
+      }
+
+      if (isModifier && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        pasteClipboardNodes();
+        return;
+      }
+
+      if (isModifier && e.key.toLowerCase() === 'd') {
+        // The browser's own Ctrl+D bookmarks the page, which is never what it
+        // means over a schematic.
+        e.preventDefault();
+        duplicateSelected();
+        return;
+      }
+
+      if (!isModifier && !e.altKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        rotateSelected();
+        return;
+      }
+
+      // The two launcher keys other schematic editors use: `/` because it is
+      // one key, Shift+A because that is what it is in KiCad.
+      if (!isModifier && !e.altKey && (e.key === '/' || (e.shiftKey && e.key.toLowerCase() === 'a'))) {
+        e.preventDefault();
+        setIsQuickAddOpen(true);
+        return;
+      }
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         deleteSelected();
         return;
       }
 
       if (e.key === 'Escape') {
+        setIsQuickAddOpen(false);
         if (probeMode) {
           setProbeMode(false);
           setProbeData(null);
@@ -1760,7 +1838,10 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [deleteSelected, undo, redo, canUndo, canRedo, probeMode]);
+  }, [
+    deleteSelected, undo, redo, canUndo, canRedo, probeMode,
+    rotateSelected, copySelected, pasteClipboardNodes, duplicateSelected,
+  ]);
 
   const { exportJson, importJson } = useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulation });
 
@@ -2276,6 +2357,13 @@ export default function App() {
           onPickPart={(type, label) => setPickedPart(prev => ({ type, label, seq: (prev?.seq ?? 0) + 1 }))}
           onAddNoteCard={addCard}
         />
+
+        {isQuickAddOpen && (
+          <QuickAddPalette
+            onPick={(type, label) => setPickedPart(prev => ({ type, label, seq: (prev?.seq ?? 0) + 1 }))}
+            onClose={() => setIsQuickAddOpen(false)}
+          />
+        )}
         
         {/* Floating Status Indicators */}
         <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20 flex flex-col gap-2 pointer-events-none items-center">

@@ -3,6 +3,7 @@ import { executeMcuCode, type PWLPoint } from './mcu';
 import { getEffectiveMcuConfig } from './mcuConfig';
 import { resolveBjtParams, resolveMosfetParams, resolveOpAmpParams } from './deviceModels';
 import { parseEngValue } from './engValue';
+import { nodeNetName, railVoltage, virtualNetPort } from './netNaming';
 
 /** Strip Unicode symbols from component labels to produce valid SPICE values.
  *  e.g. '47kΩ' → '47k', '10µF' → '10uF' */
@@ -21,7 +22,13 @@ export function sanitizeSpiceValue(val: string): string {
  * but they emit no SPICE device — a pin header, via or mounting hole has no
  * electrical behaviour of its own.
  */
-export const NON_SIMULATING_TYPES = new Set(['pinheader', 'via', 'mountinghole', 'cutout']);
+export const NON_SIMULATING_TYPES = new Set([
+  'pinheader', 'via', 'mountinghole', 'cutout',
+  // Named nets. They are wiring, not devices: the label contributes nothing at
+  // all, and the rail's source is emitted once per net further down rather than
+  // once per symbol, so that three `+5V` flags on one rail are one supply.
+  'netlabel', 'powerrail',
+]);
 
 export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: number = 1.0, simResolution: 'normal' | 'high' = 'normal', mcuWaveforms: Record<string, Record<string, PWLPoint[]>> = {}, initialConditions?: Record<string, number>, hilMaxStepMs?: number): { netlist: string; portToNet: Record<string, string>; mcuLogs: Record<string, string[]> } {
   let netlist = "Circuit Simulation\n";
@@ -44,36 +51,51 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
     }
   });
 
-  // Initialize each edge connection as a net
-  edges.forEach(edge => {
-    const sourcePort = `${edge.source}-${edge.sourceHandle || 'out'}`;
-    const targetPort = `${edge.target}-${edge.targetHandle || 'in'}`;
-    
-    const sourceNet = portToNet[sourcePort];
-    const targetNet = portToNet[targetPort];
+  /** Put two ports on the same net, merging the nets they already had. */
+  const unitePorts = (portA: string, portB: string) => {
+    const netA = portToNet[portA];
+    const netB = portToNet[portB];
 
-    if (!sourceNet && !targetNet) {
+    if (!netA && !netB) {
       const netId = `N${netIdCounter++}`;
-      portToNet[sourcePort] = netId;
-      portToNet[targetPort] = netId;
-    } else if (sourceNet && !targetNet) {
-      portToNet[targetPort] = sourceNet;
-    } else if (!sourceNet && targetNet) {
-      portToNet[sourcePort] = targetNet;
-    } else if (sourceNet !== targetNet) {
+      portToNet[portA] = netId;
+      portToNet[portB] = netId;
+    } else if (netA && !netB) {
+      portToNet[portB] = netA;
+    } else if (!netA && netB) {
+      portToNet[portA] = netB;
+    } else if (netA !== netB) {
       // Merge nets (simplistic, assumes no complex graphs for now, better to use proper disjoint set if it gets complex)
       Object.keys(portToNet).forEach(port => {
-        if (portToNet[port] === targetNet) {
-          portToNet[port] = sourceNet;
+        if (portToNet[port] === netB) {
+          portToNet[port] = netA;
         }
       });
     }
+  };
+
+  // Initialize each edge connection as a net
+  edges.forEach(edge => {
+    unitePorts(
+      `${edge.source}-${edge.sourceHandle || 'out'}`,
+      `${edge.target}-${edge.targetHandle || 'in'}`,
+    );
+  });
+
+  // Named nets. A label or a power rail joins its pin to a virtual port shared
+  // by every symbol carrying the same name, which is how two pins a screen
+  // apart end up on one net with no wire between them. `virtualNetPort` sends
+  // a label written GND to the same port the ground symbols use.
+  nodes.forEach(node => {
+    const name = nodeNetName(node.type, node.data);
+    if (!name) return;
+    unitePorts(`${node.id}-in`, virtualNetPort(name));
   });
 
   // Force ground to be net '0'
-  const groundNodes = nodes.filter(n => n.type === 'ground');
-  groundNodes.forEach(gNode => {
-    const groundPortIn = `${gNode.id}-in`;
+  const groundPorts = nodes.filter(n => n.type === 'ground').map(n => `${n.id}-in`);
+  if (portToNet['GND-global'] !== undefined) groundPorts.push('GND-global');
+  groundPorts.forEach(groundPortIn => {
     const net = portToNet[groundPortIn];
     if (net) {
       Object.keys(portToNet).forEach(port => {
@@ -625,6 +647,24 @@ B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
 `;
   }
   
+  /*
+   * Power rails. A rail symbol is a DC source between its net and ground, and
+   * one source per *net* rather than per symbol: several flags on the same
+   * rail are the same supply, and two sources across one pair of nodes is a
+   * voltage-source loop ngspice refuses to solve. A rail wired to ground is
+   * skipped for the same reason - it would be a source with both ends on 0.
+   */
+  const railSources = new Set<string>();
+  nodes.forEach(node => {
+    if (node.type !== 'powerrail') return;
+    const name = nodeNetName(node.type, node.data);
+    if (!name) return;
+    const net = portToNet[`${node.id}-in`] ?? portToNet[virtualNetPort(name)];
+    if (!net || net === '0' || railSources.has(net)) return;
+    railSources.add(net);
+    netlist += `V_rail_${net} ${net} 0 DC ${railVoltage(node.data)}\n`;
+  });
+
   // Shunt unconnected nodes to ground to prevent singular matrix errors
   unconnectedNets.forEach(net => {
     netlist += `R_shunt_${net} ${net} 0 1G\n`;

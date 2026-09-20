@@ -534,6 +534,38 @@ export function Sidebar({
         </div>
 
         {/*
+          Named nets. Ground has always connected by name; these two open that
+          up to any name, which is how a supply reaches six parts without six
+          wires crossing the schematic.
+        */}
+        <div className={sectionTitleClass}>Nets & Power</div>
+        <div className="grid grid-cols-2 gap-1.5">
+          {/* Net Label */}
+          <div {...partProps('netlabel', 'Net')}>
+            <div className={iconClass}>
+              <svg width="26" height="16" viewBox="0 0 52 32" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round">
+                <path d="M 2 16 L 12 6 H 50 V 26 H 12 Z" />
+              </svg>
+            </div>
+            <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">Net Label</span>
+          </div>
+
+          {/* Power rails. The two common ones as their own entries, because
+              picking the rail is the whole decision and a drag should not have
+              to be followed by a trip to the properties panel. */}
+          {[['+5V', 'powerrail'], ['+3.3V', 'powerrail']].map(([rail, type]) => (
+            <div key={rail} {...partProps(type, rail)}>
+              <div className={iconClass}>
+                <svg width="22" height="18" viewBox="0 0 24 20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M2 6h20 M12 6v12" />
+                </svg>
+              </div>
+              <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">{rail} Rail</span>
+            </div>
+          ))}
+        </div>
+
+        {/*
           Board-only parts. These are placed and milled but contribute nothing
           to the simulation, so they live in their own section rather than
           mixed in with the components.

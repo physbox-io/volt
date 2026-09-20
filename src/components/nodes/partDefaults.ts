@@ -1,4 +1,5 @@
-import type { HeltecV4NodeData } from '../../types/nodes';
+import type { HeltecV4NodeData, NetLabelNodeData, PowerRailNodeData } from '../../types/nodes';
+import { DEFAULT_NET_LABEL, DEFAULT_RAIL, POWER_RAIL_PRESETS } from '../../utils/netNaming';
 
 /**
  * The seed data a part is dropped onto the canvas with, and the fixed tables
@@ -109,5 +110,22 @@ export function cutoutDefaultData(label?: string) {
     cutoutShape: 'rect' as const,
     cutoutWidthMm: 10,
     cutoutHeightMm: 6,
+  };
+}
+
+/**
+ * A net label is dropped on a net of its own; `FlowArea` renames it past the
+ * labels already on the canvas, since two labels sharing a name are one net.
+ */
+export function netLabelDefaultData(label?: string): NetLabelNodeData {
+  return { label: label || 'Net', net: DEFAULT_NET_LABEL };
+}
+
+export function powerRailDefaultData(label?: string): PowerRailNodeData {
+  const rail = label && POWER_RAIL_PRESETS.some(p => p.rail === label) ? label : DEFAULT_RAIL;
+  return {
+    label: rail,
+    rail,
+    voltage: POWER_RAIL_PRESETS.find(p => p.rail === rail)?.voltage ?? 5,
   };
 }

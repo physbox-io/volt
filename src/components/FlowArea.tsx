@@ -59,12 +59,15 @@ import { ViaNode } from './nodes/ViaNode';
 import { MountingHoleNode } from './nodes/MountingHoleNode';
 import { JumperNode } from './nodes/JumperNode';
 import { CutoutNode } from './nodes/CutoutNode';
+import { NetLabelNode } from './nodes/NetLabelNode';
+import { PowerRailNode } from './nodes/PowerRailNode';
 import { AuraEdge } from './AuraEdge';
 import { EdgePathContext } from './edgePathContext';
 import { findNearestEdgeAtPoint, getHandleCoord } from '../utils/nodeGeometry';
 import { computeBranchDots } from '../utils/branchDots';
 import { isPortConnected, mergeOverlappingNodesAndJunctions, splitEdgesOnOverlappingNodes, simplifyEdges } from '../utils/graphTopology';
 import type { AnyNodeData } from '../types/nodes';
+import { nextNetLabelName } from '../utils/netNaming';
 
 const edgeTypes = {
   aura: AuraEdge,
@@ -115,6 +118,8 @@ const nodeTypes = {
   mountinghole: MountingHoleNode,
   jumper: JumperNode,
   cutout: CutoutNode,
+  netlabel: NetLabelNode,
+  powerrail: PowerRailNode,
 };
 
 let nodeId = 1;
@@ -457,7 +462,18 @@ export function FlowArea({
         data: initialData,
       };
 
-      setNodes(nds => nds.concat(newNode));
+      setNodes(nds => {
+        // Labels connect by name, so a new one takes a name nothing else on the
+        // canvas is using — otherwise dropping a second flag shorts it to the
+        // first before it has been named. Read off the current list inside the
+        // updater rather than from the render's `nodes`, which would put every
+        // node on this callback's dependencies and re-place a tapped part each
+        // time the canvas changed.
+        const data = type === 'netlabel'
+          ? { ...initialData, net: nextNetLabelName(nds) }
+          : initialData;
+        return nds.concat({ ...newNode, data });
+      });
     },
     [setNodes]
   );

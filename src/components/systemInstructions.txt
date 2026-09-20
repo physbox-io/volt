@@ -42,6 +42,18 @@ NODE TYPES, PINS (HANDLES) & CONFIGURATION
                  Handles: "in" (input/connection, top)
                  data: { label: "GND" }
 
+'powerrail'      Power rail flag. Every pin on a rail of the same name is one net, with NO wire drawn
+                 between them, and the rail drives that net against ground (one source per net, however
+                 many flags). Prefer this over running long supply wires to every part.
+                 Handles: "in" (connection, bottom)
+                 data: { rail: "+5V"|"+3.3V"|"+12V"|"-12V"|"VCC"|"VEE"|string, voltage?: number }
+
+'netlabel'       Named net flag. Two pins carrying the same name are one net with no wire between them.
+                 Use it for signals that would otherwise cross the schematic (SDA, PWM, RESET).
+                 A label named "GND" or "VSS" is the ground net itself. Case is ignored.
+                 Handles: "in" (connection, left)
+                 data: { net: string (e.g. "SDA") }
+
 'resistor'       Passive resistor.
                  Handles: "in" (left terminal), "out" (right terminal)
                  data: { label: string (e.g. "1kΩ", "330Ω", "10kΩ", "47kΩ") }

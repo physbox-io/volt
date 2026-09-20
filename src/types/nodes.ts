@@ -338,6 +338,20 @@ export type CutoutNodeData = BaseNodeData & {
   cutoutHeightMm?: number;
 };
 
+/* ── Named nets ────────────────────────────────────────────── */
+
+export type NetLabelNodeData = BaseNodeData & {
+  /** The net's name, e.g. 'SDA'. Every pin labelled the same is one net. */
+  net?: string;
+};
+
+export type PowerRailNodeData = BaseNodeData & {
+  /** The rail's name, e.g. '+5V' or 'VCC'. Names a net like a label does. */
+  rail?: string;
+  /** What the rail supplies, in volts. Defaults from the name. */
+  voltage?: number;
+};
+
 /**
  * Every field any part can carry, all optional.
  *
@@ -376,7 +390,9 @@ export type AnyNodeData = ResistorNodeData &
   ViaNodeData &
   MountingHoleNodeData &
   JumperNodeData &
-  CutoutNodeData;
+  CutoutNodeData &
+  NetLabelNodeData &
+  PowerRailNodeData;
 
 /**
  * A node's `data` as React Flow hands it over, before its kind is known.

@@ -83,7 +83,7 @@
   "schema": {
     "nodeFields": {
       "id": "string — unique component identifier",
-      "type": "string — component type (resistor, capacitor, inductor, diode, zener, led, switch, multimeter, scope, speaker, microphone, npn, pnp, nmos, pmos, voltage, currentsource, acvoltage, signalgen, ground, mcu, heltec_v4, sevenseg, potentiometer, opamp, timer555, transformer, dff, ldr, junction, and, or, not, nand, nor, xor, jumper, pinheader, via, mountinghole, cutout)",
+      "type": "string — component type (resistor, capacitor, inductor, diode, zener, led, switch, multimeter, scope, speaker, microphone, npn, pnp, nmos, pmos, voltage, currentsource, acvoltage, signalgen, ground, mcu, heltec_v4, sevenseg, potentiometer, opamp, timer555, transformer, dff, ldr, junction, and, or, not, nand, nor, xor, jumper, pinheader, via, mountinghole, cutout, netlabel, powerrail)",
       "position": {
         "x": "number — X position on canvas",
         "y": "number — Y position on canvas"
@@ -302,7 +302,13 @@
         "1"
       ],
       "mountinghole": [],
-      "cutout": []
+      "cutout": [],
+      "netlabel": [
+        "in"
+      ],
+      "powerrail": [
+        "in"
+      ]
     },
     "spiceModels": {
       "potentiometer": {
@@ -460,6 +466,16 @@
         "cutout"
       ],
       "note": "Placed, drilled and routed on the board but emitting no SPICE device. Edges to a pin header or via still join nets — the part itself just contributes no component. 'jumper' is the exception: the router draws no copper for it, but electrically it is a wire (a 1 milliohm resistor between its 'a' and 'b' terminals) and it does simulate."
+    },
+    "namedNets": {
+      "types": [
+        "netlabel",
+        "powerrail"
+      ],
+      "description": "Connectivity by name rather than by wire, the mechanism ground has always used. Every pin on a 'netlabel' with the same data.net, or a 'powerrail' with the same data.rail, is one net with no edge drawn between them.",
+      "netlabel": "data: { net: string } \u2014 e.g. 'SDA'. Case is folded, so 'sda' and 'SDA' are one net. A label named 'GND' or 'VSS' is the ground net itself.",
+      "powerrail": "data: { rail: string, voltage?: number } \u2014 e.g. '+5V', '+3.3V', '+12V', '-12V', 'VCC', 'VEE'. The rail also drives its net: one DC source against ground per net, however many flags are placed, at data.voltage or the voltage the name implies.",
+      "board": "Both are virtual: they never get a footprint, and the net they name is called '+5V' or 'SDA' in the layout and export report rather than N1."
     },
     "pinHeaderTerminals": "Pad numbers as strings, numbered row-major from '1' — a 2x5 header has terminals '1' through '10'.",
     "orientation": {

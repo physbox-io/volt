@@ -158,7 +158,7 @@ export function getHandlesForNode(node: Node): string[] {
   if (node.type === 'timer555') {
     return ['1', '2', '3', '4', '5', '6', '7', '8'];
   }
-  if (node.type === 'ground') {
+  if (node.type === 'ground' || node.type === 'netlabel' || node.type === 'powerrail') {
     return ['in'];
   }
   if (node.type === 'voltage' || node.type === 'acvoltage' || node.type === 'currentsource') {
@@ -424,6 +424,15 @@ export function getHandleCoord(node: Node, handleId: string): { x: number; y: nu
     return { x: x + w / 2, y };
   }
 
+  // A rail hangs its pin underneath the bar, the mirror of a ground symbol; a
+  // label is a flag that tags the wire running into its left edge.
+  if (node.type === 'powerrail') {
+    return { x: x + w / 2, y: y + h };
+  }
+  if (node.type === 'netlabel') {
+    return { x, y: y + h / 2 };
+  }
+
   if (node.type === 'voltage' || node.type === 'acvoltage' || node.type === 'currentsource') {
     // These default to standing upright - VoltageNode treats only an explicit
     // 'horizontal' as horizontal - so the test is deliberately the other way
@@ -531,6 +540,12 @@ export const getHandlePosition = (node: Node, handleId: string): string => {
   }
   if (node.type === 'ground') {
     return 'top';
+  }
+  if (node.type === 'powerrail') {
+    return 'bottom';
+  }
+  if (node.type === 'netlabel') {
+    return 'left';
   }
   if (node.type === 'junction') {
     return 'left';

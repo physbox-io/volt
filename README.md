@@ -64,6 +64,48 @@ npm run test:hang
 - **[GUIDE.md](ngspice-wasm/EEcircuit-engine/GUIDE.md)**: Technical details on the WASM compilation, Asyncify fixes, and simulation lifecycle.
 - **[SKILL.md](ngspice-wasm/EEcircuit-engine/SKILL.md)**: Debugging patterns and maintenance tips for working with the simulation engine.
 
+## ⌨️ Canvas shortcuts
+
+Capture is mostly placing and turning parts, so none of it goes through the
+properties drawer. The keys are listed in the app under **Docs → Keyboard
+Shortcuts**, which is the copy users read; this is the map to the code.
+
+| Key | What it does | Where it lives |
+|---|---|---|
+| `R` | Quarter turn right for every selected part | `rotateSelectedNodes()`, `src/utils/selectionEdit.ts` |
+| `/` or `Shift+A` | Quick-add search, placed at the centre of the view | `src/components/QuickAddPalette.tsx`, over `PART_CATALOG` |
+| `Ctrl/⌘+C`, `Ctrl/⌘+V` | Copy and paste parts and the wires between them | `copySelection()` / `pasteClipboard()` |
+| `Ctrl/⌘+D` | Duplicate the selection without the clipboard | `duplicateSelection()` |
+| `Delete`, `Esc`, `Ctrl+Z`, `Ctrl+Y` | Delete, deselect, undo, redo | the key handler in `src/App.tsx` |
+
+The clipboard is a ref in `App.tsx`, not the system clipboard: copying a part
+must not fight with copying a value out of a properties field, and a paste must
+not try to read a circuit out of arbitrary text.
+
+The launcher searches `src/components/nodes/partCatalog.ts`, which is the
+palette as data. `tests/partCatalog.test.ts` scrapes `Sidebar.tsx` and holds the
+two together, so a part added to the palette and not to the catalog fails the
+suite rather than going missing from search.
+
+## 🏷️ Named nets and power rails
+
+Ground was the only implicit net: every ground symbol joins one global net with
+no wire, and everything else had to be drawn. A **net label** (`SDA`) and a
+**power rail** (`+5V`) are that same mechanism opened up to any name — a one-pin
+symbol carrying a name, where every pin under the same name is one net. The rail
+additionally drives its net, as one DC source against ground per net however
+many flags are drawn.
+
+- `src/utils/netNaming.ts` — names, SPICE-safe tokens (`+5V` → `P5V`), rail
+  voltages, and the virtual port a name maps to. A label written `GND` or `VSS`
+  maps to `GND-global`, so it is ground rather than a net beside it.
+- `buildPortAdjacency()` joins each flag's pin to that virtual port, so the
+  board and the simulation agree, exactly as they already did for ground.
+- `generateSpiceNetlist()` merges the same way and emits `V_rail_<net>`, skipping
+  a rail the operator has shorted to ground.
+- `extractNets()` names the board net after the schematic (`+5V`, `SDA`) and
+  keeps the flags themselves off the board — they are `virtual`, like ground.
+
 ## 🧭 PCB Layout and Routing
 
 Volt turns a schematic into a **single-sided** milled board: parts on one face,

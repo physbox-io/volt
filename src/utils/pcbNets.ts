@@ -15,6 +15,7 @@ import type { Node, Edge } from '@xyflow/react';
 import { buildPortAdjacency } from './graphTopology';
 import type { ComponentFootprint } from './pcbFootprints';
 import { getEffectiveMcuConfig } from './mcuConfig';
+import { isVirtualPortKey, netKey, netNameFromVirtualPort } from './netNaming';
 import type { RawNodeData } from '../types/nodes';
 
 /** What a schematic symbol becomes on the physical board. */
@@ -28,7 +29,9 @@ export type NodeRole =
   /** Test equipment - excluded from the board entirely (scope, multimeter). */
   | 'instrument';
 
-const VIRTUAL_TYPES = new Set(['ground', 'junction']);
+// A net label and a power rail are pure connectivity: they merge nets by name
+// and never become a part on the board.
+const VIRTUAL_TYPES = new Set(['ground', 'junction', 'netlabel', 'powerrail']);
 const INSTRUMENT_TYPES = new Set(['scope', 'multimeter']);
 const CONNECTOR_TYPES = new Set([
   'voltage',
@@ -63,7 +66,8 @@ export interface PortRef {
 
 export interface PcbNet {
   id: string;
-  /** Display name: 'GND' for the ground net, otherwise N1, N2, ... */
+  /** Display name: 'GND' for ground, a label's or rail's own name where one
+   *  is on the net ('+5V', 'SDA'), otherwise N1, N2, ... */
   name: string;
   isGround: boolean;
   /** Pins on physical parts only. Virtual/instrument ports are stripped. */
@@ -100,7 +104,7 @@ export function extractNets(nodes: Node[], edges: Edge[]): NetExtractionResult {
   // Port keys use `${nodeId}-${handleId}`, and node ids may themselves contain
   // '-', so resolve the node by longest-matching-id rather than first dash.
   const resolvePort = (key: string): { nodeId: string; handleId: string } | null => {
-    if (key === 'GND-global') return null;
+    if (isVirtualPortKey(key)) return null;
     let best: { nodeId: string; handleId: string } | null = null;
     for (const id of nodeById.keys()) {
       if (key.startsWith(id + '-')) {
@@ -113,19 +117,23 @@ export function extractNets(nodes: Node[], edges: Edge[]): NetExtractionResult {
   };
 
   const visited = new Set<string>();
-  const rawGroups: { keys: string[]; touchesGround: boolean }[] = [];
+  const rawGroups: { keys: string[]; touchesGround: boolean; names: string[] }[] = [];
 
   for (const start of Object.keys(adj)) {
     if (visited.has(start)) continue;
     const queue = [start];
     visited.add(start);
     const keys: string[] = [];
+    const names = new Set<string>();
     let touchesGround = false;
 
     while (queue.length > 0) {
       const curr = queue.shift()!;
       if (curr === 'GND-global') {
         touchesGround = true;
+      } else if (isVirtualPortKey(curr)) {
+        const name = netNameFromVirtualPort(curr);
+        if (name) names.add(name);
       } else {
         keys.push(curr);
       }
@@ -136,12 +144,29 @@ export function extractNets(nodes: Node[], edges: Edge[]): NetExtractionResult {
         }
       }
     }
-    rawGroups.push({ keys, touchesGround });
+    // Sorted so a net carrying two names is called the same thing on every
+    // run, however the graph happened to be walked.
+    rawGroups.push({ keys, touchesGround, names: [...names].sort() });
   }
 
   const nets: PcbNet[] = [];
   const portToNet: Record<string, string> = {};
   let netCounter = 0;
+
+  /*
+   * Net ids are what the router, the Gerber writer and the drill file all key
+   * on, so two nets may not share one. A label is free to be called `N1`, and
+   * `+5V` and `+5v` are one name but could arrive as two, so an id already
+   * taken gets a suffix rather than quietly merging two nets in the exporter.
+   */
+  const usedIds = new Set<string>();
+  const uniqueNetId = (base: string) => {
+    let id = base;
+    for (let n = 2; usedIds.has(id); n++) id = `${base}_${n}`;
+    usedIds.add(id);
+    return id;
+  };
+  usedIds.add('GND');
 
   for (const group of rawGroups) {
     const ports: PortRef[] = [];
@@ -160,7 +185,8 @@ export function extractNets(nodes: Node[], edges: Edge[]): NetExtractionResult {
     if (ports.length === 0) continue;
 
     const isGround = group.touchesGround;
-    const id = isGround ? 'GND' : `N${++netCounter}`;
+    const name = isGround ? 'GND' : (group.names[0] ?? '');
+    const id = isGround ? 'GND' : uniqueNetId(name ? netKey(name) : `N${++netCounter}`);
 
     if (ports.length === 1 && !isGround) {
       // A single physical pin with nothing else on the net: nothing to route.
@@ -170,7 +196,7 @@ export function extractNets(nodes: Node[], edges: Edge[]): NetExtractionResult {
       continue;
     }
 
-    const net: PcbNet = { id, name: id, isGround, ports };
+    const net: PcbNet = { id, name: name || id, isGround, ports };
     nets.push(net);
     ports.forEach(p => { portToNet[p.key] = id; });
   }

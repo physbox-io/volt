@@ -1,5 +1,6 @@
 import type { Node, Edge } from '@xyflow/react';
 import { getHandleCoord, getHandlesForNode, findNearestEdgeAtPoint } from './nodeGeometry';
+import { nodeNetName, virtualNetPort } from './netNaming';
 
 export function buildPortAdjacency(nodes: Node[], edges: Edge[], skipEdgeId?: string): Record<string, string[]> {
   const adj: Record<string, string[]> = {};
@@ -34,6 +35,15 @@ export function buildPortAdjacency(nodes: Node[], edges: Edge[], skipEdgeId?: st
     const p1 = `${gNode.id}-in`;
     const p2 = `GND-global`;
     addAdjacency(p1, p2);
+  });
+
+  // 4. The same trick for every other named net: a label or a power rail joins
+  //    its pin to the virtual port for the name it carries, so two pins with
+  //    the same name are connected with no wire drawn between them.
+  nodes.forEach(node => {
+    const name = nodeNetName(node.type, node.data);
+    if (!name) return;
+    addAdjacency(`${node.id}-in`, virtualNetPort(name));
   });
   
   return adj;

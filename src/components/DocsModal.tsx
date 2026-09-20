@@ -75,8 +75,28 @@ initiating any physical machining, cutting, or powering on any circuit.
 ---
 Note: Third-party simulation components such as ngspice are governed by their respective licenses.`;
 
+/** One key and what it does, in the two-column table the shortcuts page uses. */
+function ShortcutTable({ rows }: { rows: [string, string][] }) {
+  return (
+    <table className="w-full text-sm border-collapse mb-4">
+      <tbody>
+        {rows.map(([keys, what]) => (
+          <tr key={keys} className="border-b border-slate-100 dark:border-slate-800 align-top">
+            <td className="py-1.5 pr-4 whitespace-nowrap">
+              <span className="font-mono text-xs font-semibold px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200">
+                {keys}
+              </span>
+            </td>
+            <td className="py-1.5 text-slate-700 dark:text-slate-300">{what}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export function DocsModal({ onClose }: DocsModalProps) {
-  const [activeTab, setActiveTab] = useState<'about' | 'usage' | 'simulation' | 'audio' | 'milling' | 'license'>('about');
+  const [activeTab, setActiveTab] = useState<'about' | 'usage' | 'shortcuts' | 'simulation' | 'audio' | 'milling' | 'license'>('about');
 
   return (
     // Same modal layer as every other full-screen dialog. At z-[100] this tied
@@ -132,6 +152,16 @@ export function DocsModal({ onClose }: DocsModalProps) {
               Usage Guide
             </button>
             <button
+              onClick={() => setActiveTab('shortcuts')}
+              className={`text-left px-4 py-2 rounded-md font-medium transition-colors cursor-pointer ${
+                activeTab === 'shortcuts'
+                  ? 'bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 font-semibold'
+                  : 'text-slate-650 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              Keyboard Shortcuts
+            </button>
+            <button
               onClick={() => setActiveTab('milling')}
               className={`text-left px-4 py-2 rounded-md font-medium transition-colors cursor-pointer ${
                 activeTab === 'milling'
@@ -183,7 +213,8 @@ export function DocsModal({ onClose }: DocsModalProps) {
                 
                 <h4 className="text-xl font-semibold mb-2 mt-6">Basic Interaction</h4>
                 <ul className="list-disc pl-6 mb-4 space-y-1">
-                  <li><strong>Add Components:</strong> Drag components from the left sidebar onto the canvas.</li>
+                  <li><strong>Add Components:</strong> Drag components from the left sidebar onto the canvas, or press <strong>/</strong> and type the part's name.</li>
+                  <li><strong>Rotate:</strong> Press <strong>R</strong> with a part selected. See the <em>Keyboard Shortcuts</em> page for the rest.</li>
                   <li><strong>Wiring:</strong> Click and drag from any circular port (handle) to another to create a connection. Handles are bidirectional.</li>
                   <li><strong>Custom Wire Routing:</strong> Grab and drag a wire directly from anywhere to create a custom orthogonal bend. Double-click the wire to reset it to default routing.</li>
                   <li><strong>Select & Edit:</strong> Click a component to select it and view its properties in the right panel. You can change labels, frequencies, voltages, and more.</li>
@@ -199,12 +230,53 @@ export function DocsModal({ onClose }: DocsModalProps) {
                   <li><strong>Resolution:</strong> Use <em>Normal</em> for logic/LEDs (faster) and <em>High</em> for audio or fast oscillators (more accurate).</li>
                 </ul>
 
+                <h4 className="text-xl font-semibold mb-2 mt-6">Named Nets &amp; Power Rails</h4>
+                <ul className="list-disc pl-6 mb-4 space-y-1">
+                  <li><strong>Power Rails:</strong> Drop a <strong>+5V</strong> or <strong>+3.3V</strong> rail from the <em>Nets &amp; Power</em> section of the palette. Every pin on a rail of the same name shares one net with no wire drawn between them, and the rail supplies that voltage against ground — however many flags you place, they are one supply.</li>
+                  <li><strong>Net Labels:</strong> A label carries a name (<span className="font-mono">SDA</span>, <span className="font-mono">PWM</span>, <span className="font-mono">RESET</span>). Two pins labelled the same are one net, which is how a signal crosses the schematic without a wire crossing it. Case is ignored.</li>
+                  <li><strong>GND:</strong> A label named <span className="font-mono">GND</span> or <span className="font-mono">VSS</span> is the ground net itself, not a net that happens to be called that.</li>
+                  <li><strong>On the board:</strong> Rails and labels are connectivity only — they are never placed or milled, and the net they name is called <span className="font-mono">+5V</span> or <span className="font-mono">SDA</span> in the router and the export report.</li>
+                </ul>
+
                 <h4 className="text-xl font-semibold mb-2 mt-6">Tips & Tricks</h4>
                 <ul className="list-disc pl-6 mb-4 space-y-1">
                   <li><strong>Grounding:</strong> Every circuit needs at least one <strong>Ground</strong> node to serve as a 0V reference.</li>
                   <li><strong>Oscilloscope:</strong> Connect the probe channels (CH1/CH2) to different parts of your circuit to compare waveforms.</li>
                   <li><strong>Interactive LEDs:</strong> LEDs will glow based on the current flowing through them. If they turn into a 💥, they've exceeded their current limit!</li>
                 </ul>
+              </div>
+            )}
+            {activeTab === 'shortcuts' && (
+              <div className="prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 leading-relaxed">
+                <h3 className="text-2xl font-bold mb-4">Keyboard Shortcuts</h3>
+                <p className="mb-4">
+                  Placing and turning parts is most of a capture session, so none of it needs the
+                  properties drawer. Every key below works on the canvas; they are ignored while you
+                  are typing in a field. On a Mac, use <strong>⌘</strong> wherever <strong>Ctrl</strong> is written.
+                </p>
+
+                <h4 className="text-xl font-semibold mb-2 mt-6">Parts</h4>
+                <ShortcutTable rows={[
+                  ['R', 'Turn every selected part a quarter turn clockwise. Wires come round with the pins, so the circuit is unchanged.'],
+                  ['/ or Shift+A', 'Open the quick-add search. Type a few letters — “sg” finds the signal generator, “555” the timer — and Enter drops it in the middle of the view.'],
+                  ['Ctrl+C / Ctrl+V', 'Copy the selected parts and paste them, offset and selected. Wires between two copied parts are copied too; a wire leaving the selection is not.'],
+                  ['Ctrl+D', 'Duplicate the selection in one step, without touching the clipboard.'],
+                  ['Delete / Backspace', 'Remove the selected parts and wires.'],
+                  ['Shift+drag', 'Draw a box over several parts to select them together.'],
+                ]} />
+
+                <h4 className="text-xl font-semibold mb-2 mt-6">Editing</h4>
+                <ShortcutTable rows={[
+                  ['Ctrl+Z', 'Undo.'],
+                  ['Ctrl+Shift+Z or Ctrl+Y', 'Redo.'],
+                  ['Esc', 'Close the quick-add search, leave probe mode, and deselect everything.'],
+                ]} />
+
+                <p className="mt-6 text-sm text-slate-600 dark:text-slate-400">
+                  The clipboard is Volt's own, not the system one: copying a part never interferes
+                  with copying a value out of a properties field, and pasting never tries to make a
+                  circuit out of whatever text you last copied elsewhere.
+                </p>
               </div>
             )}
             {activeTab === 'simulation' && (

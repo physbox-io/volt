@@ -71,8 +71,12 @@ import {
   mountingHoleDefaultData,
   jumperDefaultData,
   cutoutDefaultData,
+  netLabelDefaultData,
+  powerRailDefaultData,
 } from './partDefaults';
 import { OpAmpProperties } from './OpAmpNode';
+import { NetLabelProperties } from './NetLabelNode';
+import { PowerRailProperties } from './PowerRailNode';
 
 export const nodeRegistry: Record<string, NodeMeta> = {
   voltage: { Properties: VoltageProperties },
@@ -108,4 +112,7 @@ export const nodeRegistry: Record<string, NodeMeta> = {
   mountinghole: { Properties: MountingHoleProperties, defaultData: mountingHoleDefaultData },
   jumper: { Properties: JumperProperties, defaultData: jumperDefaultData },
   cutout: { Properties: CutoutProperties, defaultData: cutoutDefaultData },
+  // Named nets: connectivity by name rather than by wire.
+  netlabel: { Properties: NetLabelProperties, defaultData: netLabelDefaultData },
+  powerrail: { Properties: PowerRailProperties, defaultData: powerRailDefaultData },
 };

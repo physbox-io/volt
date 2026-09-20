@@ -33,7 +33,10 @@ export function getNodeDimensions(type: string, data: Node['data'] | undefined) 
       return isHorizontal ? { width: 48, height: 32 } : { width: 32, height: 48 };
     case 'voltage':
     case 'ground':
+    case 'powerrail':
       return { width: 24, height: 24 };
+    case 'netlabel':
+      return { width: 64, height: 20 };
     case 'timer555':
       return { width: 128, height: 156 };
     // The registry spells these `dff`, `npn` and `pmos` — the old

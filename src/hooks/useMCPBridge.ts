@@ -4,6 +4,7 @@
 
 import { useEffect, useRef } from 'react';
 import { getStoredAuthToken } from '../utils/apiClient';
+import { nodeNetName, virtualNetPort } from '../utils/netNaming';
 import { getNodesBounds, getViewportForBounds, type Node, type Edge } from '@xyflow/react';
 import { toPng } from 'html-to-image';
 import { presets as builtinPresets } from '../utils/presets';
@@ -656,7 +657,12 @@ export function useMCPBridge(props: BridgeProps) {
           const errors: string[] = [];
           const warnings: string[] = [];
 
-          const hasGround = targetNodes.some(n => n.type === 'ground');
+          // A label written GND is the ground net too, so a circuit grounded
+          // that way is grounded — warning about it would be wrong.
+          const hasGround = targetNodes.some(
+            n => n.type === 'ground' ||
+              (nodeNetName(n.type, n.data) !== null && virtualNetPort(nodeNetName(n.type, n.data)!) === 'GND-global'),
+          );
           if (!hasGround) {
             warnings.push('No Ground (GND) reference node found. SPICE simulations require at least one ground connection to prevent floating net errors.');
           }
