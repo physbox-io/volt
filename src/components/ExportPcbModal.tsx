@@ -81,6 +81,7 @@ import { InfoTip } from './InfoTip';
 import { JobPauseModal } from './JobPauseModal';
 import { PanZoomContainer } from './PanZoomContainer';
 import { MachineConnectModal } from './MachineConnectModal';
+import { JobOverrides } from './JobOverrides';
 import { BoardMapPanel } from './BoardMapPanel';
 
 /** Stable empty inputs for machine-only mode — see the layout call. */
@@ -1473,6 +1474,11 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                   onRestartLayer={isRunning || isPaused ? handleRestartLayer : undefined}
                   machineBusy={!!busy}
                 />
+                {/* With the live toolpath rather than behind the machine
+                    dialog: the trim is for what you are watching cut. */}
+                <div className="mt-3">
+                  <JobOverrides serialState={serialState} />
+                </div>
               </div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center min-h-[360px]">
