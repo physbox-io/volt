@@ -1,5 +1,6 @@
 import React from 'react';
 import { ProbeCircuitStatus } from './ProbeCircuitStatus';
+import { JobOverrides } from './JobOverrides';
 import {
   X,
   AlertTriangle,
@@ -308,6 +309,11 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
                 Pause job
               </button>
             )}
+
+            {/* Next to Pause, because it is the other thing you reach for when
+                a cut is going wrong — and the one that does not cost you the
+                registration between the board and the mesh. */}
+            <JobOverrides serialState={serialState} />
 
           </div>
 
