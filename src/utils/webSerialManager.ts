@@ -16,7 +16,9 @@ import {
   type StatusReport,
   type Vec3,
 } from '@physbox-io/machining';
-import { machineSocketUrl, postMachineTelemetry, submitMachineJob } from './apiClient';
+import { machineSocketUrl, postMachineTelemetry, submitMachineJob,
+  type RemoteCommand,
+} from './apiClient';
 import { cloudAutosave } from './cloudDocuments';
 
 // ---------------------------------------------------------------------------
@@ -1009,10 +1011,85 @@ export class WebSerialManager extends GrblMachine<MachineState> {
       // points back at the circuit that produced it.
       documentId: cloudAutosave.getStatus().documentId,
       documentRevision: cloudAutosave.getStatus().revision,
-    }).finally(() => {
-      this.telemetryInFlight = false;
-    });
+    })
+      .then((commands) => this.applyRemoteCommands(commands))
+      .finally(() => {
+        this.telemetryInFlight = false;
+      });
   }
+
+  /**
+   * Acts on what was asked for from another device.
+   *
+   * Only while a job is actually on the wire. The queue is drained by the post
+   * regardless, so a command that arrives against an idle machine is discarded
+   * rather than held: it was aimed at a cut, and that cut is over.
+   *
+   * Sequentially, because the trims are realtime bytes and GRBL counts them —
+   * two writes racing is two nudges in an order neither end chose.
+   *
+   * An unrecognised kind is ignored rather than guessed at. The server already
+   * refuses to queue one this build has not claimed; this is the same rule
+   * stated where it is enforced.
+   */
+  private async applyRemoteCommands(commands: RemoteCommand[]): Promise<void> {
+    if (!commands?.length || !this.isRunning()) return;
+
+    for (const c of commands) {
+      try {
+        if (c.kind === 'pause') {
+          await this.pauseJob();
+          continue;
+        }
+
+        if (c.kind === 'resume') {
+          await this.resumeRemotely();
+          continue;
+        }
+
+        if (c.kind === 'rapid') {
+          if (c.step === 100 || c.step === 50 || c.step === 25) {
+            await this.setRapidOverride(c.step);
+          }
+          continue;
+        }
+        if (c.kind !== 'feed' && c.kind !== 'spindle') continue;
+
+        const nudge = c.step === 1 || c.step === -1 || c.step === 10 || c.step === -10 ? c.step : null;
+        if (c.kind === 'feed') {
+          if (nudge === null) await this.resetFeedOverride();
+          else await this.nudgeFeedOverride(nudge);
+        } else {
+          if (nudge === null) await this.resetSpindleOverride();
+          else await this.nudgeSpindleOverride(nudge);
+        }
+      } catch {
+        // A dropped write is one nudge, and the next status report shows the
+        // percentage that actually took. Nothing here is worth failing a post.
+      }
+    }
+  }
+
+  /**
+   * Picks a job back up on the say-so of a device that cannot see the machine.
+   *
+   * Refused outright when the pause came from the program rather than from a
+   * person — an M0 or an M6. Those mean somebody is at the bench with their
+   * hands on the work, changing a tool or clearing a part, and the thing that
+   * tells them it is safe to stand back is the operator pressing Resume where
+   * they can see it. A phone in another room cannot know that, so it does not
+   * get to decide it.
+   *
+   * An operator pause is the opposite case: it is a feed hold somebody asked
+   * for, and picking it up is the whole point of being able to do this at all.
+   * `resumeJob` still applies its own refusals on top — a bit change leaves Z
+   * describing the previous tool, and it will not resume until that is redone.
+   */
+  private async resumeRemotely(): Promise<void> {
+    if (this.pauseKind !== 'operator') return;
+    await this.resumeJob();
+  }
+
 }
 
 export const webSerialManager = new WebSerialManager();

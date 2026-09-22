@@ -297,16 +297,56 @@ export async function deleteCloudPreset(id: string): Promise<boolean> {
  * still the authority — this only keeps a machine from talking to a door it
  * already knows is shut.
  */
-export async function postMachineTelemetry(appId: string, telemetry: MachiningTelemetry): Promise<boolean> {
-  if (!getStoredAuthToken() || !isProAccount()) return false;
+/**
+ * Something asked for from a device that is not this browser — the history page
+ * on a phone, typically, which can watch a job but holds no serial port.
+ *
+ * `step` is a GRBL nudge (+/-1, +/-10, or 0 for "back to what the program
+ * asked for") on feed and spindle, one of the three fixed settings on rapids,
+ * and unused on `pause` and `resume`.
+ */
+export interface RemoteCommand {
+  kind: 'feed' | 'spindle' | 'rapid' | 'pause' | 'resume';
+  step: number;
+}
+
+/**
+ * What this build can actually act on, sent with every frame.
+ *
+ * The queue is delivered to whatever version of the app happens to be open, and
+ * the server refuses to accept a command this list does not name — so an older
+ * build is never handed something it would run down the wrong branch of its own
+ * switch. Adding a command here is a promise that `applyRemoteCommands` below
+ * handles it.
+ */
+export const REMOTE_COMMANDS_SUPPORTED = ['feed', 'spindle', 'rapid', 'pause', 'resume'] as const;
+
+/**
+ * Posts one telemetry frame and returns whatever was queued for this machine
+ * while we were not looking.
+ *
+ * The reply carries the queue because this request already happens once a
+ * second for the length of a job: a second channel would be a second thing to
+ * authenticate, keep alive and reconnect, to deliver a message that can only
+ * matter while this one is already flowing.
+ */
+export async function postMachineTelemetry(
+  appId: string,
+  telemetry: MachiningTelemetry
+): Promise<RemoteCommand[]> {
+  if (!getStoredAuthToken() || !isProAccount()) return [];
   try {
-    await request('/api/telemetry', {
+    const res = await request<{ commands?: RemoteCommand[] }>('/api/telemetry', {
       method: 'POST',
-      body: JSON.stringify({ app_id: appId, ...telemetry }),
+      body: JSON.stringify({
+        app_id: appId,
+        supports: REMOTE_COMMANDS_SUPPORTED,
+        ...telemetry,
+      }),
     });
-    return true;
+    return res?.commands ?? [];
   } catch {
-    return false;
+    return [];
   }
 }
 
