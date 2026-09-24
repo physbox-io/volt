@@ -62,7 +62,7 @@ import { CutoutNode } from './nodes/CutoutNode';
 import { NetLabelNode } from './nodes/NetLabelNode';
 import { PowerRailNode } from './nodes/PowerRailNode';
 import { AuraEdge } from './AuraEdge';
-import { EdgePathContext } from './edgePathContext';
+import { EdgePathContext, useEdgePaths, useHoveredEdgeId } from './edgePathContext';
 import { findNearestEdgeAtPoint, getHandleCoord } from '../utils/nodeGeometry';
 import { computeBranchDots } from '../utils/branchDots';
 import { isPortConnected, mergeOverlappingNodesAndJunctions, splitEdgesOnOverlappingNodes, simplifyEdges } from '../utils/graphTopology';
@@ -274,11 +274,12 @@ export function FlowArea({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey, hasNoteCard]);
 
-  const context = useContext(EdgePathContext);
-  const setHoveredEdgeId = context?.setHoveredEdgeId;
+  const edgePathStore = useContext(EdgePathContext);
+  const setHoveredEdgeId = edgePathStore?.setHoveredEdgeId;
+  const hoveredEdgeId = useHoveredEdgeId(edgePathStore);
 
   // T-taps where a same-net wire branches off a shared trunk (see branchDots.ts).
-  const contextPaths = context?.paths;
+  const contextPaths = useEdgePaths(edgePathStore);
   /*
    * Every wire on this canvas is drawn by AuraEdge whatever it is called — the
    * four names in `edgeTypes` are historical. A preset or an older file can
@@ -309,7 +310,7 @@ export function FlowArea({
   const handleMouseMove = useCallback((event: React.MouseEvent) => {
     if (!connectingStartRef.current || !setHoveredEdgeId) {
       if (previewJunction) setPreviewJunction(null);
-      if (context?.hoveredEdgeId) setHoveredEdgeId(null);
+      if (hoveredEdgeId) setHoveredEdgeId(null);
       return;
     }
 
@@ -323,7 +324,7 @@ export function FlowArea({
       setPreviewJunction(null);
       setHoveredEdgeId(null);
     }
-  }, [nodes, edges, screenToFlowPosition, setHoveredEdgeId, context?.hoveredEdgeId, previewJunction, contextPaths]);
+  }, [nodes, edges, screenToFlowPosition, setHoveredEdgeId, hoveredEdgeId, previewJunction, contextPaths]);
 
   const onConnectEnd = useCallback<OnConnectEnd>((event) => {
     if (setHoveredEdgeId) setHoveredEdgeId(null);

@@ -7,7 +7,12 @@ import {
 import { useEffect, useRef, useState, useContext, useMemo, useCallback, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../utils/playbackTicker';
 import { getHandleCoord } from '../utils/nodeGeometry';
-import { EdgePathContext } from './edgePathContext';
+import {
+  EdgePathContext,
+  EdgePathStore,
+  useEarlierEdgePaths,
+  useIsEdgeHovered,
+} from './edgePathContext';
 import { useCanvasState } from './canvasState';
 import { formatVolts } from '../utils/analysisResults';
 import {
@@ -34,35 +39,9 @@ import {
 // JunctionNode, dots for that case won't appear.
 
 export function EdgePathProvider({ children }: { children: React.ReactNode; edges?: Edge[] }) {
-  const [paths, setPaths] = useState<Record<string, {x: number; y: number}[]>>({});
-  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
-
-  const registerPath = useCallback((id: string, points: {x: number; y: number}[]) => {
-    setPaths(prev => {
-      if (JSON.stringify(prev[id]) === JSON.stringify(points)) return prev;
-      return { ...prev, [id]: points };
-    });
-  }, []);
-
-  const unregisterPath = useCallback((id: string) => {
-    setPaths(prev => {
-      if (!(id in prev)) return prev;
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-  }, []);
-
-  const value = useMemo(() => ({
-    registerPath,
-    unregisterPath,
-    paths,
-    hoveredEdgeId,
-    setHoveredEdgeId
-  }), [registerPath, unregisterPath, paths, hoveredEdgeId]);
-
+  const [store] = useState(() => new EdgePathStore());
   return (
-    <EdgePathContext.Provider value={value}>
+    <EdgePathContext.Provider value={store}>
       {children}
     </EdgePathContext.Provider>
   );
@@ -151,8 +130,9 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
   const waypoints: { x: number; y: number }[] = useMemo(() => (data?.waypoints as { x: number; y: number }[] | undefined) || [], [data]);
   const [isDragging, setIsDragging] = useState(false);
 
-  const context = useContext(EdgePathContext);
-  const { registerPath, unregisterPath } = context || {};
+  const store = useContext(EdgePathContext);
+  // Only the wires this one routes against — see `useEarlierEdgePaths`.
+  const earlierPaths = useEarlierEdgePaths(store, id);
 
   const edgePath = useMemo(() => {
     const direct = getSchematicPath({
@@ -170,7 +150,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
       targetId: target,
       edgeId: id,
       allEdges,
-      otherEdgesPaths: context?.paths || {},
+      otherEdgesPaths: earlierPaths,
     });
 
     if (waypoints.length > 0) {
@@ -199,7 +179,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
   }, [
     waypoints, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
     sourceOffset, sourceIndex, targetIndex, allNodes, source, target, id, allEdges,
-    context?.paths,
+    earlierPaths,
   ]);
 
 
@@ -260,16 +240,14 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
   }, [edgePath]);
 
   useEffect(() => {
-    if (registerPath) {
-      registerPath(id, points);
-      return () => {
-        if (unregisterPath) unregisterPath(id);
-      };
+    if (store) {
+      store.registerPath(id, points);
+      return () => store.unregisterPath(id);
     }
     // `points` itself rather than a JSON key of it: it is memoised on the path
     // string, and `registerPath` already discards a re-registration that is
     // structurally identical, so the key bought nothing but a missing dep.
-  }, [id, points, registerPath, unregisterPath]);
+  }, [id, points, store]);
 
   /*
    * The DC overlay's chip.
@@ -301,7 +279,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     return points[points.length - 1];
   })();
 
-  const isHovered = context?.hoveredEdgeId === id;
+  const isHovered = useIsEdgeHovered(store, id);
 
   // Same-net wires deliberately route on top of each other (trunk sharing),
   // so "the wire" under the cursor is often a bundle of edges. Any waypoint
@@ -310,7 +288,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
   // same net ("dragging the rail split it in two").
   const collectBundleIds = useCallback((clickPos: { x: number; y: number }) => {
     const ids = new Set<string>([id]);
-    const paths = context?.paths || {};
+    const paths = store?.getPaths() || {};
     const myPorts = new Set([
       `${source}-${sourceHandle || 'out'}`,
       `${target}-${targetHandle || 'in'}`,
@@ -324,7 +302,7 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
       if (pts && pathNearPoint(pts, clickPos, 8)) ids.add(e.id);
     }
     return ids;
-  }, [id, source, target, sourceHandle, targetHandle, context?.paths, getEdges]);
+  }, [id, source, target, sourceHandle, targetHandle, store, getEdges]);
 
   const handleWireMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
