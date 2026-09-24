@@ -1,7 +1,8 @@
 import { Handle, Position } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
-import { SchematicLabel } from './schematic';
+import { EngField, SchematicLabel } from './schematic';
+import { useRelabel } from './useRelabel';
 import type { ZenerDiodeNodeData } from '../../types/nodes';
 import { useDesignator } from './designatorContext';
 
@@ -17,6 +18,7 @@ export function ZenerDiodeProperties({ node, updateData }: NodePropertiesProps) 
 
 export function ZenerDiodeNode({ id, data, selected }: NodeProps<Node<ZenerDiodeNodeData>>) {
   const designator = useDesignator(id, 'zener', data.name);
+  const relabel = useRelabel(id);
   const orientation = data.orientation || 'horizontal';
   const isVertical = orientation === 'vertical' || orientation === 'up';
   const isLeft = orientation === 'left';
@@ -84,7 +86,7 @@ export function ZenerDiodeNode({ id, data, selected }: NodeProps<Node<ZenerDiode
       <SchematicLabel
         placement={isVertical ? 'right' : 'below'}
         name={designator}
-        value={data.label || '5.1V'}
+        value={<EngField value={data.label || '5.1V'} unit="V" onCommit={relabel} />}
       />
       
       <Handle 

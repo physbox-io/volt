@@ -1,7 +1,8 @@
 import { Handle, Position } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
-import { SchematicLabel } from './schematic';
+import { EngField, SchematicLabel } from './schematic';
+import { useRelabel } from './useRelabel';
 import type { PotentiometerNodeData } from '../../types/nodes';
 import { useDesignator } from './designatorContext';
 
@@ -22,6 +23,7 @@ export function PotentiometerProperties({ node, updateData }: NodePropertiesProp
 
 export function PotentiometerNode({ id, data, selected }: NodeProps<Node<PotentiometerNodeData>>) {
   const designator = useDesignator(id, 'potentiometer', data.name);
+  const relabel = useRelabel(id);
   const position = data.position ?? 50; // wiper position 0-100%
   const label = data.label || '10k';
   const isVertical = data.orientation === 'vertical';
@@ -116,7 +118,7 @@ export function PotentiometerNode({ id, data, selected }: NodeProps<Node<Potenti
       <SchematicLabel
         placement={isVertical ? 'right' : 'below'}
         name={designator}
-        value={<>{label} • {position}%</>}
+        value={<><EngField value={label} onCommit={relabel} /> • {position}%</>}
       />
     </div>
   );

@@ -6,10 +6,10 @@ import { parseEngValue } from './engValue';
 import { nodeNetName, railVoltage, virtualNetPort } from './netNaming';
 
 /** Strip Unicode symbols from component labels to produce valid SPICE values.
- *  e.g. '47kΩ' → '47k', '10µF' → '10uF' */
+ *  e.g. '47kΩ' → '47k', '10µF' / '10μF' → '10uF' */
 export function sanitizeSpiceValue(val: string): string {
   // 1. Replace symbols
-  const cleaned = val.replace(/Ω/g, '').replace(/µ/g, 'u').trim();
+  const cleaned = val.replace(/Ω/g, '').replace(/[µμ]/g, 'u').trim();
   // 2. Extract leading numeric part with potential SI suffix (e.g. 10k, 4.7, 100u, 5V)
   const match = cleaned.match(/^([-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?[a-zA-Z]*)/);
   if (match) return match[1];

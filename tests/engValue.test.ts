@@ -1,6 +1,7 @@
 /** Engineering-notation values, as they are typed on a schematic. */
 import { describe, it, expect } from 'vitest';
 import { parseEngValue, formatEngValue } from '../src/utils/engValue';
+import { sanitizeSpiceValue } from '../src/utils/spice';
 
 describe('parseEngValue', () => {
   it.each([
@@ -14,6 +15,21 @@ describe('parseEngValue', () => {
   it('tolerates a unit letter and surrounding space', () => {
     expect(parseEngValue(' 10kΩ ')!).toBeCloseTo(10000, 9);
     expect(parseEngValue('100nF')!).toBeCloseTo(1e-7, 15);
+  });
+
+  it('reads Greek mu and the micro sign alike', () => {
+    // U+03BC and U+00B5 render identically; the first once parsed as a bare 10.
+    expect(parseEngValue('10\u03bc')!).toBeCloseTo(10e-6, 15);
+    expect(parseEngValue('10\u03bcF')!).toBeCloseTo(10e-6, 15);
+    expect(parseEngValue('10\u00b5F')!).toBeCloseTo(10e-6, 15);
+    expect(sanitizeSpiceValue('10\u03bcF')).toBe('10uF');
+    expect(sanitizeSpiceValue('10\u00b5F')).toBe('10uF');
+  });
+
+  it('reads source values with their unit', () => {
+    expect(parseEngValue('5V')!).toBeCloseTo(5, 12);
+    expect(parseEngValue('10mA')!).toBeCloseTo(0.01, 12);
+    expect(parseEngValue(formatEngValue(0.0104) + 'A')!).toBeCloseTo(0.0104, 12);
   });
 
   it('returns null rather than guessing at a label it cannot read', () => {

@@ -1,9 +1,9 @@
-import { useCallback } from 'react';
-import { Handle, Position, useReactFlow } from '@xyflow/react';
+import { Handle, Position } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
 import { useDesignator } from './designatorContext';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel, EngField } from './schematic';
+import { useRelabel } from './useRelabel';
 import type { ResistorNodeData } from '../../types/nodes';
 
 export function ResistorProperties({ node, updateData }: NodePropertiesProps) {
@@ -22,10 +22,7 @@ export function ResistorNode({ id, data, selected }: NodeProps<Node<ResistorNode
   const isUp = orientation === 'up';
 
   const name = useDesignator(id, 'resistor', data.name);
-  const { setNodes } = useReactFlow();
-  const update = useCallback((patch: Partial<ResistorNodeData>) => {
-    setNodes(nds => nds.map(n => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
-  }, [id, setNodes]);
+  const relabel = useRelabel(id);
 
   return (
     <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[24px] h-[40px]' : 'w-[40px] h-[24px]'}`}>
@@ -66,7 +63,7 @@ export function ResistorNode({ id, data, selected }: NodeProps<Node<ResistorNode
       <SchematicLabel
         placement={isVertical ? 'right' : 'below'}
         name={name}
-        value={<EngField value={data.label || '1k'} onCommit={(v) => update({ label: v })} />}
+        value={<EngField value={data.label || '1k'} onCommit={relabel} />}
       />
       
       <Handle 

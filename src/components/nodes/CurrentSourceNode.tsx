@@ -1,7 +1,8 @@
 import { Handle, Position } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
-import { SchematicLabel } from './schematic';
+import { EngField, SchematicLabel } from './schematic';
+import { useRelabel } from './useRelabel';
 import type { CurrentSourceNodeData } from '../../types/nodes';
 import { useDesignator } from './designatorContext';
 
@@ -17,6 +18,7 @@ export function CurrentSourceProperties({ node, updateData }: NodePropertiesProp
 
 export function CurrentSourceNode({ id, data, selected }: NodeProps<Node<CurrentSourceNodeData>>) {
   const designator = useDesignator(id, 'currentsource', data.name);
+  const relabel = useRelabel(id);
   const label = data.label || '10mA';
   const isHorizontal = data.orientation === 'horizontal';
 
@@ -77,7 +79,7 @@ export function CurrentSourceNode({ id, data, selected }: NodeProps<Node<Current
       <SchematicLabel
         placement={isHorizontal ? 'below' : 'right'}
         name={designator}
-        value={label}
+        value={<EngField value={label} unit="A" onCommit={relabel} />}
       />
       
       <Handle 

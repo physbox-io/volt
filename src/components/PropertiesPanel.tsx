@@ -24,6 +24,7 @@ import {
 import { isPhysical } from '../utils/pcbNets';
 import { minPadGapMm } from '../utils/pcbTooling';
 import { nodeRegistry } from './nodes/registry';
+import { LABEL_OVERRIDE_KEYS } from './nodes/useRelabel';
 import { getBjtModel, getMosfetModel, getOpAmpModel } from '../utils/deviceModels';
 import { powerRatingFor } from '../utils/powerRatings';
 
@@ -205,8 +206,7 @@ export function PropertiesPanel({ selectedNode, designator, setNodes, setEdges, 
 
       // If label is edited, clear the "hardcoded" numeric overrides so SPICE parses the new label
       if (key === 'label') {
-        const overrides = ['voltage', 'resistance', 'capacitance', 'inductance'];
-        overrides.forEach(o => {
+        LABEL_OVERRIDE_KEYS.forEach(o => {
           if (o in newData) delete newData[o];
         });
       }

@@ -1,7 +1,8 @@
 import { Handle, Position } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { NodePropertiesProps } from './registry';
-import { SchematicLabel } from './schematic';
+import { EngField, SchematicLabel } from './schematic';
+import { useRelabel } from './useRelabel';
 import type { VoltageNodeData } from '../../types/nodes';
 import { useDesignator } from './designatorContext';
 
@@ -16,6 +17,7 @@ export function VoltageProperties({ node, updateData }: NodePropertiesProps) {
 
 export function VoltageNode({ id, data, selected }: NodeProps<Node<VoltageNodeData>>) {
   const designator = useDesignator(id, 'voltage', data.name);
+  const relabel = useRelabel(id);
   const isHorizontal = data.orientation === 'horizontal';
 
   return (
@@ -79,7 +81,7 @@ export function VoltageNode({ id, data, selected }: NodeProps<Node<VoltageNodeDa
       <SchematicLabel
         placement={isHorizontal ? 'below' : 'right'}
         name={designator}
-        value={data.label || '5V'}
+        value={<EngField value={data.label || '5V'} unit="V" onCommit={relabel} />}
       />
       
       <Handle 

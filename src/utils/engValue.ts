@@ -24,7 +24,10 @@ const SUFFIXES: [string, number][] = [
  * can leave a hand-written label alone rather than mangling it.
  */
 export function parseEngValue(raw: string): number | null {
-  const s = String(raw).trim().toLowerCase().replace(/[ωΩfhv]$/i, '');
+  // Greek mu (U+03BC) is what most keyboards and phones produce for "μF"; the
+  // micro sign (U+00B5) is what the part libraries write. They look identical,
+  // and reading one as a bare number turned "10μ" into ten farads.
+  const s = String(raw).trim().toLowerCase().replace(/μ/g, 'µ').replace(/[ωΩfhva]$/i, '');
   const m = /^(-?\d*\.?\d+)\s*([a-zµ]*)$/.exec(s);
   if (!m) return null;
   const n = parseFloat(m[1]);

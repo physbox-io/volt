@@ -211,11 +211,17 @@ export function EngField({
   value,
   onCommit,
   title,
+  unit = '',
 }: {
   /** The label as written, e.g. "4.7k". */
   value: string;
   onCommit: (next: string) => void;
   title?: string;
+  /**
+   * Unit written after a dragged value, e.g. "V". Sources read as "5V", and a
+   * scrub that left "5.2" would be the one bare number on the schematic.
+   */
+  unit?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(value);
@@ -256,7 +262,7 @@ export function EngField({
     // ~0.8% per pixel at rest: a decade is a comfortable sweep, not a marathon.
     d.cur *= Math.pow(1.008, dx * d.boost * mod);
     if (!Number.isFinite(d.cur) || d.cur <= 0) return;
-    const written = formatEngValue(d.cur);
+    const written = formatEngValue(d.cur) + unit;
     if (written !== value) onCommit(written);
   };
 
@@ -279,6 +285,9 @@ export function EngField({
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
       onFocus={() => { setEditing(true); setText(value); }}
+      // A click already selects the whole value; a double-click would otherwise
+      // take it back to the one word under the pointer, which splits "4.7k".
+      onDoubleClick={(e) => e.currentTarget.select()}
       onChange={(e) => { setText(e.target.value); onCommit(e.target.value); }}
       onBlur={() => { setEditing(false); setSeen(value); setText(value); }}
       onKeyDown={(e) => {
@@ -287,10 +296,13 @@ export function EngField({
           e.preventDefault();
           const mod = e.shiftKey ? 4 : e.altKey ? 0.25 : 1;
           const f = Math.pow(1.1, (e.key === 'ArrowUp' ? 1 : -1) * mod);
-          onCommit(formatEngValue(numeric * f));
+          onCommit(formatEngValue(numeric * f) + unit);
         }
       }}
-      className={`nodrag nopan w-[38px] bg-transparent text-center font-mono text-[9px] leading-none
+      // pointer-events-auto: the caption this sits in is pointer-events-none so
+      // it never blocks a wire, and the field inherited that — it drew as an
+      // input and could not be clicked.
+      className={`nodrag nopan pointer-events-auto w-[38px] bg-transparent text-center font-mono text-[9px] leading-none
                  text-slate-600 dark:text-slate-300 border-b border-dotted border-transparent
                  hover:border-slate-300 dark:hover:border-slate-600 outline-none
                  focus:border-solid focus:border-emerald-500

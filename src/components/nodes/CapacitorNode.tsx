@@ -1,9 +1,9 @@
-import { useCallback } from 'react';
-import { Handle, Position, useReactFlow } from '@xyflow/react';
+import { Handle, Position } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
 import { useDesignator } from './designatorContext';
 import type { NodePropertiesProps } from './registry';
 import { SchematicLabel, EngField } from './schematic';
+import { useRelabel } from './useRelabel';
 import type { CapacitorNodeData } from '../../types/nodes';
 
 export function CapacitorProperties({ node, updateData }: NodePropertiesProps) {
@@ -22,10 +22,7 @@ export function CapacitorNode({ id, data, selected }: NodeProps<Node<CapacitorNo
   const isUp = orientation === 'up';
 
   const name = useDesignator(id, 'capacitor', data.name);
-  const { setNodes } = useReactFlow();
-  const update = useCallback((patch: Partial<CapacitorNodeData>) => {
-    setNodes(nds => nds.map(n => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
-  }, [id, setNodes]);
+  const relabel = useRelabel(id);
 
   return (
     <div className={`schematic-node flex items-center justify-center relative select-none ${isVertical ? 'w-[24px] h-[40px]' : 'w-[40px] h-[24px]'}`}>
@@ -80,7 +77,7 @@ export function CapacitorNode({ id, data, selected }: NodeProps<Node<CapacitorNo
       <SchematicLabel
         placement={isVertical ? 'right' : 'below'}
         name={name}
-        value={<EngField value={data.label || '10u'} onCommit={(v) => update({ label: v })} />}
+        value={<EngField value={data.label || '10u'} onCommit={relabel} />}
       />
       
       <Handle 
