@@ -1,11 +1,10 @@
 import {
-  BaseEdge,
   EdgeLabelRenderer,
   type Edge,
   type EdgeProps,
   useReactFlow,
 } from '@xyflow/react';
-import { useEffect, useState, useContext, useMemo, useCallback, memo } from 'react';
+import { useEffect, useRef, useState, useContext, useMemo, useCallback, memo } from 'react';
 import { playbackTicker, findIndexForTime } from '../utils/playbackTicker';
 import { getHandleCoord } from '../utils/nodeGeometry';
 import { EdgePathContext } from './edgePathContext';
@@ -208,21 +207,48 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
   const timePoints = data?.time_points as number[] | undefined;
   const hasTrace = !!currentArray && !!timePoints && timePoints.length > 0;
 
-  const [tickedCurrent, setTickedCurrent] = useState(0);
+  const { showAura } = useCanvasState();
+
+  /*
+   * The aura follows the playback clock, which ticks every frame. Held in
+   * React state, that re-rendered every live wire 60 times a second — each
+   * render re-reading every edge and node and re-parsing the path — so the
+   * ticker writes the class straight onto the drawn path instead, the way the
+   * LED and meter nodes write their readouts. The path's `className` prop never
+   * changes, so a render for any other reason leaves the classes set here
+   * alone.
+   */
+  const wirePathRef = useRef<SVGPathElement>(null);
+  const currentRef = useRef(0);
+  const showAuraRef = useRef(showAura);
+
+  const applyAura = useCallback(() => {
+    const el = wirePathRef.current;
+    if (!el) return;
+    const current = currentRef.current;
+    const on = showAuraRef.current;
+    el.classList.toggle('edge-aura', on && current > 0.004);
+    el.classList.toggle('edge-aura-faint', on && current <= 0.004 && current > 0.0001);
+  }, []);
 
   useEffect(() => {
-    if (!hasTrace) return;
-    const unsubscribe = playbackTicker.subscribe((elapsed) => {
-      const idx = findIndexForTime(timePoints, elapsed);
-      setTickedCurrent(Math.abs(currentArray[idx] || 0));
-    });
-    return unsubscribe;
-  }, [hasTrace, currentArray, timePoints]);
+    showAuraRef.current = showAura;
+    applyAura();
+  }, [showAura, applyAura]);
 
-  // An edge with no trace carries no current, so that is read off `hasTrace`
-  // rather than written back with a setState the effect used to fire on every
-  // mount — the value is derived, and the effect is only the subscription.
-  const current = hasTrace ? tickedCurrent : 0;
+  useEffect(() => {
+    // An edge with no trace carries no current.
+    currentRef.current = 0;
+    applyAura();
+    if (!hasTrace) return;
+    // Held in locals so the callback keeps the arrays the guard above checked.
+    const times = timePoints;
+    const values = currentArray;
+    return playbackTicker.subscribe((elapsed) => {
+      currentRef.current = Math.abs(values[findIndexForTime(times, elapsed)] || 0);
+      applyAura();
+    });
+  }, [hasTrace, currentArray, timePoints, applyAura]);
 
   const points = useMemo(() => {
     const pts: {x: number; y: number}[] = [];
@@ -274,12 +300,6 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     }
     return points[points.length - 1];
   })();
-
-  const { showAura } = useCanvasState();
-  const isAuraEnabled = showAura;
-  const auraClass = isAuraEnabled
-    ? (current > 0.004 ? 'edge-aura' : (current > 0.0001 ? 'edge-aura-faint' : ''))
-    : '';
 
   const isHovered = context?.hoveredEdgeId === id;
 
@@ -376,17 +396,22 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
   
   return (
     <>
-      <BaseEdge 
-        path={edgePath} 
-        markerEnd={markerEnd} 
-        style={isHovered ? { 
-          ...style, 
-          stroke: '#10b981', 
+      {/* BaseEdge's markup, written out: its props type has no `ref`, and the
+          aura ticker above needs the drawn path. */}
+      <path
+        ref={wirePathRef}
+        d={edgePath}
+        fill="none"
+        className="react-flow__edge-path"
+        markerEnd={markerEnd}
+        style={isHovered ? {
+          ...style,
+          stroke: '#10b981',
           strokeWidth: 4,
           transition: 'stroke 0.15s ease, stroke-width 0.15s ease'
-        } : style} 
-        className={auraClass}
+        } : style}
       />
+      <path d={edgePath} fill="none" strokeOpacity={0} strokeWidth={20} className="react-flow__edge-interaction" />
       <path
         d={edgePath}
         fill="none"
