@@ -6,6 +6,7 @@ import {
   plotNameOf,
   type SpiceAnalysisKind,
 } from '../utils/simDiagnostics';
+import { packResult } from '../utils/simTransfer';
 
 let engine: Simulation | null = null;
 
@@ -127,7 +128,8 @@ const handle = async (req: SimRequest) => {
       return;
     }
 
-    self.postMessage({ type: 'RESULT', id, result, ok: true, messages });
+    const { packed, transfer } = packResult(result);
+    self.postMessage({ type: 'RESULT', id, result: packed, ok: true, messages }, transfer);
   } catch (err) {
     const message = (err as { message?: string })?.message;
     if (message === 'TIMED_OUT') discardEngine();

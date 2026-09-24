@@ -84,6 +84,7 @@ import {
   type SpiceAnalysisKind,
 } from './utils/simDiagnostics';
 import { readOperatingPoint } from './utils/analysisResults';
+import { unpackResult } from './utils/simTransfer';
 import { AdvisoryPanel } from './components/AdvisoryPanel';
 import { BodePanel } from './components/BodePanel';
 
@@ -103,7 +104,7 @@ const getSimulationWorker = () => {
         if (pending) {
           pendingSimulations.delete(id);
           if (ok) {
-            pending.resolve({ result, messages: messages ?? [] } as SpiceRun<never>);
+            pending.resolve({ result: unpackResult(result), messages: messages ?? [] } as SpiceRun<never>);
           } else {
             pending.reject(new SpiceRunError(error, messages));
           }
