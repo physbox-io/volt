@@ -350,14 +350,9 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       netlist += `R_scope_ch2_${node.id} ${ch2} ${gnd} 1G\n`;
     }
     else if (node.type === 'potentiometer') {
-      const rawLabel = String(node.data.label || '10k');
-      const totalRStr = sanitizeSpiceValue(rawLabel);
-      // Parse numeric value with SI suffix for splitting
-      let totalR = parseFloat(totalRStr) || 10000;
-      const suffix = totalRStr.replace(/[0-9.eE\-+]/g, '').toLowerCase();
-      if (suffix === 'k') totalR *= 1000;
-      else if (suffix === 'meg' || suffix === 'm') totalR *= 1e6;
-      else if (suffix === 'u') totalR /= 1e6;
+      // SPICE spelling, like every other part: "m" is milli and "meg" is mega.
+      // It used to read its own "m" as mega; see upgradeLegacyLabels.
+      const totalR = parseEngValue(String(node.data.label || '10k')) || 10000;
       // position is a percentage, 0-100. `|| 50` here would turn a wiper deliberately
       // set to 0 into a half-turn, so fall back only when it is genuinely absent.
       const rawPos = Number(node.data.position);

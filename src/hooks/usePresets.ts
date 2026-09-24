@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 import { presets, DEFAULT_PRESET_KEY } from '../utils/presets';
+import { upgradeLegacyLabels } from '../utils/legacyLabels';
 import {
   loadUserPresets,
   addUserPreset,
@@ -59,7 +60,7 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
   const applyPreset = useCallback((preset: CircuitPreset) => {
     stopSimulation();
     setInitialConditions({});
-    setNodes(preset.nodes);
+    setNodes(upgradeLegacyLabels(preset.nodes));
     setEdges(preset.edges);
     if (preset.recommendedSimLength) {
       setSimLength(preset.recommendedSimLength);

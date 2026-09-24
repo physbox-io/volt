@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import type { Node, Edge } from '@xyflow/react';
+import { upgradeLegacyLabels } from '../utils/legacyLabels';
 
 interface UseCircuitFileArgs {
   nodes: Node[];
@@ -40,7 +41,7 @@ export function useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulatio
           const parsed = JSON.parse(e.target?.result as string);
           if (parsed && Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) {
             stopSimulation();
-            setNodes(parsed.nodes);
+            setNodes(upgradeLegacyLabels(parsed.nodes));
             setEdges(parsed.edges);
           } else {
             alert('Invalid circuit JSON format. Must contain "nodes" and "edges" arrays.');

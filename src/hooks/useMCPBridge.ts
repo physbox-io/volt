@@ -8,6 +8,7 @@ import { nodeNetName, virtualNetPort } from '../utils/netNaming';
 import { getNodesBounds, getViewportForBounds, type Node, type Edge } from '@xyflow/react';
 import { toPng } from 'html-to-image';
 import { presets as builtinPresets } from '../utils/presets';
+import { upgradeLegacyLabels } from '../utils/legacyLabels';
 import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey, loadMachiningSettings, loadLayoutSnapshot } from '../utils/storage';
 import { layoutForCircuit } from '../utils/pcbLayoutStore';
 import type { NoteCard } from './useNoteCards';
@@ -380,7 +381,7 @@ export function useMCPBridge(props: BridgeProps) {
 
         case 'SET_NODES':
           if (!Array.isArray(msg.nodes)) return { ok: false, error: 'nodes must be array' };
-          setNodes(msg.nodes);
+          setNodes(upgradeLegacyLabels(msg.nodes));
           clearStalePresetCard();
           return { ok: true };
 
@@ -742,7 +743,7 @@ export function useMCPBridge(props: BridgeProps) {
           if (!Array.isArray(msg.nodes) || !Array.isArray(msg.edges)) {
             return { ok: false, error: 'nodes and edges must both be arrays' };
           }
-          setNodes(msg.nodes);
+          setNodes(upgradeLegacyLabels(msg.nodes));
           setEdges(msg.edges);
           clearStalePresetCard();
           if (msg.runSim !== false) {
