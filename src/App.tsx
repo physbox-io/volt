@@ -13,7 +13,8 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import { HELTEC_V4_GPIO_PINS } from './components/nodes/partDefaults';
-import { generateSpiceNetlist, sanitizeSpiceValue } from './utils/spice';
+import { generateSpiceNetlist } from './utils/spice';
+import { parseEngValue } from './utils/engValue';
 import { getEffectiveMcuConfig } from './utils/mcuConfig';
 import { buildNetlistResultIndex, findNetGraph } from './utils/netlistResult';
 import { isPortConnected } from './utils/graphTopology';
@@ -1472,12 +1473,7 @@ export default function App() {
         if (v1G && v2G) {
           let R = 1000;
           if (n.type === 'resistor' || n.type === 'inductor') {
-            const valStr = sanitizeSpiceValue(String(n.data.label || (n.type === 'resistor' ? '1k' : '100u')));
-            R = parseFloat(valStr) || 1000;
-            const suffix = valStr.slice(-1).toLowerCase();
-            if (suffix === 'k') R *= 1000;
-            if (suffix === 'u') R /= 1000000;
-            if (suffix === 'm' && valStr.slice(-2).toLowerCase() !== 'me') R /= 1000;
+            R = parseEngValue(String(n.data.label || (n.type === 'resistor' ? '1k' : '100u'))) || 1000;
           } else if (n.type === 'switch') {
             const isOpen = n.data.isOpen !== false;
             R = isOpen ? 1e12 : 0.01; 

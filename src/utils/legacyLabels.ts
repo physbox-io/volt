@@ -4,9 +4,9 @@ import type { Node } from '@xyflow/react';
  * Brings value labels written under old parsing rules up to the current ones.
  *
  * The potentiometer used to read its own label, and read "m" as mega: "1M" and
- * "1m" were both a megohm. Everything else — the netlist, the canvas field,
- * power ratings — follows SPICE, where "m" is milli, and the pot now does too.
- * A saved "1M" pot would otherwise open as a one-milliohm short.
+ * "1m" were both a megohm. Values are now read as people write them — "M" is
+ * mega, "m" is milli — so "1M" still means what it did, and only a lowercase
+ * "1m" pot would otherwise open as a one-milliohm short.
  *
  * No saved circuit carries a version to test, so the rewrite keys on the value
  * instead: a sub-ohm potentiometer is not a part anyone draws, so "<n>m" on a
@@ -19,10 +19,10 @@ export function upgradeLegacyLabels(nodes: Node[]): Node[] {
     if (n.type !== 'potentiometer') return n;
     const label = n.data?.label;
     if (typeof label !== 'string') return n;
-    const m = /^(\s*[-+]?\d*\.?\d+\s*)m(\s*(?:Ω|ohms?)?\s*)$/i.exec(label);
+    const m = /^(\s*[-+]?\d*\.?\d+\s*)m(\s*(?:Ω|ohms?)?\s*)$/.exec(label);
     if (!m) return n;
     changed = true;
-    return { ...n, data: { ...n.data, label: `${m[1]}meg${m[2]}` } };
+    return { ...n, data: { ...n.data, label: `${m[1]}M${m[2]}` } };
   });
   return changed ? out : nodes;
 }

@@ -12,7 +12,9 @@ export function sanitizeSpiceValue(val: string): string {
   const cleaned = val.replace(/Ω/g, '').replace(/[µμ]/g, 'u').trim();
   // 2. Extract leading numeric part with potential SI suffix (e.g. 10k, 4.7, 100u, 5V)
   const match = cleaned.match(/^([-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?[a-zA-Z]*)/);
-  if (match) return match[1];
+  // A capital M is mega as people write it, and milli to SPICE, which ignores
+  // case: "1M" on a resistor simulated as a milliohm. "Meg" is already right.
+  if (match) return match[1].replace(/^([-+]?[0-9.]+(?:[eE][-+]?[0-9]+)?)M(?![eE][gG])/, '$1meg');
   
   return cleaned.replace(/[^\x20-\x7E]/g, '');
 }
@@ -350,8 +352,8 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       netlist += `R_scope_ch2_${node.id} ${ch2} ${gnd} 1G\n`;
     }
     else if (node.type === 'potentiometer') {
-      // SPICE spelling, like every other part: "m" is milli and "meg" is mega.
-      // It used to read its own "m" as mega; see upgradeLegacyLabels.
+      // Read like every other part: "m" is milli, "M" and "meg" are mega. It
+      // used to read its own "m" as mega; see upgradeLegacyLabels.
       const totalR = parseEngValue(String(node.data.label || '10k')) || 10000;
       // position is a percentage, 0-100. `|| 50` here would turn a wiper deliberately
       // set to 0 into a half-turn, so fall back only when it is genuinely absent.

@@ -1,13 +1,15 @@
 /**
  * Engineering-notation component values: "4.7k", "100n", "1meg".
  *
- * Deliberately reads and writes the same spellings the netlist builder already
- * understands, so a value edited on the canvas needs no special handling
- * downstream — it is just a label string like any other, and SPICE sees what it
- * has always seen.
+ * Reads and writes the spellings people write, which are SPICE's with one
+ * exception: "M" is mega, not milli. sanitizeSpiceValue carries that across,
+ * so an edited label is otherwise just a string like any other.
  */
 
-/** Suffix → multiplier. `meg` is checked before `m`, as SPICE spells it. */
+/**
+ * Suffix → multiplier, matched without regard to case — except `M` and `m`,
+ * which parseEngValue settles first.
+ */
 const SUFFIXES: [string, number][] = [
   ['meg', 1e6],
   ['g', 1e9],
@@ -27,15 +29,22 @@ export function parseEngValue(raw: string): number | null {
   // Greek mu (U+03BC) is what most keyboards and phones produce for "μF"; the
   // micro sign (U+00B5) is what the part libraries write. They look identical,
   // and reading one as a bare number turned "10μ" into ten farads.
-  const s = String(raw).trim().toLowerCase().replace(/μ/g, 'µ').replace(/[ωΩfhva]$/i, '');
-  const m = /^(-?\d*\.?\d+)\s*([a-zµ]*)$/.exec(s);
+  const s = String(raw).trim().replace(/μ/g, 'µ').replace(/[ωΩfhva]$/i, '');
+  const m = /^(-?\d*\.?\d+)\s*([a-zA-Zµ]*)$/.exec(s);
   if (!m) return null;
   const n = parseFloat(m[1]);
   if (!Number.isFinite(n)) return null;
   const suffix = m[2];
   if (!suffix) return n;
+  /*
+   * Case matters for M alone: "1M" is a megohm and "1m" a milliohm, as
+   * everyone but SPICE writes them. SPICE ignores case and would read both as
+   * milli, so sanitizeSpiceValue spells the capital one "meg" on the way in.
+   */
+  if (suffix === 'M') return n * 1e6;
+  const lower = suffix.toLowerCase();
   for (const [tag, mult] of SUFFIXES) {
-    if (suffix === tag) return n * mult;
+    if (lower === tag) return n * mult;
   }
   return null;
 }
@@ -54,7 +63,7 @@ export function formatEngValue(v: number): string {
 
   const scale: [number, string][] = [
     [1e9, 'g'],
-    [1e6, 'meg'],
+    [1e6, 'M'],
     [1e3, 'k'],
     [1, ''],
     [1e-3, 'm'],

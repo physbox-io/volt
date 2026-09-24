@@ -6,7 +6,7 @@ import { sanitizeSpiceValue } from '../src/utils/spice';
 describe('parseEngValue', () => {
   it.each([
     ['1k', 1000], ['4.7k', 4700], ['10K', 10000], ['100', 100],
-    ['1meg', 1e6], ['2.2meg', 2.2e6], ['100n', 1e-7], ['4.7u', 4.7e-6],
+    ['1meg', 1e6], ['2.2meg', 2.2e6], ['1M', 1e6], ['2.2MΩ', 2.2e6], ['1Meg', 1e6], ['1MEG', 1e6], ['100n', 1e-7], ['4.7u', 4.7e-6],
     ['10m', 0.01], ['33p', 33e-12], ['1g', 1e9], ['0.5', 0.5],
   ])('reads %s', (raw, want) => {
     expect(parseEngValue(raw)!).toBeCloseTo(want, 15);
@@ -26,6 +26,35 @@ describe('parseEngValue', () => {
     expect(sanitizeSpiceValue('10\u00b5F')).toBe('10uF');
   });
 
+  it('reads M as mega and m as milli, as people write them', () => {
+    expect(parseEngValue('1M')!).toBeCloseTo(1e6, 6);
+    expect(parseEngValue('1m')!).toBeCloseTo(1e-3, 15);
+    expect(parseEngValue('10mA')!).toBeCloseTo(0.01, 15);
+    expect(parseEngValue('1MA')!).toBeCloseTo(1e6, 6);
+  });
+
+  it('hands SPICE a capital M as meg, since SPICE ignores case', () => {
+    for (const [label, want] of [
+      ['1M', '1meg'], ['2.2MΩ', '2.2meg'], ['1Meg', '1Meg'], ['1MEG', '1MEG'],
+      ['1m', '1m'], ['10mA', '10mA'], ['10mH', '10mH'], ['4.7k', '4.7k'], ['1e3M', '1e3meg'],
+    ]) {
+      expect(sanitizeSpiceValue(label), label).toBe(want);
+    }
+  });
+
+  it('agrees with SPICE on every spelling it hands over', () => {
+    // SPICE: case-insensitive, meg before m, trailing letters ignored.
+    const spice = (v: string) => {
+      const m = /^([-+]?[0-9.]+(?:e[-+]?\d+)?)([a-z]*)/i.exec(v)!;
+      const n = parseFloat(m[1]); const t = m[2].toLowerCase();
+      const mult = t.startsWith('meg') ? 1e6 : ({ t: 1e12, g: 1e9, k: 1e3, m: 1e-3, u: 1e-6, n: 1e-9, p: 1e-12, f: 1e-15 } as Record<string, number>)[t[0]] ?? 1;
+      return n * mult;
+    };
+    for (const label of ['1M', '2.2MΩ', '1Meg', '1m', '10mA', '4.7k', '100n', '10μF', '22p', '5V', '330Ω']) {
+      expect(spice(sanitizeSpiceValue(label)) / parseEngValue(label)!, label).toBeCloseTo(1, 9);
+    }
+  });
+
   it('reads source values with their unit', () => {
     expect(parseEngValue('5V')!).toBeCloseTo(5, 12);
     expect(parseEngValue('10mA')!).toBeCloseTo(0.01, 12);
@@ -41,7 +70,7 @@ describe('parseEngValue', () => {
 
 describe('formatEngValue', () => {
   it.each([
-    [1000, '1k'], [4700, '4.7k'], [1e6, '1meg'], [1e-7, '100n'],
+    [1000, '1k'], [4700, '4.7k'], [1e6, '1M'], [1e-7, '100n'],
     [0.01, '10m'], [33e-12, '33p'], [100, '100'], [0, '0'],
   ])('writes %d as %s', (v, want) => {
     expect(formatEngValue(v)).toBe(want);
