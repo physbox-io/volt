@@ -27,7 +27,6 @@
     "lucide-react": "^1.14.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "reactflow": "^11.11.4",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.4"
   },
