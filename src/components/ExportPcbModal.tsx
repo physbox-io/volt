@@ -2529,6 +2529,21 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     <label className="flex items-center gap-2 cursor-pointer text-slate-600 dark:text-slate-300 font-medium">
                       <input
                         type="checkbox"
+                        checked={options.rubOutClearing === true}
+                        onChange={e => setOptions({ ...options, rubOutClearing: e.target.checked })}
+                        className="accent-emerald-500"
+                      />
+                      <span>Clear excess copper</span>
+                    </label>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed pl-5">
+                      Mills away the foil between nets with the {options.profileToolDiaMm}mm end mill, after drilling, so only traces and pads are left. Gaps too narrow for the end mill keep their copper; the preview shows them in grey. Lower the copper flood to clear more.
+                    </p>
+                  </div>
+
+                  <div className="p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded space-y-1.5">
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-600 dark:text-slate-300 font-medium">
+                      <input
+                        type="checkbox"
                         checked={options.rampedPlunge !== false}
                         onChange={e => setOptions({ ...options, rampedPlunge: e.target.checked })}
                         className="accent-emerald-500"

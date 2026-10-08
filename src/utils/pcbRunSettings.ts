@@ -60,6 +60,7 @@ export function pcbRunSettings(input: PcbRunContextInput): Record<string, unknow
     profileTool: profileTool?.name ?? null,
     isolationPasses: options.isolationPasses,
     isolationDepthZ: options.isolationDepthZ,
+    copperCleared: options.rubOutClearing === true,
     cutFeedrate: options.cutFeedrate,
     plungeFeedrate: options.plungeFeedrate,
     spindleRpm: options.spindleRpm,

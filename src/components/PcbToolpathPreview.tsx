@@ -70,6 +70,7 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
   const [showIsolation, setShowIsolation] = useState(true);
   const [showDrills, setShowDrills] = useState(true);
   const [showProfile, setShowProfile] = useState(true);
+  const [showClearing, setShowClearing] = useState(true);
   const [showRapids, setShowRapids] = useState(true);
   const [showHeightmap, setShowHeightmap] = useState(true);
 
@@ -88,11 +89,11 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
       x1: number;
       y1: number;
       z1: number;
-      op: 'isolation' | 'drill' | 'profile' | 'unknown';
+      op: 'isolation' | 'drill' | 'clearing' | 'profile' | 'unknown';
     }[] = [];
 
     let curX = 0, curY = 0, curZ = options.safeZ;
-    let currentOp: 'isolation' | 'drill' | 'profile' | 'unknown' = 'isolation';
+    let currentOp: 'isolation' | 'drill' | 'clearing' | 'profile' | 'unknown' = 'isolation';
 
     for (const line of lines) {
       const trimmed = line.trim();
@@ -100,6 +101,7 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
       if (trimmed.includes('OP 1/3') || trimmed.includes('Isolation')) currentOp = 'isolation';
       if (trimmed.includes('OP 2/3') || trimmed.includes('drilling')) currentOp = 'drill';
       if (trimmed.includes('OP 3/3') || trimmed.includes('profile')) currentOp = 'profile';
+      if (trimmed.includes('Copper clearing')) currentOp = 'clearing';
 
       if (trimmed.startsWith(';')) continue;
       const parts = trimmed.toUpperCase().split(/\s+/);
@@ -260,6 +262,17 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
             />
             <span className="text-fuchsia-400">Profile</span>
           </label>
+          {parsedMoves.some(m => m.op === 'clearing') && (
+            <label className="flex items-center gap-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showClearing}
+                onChange={e => setShowClearing(e.target.checked)}
+                className="accent-lime-400"
+              />
+              <span className="text-lime-400">Clearing</span>
+            </label>
+          )}
           <label className="flex items-center gap-1 cursor-pointer">
             <input
               type="checkbox"
@@ -370,6 +383,7 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
             if (m.op === 'isolation' && !showIsolation) return null;
             if (m.op === 'drill' && !showDrills) return null;
             if (m.op === 'profile' && !showProfile) return null;
+            if (m.op === 'clearing' && !showClearing) return null;
             return (
               <line
                 key={`ghost_${idx}`}
@@ -390,6 +404,7 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
             if (m.op === 'isolation' && !showIsolation) return null;
             if (m.op === 'drill' && !showDrills) return null;
             if (m.op === 'profile' && !showProfile) return null;
+            if (m.op === 'clearing' && !showClearing) return null;
 
             const isRapid = m.type === 'G0';
             const color = isRapid
@@ -398,6 +413,8 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
               ? '#06b6d4' // Cyan isolation
               : m.op === 'drill'
               ? '#f97316' // Orange drill
+              : m.op === 'clearing'
+              ? '#a3e635' // Lime copper clearing
               : '#d946ef'; // Fuchsia profile
 
             return (

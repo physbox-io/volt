@@ -134,7 +134,17 @@ export interface PcbOptions {
   pauseOnToolChange: boolean;  // Insert T<N> M6 pauses
   autoGrowBoard: boolean;      // Size the board to the parts (never below the requested size)
   rampedPlunge?: boolean;      // Enable 3D ramped entry for plunges (default true)
-  rubOutClearing?: boolean;    // Clear unassigned copper areas (default false)
+  /**
+   * Mill away the copper between nets with the profile end mill, leaving only
+   * traces and pads standing (default false).
+   *
+   * An isolation job only cuts a channel round each net, so the rest of the
+   * blank stays on as dead foil. This pockets it out after drilling, with the
+   * end mill loaded for the profile anyway, so it costs no extra tool change on
+   * a single-sided board. Gaps too narrow for the end mill keep their foil; the
+   * preview shows them.
+   */
+  rubOutClearing?: boolean;
   airCutZOffset?: number;      // Z offset for Air Cut dry runs (default 20mm)
   /**
    * Extra copper grown around every pad, per side, in mm. Footprint pads are
@@ -543,6 +553,12 @@ export interface PcbLayoutResult {
   bottomTraces?: TraceSegment[];
   topIsolationPaths?: IsolationPath[];
   bottomIsolationPaths?: IsolationPath[];
+  /** End-mill rings that clear the dead copper, when rubOutClearing is on. */
+  clearingPaths?: IsolationPath[];
+  bottomClearingPaths?: IsolationPath[];
+  /** Dead foil the end mill cannot reach, per side, when clearing is on. */
+  clearingResidue?: Poly[];
+  bottomClearingResidue?: Poly[];
   svgBottomSide?: string;
   svgComposite?: string;
   /**
@@ -620,6 +636,74 @@ export function padReliefPlan(
   // already ~2mm of relief on a default V-bit.
   const passes = Math.min(12, Math.ceil((requestedMm - channelMm) / stepover));
   return { clearanceMm: channelMm + passes * stepover, passes };
+}
+
+/**
+ * Distance between neighbouring copper-clearing rings, as a fraction of the end
+ * mill's diameter. At a half, every point of the region the cutter centre may
+ * visit lies within a radius of some ring, so the pocket is cut out whole
+ * rather than left with ribs between the rings.
+ */
+export const CLEARING_STEPOVER = 0.5;
+
+export interface CopperClearingPlan {
+  /** End-mill centrelines, closed rings, in cutting order. */
+  paths: IsolationPath[];
+  /** The area those paths sweep: everything inside it is milled bare. */
+  swept: Poly[];
+  /**
+   * Foil left on the board that belongs to no net: neither swept by the end
+   * mill nor inside the isolation channel. Gaps between copper too narrow for
+   * the end mill to enter, mostly.
+   */
+  residue: Poly[];
+}
+
+/**
+ * Mills away the copper an isolation job would otherwise leave standing.
+ *
+ * Isolation only cuts a channel round each net; everything beyond it stays on
+ * the blank as dead foil. This pockets that foil out with the flat end mill,
+ * in concentric rings stepped in from the edge of the region the cutter centre
+ * is allowed into.
+ *
+ * That region is the board shrunk by a tool radius, less every piece of copper
+ * grown by a tool radius plus `keepOffMm`. So the cutting edge never comes
+ * nearer than `keepOffMm` to copper that has to survive, and the V-bit's
+ * channel — `channelMm` wide — covers the strip between. `keepOffMm` should be
+ * below `channelMm` so the two cuts overlap rather than leaving a hair of foil
+ * between them.
+ */
+export function planCopperClearing(
+  copper: Poly[],
+  board: Poly[],
+  toolDiaMm: number,
+  keepOffMm: number,
+  channelMm: number,
+  start: Pt
+): CopperClearingPlan {
+  const r = toolDiaMm / 2;
+  if (!(r > 0)) return { paths: [], swept: [], residue: [] };
+  const guarded = copper.length > 0 ? offsetPolys(unionPolys(copper), r + Math.max(0, keepOffMm)) : [];
+  const region = differencePolys(offsetPolys(board, -r), guarded);
+  const swept = offsetPolys(region, r);
+
+  const paths: IsolationPath[] = [];
+  const step = toolDiaMm * CLEARING_STEPOVER;
+  let rings = region;
+  // Each step shrinks the region by a fixed amount, so this ends by itself; the
+  // cap is only there so a degenerate input cannot spin.
+  for (let pass = 0; rings.length > 0 && pass < 10000; pass++) {
+    for (const ring of rings) {
+      if (ring.length < 3) continue;
+      paths.push({ netId: 'clearing', pass, points: [...ring, ring[0]] });
+    }
+    rings = offsetPolys(rings, -step);
+  }
+
+  const kept = copper.length > 0 ? offsetPolys(unionPolys(copper), Math.max(0, channelMm)) : [];
+  const residue = differencePolys(differencePolys(board, swept), kept);
+  return { paths: sortPathsNearestNeighbor(paths, start), swept, residue };
 }
 
 const minPadGapCache = new WeakMap<ComponentFootprint, number>();
@@ -1474,16 +1558,24 @@ function mirrorLayoutInX(result: PcbLayoutResult): void {
     result.isolationPaths,
     result.topIsolationPaths,
     result.bottomIsolationPaths,
+    result.clearingPaths,
+    result.bottomClearingPaths,
   ];
   for (const list of pathLists) {
     for (const path of list ?? []) if (once(path)) path.points = mirrorPts(path.points);
   }
+  // A reflection reverses every ring's winding, and winding is what tells a
+  // hole from an outline: unioned with anything built fresh, a reflected net
+  // cancels out instead of adding. Each ring is walked backwards to undo it.
+  const mirrorRing = (ring: Poly): Poly => mirrorPts(ring).reverse();
+  if (result.clearingResidue) result.clearingResidue = result.clearingResidue.map(mirrorRing);
+  if (result.bottomClearingResidue) result.bottomClearingResidue = result.bottomClearingResidue.map(mirrorRing);
 
   // The copper polygons are handed to the renderers as their own map, so they
   // are rewritten in place: the caller is holding this same Map.
   for (const map of [result.copperByNet, result.bottomCopperByNet]) {
     if (!map) continue;
-    for (const [netId, polys] of map) map.set(netId, polys.map(mirrorPts));
+    for (const [netId, polys] of map) map.set(netId, polys.map(mirrorRing));
   }
 }
 
@@ -2435,6 +2527,47 @@ function finishLayout(
       })
     : [];
 
+  // 7b. Copper clearing ------------------------------------------------
+  // Everything the isolation channel leaves standing beyond each net is dead
+  // foil; pocket it out with the end mill. Every pad is held clear, netted or
+  // not: an unused pad left un-ringed is still a pad somebody solders to.
+  let clearingPaths: IsolationPath[] | undefined;
+  let bottomClearingPaths: IsolationPath[] | undefined;
+  let clearingResidue: Poly[] | undefined;
+  let bottomClearingResidue: Poly[] | undefined;
+  if (options.rubOutClearing) {
+    const channelMm =
+      effectiveToolDiaMm *
+      (1 + (Math.max(1, Math.min(3, options.isolationPasses)) - 1) * ISOLATION_STEPOVER);
+    const boardPoly = [
+      rectPoly(boardOriginMm + boardWidthMm / 2, boardOriginMm + boardHeightMm / 2, boardWidthMm, boardHeightMm),
+    ];
+    const keptTop: Poly[] = [];
+    const keptBottom: Poly[] = [];
+    for (const polys of copperByNet.values()) keptTop.push(...polys);
+    if (isTwoLayer) for (const polys of copperByNetBottom.values()) keptBottom.push(...polys);
+    for (const pad of pads) {
+      const comp = compById.get(pad.componentId);
+      if (!comp) continue;
+      const poly = padPolygon(pad, comp.rotationDeg, effectivePadMarginMm(comp.footprint, padMargin));
+      keptTop.push(poly);
+      if (isTwoLayer && pad.spec.drillDiameter > 0) keptBottom.push(poly);
+    }
+    const top = planCopperClearing(
+      keptTop, boardPoly, options.profileToolDiaMm, channelMm / 2, channelMm, { x: 0, y: 0 }
+    );
+    clearingPaths = top.paths;
+    clearingResidue = top.residue;
+    if (isTwoLayer) {
+      const bottom = planCopperClearing(
+        keptBottom, boardPoly, options.profileToolDiaMm, channelMm / 2, channelMm,
+        { x: 2 * (boardOriginMm + boardWidthMm / 2), y: 0 }
+      );
+      bottomClearingPaths = bottom.paths;
+      bottomClearingResidue = bottom.residue;
+    }
+  }
+
   // 8. Drills -----------------------------------------------------------
   const drills: DrillPoint[] = [];
   for (const pad of pads) {
@@ -2505,6 +2638,10 @@ function finishLayout(
     bottomTraces: traces.filter(t => t.layer === 'bottom'),
     topIsolationPaths,
     bottomIsolationPaths,
+    clearingPaths,
+    bottomClearingPaths,
+    clearingResidue,
+    bottomClearingResidue,
     copperByNet,
     bottomCopperByNet: isTwoLayer ? copperByNetBottom : undefined,
   };
@@ -3220,6 +3357,14 @@ export function renderPcbSvg(
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${vw} ${vh}" width="100%" height="100%">\n`;
   svg += `  <rect x="${o}" y="${o}" width="${w}" height="${h}" fill="#1b4d2e" stroke="#2e7d42" stroke-width="0.4" rx="1.5" />\n`;
 
+  // Foil the clearing pass cannot reach stays on the board, belonging to no
+  // net. Drawn so a gap left full of copper is not mistaken for bare laminate.
+  const residue = view === 'bottom' ? result.bottomClearingResidue : result.clearingResidue;
+  if (residue && residue.length > 0) {
+    const d = polysToSvgPath(mapPolys(residue));
+    if (d) svg += `  <path class="pcb-clearing-residue" d="${d}" fill="#9e9e9e" fill-rule="evenodd" opacity="0.45" />\n`;
+  }
+
   // Copper, per net, with holes honoured.
   if (view === 'composite') {
     // 1. Bottom copper layer
@@ -3832,6 +3977,13 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
       g.push(`; Pads:       kept ${padClr.toFixed(2)}mm clear of flooded copper`);
     }
   }
+  if (result.clearingPaths) {
+    const left = totalArea(result.clearingResidue ?? []) + totalArea(result.bottomClearingResidue ?? []);
+    g.push(
+      `; Clearing:   foil between nets milled away with the ${options.profileToolDiaMm}mm end mill` +
+      (left >= 1 ? `; ${left.toFixed(0)}mm2 of foil left where it cannot reach` : '')
+    );
+  }
   g.push(`; Routed:     ${(result.completion * 100).toFixed(1)}%`);
   for (const v of result.violations) {
     g.push(`; ${v.severity.toUpperCase()}: ${v.message}`);
@@ -3876,7 +4028,67 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   };
 
   const isTwoLayer = options.layers === 2;
-  const totalOps = isTwoLayer ? 5 : 3;
+  const topClearing = result.clearingPaths ?? [];
+  const bottomClearing = isTwoLayer ? result.bottomClearingPaths ?? [] : [];
+  const topClearOps = topClearing.length > 0 ? 1 : 0;
+  const bottomClearOps = bottomClearing.length > 0 ? 1 : 0;
+  const totalOps = (isTwoLayer ? 5 : 3) + topClearOps + bottomClearOps;
+  // Which bit is in the collet, so the profile does not stop to have the end
+  // mill it already holds fitted again.
+  let loadedTool = '';
+
+  /** Cuts each path at `depthZ`, entering on a ramp where there is room for one. */
+  const emitPaths = (
+    paths: IsolationPath[],
+    depthZ: number,
+    mx: (x: number) => number,
+    netLabel: (netId: string) => string | null
+  ) => {
+    let lastNet = '';
+    for (const path of paths) {
+      if (path.points.length < 2) continue;
+      if (path.netId !== lastNet) {
+        const label = netLabel(path.netId);
+        if (label) g.push(label);
+        lastNet = path.netId;
+      }
+      const p0 = path.points[0];
+      const p1 = path.points[1];
+      g.push(`G0 Z${f3(options.safeZ)}`);
+      g.push(`G0 X${f3(mx(p0.x))} Y${f3(p0.y)}`);
+
+      const segLen = p1 ? Math.hypot(p1.x - p0.x, p1.y - p0.y) : 0;
+      if (options.rampedPlunge !== false && p1 && segLen > 0.4) {
+        const rampLen = Math.min(1.2, segLen * 0.8);
+        const t = rampLen / segLen;
+        const rx = p0.x + (p1.x - p0.x) * t;
+        const ry = p0.y + (p1.y - p0.y) * t;
+        g.push(`G1 X${f3(mx(rx))} Y${f3(ry)} Z${f3(depthZ)} F${options.plungeFeedrate}`);
+        g.push(`G1 X${f3(mx(p1.x))} Y${f3(p1.y)} Z${f3(depthZ)} F${options.cutFeedrate}`);
+        for (let i = 2; i < path.points.length; i++) {
+          g.push(`G1 X${f3(mx(path.points[i].x))} Y${f3(path.points[i].y)} F${options.cutFeedrate}`);
+        }
+      } else {
+        g.push(`G1 Z${f3(depthZ)} F${options.plungeFeedrate}`);
+        for (let i = 1; i < path.points.length; i++) {
+          g.push(`G1 X${f3(mx(path.points[i].x))} Y${f3(path.points[i].y)} F${options.cutFeedrate}`);
+        }
+      }
+    }
+    g.push(`G0 Z${f3(options.safeZ)}`);
+  };
+
+  /** Pockets the dead copper out of one side with the end mill. */
+  const emitClearing = (op: number, paths: IsolationPath[], side: string, mx: (x: number) => number) => {
+    g.push(``);
+    g.push(`; ==================================================`);
+    g.push(`; OP ${op}/${totalOps}: ${side}Copper clearing (${options.profileToolDiaMm}mm end mill)`);
+    g.push(`; Pockets out the foil between nets, leaving traces and pads.`);
+    g.push(`; ==================================================`);
+    if (loadedTool !== 'T99') toolChange(`T99 M6 ; Tool 99: ${options.profileToolDiaMm}mm end mill`);
+    loadedTool = 'T99';
+    emitPaths(paths, options.isolationDepthZ, mx, () => null);
+  };
 
   // --- Operation 1: isolation ---
   g.push(``);
@@ -3884,39 +4096,10 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   g.push(`; OP 1/${totalOps}: ${isTwoLayer ? 'Top ' : ''}Isolation routing (${options.vBitAngleDeg}deg V-bit, ${options.vBitTipMm}mm tip)`);
   g.push(`; ==================================================`);
   toolChange(`T1 M6 ; Tool 1: V-bit`);
+  loadedTool = 'T1';
 
   const topPaths = (isTwoLayer && result.topIsolationPaths) ? result.topIsolationPaths : result.isolationPaths;
-  let lastNet = '';
-  for (const path of topPaths) {
-    if (path.points.length < 2) continue;
-    if (path.netId !== lastNet) {
-      g.push(`; --- net ${path.netId} ---`);
-      lastNet = path.netId;
-    }
-    const p0 = path.points[0];
-    const p1 = path.points[1];
-    g.push(`G0 Z${f3(options.safeZ)}`);
-    g.push(`G0 X${f3(p0.x)} Y${f3(p0.y)}`);
-
-    const segLen = p1 ? Math.hypot(p1.x - p0.x, p1.y - p0.y) : 0;
-    if (options.rampedPlunge !== false && p1 && segLen > 0.4) {
-      const rampLen = Math.min(1.2, segLen * 0.8);
-      const t = rampLen / segLen;
-      const rx = p0.x + (p1.x - p0.x) * t;
-      const ry = p0.y + (p1.y - p0.y) * t;
-      g.push(`G1 X${f3(rx)} Y${f3(ry)} Z${f3(options.isolationDepthZ)} F${options.plungeFeedrate}`);
-      g.push(`G1 X${f3(p1.x)} Y${f3(p1.y)} Z${f3(options.isolationDepthZ)} F${options.cutFeedrate}`);
-      for (let i = 2; i < path.points.length; i++) {
-        g.push(`G1 X${f3(path.points[i].x)} Y${f3(path.points[i].y)} F${options.cutFeedrate}`);
-      }
-    } else {
-      g.push(`G1 Z${f3(options.isolationDepthZ)} F${options.plungeFeedrate}`);
-      for (let i = 1; i < path.points.length; i++) {
-        g.push(`G1 X${f3(path.points[i].x)} Y${f3(path.points[i].y)} F${options.cutFeedrate}`);
-      }
-    }
-  }
-  g.push(`G0 Z${f3(options.safeZ)}`);
+  emitPaths(topPaths, options.isolationDepthZ, x => x, netId => `; --- net ${netId} ---`);
 
   // Where the tool is left in XY, so the next operation can start nearby.
   let cursor: Pt = { x: 0, y: 0 };
@@ -3952,6 +4135,7 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
       );
       if (options.pauseOnToolChange && bitMm !== loadedBitMm) {
         toolChange(`T${toolNum} M6 ; Tool ${toolNum}: ${bitMm}mm drill`);
+        loadedTool = `T${toolNum}`;
         toolNum++;
       }
       loadedBitMm = bitMm;
@@ -4002,11 +4186,13 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
     g.push(`G0 Z${f3(options.safeZ)}`);
   }
 
+  if (topClearOps) emitClearing(3, topClearing, isTwoLayer ? 'Top ' : '', x => x);
+
   if (isTwoLayer) {
     // --- Operation 3: flip the board onto the registration pins ---
     g.push(``);
     g.push(`; ==================================================`);
-    g.push(`; OP 3/5: Flip Board & Register with Alignment Pins`);
+    g.push(`; OP ${3 + topClearOps}/${totalOps}: Flip Board & Register with Alignment Pins`);
     g.push(`; 1. Spindle stopped. Clear clamps.`);
     g.push(`; 2. Insert two alignment pins into spoilboard holes.`);
     g.push(`; 3. Flip board horizontally (left-to-right) onto pins.`);
@@ -4025,45 +4211,17 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
     // --- Operation 4: Bottom isolation ---
     g.push(``);
     g.push(`; ==================================================`);
-    g.push(`; OP 4/5: Bottom Isolation routing (${options.vBitAngleDeg}deg V-bit, mirrored horizontally)`);
+    g.push(`; OP ${4 + topClearOps}/${totalOps}: Bottom Isolation routing (${options.vBitAngleDeg}deg V-bit, mirrored horizontally)`);
     g.push(`; ==================================================`);
     toolChange(`T1 M6 ; Tool 1: V-bit`);
+    loadedTool = 'T1';
 
     const xMid = result.boardOriginMm + result.boardWidthMm / 2;
     const mx = (x: number) => 2 * xMid - x;
 
-    const bPaths = result.bottomIsolationPaths || [];
-    let lastBNet = '';
-    for (const path of bPaths) {
-      if (path.points.length < 2) continue;
-      if (path.netId !== lastBNet) {
-        g.push(`; --- net ${path.netId} (bottom) ---`);
-        lastBNet = path.netId;
-      }
-      const p0 = path.points[0];
-      const p1 = path.points[1];
-      g.push(`G0 Z${f3(options.safeZ)}`);
-      g.push(`G0 X${f3(mx(p0.x))} Y${f3(p0.y)}`);
+    emitPaths(result.bottomIsolationPaths || [], options.isolationDepthZ, mx, netId => `; --- net ${netId} (bottom) ---`);
 
-      const segLen = p1 ? Math.hypot(p1.x - p0.x, p1.y - p0.y) : 0;
-      if (options.rampedPlunge !== false && p1 && segLen > 0.4) {
-        const rampLen = Math.min(1.2, segLen * 0.8);
-        const t = rampLen / segLen;
-        const rx = p0.x + (p1.x - p0.x) * t;
-        const ry = p0.y + (p1.y - p0.y) * t;
-        g.push(`G1 X${f3(mx(rx))} Y${f3(ry)} Z${f3(options.isolationDepthZ)} F${options.plungeFeedrate}`);
-        g.push(`G1 X${f3(mx(p1.x))} Y${f3(p1.y)} Z${f3(options.isolationDepthZ)} F${options.cutFeedrate}`);
-        for (let i = 2; i < path.points.length; i++) {
-          g.push(`G1 X${f3(mx(path.points[i].x))} Y${f3(path.points[i].y)} F${options.cutFeedrate}`);
-        }
-      } else {
-        g.push(`G1 Z${f3(options.isolationDepthZ)} F${options.plungeFeedrate}`);
-        for (let i = 1; i < path.points.length; i++) {
-          g.push(`G1 X${f3(mx(path.points[i].x))} Y${f3(path.points[i].y)} F${options.cutFeedrate}`);
-        }
-      }
-    }
-    g.push(`G0 Z${f3(options.safeZ)}`);
+    if (bottomClearOps) emitClearing(5 + topClearOps, bottomClearing, 'Bottom ', mx);
   }
 
   // --- Profile operation ---
@@ -4073,7 +4231,7 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   g.push(`; Tool centre runs ${(options.profileToolDiaMm / 2).toFixed(3)}mm outside the`);
   g.push(`; finished edge. ${options.tabCount} holding tab(s) keep the board captive.`);
   g.push(`; ==================================================`);
-  toolChange(`T99 M6 ; Tool 99: ${options.profileToolDiaMm}mm end mill`);
+  if (loadedTool !== 'T99') toolChange(`T99 M6 ; Tool 99: ${options.profileToolDiaMm}mm end mill`);
 
   // A double-sided board is cut from its flipped side, so an internal cutout
   // that was at X is now mirrored across the board centreline. The outside
