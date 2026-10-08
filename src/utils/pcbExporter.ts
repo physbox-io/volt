@@ -1093,6 +1093,7 @@ function translateLayout(
   pads: PlacedPad[],
   traces: RoutedTrace[],
   cutouts: BoardCutout[],
+  vias: RouteVia[] | undefined,
   dx: number,
   dy: number
 ): void {
@@ -1103,6 +1104,14 @@ function translateLayout(
   // them rather than shifting in place.
   for (const t of traces) {
     t.points = t.points.map(pt => ({ ...pt, x: pt.x + dx, y: pt.y + dy }));
+  }
+  // A via is where a trace changes face, so it moves with the traces. Left
+  // behind, it is drilled and padded on both faces wherever the board used to
+  // be - usually through some other net's track.
+  if (vias) {
+    for (let i = 0; i < vias.length; i++) {
+      vias[i] = { ...vias[i], x: vias[i].x + dx, y: vias[i].y + dy };
+    }
   }
 }
 
@@ -1129,6 +1138,7 @@ function cropBoardToContent(
   pads: PlacedPad[],
   traces: RoutedTrace[],
   cutouts: BoardCutout[],
+  vias: RouteVia[] | undefined,
   opts: PcbOptions
 ): { boardWidthMm: number; boardHeightMm: number } {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -1207,7 +1217,7 @@ function cropBoardToContent(
     boardH = opts.boardHeightMm;
   }
 
-  translateLayout(placed, pads, traces, cutouts, shiftX, shiftY);
+  translateLayout(placed, pads, traces, cutouts, vias, shiftX, shiftY);
 
   return { boardWidthMm: boardW, boardHeightMm: boardH };
 }
@@ -1982,11 +1992,11 @@ export function generatePcbLayout(
   const boardOriginMm = boardOriginOffsetMm(options);
   if (options.autoGrowBoard) {
     ({ boardWidthMm, boardHeightMm } =
-      cropBoardToContent(placed, pads, routing.traces, cutouts, options));
+      cropBoardToContent(placed, pads, routing.traces, cutouts, routing.vias, options));
   } else {
     // Fixed size: nothing to crop, but the board still has to sit clear of the
     // origin so the profile pass does not run negative.
-    translateLayout(placed, pads, routing.traces, cutouts, boardOriginMm, boardOriginMm);
+    translateLayout(placed, pads, routing.traces, cutouts, routing.vias, boardOriginMm, boardOriginMm);
   }
 
   if (
@@ -2089,6 +2099,24 @@ export interface PcbLayoutSnapshot {
  * the router comes back with.
  */
 export const SNAPSHOT_VERSION = 2;
+
+/**
+ * Vias that do not sit where a trace of their own net changes face.
+ *
+ * A via exists only to join a top track to a bottom one, so one anywhere else
+ * is drilled and padded on both faces for nothing - and, being copper, through
+ * whatever track of another net happens to be there.
+ */
+export function misplacedVias(core: Pick<LayoutCore, 'traces' | 'vias'>): RouteVia[] {
+  const near = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y) < 0.01;
+  const ends = (netId: string, layer: 'top' | 'bottom') =>
+    core.traces
+      .filter(t => t.netId === netId && (t.layer ?? 'top') === layer && t.points.length > 0)
+      .flatMap(t => [t.points[0], t.points[t.points.length - 1]]);
+  return (core.vias ?? []).filter(
+    v => !ends(v.netId, 'top').some(p => near(p, v)) || !ends(v.netId, 'bottom').some(p => near(p, v))
+  );
+}
 
 /**
  * Copper, toolpaths, drills and the program, from a board already decided.
@@ -2737,6 +2765,9 @@ export function restorePcbLayout(
   if (!snapshot || snapshot.version !== SNAPSHOT_VERSION || !snapshot.core) return null;
   const options: PcbOptions = { ...DEFAULT_PCB_OPTIONS, ...userOptions };
   if (snapshot.boardKey !== layoutBoardKey(nodes, edges, options)) return null;
+  // Two-layer boards saved before vias moved with the board carry them where
+  // the board used to be; route those again rather than drill them.
+  if (misplacedVias(snapshot.core).length > 0) return null;
   return finishLayout(snapshot.core, options, snapshot.boardKey);
 }
 
