@@ -75,8 +75,8 @@ export type LinkedShaft = {
   load: number;
 };
 
-/** The element whose branch current is phase `index`'s current (1-based). */
-export const phaseSense = (id: string, index: number) => `V_${id}_p${index}`;
+/** The element whose branch current is phase `index`'s current (1-based): its coil. */
+export const phaseSense = (id: string, index: number) => `L_${id}_p${index}`;
 
 const num = (v: number) => (Number.isFinite(v) ? String(v) : '0');
 
@@ -102,13 +102,11 @@ export function emitTransducer(
     const n = i + 1;
     const r = `int_${id}_p${n}r`;
     const l = `int_${id}_p${n}l`;
-    const e = `int_${id}_p${n}e`;
     const k = `(${p.k(x)})`;
     cards += `R_${id}_p${n} ${p.a} ${r} ${num(Math.max(p.r, 1e-6))}\n`;
+    // The coil's own branch current is the phase current the torque reads.
     cards += `L_${id}_p${n} ${r} ${l} ${num(Math.max(p.l, 1e-9))}${inductorIc(initialConditions, `L_${id}_p${n}`)}\n`;
-    // 0V, to read the phase current by, for the torque.
-    cards += `${phaseSense(id, n)} ${l} ${e} DC 0\n`;
-    cards += `B_${id}_e${n} ${e} ${p.b} V = ${k} * V(${w})\n`;
+    cards += `B_${id}_e${n} ${l} ${p.b} V = ${k} * V(${w})\n`;
     torques.push(`${k} * I(${phaseSense(id, n)})`);
   });
 

@@ -75,7 +75,7 @@ describe('a DC motor', () => {
       const tau = (s.j * s.r) / denom;
       const r = await run(nodes, edges, tau * 8000, tau * 5, { 'i(l_m_p1)': 0 });
       const w = r.v('v(int_m_w)');
-      const i = r.v('i(v_m_p1)');
+      const i = r.v('i(l_m_p1)');
       expect(last(w)).toBeGreaterThan(0);
       expect(Math.abs(last(w) - wSteady) / wSteady).toBeLessThan(0.01);
 
@@ -98,7 +98,7 @@ describe('a DC motor', () => {
     for (const s of sets) {
       const { nodes, edges } = circuit(s, { inertia: 1e6 });
       const r = await run(nodes, edges, 50, 0.1, { 'i(l_m_p1)': 0 });
-      expect(Math.abs(last(r.v('i(v_m_p1)')) - s.v / s.r) / (s.v / s.r)).toBeLessThan(0.005);
+      expect(Math.abs(last(r.v('i(l_m_p1)')) - s.v / s.r) / (s.v / s.r)).toBeLessThan(0.005);
     }
   });
 
