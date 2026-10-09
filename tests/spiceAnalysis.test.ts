@@ -32,7 +32,7 @@ const build = (
   options?: Parameters<typeof generateSpiceNetlist>[8],
 ) => {
   const { nodes, edges } = filter();
-  return generateSpiceNetlist(nodes, edges, 1, 'normal', {}, { n1: 1.5 }, undefined, analysis, options);
+  return generateSpiceNetlist(nodes, edges, { simLength: 1, initialConditions: { n1: 1.5 }, analysis, ...options });
 };
 
 describe('the transient netlist is unchanged', () => {
@@ -46,8 +46,8 @@ describe('the transient netlist is unchanged', () => {
 
   it('is byte-for-byte what it was before an analysis was named', () => {
     const { nodes, edges } = filter();
-    const withDefault = generateSpiceNetlist(nodes, edges, 1, 'normal');
-    const explicit = generateSpiceNetlist(nodes, edges, 1, 'normal', {}, undefined, undefined, { kind: 'tran' });
+    const withDefault = generateSpiceNetlist(nodes, edges, { simLength: 1 });
+    const explicit = generateSpiceNetlist(nodes, edges, { simLength: 1, analysis: { kind: 'tran' } });
     expect(explicit.netlist).toBe(withDefault.netlist);
   });
 });
@@ -148,14 +148,15 @@ describe('running the sketch', () => {
     const nodes = [mcu, node('GND1', 'ground')];
     const before = JSON.stringify(mcu.data.state);
 
-    const skipped = generateSpiceNetlist(nodes, [], 1, 'normal', {}, undefined, undefined,
-      { kind: 'op' }, { skipMcuExecution: true });
+    const skipped = generateSpiceNetlist(
+      nodes, [], { simLength: 1, analysis: { kind: 'op' }, skipMcuExecution: true },
+    );
     expect(JSON.stringify(mcu.data.state)).toBe(before);
     expect(skipped.mcuLogs.MCU1).toEqual([]);
     // Every pin still reaches the netlist, which is what the rules check reads.
     expect(skipped.pins.some(p => p.nodeId === 'MCU1')).toBe(true);
 
-    generateSpiceNetlist(nodes, [], 1, 'normal');
+    generateSpiceNetlist(nodes, [], { simLength: 1 });
     expect(JSON.stringify(mcu.data.state)).not.toBe(before);
   });
 });

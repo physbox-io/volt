@@ -20,7 +20,7 @@ function netlistFor(data: Record<string, unknown>): string {
     { id: 'e2', source: 'r1', sourceHandle: 'out', target: 'g1', targetHandle: 'in' },
     { id: 'e3', source: 'sg1', sourceHandle: 'gnd', target: 'g1', targetHandle: 'in' },
   ];
-  return generateSpiceNetlist(nodes, edges, 0.1).netlist;
+  return generateSpiceNetlist(nodes, edges, { simLength: 0.1 }).netlist;
 }
 
 /** The source line for the generator. */

@@ -87,10 +87,10 @@ describe('netlisting a sketch twice', () => {
 
   it('carries the sketch on, so a second pass over the same window must clear its state first', () => {
     const node = mcu();
-    const pass1 = sourceFor(generateSpiceNetlist([node], [], 1).netlist);
-    const resumed = sourceFor(generateSpiceNetlist([node], [], 1).netlist);
+    const pass1 = sourceFor(generateSpiceNetlist([node], [], { simLength: 1 }).netlist);
+    const resumed = sourceFor(generateSpiceNetlist([node], [], { simLength: 1 }).netlist);
     node.data.state = undefined;
-    const replayed = sourceFor(generateSpiceNetlist([node], [], 1).netlist);
+    const replayed = sourceFor(generateSpiceNetlist([node], [], { simLength: 1 }).netlist);
 
     expect(pass1).toBeDefined();
     expect(resumed).not.toEqual(pass1);

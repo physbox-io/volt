@@ -79,7 +79,7 @@ describe('netlisting an MCU with a configured pin map', () => {
     { id: 'e2', source: 'res1', sourceHandle: 'out', target: 'gnd1', targetHandle: 'in' },
   ];
 
-  const { netlist } = generateSpiceNetlist(nodes, edges, 0.1);
+  const { netlist } = generateSpiceNetlist(nodes, edges, { simLength: 0.1 });
 
   it('emits a source for the driven IO pin', () => {
     expect(netlist).toContain('V_mcu1_G4');

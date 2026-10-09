@@ -39,7 +39,7 @@ const getEngine = async () => {
 
 const solve = async <T>(nodes: Node[], edges: Edge[], analysis: SpiceAnalysis) => {
   const { netlist, portToNet } = generateSpiceNetlist(
-    nodes, edges, 1, 'normal', {}, undefined, undefined, analysis, { skipMcuExecution: true },
+    nodes, edges, { simLength: 1, analysis, skipMcuExecution: true },
   );
   const sim = await getEngine();
   sim.setNetList(netlist);
@@ -178,8 +178,7 @@ describe('the Sallen-Key preset', () => {
 
   it('is wired up completely, with nothing for the rules check to say', () => {
     const { portToNet, pins } = generateSpiceNetlist(
-      preset.nodes, preset.edges, 1, 'normal', {}, undefined, undefined,
-      { kind: 'op' }, { skipMcuExecution: true },
+      preset.nodes, preset.edges, { simLength: 1, analysis: { kind: 'op' }, skipMcuExecution: true },
     );
     const found = runErc({ nodes: preset.nodes, pins, portToNet, nameOf: id => id });
     expect(found.map(a => a.title)).toEqual([]);

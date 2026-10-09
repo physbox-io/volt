@@ -70,7 +70,7 @@ beforeAll(async () => {
 });
 
 async function run(nodes: Node[], edges: Edge[], lengthMs: number, state: SimState) {
-  const { netlist, portToNet } = generateSpiceNetlist(nodes, edges, lengthMs / 1000, 'normal', {}, state, STEP_MS);
+  const { netlist, portToNet } = generateSpiceNetlist(nodes, edges, { simLength: lengthMs / 1000, initialConditions: state, hilMaxStepMs: STEP_MS });
   engine!.setNetList(netlist);
   return { result: (await engine!.runSim()) as SpiceResult, out: portToNet['OUT-in'].toLowerCase() };
 }

@@ -4,7 +4,7 @@ import { getEffectiveMcuConfig } from './mcuConfig';
 import { resolveBjtParams, resolveMosfetParams, resolveOpAmpParams } from './deviceModels';
 import { parseEngValue } from './engValue';
 import { nodeNetName, railVoltage, virtualNetPort } from './netNaming';
-import { inductorIc, nodeVoltages } from './simState';
+import { inductorIc, nodeVoltages, type SimState } from './simState';
 
 /** Strip Unicode symbols from component labels to produce valid SPICE values.
  *  e.g. '47kΩ' → '47k', '10µF' / '10μF' → '10uF' */
@@ -71,9 +71,20 @@ export type PinRef = {
 };
 
 /**
- * Knobs that are about how the netlist is built rather than what it contains.
+ * What to build the netlist for. Every field has a default, so a bare call
+ * gets one second of transient at normal resolution from rest.
  */
 export type NetlistOptions = {
+  /** Seconds of transient to run. */
+  simLength?: number;
+  simResolution?: 'normal' | 'high';
+  /** What each MCU's input pins saw on the last pass, by node id then pin. */
+  mcuWaveforms?: Record<string, Record<string, PWLPoint[]>>;
+  /** The state a run starts from: see `SimState`. Any entry runs it with `uic`. */
+  initialConditions?: SimState;
+  /** HIL's step override: the report and maximum internal step, in ms. */
+  hilMaxStepMs?: number;
+  analysis?: SpiceAnalysis;
   /**
    * Enumerate the microcontroller's pins without running its sketch.
    *
@@ -86,7 +97,15 @@ export type NetlistOptions = {
   skipMcuExecution?: boolean;
 };
 
-export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: number = 1.0, simResolution: 'normal' | 'high' = 'normal', mcuWaveforms: Record<string, Record<string, PWLPoint[]>> = {}, initialConditions?: Record<string, number>, hilMaxStepMs?: number, analysis: SpiceAnalysis = { kind: 'tran' }, options: NetlistOptions = {}): { netlist: string; portToNet: Record<string, string>; mcuLogs: Record<string, string[]>; pins: PinRef[] } {
+export function generateSpiceNetlist(nodes: Node[], edges: Edge[], options: NetlistOptions = {}): { netlist: string; portToNet: Record<string, string>; mcuLogs: Record<string, string[]>; pins: PinRef[] } {
+  const {
+    simLength = 1.0,
+    simResolution = 'normal',
+    mcuWaveforms = {},
+    initialConditions,
+    hilMaxStepMs,
+    analysis = { kind: 'tran' },
+  } = options;
   let netlist = "Circuit Simulation\n";
   const mcuLogs: Record<string, string[]> = {};
   
