@@ -14,7 +14,7 @@ const wire = (source: string, sourceHandle: string, target: string, targetHandle
 
 const points = (nodes: Node[], edges: Edge[]) => {
   const { pins, portToNet } = generateSpiceNetlist(
-    nodes, edges, { simLength: 1, analysis: { kind: 'op' }, skipMcuExecution: true },
+    nodes, edges, { simLength: 1, analysis: { kind: 'op' } },
   );
   return { list: buildProbePoints(pins, id => id.toUpperCase()), portToNet };
 };

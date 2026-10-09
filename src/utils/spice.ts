@@ -1,5 +1,5 @@
 import { type Node, type Edge } from '@xyflow/react';
-import { executeMcuCode, type PWLPoint } from './mcu';
+import type { McuDrive } from './mcu';
 import { getEffectiveMcuConfig } from './mcuConfig';
 import { resolveBjtParams, resolveMosfetParams, resolveOpAmpParams } from './deviceModels';
 import { parseEngValue } from './engValue';
@@ -78,36 +78,28 @@ export type NetlistOptions = {
   /** Seconds of transient to run. */
   simLength?: number;
   simResolution?: 'normal' | 'high';
-  /** What each MCU's input pins saw on the last pass, by node id then pin. */
-  mcuWaveforms?: Record<string, Record<string, PWLPoint[]>>;
+  /**
+   * What each MCU drives onto its pins over the run, by node id, from
+   * `runSketches`. An MCU missing here has every pin idle.
+   */
+  mcuDrives?: Record<string, McuDrive>;
   /** The state a run starts from: see `SimState`. Any entry runs it with `uic`. */
   initialConditions?: SimState;
   /** HIL's step override: the report and maximum internal step, in ms. */
   hilMaxStepMs?: number;
   analysis?: SpiceAnalysis;
-  /**
-   * Enumerate the microcontroller's pins without running its sketch.
-   *
-   * `executeMcuCode` is the expensive part of building a netlist and it is not
-   * a pure function — it advances the sketch's variables and writes them back
-   * onto the node. So anything that builds a netlist it is not going to solve
-   * in the time domain has to say so, or an operating point taken between two
-   * transient runs would step the program on behind them.
-   */
-  skipMcuExecution?: boolean;
 };
 
-export function generateSpiceNetlist(nodes: Node[], edges: Edge[], options: NetlistOptions = {}): { netlist: string; portToNet: Record<string, string>; mcuLogs: Record<string, string[]>; pins: PinRef[] } {
+export function generateSpiceNetlist(nodes: Node[], edges: Edge[], options: NetlistOptions = {}): { netlist: string; portToNet: Record<string, string>; pins: PinRef[] } {
   const {
     simLength = 1.0,
     simResolution = 'normal',
-    mcuWaveforms = {},
+    mcuDrives = {},
     initialConditions,
     hilMaxStepMs,
     analysis = { kind: 'tran' },
   } = options;
   let netlist = "Circuit Simulation\n";
-  const mcuLogs: Record<string, string[]> = {};
   
   // 1. Map connections to nets
   // We'll use a Union-Find or a simple adjacency list to group connected ports into 'nets'.
@@ -501,23 +493,9 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], options: Netl
       netlist += `B_gate_${node.id} ${out} 0 V = V(${in1}) > 2.5 ? 0 : 5\n`;
     }
     else if (node.type === 'mcu') {
-      const code = (node.data.code as string) || '';
-      const inputWaveforms = mcuWaveforms[node.id] || {};
-      const mcuState = node.data.state || {};
-      let pwlOutputs: Record<string, PWLPoint[]> = {};
-      let pinModes: Record<string, 'INPUT' | 'OUTPUT'> = {};
-      if (options.skipMcuExecution) {
-        // Every pin then takes the input branch below, which is an idle GPIO:
-        // the right model for a bias point or a small-signal sweep, and the
-        // only one that does not require running the sketch to find out.
-        mcuLogs[node.id] = [];
-      } else {
-        const run = executeMcuCode(code, simLength, inputWaveforms, mcuState);
-        pwlOutputs = run.pwlOutputs;
-        pinModes = run.pinModes;
-        node.data.state = run.newState;
-        mcuLogs[node.id] = run.logs;
-      }
+      // With no drive every pin takes the input branch below, an idle GPIO:
+      // the right model for a bias point or a small-signal sweep.
+      const { pwlOutputs, pinModes } = mcuDrives[node.id] ?? { pwlOutputs: {}, pinModes: {} };
 
       const mcuConfig = getEffectiveMcuConfig(node.data);
       const pins = mcuConfig.pins;
@@ -787,14 +765,14 @@ B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
   if (analysis.kind === 'op') {
     netlist += `.op\n`;
     netlist += `.end\n`;
-    return { netlist, portToNet, mcuLogs, pins: [...pinsByPort.values()] };
+    return { netlist, portToNet, pins: [...pinsByPort.values()] };
   }
 
   if (analysis.kind === 'ac') {
     const decades = Math.max(1, Math.round(analysis.pointsPerDecade));
     netlist += `.ac dec ${decades} ${analysis.fStart} ${analysis.fStop}\n`;
     netlist += `.end\n`;
-    return { netlist, portToNet, mcuLogs, pins: [...pinsByPort.values()] };
+    return { netlist, portToNet, pins: [...pinsByPort.values()] };
   }
 
   // Apply initial conditions if present
@@ -827,5 +805,5 @@ B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
   }
   netlist += `.end\n`;
 
-  return { netlist, portToNet, mcuLogs, pins: [...pinsByPort.values()] };
+  return { netlist, portToNet, pins: [...pinsByPort.values()] };
 }

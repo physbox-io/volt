@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { Node } from '@xyflow/react';
-import { executeMcuCode, type PWLPoint } from '../src/utils/mcu';
+import { executeMcuCode, runSketches, type PWLPoint } from '../src/utils/mcu';
 import { generateSpiceNetlist } from '../src/utils/spice';
 
 const blink = (onMs: number, offMs: number) => `
@@ -70,7 +70,7 @@ describe('a sketch run in slices', () => {
   }
 });
 
-describe('netlisting a sketch twice', () => {
+describe('running a sketch twice', () => {
   const mcu = (): Node => ({
     id: 'mcu1', type: 'mcu', position: { x: 0, y: 0 },
     data: { code: "pinMode('D0', 'OUTPUT');\ndigitalWrite('D0', 1);\nsleep(1000);\ndigitalWrite('D0', 0);\nsleep(1000);" },
@@ -85,12 +85,15 @@ describe('netlisting a sketch twice', () => {
     return lines.slice(at, end).join('\n');
   };
 
+  const netlistFor = (node: Node) =>
+    sourceFor(generateSpiceNetlist([node], [], { simLength: 1, mcuDrives: runSketches([node], 1).drives }).netlist);
+
   it('carries the sketch on, so a second pass over the same window must clear its state first', () => {
     const node = mcu();
-    const pass1 = sourceFor(generateSpiceNetlist([node], [], { simLength: 1 }).netlist);
-    const resumed = sourceFor(generateSpiceNetlist([node], [], { simLength: 1 }).netlist);
+    const pass1 = netlistFor(node);
+    const resumed = netlistFor(node);
     node.data.state = undefined;
-    const replayed = sourceFor(generateSpiceNetlist([node], [], { simLength: 1 }).netlist);
+    const replayed = netlistFor(node);
 
     expect(pass1).toBeDefined();
     expect(resumed).not.toEqual(pass1);

@@ -16,7 +16,7 @@ const wire = (source: string, sourceHandle: string, target: string, targetHandle
 /** The rules check, run the way the app runs it. */
 const check = (nodes: Node[], edges: Edge[]): Advisory[] => {
   const { portToNet, pins } = generateSpiceNetlist(
-    nodes, edges, { simLength: 1, analysis: { kind: 'op' }, skipMcuExecution: true },
+    nodes, edges, { simLength: 1, analysis: { kind: 'op' } },
   );
   return runErc({ nodes, pins, portToNet, nameOf: id => id });
 };

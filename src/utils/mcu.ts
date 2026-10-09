@@ -239,3 +239,40 @@ export function executeMcuCode(
      newState: state 
   };
 }
+
+/** What one sketch drives onto its pins over a run, which is all the netlist needs of it. */
+export type McuDrive = Pick<McuExecutionResult, 'pwlOutputs' | 'pinModes'>;
+
+/** Anything with an id, a type and data: a canvas node, without the canvas. */
+type SketchNode = { id: string; type?: string; data: Record<string, unknown> };
+
+/**
+ * Runs every MCU's sketch over the next `simLengthSeconds`, from wherever it
+ * was left, and parks each one's state back on its node for the next call.
+ *
+ * This is the only place a sketch advances. Building a netlist never does it,
+ * so a netlist can be built as often as is convenient — for a bias point, a
+ * sweep, a second pass — without stepping the program on behind the run.
+ * To run the same window again, clear `data.state` first.
+ */
+export function runSketches(
+  nodes: SketchNode[],
+  simLengthSeconds: number,
+  inputWaveforms: Record<string, Record<string, PWLPoint[]>> = {},
+): { drives: Record<string, McuDrive>; logs: Record<string, string[]> } {
+  const drives: Record<string, McuDrive> = {};
+  const logs: Record<string, string[]> = {};
+  for (const node of nodes) {
+    if (node.type !== 'mcu') continue;
+    const run = executeMcuCode(
+      (node.data.code as string) || '',
+      simLengthSeconds,
+      inputWaveforms[node.id] || {},
+      node.data.state || {},
+    );
+    node.data.state = run.newState;
+    drives[node.id] = { pwlOutputs: run.pwlOutputs, pinModes: run.pinModes };
+    logs[node.id] = run.logs;
+  }
+  return { drives, logs };
+}

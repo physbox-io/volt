@@ -9,7 +9,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { Node, Edge } from '@xyflow/react';
-import { executeMcuCode } from '../src/utils/mcu';
+import { executeMcuCode, runSketches } from '../src/utils/mcu';
 import { generateSpiceNetlist } from '../src/utils/spice';
 import { generateCustomMcuFootprint, resolveFootprint } from '../src/utils/pcbFootprints';
 import { resolveHandleToPin } from '../src/utils/pcbNets';
@@ -79,7 +79,7 @@ describe('netlisting an MCU with a configured pin map', () => {
     { id: 'e2', source: 'res1', sourceHandle: 'out', target: 'gnd1', targetHandle: 'in' },
   ];
 
-  const { netlist } = generateSpiceNetlist(nodes, edges, { simLength: 0.1 });
+  const { netlist } = generateSpiceNetlist(nodes, edges, { simLength: 0.1, mcuDrives: runSketches(nodes, 0.1).drives });
 
   it('emits a source for the driven IO pin', () => {
     expect(netlist).toContain('V_mcu1_G4');

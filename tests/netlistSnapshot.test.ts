@@ -2,14 +2,15 @@ import { describe, it, expect } from 'vitest';
 import type { Node } from '@xyflow/react';
 import { generateSpiceNetlist, type SpiceAnalysis } from '../src/utils/spice';
 import { presets } from '../src/utils/presets';
+import { runSketches } from '../src/utils/mcu';
 
 /**
  * The netlist every preset writes, under every analysis, pinned byte for byte.
  *
  * A guard for refactoring the generator rather than a statement about what is
  * right: a change here that was meant is accepted with `vitest -u`, and one
- * that was not is the refactor's bug. Each run gets fresh nodes, because a
- * transient netlist runs an MCU's sketch and parks its state on the node.
+ * that was not is the refactor's bug. Each run gets fresh nodes, because
+ * running a sketch parks its state on the node.
  */
 
 const AC_SOURCES = new Set(['voltage', 'acvoltage', 'signalgen']);
@@ -20,7 +21,9 @@ describe('the netlist each preset writes', () => {
     const length = preset.recommendedSimLength ?? 1;
 
     it(`${key}: transient`, () => {
-      expect(generateSpiceNetlist(fresh(), preset.edges, { simLength: length }).netlist).toMatchSnapshot();
+      const nodes = fresh();
+      const { drives } = runSketches(nodes, length);
+      expect(generateSpiceNetlist(nodes, preset.edges, { simLength: length, mcuDrives: drives }).netlist).toMatchSnapshot();
     });
 
     it(`${key}: transient, as an HIL slice`, () => {
@@ -34,19 +37,22 @@ describe('the netlist each preset writes', () => {
           state[`i(l_sec_${n.id})`.toLowerCase()] = -0.002;
         }
       }
-      expect(generateSpiceNetlist(fresh(), preset.edges, { simLength: 0.04, initialConditions: state, hilMaxStepMs: 0.05 }).netlist).toMatchSnapshot();
+      const nodes = fresh();
+      const { drives } = runSketches(nodes, 0.04);
+      expect(generateSpiceNetlist(nodes, preset.edges, { simLength: 0.04, mcuDrives: drives, initialConditions: state, hilMaxStepMs: 0.05 }).netlist)
+        .toMatchSnapshot();
     });
 
     it(`${key}: operating point`, () => {
       const op: SpiceAnalysis = { kind: 'op' };
-      expect(generateSpiceNetlist(fresh(), preset.edges, { simLength: length, analysis: op, skipMcuExecution: true }).netlist)
+      expect(generateSpiceNetlist(fresh(), preset.edges, { simLength: length, analysis: op }).netlist)
         .toMatchSnapshot();
     });
 
     const source = preset.nodes.find(n => AC_SOURCES.has(n.type ?? ''));
     it.skipIf(!source)(`${key}: AC sweep`, () => {
       const ac: SpiceAnalysis = { kind: 'ac', sourceNodeId: source!.id, fStart: 10, fStop: 100_000, pointsPerDecade: 20 };
-      expect(generateSpiceNetlist(fresh(), preset.edges, { simLength: length, analysis: ac, skipMcuExecution: true }).netlist)
+      expect(generateSpiceNetlist(fresh(), preset.edges, { simLength: length, analysis: ac }).netlist)
         .toMatchSnapshot();
     });
   }

@@ -48,13 +48,18 @@ export class HILMemoizer {
   }
 
   /**
-   * Deterministically stringify and round input voltages and initial conditions
+   * Deterministically stringify and round input voltages and initial conditions.
+   *
+   * `drive` is anything else the slice's answer depends on, already in string
+   * form — what a sketch drives onto its pins this slice, which changes the
+   * answer without changing any input or initial condition.
    */
   public generateKey(
     inputs: Record<string, number>,
     initialConditions: Record<string, number>,
     sliceDurationMs: number,
-    maxStepMs: number
+    maxStepMs: number,
+    drive = ''
   ): string {
     const sortedInputKeys = Object.keys(inputs).sort();
     const inputParts = sortedInputKeys.map(
@@ -66,7 +71,7 @@ export class HILMemoizer {
       k => `${k}:${(initialConditions[k] ?? 0).toFixed(this.icDP)}`
     );
 
-    return `U[${inputParts.join(';')}]|IC[${icParts.join(';')}]|dt:${sliceDurationMs.toFixed(2)}|step:${maxStepMs.toFixed(4)}`;
+    return `U[${inputParts.join(';')}]|IC[${icParts.join(';')}]|dt:${sliceDurationMs.toFixed(2)}|step:${maxStepMs.toFixed(4)}|drive:${drive}`;
   }
 
   /**
@@ -76,7 +81,8 @@ export class HILMemoizer {
     inputs: Record<string, number>,
     initialConditions: Record<string, number>,
     sliceDurationMs: number,
-    maxStepMs: number
+    maxStepMs: number,
+    drive = ''
   ): CachedHILSliceResult | null {
     if (!this.enabled) return null;
 
@@ -87,7 +93,7 @@ export class HILMemoizer {
       return null;
     }
 
-    const key = this.generateKey(inputs, initialConditions, sliceDurationMs, maxStepMs);
+    const key = this.generateKey(inputs, initialConditions, sliceDurationMs, maxStepMs, drive);
     const cached = this.cacheMap.get(key);
 
     if (cached) {
@@ -112,11 +118,12 @@ export class HILMemoizer {
     initialConditions: Record<string, number>,
     sliceDurationMs: number,
     maxStepMs: number,
-    val: CachedHILSliceResult
+    val: CachedHILSliceResult,
+    drive = ''
   ): void {
     if (!this.enabled) return;
 
-    const key = this.generateKey(inputs, initialConditions, sliceDurationMs, maxStepMs);
+    const key = this.generateKey(inputs, initialConditions, sliceDurationMs, maxStepMs, drive);
 
     // Evict oldest if exceeding capacity
     if (this.cacheMap.size >= this.maxEntries && !this.cacheMap.has(key)) {

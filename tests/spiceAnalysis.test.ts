@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Node, Edge } from '@xyflow/react';
-import { generateSpiceNetlist } from '../src/utils/spice';
+import { generateSpiceNetlist, type SpiceAnalysis } from '../src/utils/spice';
 
 const node = (id: string, type: string, data: Record<string, unknown> = {}): Node => ({
   id, type, position: { x: 0, y: 0 }, data,
@@ -27,12 +27,9 @@ const filter = () => ({
   ],
 });
 
-const build = (
-  analysis: Parameters<typeof generateSpiceNetlist>[7],
-  options?: Parameters<typeof generateSpiceNetlist>[8],
-) => {
+const build = (analysis: SpiceAnalysis = { kind: 'tran' }) => {
   const { nodes, edges } = filter();
-  return generateSpiceNetlist(nodes, edges, { simLength: 1, initialConditions: { n1: 1.5 }, analysis, ...options });
+  return generateSpiceNetlist(nodes, edges, { simLength: 1, initialConditions: { n1: 1.5 }, analysis });
 };
 
 describe('the transient netlist is unchanged', () => {
@@ -139,8 +136,8 @@ describe('the pin list', () => {
   });
 });
 
-describe('running the sketch', () => {
-  it('leaves the microcontroller alone when asked to', () => {
+describe('building a netlist around a microcontroller', () => {
+  it('never runs its sketch, under any analysis', () => {
     const mcu = node('MCU1', 'mcu', {
       code: "pinMode('D0','OUTPUT');\nwhile(true){ digitalWrite('D0',1); sleep(10); digitalWrite('D0',0); sleep(10); }",
       state: {},
@@ -148,15 +145,11 @@ describe('running the sketch', () => {
     const nodes = [mcu, node('GND1', 'ground')];
     const before = JSON.stringify(mcu.data.state);
 
-    const skipped = generateSpiceNetlist(
-      nodes, [], { simLength: 1, analysis: { kind: 'op' }, skipMcuExecution: true },
-    );
-    expect(JSON.stringify(mcu.data.state)).toBe(before);
-    expect(skipped.mcuLogs.MCU1).toEqual([]);
-    // Every pin still reaches the netlist, which is what the rules check reads.
-    expect(skipped.pins.some(p => p.nodeId === 'MCU1')).toBe(true);
-
-    generateSpiceNetlist(nodes, [], { simLength: 1 });
-    expect(JSON.stringify(mcu.data.state)).not.toBe(before);
+    for (const analysis of [{ kind: 'op' }, { kind: 'tran' }] as SpiceAnalysis[]) {
+      const built = generateSpiceNetlist(nodes, [], { simLength: 1, analysis });
+      expect(JSON.stringify(mcu.data.state)).toBe(before);
+      // Every pin still reaches the netlist, which is what the rules check reads.
+      expect(built.pins.some(p => p.nodeId === 'MCU1')).toBe(true);
+    }
   });
 });

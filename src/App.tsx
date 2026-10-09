@@ -71,7 +71,7 @@ import { HILMemoizer } from './utils/hilMemoizer';
 import { CanvasStateProvider } from './components/canvasState';
 import type { SpiceComplexResult, SpiceResult } from './types/simulation';
 import type { PwlPoint } from './types/nodes';
-import type { PWLPoint } from './utils/mcu';
+import { runSketches, type PWLPoint } from './utils/mcu';
 import { NumberInput } from '@physbox-io/ui';
 import type { Advisory } from './types/advisories';
 import { sortAdvisories } from './types/advisories';
@@ -1110,9 +1110,16 @@ export default function App() {
         setNodes(nds => nds.map(n => n.id === activeHILNode.id ? { ...n, data: { ...n.data, hilClearCacheRequested: undefined } } : n));
       }
 
+      // Every slice moves each sketch on, cached or not: the program keeps
+      // running whether or not the circuit around it needs solving again. What
+      // it drives this slice goes into the cache key, since it changes the
+      // answer without changing any input.
+      const sketches = runSketches(nextNodes, netlistDurationMs / 1000, mcuWaveforms);
+      const drive = Object.keys(sketches.drives).length > 0 ? JSON.stringify(sketches.drives) : '';
+
       const curInputs = { ...hilValuesRef.current };
       const curICs = { ...hilInitialConditionsRef.current };
-      const cachedSlice = memoizer.get(curInputs, curICs, netlistDurationMs, hilMaxStepMs);
+      const cachedSlice = memoizer.get(curInputs, curICs, netlistDurationMs, hilMaxStepMs, drive);
 
       let result: SpiceResult;
       let portToNet: Record<string, string>;
@@ -1132,7 +1139,7 @@ export default function App() {
         hilHalfPeriodMsRef.current = { ...cachedSlice.halfPeriods };
       } else {
         // CACHE MISS: Run SPICE WASM simulation
-        const netlistRes = generateSpiceNetlist(nextNodes, edgesRef.current, { simLength: netlistDurationMs / 1000, mcuWaveforms, initialConditions: hilInitialConditionsRef.current, hilMaxStepMs });
+        const netlistRes = generateSpiceNetlist(nextNodes, edgesRef.current, { simLength: netlistDurationMs / 1000, mcuDrives: sketches.drives, initialConditions: hilInitialConditionsRef.current, hilMaxStepMs });
         portToNet = netlistRes.portToNet;
 
         result = (await runSimInWorker(netlistRes.netlist, 'tran', HIL_SLICE_TIMEOUT_MS)).result;
@@ -1191,7 +1198,7 @@ export default function App() {
           writes,
           reads,
           halfPeriods: { ...hilHalfPeriodMsRef.current }
-        });
+        }, drive);
       }
 
       lastSimulatedResultRef.current = result;
@@ -1429,7 +1436,9 @@ export default function App() {
       // Yield to allow React/browser to render the "SPICE Simulating" notice
       await new Promise(resolve => setTimeout(resolve, 50));
 
-      let { netlist, portToNet, mcuLogs } = generateSpiceNetlist(currentNodes, edges, { simLength, simResolution, initialConditions: customICs !== undefined ? customICs : initialConditions });
+      const sketches = runSketches(currentNodes, simLength);
+      let mcuLogs = sketches.logs;
+      let { netlist, portToNet } = generateSpiceNetlist(currentNodes, edges, { simLength, simResolution, mcuDrives: sketches.drives, initialConditions: customICs !== undefined ? customICs : initialConditions });
       
       const mcuNodes = currentNodes.filter(n => n.type === 'mcu');
       const needsTwoPass = mcuNodes.some(n => {
@@ -1462,10 +1471,11 @@ export default function App() {
          // same window against the inputs pass 1 measured, so it starts the
          // sketch again rather than resuming it a whole run later.
          for (const mcu of mcuNodes) mcu.data.state = undefined;
-         const pass2 = generateSpiceNetlist(currentNodes, edges, { simLength, simResolution, mcuWaveforms, initialConditions: customICs !== undefined ? customICs : initialConditions });
+         const replay = runSketches(currentNodes, simLength, mcuWaveforms);
+         mcuLogs = replay.logs;
+         const pass2 = generateSpiceNetlist(currentNodes, edges, { simLength, simResolution, mcuDrives: replay.drives, initialConditions: customICs !== undefined ? customICs : initialConditions });
          netlist = pass2.netlist;
          portToNet = pass2.portToNet;
-         mcuLogs = pass2.mcuLogs;
          const secondRun = await runSimInWorker(netlist);
          result = secondRun.result;
          runMessages = secondRun.messages;
@@ -1824,7 +1834,7 @@ export default function App() {
   const topology = useMemo(() => {
     try {
       const { portToNet, pins } = generateSpiceNetlist(
-        nodes, edges, { simLength, simResolution, analysis: { kind: 'op' }, skipMcuExecution: true },
+        nodes, edges, { simLength, simResolution, analysis: { kind: 'op' } },
       );
       return { portToNet, pins };
     } catch {
@@ -1916,7 +1926,7 @@ export default function App() {
     const t = setTimeout(async () => {
       try {
         const { netlist } = generateSpiceNetlist(
-          nodesRef.current, edgesRef.current, { simLength, simResolution, analysis: { kind: 'op' }, skipMcuExecution: true },
+          nodesRef.current, edgesRef.current, { simLength, simResolution, analysis: { kind: 'op' } },
         );
         const { result } = await runSimInWorker<SpiceResult>(netlist, 'op', 20_000);
         if (seq !== dcSeqRef.current) return;
@@ -1947,7 +1957,7 @@ export default function App() {
     sourceNodeId: string; fStart: number; fStop: number; pointsPerDecade: number;
   }): Promise<SpiceComplexResult> => {
     const { netlist } = generateSpiceNetlist(
-      nodesRef.current, edgesRef.current, { simLength, simResolution, analysis: { kind: 'ac', ...params }, skipMcuExecution: true },
+      nodesRef.current, edgesRef.current, { simLength, simResolution, analysis: { kind: 'ac', ...params } },
     );
     try {
       const { result } = await runSimInWorker<SpiceComplexResult>(netlist, 'ac', 30_000);
