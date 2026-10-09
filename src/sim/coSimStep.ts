@@ -170,7 +170,7 @@ export async function coSimStep(state: CoSimState, input: CoSimInput, { solve, e
     hilMaxStepMs: input.stepMs ?? sliceMs / 50,
   });
   const result = await solve(netlist);
-  const end = readEndState(result);
+  const end = readEndState(result, sim);
 
   const torques: Record<string, number> = {};
   const inputs: Record<string, number> = {};

@@ -1,6 +1,6 @@
 import type { Node, Edge } from '@xyflow/react';
-import { generateSpiceNetlist } from '../utils/spice';
-import { readEndState, type SimState } from '../utils/simState';
+import { dependsOnTime, generateSpiceNetlist } from '../utils/spice';
+import { SIM_TIME, readEndState, simTime, withoutTime, type SimState } from '../utils/simState';
 import { buildNetlistResultIndex, findNetGraph } from '../utils/netlistResult';
 import { runSketches, type PWLPoint } from '../utils/mcu';
 import type { HILMemoizer } from '../utils/hilMemoizer';
@@ -89,12 +89,17 @@ export async function runSlice(state: SliceState, input: SliceInput, { solve, me
   // it drives this slice goes into the cache key, since it changes the
   // answer without changing any input.
   const sketches = runSketches(nodes, sliceMs / 1000, mcuWaveforms);
-  const drive = Object.keys(sketches.drives).length > 0 ? JSON.stringify(sketches.drives) : '';
+  // The cache keys on the circuit's state, not the clock — except when a
+  // source in it is a function of time, when the clock is part of the answer.
+  const clock = dependsOnTime(nodes) ? `@${simTime(state.sim).toFixed(6)}` : '';
+  const drive = (Object.keys(sketches.drives).length > 0 ? JSON.stringify(sketches.drives) : '') + clock;
+  const circuitState = withoutTime(state.sim);
 
-  const cached = memoizer.get({ ...inputs }, { ...state.sim }, sliceMs, maxStepMs, drive);
+  const cached = memoizer.get({ ...inputs }, circuitState, sliceMs, maxStepMs, drive);
   if (cached) {
+    // A hit from another time moves the clock on from this one.
     return {
-      state: { sim: cached.nextICs, prevInputs, halfPeriods: { ...cached.halfPeriods } },
+      state: { sim: { ...cached.nextICs, [SIM_TIME]: simTime(state.sim) + sliceMs / 1000 }, prevInputs, halfPeriods: { ...cached.halfPeriods } },
       nodes,
       result: cached.result,
       portToNet: cached.portToNet,
@@ -107,7 +112,7 @@ export async function runSlice(state: SliceState, input: SliceInput, { solve, me
   });
   const result = await solve(netlist);
   const resultIndex = buildNetlistResultIndex(result);
-  const sim = readEndState(result);
+  const sim = readEndState(result, state.sim);
 
   const outputs: Record<string, Hold[]> = {};
   const halfPeriods = { ...state.halfPeriods };
@@ -120,7 +125,7 @@ export async function runSlice(state: SliceState, input: SliceInput, { solve, me
     outputs[pinId] = seq;
   }
 
-  memoizer.set({ ...inputs }, { ...state.sim }, sliceMs, maxStepMs, {
+  memoizer.set({ ...inputs }, circuitState, sliceMs, maxStepMs, {
     result, portToNet, nextICs: sim, outputs, halfPeriods: { ...halfPeriods },
   }, drive);
 

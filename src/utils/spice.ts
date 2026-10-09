@@ -1,7 +1,7 @@
 import { type Node, type Edge } from '@xyflow/react';
 import type { McuDrive } from './mcu';
 import { nodeNetName, railVoltage, virtualNetPort } from './netNaming';
-import { nodeVoltages, type SimState } from './simState';
+import { nodeVoltages, simTime, type SimState } from './simState';
 import { partEmitters } from './netlist/partEmitters';
 
 export { sanitizeSpiceValue } from './netlist/values';
@@ -75,6 +75,15 @@ export type NetlistOptions = {
   hilMaxStepMs?: number;
   analysis?: SpiceAnalysis;
 };
+
+/**
+ * Whether any part of the circuit emits differently at different times —
+ * a generator, an AC source, a recording — so that two runs from the same
+ * state are the same run only if they start at the same time too.
+ */
+export function dependsOnTime(nodes: Node[]): boolean {
+  return nodes.some(n => !NON_SIMULATING_TYPES.has(n.type as string) && partEmitters[n.type ?? '']?.timeVarying?.(n));
+}
 
 export function generateSpiceNetlist(nodes: Node[], edges: Edge[], options: NetlistOptions = {}): { netlist: string; portToNet: Record<string, string>; pins: PinRef[] } {
   const {
@@ -195,6 +204,9 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], options: Netl
   const acDrive = (nodeId: string) =>
     analysis.kind === 'ac' && analysis.sourceNodeId === nodeId ? ' AC 1' : '';
 
+  // A carried state resumes the run's clock; see SimState.
+  const startTime = analysis.kind === 'tran' ? simTime(initialConditions) : 0;
+
   // 2. Each part's cards, then each library its parts instance, once
   const partsByType = new Map<string, Node[]>();
   nodes.forEach(node => {
@@ -208,6 +220,7 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], options: Netl
       acDrive: acDrive(node.id),
       initialConditions,
       mcuDrive: mcuDrives[node.id],
+      time: startTime,
     });
     const same = partsByType.get(node.type!) ?? [];
     same.push(node);

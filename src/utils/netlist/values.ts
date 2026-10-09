@@ -28,3 +28,41 @@ export function pwlSource(head: string, points: { t: number; v: number }[]): str
   }
   return card + '+ )\n';
 }
+
+/**
+ * A recording as it continues from `t0` seconds in: the value at `t0` at time
+ * zero, then every later point moved back by `t0`. Past its end a PWL holds
+ * its last value, and so does this.
+ */
+export function pwlFrom(points: { t: number; v: number }[], t0: number): { t: number; v: number }[] {
+  if (!(t0 > 0) || points.length === 0) return points;
+  const k = points.findIndex(p => p.t > t0);
+  if (k < 0) return [{ t: 0, v: points[points.length - 1].v }];
+  if (k === 0) return points.map(p => ({ t: p.t - t0, v: p.v }));
+  const a = points[k - 1];
+  const b = points[k];
+  const v = a.v + ((t0 - a.t) / (b.t - a.t)) * (b.v - a.v);
+  return [{ t: 0, v }, ...points.slice(k).map(p => ({ t: p.t - t0, v: p.v }))];
+}
+
+/**
+ * The SINE arguments after amplitude and frequency for a sine `t0` seconds
+ * in: none at zero, else a phase in degrees. Reduced to one period first, so
+ * an hour-long run does not lose its phase to rounding.
+ */
+export function sinePhase(freq: number, t0: number): string {
+  if (!(t0 > 0) || !(freq > 0)) return '';
+  const deg = (((t0 * freq) % 1) * 360);
+  return deg === 0 ? '' : ` 0 0 ${deg}`;
+}
+
+/**
+ * A PULSE's delay for a train `t0` seconds in: negative, so it is already
+ * that far into its period at time zero (ngspice wraps a negative delay into
+ * the period). 0 at the start of a run.
+ */
+export function pulseDelay(period: number, t0: number): string {
+  if (!(t0 > 0) || !(period > 0)) return '0';
+  const into = t0 % period;
+  return into === 0 ? '0' : String(-into);
+}

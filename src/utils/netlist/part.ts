@@ -12,6 +12,12 @@ export type EmitContext = {
   initialConditions?: SimState;
   /** What this part's sketch drives onto its pins, for an MCU. */
   mcuDrive?: McuDrive;
+  /**
+   * The simulated time the run starts at, seconds: 0 for a run from rest,
+   * where a carried state left off otherwise. A source that is a function of
+   * time emits from here, so a sliced run is one continuous waveform.
+   */
+  time: number;
 };
 
 /**
@@ -29,4 +35,9 @@ export type PartEmitter = {
   library?: (parts: Node[]) => string;
   /** Whether this part needs audio-rate time steps to be heard. */
   audio?: (node: Node) => boolean;
+  /**
+   * Whether what this part emits depends on `time`, so two runs from the same
+   * circuit state at different times are different runs.
+   */
+  timeVarying?: (node: Node) => boolean;
 };

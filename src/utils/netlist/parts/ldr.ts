@@ -1,9 +1,9 @@
 import type { PartEmitter } from '../part';
-import { pwlSource } from '../values';
+import { pwlFrom, pwlSource } from '../values';
 import { parseEngValue } from '../../engValue';
 
 export const ldr: PartEmitter = {
-  emit: (node, { net }) => {
+  emit: (node, { net, time }) => {
     const n1 = net('in');
     const n2 = net('out');
     /*
@@ -18,10 +18,11 @@ export const ldr: PartEmitter = {
 
     const pwlData = node.data.pwlData as { t: number; v: number }[] | undefined;
     if (pwlData && pwlData.length > 0) {
-      return pwlSource(`V_light_${node.id} light_node_${node.id} 0`, pwlData)
+      return pwlSource(`V_light_${node.id} light_node_${node.id} 0`, pwlFrom(pwlData, time))
         + `B_ldr_${node.id} ${n1} ${n2} I = V(${n1}, ${n2}) / (100 + (${rDark} - 100) * (1 - V(light_node_${node.id})))\n`;
     }
     const resVal = 100 + (rDark - 100) * (1 - lightLevel);
     return `R_${node.id} ${n1} ${n2} ${resVal.toFixed(2)}\n`;
   },
+  timeVarying: node => Array.isArray(node.data.pwlData) && node.data.pwlData.length > 0,
 };

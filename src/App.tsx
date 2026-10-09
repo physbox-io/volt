@@ -740,7 +740,7 @@ export default function App() {
       setEdges(updatedEdges);
       
       // Save final voltages for initial conditions in subsequent interactive runs
-      const nextICs = readEndState(result);
+      const nextICs = readEndState(result, customICs !== undefined ? customICs : initialConditions);
       setInitialConditions(nextICs);
 
       setIsSpiceRunning(false);

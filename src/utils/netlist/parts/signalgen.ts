@@ -1,7 +1,8 @@
 import type { PartEmitter } from '../part';
+import { pulseDelay, sinePhase } from '../values';
 
 export const signalgen: PartEmitter = {
-  emit: (node, { net, acDrive }) => {
+  emit: (node, { net, acDrive, time }) => {
     const rawFreq = Number(node.data.frequency);
     const freq = Number.isFinite(rawFreq) && rawFreq > 0 ? rawFreq : 0;
     const amp = Number.isFinite(Number(node.data.amplitude)) ? Number(node.data.amplitude) : 5;
@@ -21,8 +22,9 @@ export const signalgen: PartEmitter = {
     const type = freq === 0
       ? `DC ${amp}`
       : node.data.waveform === 'square'
-        ? `PULSE(0 ${amp} 0 ${trf} ${trf} ${duty / freq} ${1 / freq})`
-        : `SINE(0 ${amp} ${freq})`;
+        ? `PULSE(0 ${amp} ${pulseDelay(1 / freq, time)} ${trf} ${trf} ${duty / freq} ${1 / freq})`
+        : `SINE(0 ${amp} ${freq}${sinePhase(freq, time)})`;
     return `V_${node.id} ${net('out')} ${net('gnd')} ${type}${acDrive}\n`;
   },
+  timeVarying: node => Number(node.data.frequency) > 0,
 };
