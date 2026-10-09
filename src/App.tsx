@@ -14,6 +14,7 @@ import '@xyflow/react/dist/style.css';
 
 import { HELTEC_V4_GPIO_PINS } from './components/nodes/partDefaults';
 import { generateSpiceNetlist } from './utils/spice';
+import { readEndState } from './utils/simState';
 import { parseEngValue } from './utils/engValue';
 import { getEffectiveMcuConfig } from './utils/mcuConfig';
 import { buildNetlistResultIndex, findNetGraph } from './utils/netlistResult';
@@ -1133,16 +1134,7 @@ export default function App() {
         result = (await runSimInWorker(netlistRes.netlist)).result;
         const resultIndex = buildNetlistResultIndex(result);
 
-        const lastIndex = result.numPoints - 1;
-        nextICs = {};
-        if (result.variableNames && result.data && result.data.length > 0) {
-          result.variableNames.forEach((name: string, i: number) => {
-            if (name.startsWith('v(') && name.endsWith(')')) {
-              const nodeName = name.slice(2, -1);
-              nextICs[nodeName] = result.data[i].values[lastIndex];
-            }
-          });
-        }
+        nextICs = readEndState(result);
 
         outputs = {};
         const pins = (activeHILNode.data.pins as Record<string, string>) || {};
@@ -1633,19 +1625,7 @@ export default function App() {
       setEdges(updatedEdges);
       
       // Save final voltages for initial conditions in subsequent interactive runs
-      const nextICs: Record<string, number> = {};
-      if (result && result.variableNames && result.data) {
-        result.variableNames.forEach((varName: string, idx: number) => {
-          const name = varName.toLowerCase();
-          if (name.startsWith('v(') && name.endsWith(')')) {
-            const net = name.slice(2, -1);
-            const vals = result.data[idx]?.values;
-            if (vals && vals.length > 0) {
-              nextICs[net] = vals[vals.length - 1];
-            }
-          }
-        });
-      }
+      const nextICs = readEndState(result);
       setInitialConditions(nextICs);
 
       setIsSpiceRunning(false);

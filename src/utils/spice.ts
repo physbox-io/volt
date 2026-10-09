@@ -4,6 +4,7 @@ import { getEffectiveMcuConfig } from './mcuConfig';
 import { resolveBjtParams, resolveMosfetParams, resolveOpAmpParams } from './deviceModels';
 import { parseEngValue } from './engValue';
 import { nodeNetName, railVoltage, virtualNetPort } from './netNaming';
+import { inductorIc, nodeVoltages } from './simState';
 
 /** Strip Unicode symbols from component labels to produce valid SPICE values.
  *  e.g. '47kΩ' → '47k', '10µF' / '10μF' → '10uF' */
@@ -230,7 +231,7 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       const val = node.data.inductance !== undefined ? node.data.inductance : sanitizeSpiceValue(String(node.data.label || '100u'));
       const n1 = getNet(node.id, 'in');
       const n2 = getNet(node.id, 'out');
-      netlist += `L_${node.id} ${n1} ${n2} ${val}\n`;
+      netlist += `L_${node.id} ${n1} ${n2} ${val}${inductorIc(initialConditions, `L_${node.id}`)}\n`;
     }
     else if (node.type === 'voltage') {
       const val = node.data.voltage !== undefined ? node.data.voltage : sanitizeSpiceValue(String(node.data.label || '5'));
@@ -546,8 +547,8 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], simLength: nu
       const lpri = node.data.l_pri !== undefined ? node.data.l_pri : sanitizeSpiceValue(String(node.data.l_pri_label || '10mH'));
       const lsec = node.data.l_sec !== undefined ? node.data.l_sec : sanitizeSpiceValue(String(node.data.l_sec_label || '10mH'));
       const k = node.data.k !== undefined ? node.data.k : '0.99';
-      netlist += `L_pri_${node.id} ${p1} ${p2} ${lpri}\n`;
-      netlist += `L_sec_${node.id} ${s1} ${s2} ${lsec}\n`;
+      netlist += `L_pri_${node.id} ${p1} ${p2} ${lpri}${inductorIc(initialConditions, `L_pri_${node.id}`)}\n`;
+      netlist += `L_sec_${node.id} ${s1} ${s2} ${lsec}${inductorIc(initialConditions, `L_sec_${node.id}`)}\n`;
       netlist += `K_${node.id} L_pri_${node.id} L_sec_${node.id} ${k}\n`;
     }
     else if (node.type === 'dff') {
@@ -779,7 +780,7 @@ B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
 
   // Apply initial conditions if present
   if (initialConditions && Object.keys(initialConditions).length > 0) {
-    const icParts = Object.entries(initialConditions)
+    const icParts = nodeVoltages(initialConditions)
       .map(([net, val]) => `V(${net})=${val.toFixed(6)}`)
       .join(' ');
     if (icParts) {
