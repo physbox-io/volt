@@ -6,8 +6,6 @@ export interface CachedHILSliceResult {
   portToNet: Record<string, string>;
   nextICs: Record<string, number>;
   outputs: Record<string, [number, number][]>;
-  writes: { pin: number; seq: [number, number][] }[];
-  reads: { pin: number; type: 'analog' | 'digital' }[];
   halfPeriods: Record<string, number>;
 }
 

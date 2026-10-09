@@ -12,12 +12,11 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { HELTEC_V4_GPIO_PINS } from './components/nodes/partDefaults';
 import { generateSpiceNetlist } from './utils/spice';
 import { readEndState } from './utils/simState';
 import { parseEngValue } from './utils/engValue';
 import { getEffectiveMcuConfig } from './utils/mcuConfig';
-import { buildNetlistResultIndex, findNetGraph } from './utils/netlistResult';
+import { findNetGraph } from './utils/netlistResult';
 import { isPortConnected } from './utils/graphTopology';
 import {
   copySelection,
@@ -67,7 +66,7 @@ import { Sidebar } from './components/Sidebar';
 import { PropertiesPanel } from './components/PropertiesPanel';
 import { FlowArea } from './components/FlowArea';
 import { ProbeTooltip } from './components/ProbeTooltip';
-import { HILMemoizer } from './utils/hilMemoizer';
+import { useHil } from './hooks/useHil';
 import { CanvasStateProvider } from './components/canvasState';
 import type { SpiceComplexResult, SpiceResult } from './types/simulation';
 import type { PwlPoint } from './types/nodes';
@@ -207,17 +206,6 @@ export default function App() {
     return val === 0.05 ? 1.0 : (val ?? 1.0);
   });
   const [simResolution, setSimResolution] = useState<'normal' | 'high'>(savedSettings.simResolution ?? 'normal');
-  // Which CYD-side handler executes a HIL slice/batch — this is per-Heltec-node data
-  // (selectedNode.data.hilExecutionMode, edited in PropertiesPanel), not a global app
-  // setting, since it depends on what firmware that specific board is running. 'legacy'
-  // sends hil_slice (CYD MicroPython loops gpio_write/adc_read itself, one blocking
-  // UART round trip per op — simple, works against any Heltec firmware). 'native' sends
-  // hil_batch (CYD forwards the whole writes/reads payload in one UART transaction; the
-  // Heltec's own C++ firmware runs the write/sleep/read loop, so there's no per-edge
-  // ~11ms UART round trip distorting the GPIO_3 timing) — requires firmware built with
-  // the hil_batch handler (heltec/src/uart_cmd.cpp). Cached into a ref at HIL start
-  // (see runSimulation) since editing is locked while a simulation is running anyway.
-  const hilExecutionModeRef = useRef<'legacy' | 'native'>('native');
   const [isDocsOpen, setIsDocsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showAICopilot, setShowAICopilot] = useState(false);
@@ -300,45 +288,19 @@ export default function App() {
   const [isBodeOpen, setIsBodeOpen] = useState(false);
   const [initialConditions, setInitialConditions] = useState<Record<string, number>>({});
   
-  // Hardware-in-the-Loop (HIL) state refs
-  const hilSocketRef = useRef<WebSocket | null>(null);
-  const hilConnectedRef = useRef(false);
-  const hilValuesRef = useRef<Record<string, number>>({});
-  const hilPrevValuesRef = useRef<Record<string, number>>({});
-  const hilSmoothedValuesRef = useRef<Record<string, number>>({});
-  const hilHistoryRef = useRef<Record<string, { t: number; v: number }[]>>({});
-  const hilAccumTimeRef = useRef(0);
-  const hilNetlistAccumTimeRef = useRef(0);
-  const hilStartTimeRef = useRef<number | null>(null);
-  const hilBackgroundPollActiveRef = useRef(true);
-  const hilRunningRef = useRef(false);
-  const lastSendTimeRef = useRef<number | null>(null);
-  const lastSimulatedResultRef = useRef<SpiceResult | null>(null);
-  const lastPortToNetRef = useRef<Record<string, string>>({});
-  const lastSliceDurationRef = useRef<number>(50);
-  const hilInitialConditionsRef = useRef<Record<string, number>>({});
-  const hilBufferRef = useRef('');
-  // Lookahead buffer of already-computed-but-not-yet-dispatched hil_slice commands.
-  // A single-slot lookahead (compute exactly the next slice while the current one
-  // plays) has zero margin: any one slow SPICE call makes the device run out of
-  // GPIO writes and idle mid-blink (visible as a freeze/pause on the LED) before
-  // the next command arrives. Queuing several slices deep absorbs that jitter so
-  // playback stays continuous even when an individual compute call runs long.
-  const hilQueueRef = useRef<{ writes: { pin: number; seq: [number, number][] }[]; reads: { pin: number; type: 'analog' | 'digital' }[]; durationMs: number }[]>([]);
-  const hilQueuedMsRef = useRef(0);
-  const hilToppingUpRef = useRef(false);
-  // Per-digital_out-pin EMA of the shortest recent half-period (ms), used to scale the
-  // netlist's transient step size — see hilMaxStepMs in runHILSimulationSlice. Generic
-  // across any digital_out pin (not just one preset's oscillator output): each pin's
-  // entry is seeded at 50ms (~10Hz-ish, a reasonable default) and updated from real
-  // observed edge spacing once that pin is actually toggling.
-  const hilHalfPeriodMsRef = useRef<Record<string, number>>({});
-  const hilWaitingForCommandRef = useRef(false);
-  const hilMemoizerRef = useRef(new HILMemoizer());
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
+  // Read from HIL callbacks that outlive the render they were created in, so it
+  // is a ref rather than a dependency — written from an effect below, because a
+  // write during render is a side effect React is entitled to run twice.
+  const selectedPresetRef = useRef('');
+
+  const { runningRef: hilRunningRef, start: startHil, stop: stopHil } = useHil({
+    nodes, nodesRef, edgesRef, setNodes, selectedPresetRef, setInitialConditions, setRunAdvisories,
+    solve: async (netlist, timeoutMs) => (await runSimInWorker(netlist, 'tran', timeoutMs)).result,
+  });
 
   const stopSimulation = () => {
     setIsSimulating(false);
@@ -346,35 +308,7 @@ export default function App() {
     playbackTicker.stop();
     setProbeData(null);
 
-    // Stop and teardown HIL
-    // Stop HIL and stay quiet — do not resume background polling automatically
-    // (it self-perpetuates via recursive setTimeout with no other way to cancel it).
-    hilRunningRef.current = false;
-    hilBackgroundPollActiveRef.current = false;
-    hilMemoizerRef.current.clear();
-    if (hilSocketRef.current && hilConnectedRef.current) {
-      try {
-        const heltecNode = nodes.find(n => n.type === 'heltec_v4');
-        if (heltecNode) {
-          let code = "import lib.webserver as ws\n";
-          code += "h = ws._mesh_get_heltec()\n";
-          code += "h.gpio_write(3, 0)\n";
-          code += "h.lora_mode('mesh')\n";
-          code += "h.gps_power(1)\n";
-          hilSocketRef.current.send(JSON.stringify({ cmd: "repl_input", code }));
-        }
-      } catch (e) {
-        console.error("[HIL] Failed to send stop state:", e);
-      }
-    }
-    hilHistoryRef.current = {};
-    hilSmoothedValuesRef.current = {};
-    hilAccumTimeRef.current = 0;
-    hilNetlistAccumTimeRef.current = 0;
-    hilStartTimeRef.current = null;
-    hilQueueRef.current = [];
-    hilQueuedMsRef.current = 0;
-    hilHalfPeriodMsRef.current = {};
+    stopHil();
 
     setNodes(nds => nds.map(n => {
       if (n.type === 'led') {
@@ -413,10 +347,6 @@ export default function App() {
     currentCircuit,
   } = usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation });
 
-  // Read from HIL callbacks that outlive the render they were created in, so it
-  // is a ref rather than a dependency — written from an effect, because a write
-  // during render is a side effect React is entitled to run twice.
-  const selectedPresetRef = useRef(selectedPreset);
   useEffect(() => {
     selectedPresetRef.current = selectedPreset;
   }, [selectedPreset]);
@@ -491,70 +421,6 @@ export default function App() {
     return () => clearTimeout(t);
   }, [simLength]);
 
-  // Background connection effect for Heltec HIL node
-  const heltecNode = nodes.find(n => n.type === 'heltec_v4');
-  const heltecId = heltecNode?.id;
-  const heltecIp = heltecNode?.data?.ip;
-  // Opt-in only: the board is reached over plain ws://, which the browser blocks as
-  // mixed content when the app is served over https (and a blocked/failing connection
-  // attempt can take WebSerial down with it). Nothing dials out until the user clicks
-  // Connect on the node or starts a HIL run.
-  const heltecHilEnabled = !!heltecNode?.data?.hilEnabled;
-
-  /*
-   * The board's session, not React's state.
-   *
-   * `ensureHILConnection` is one of a set of mutually recursive closures — it
-   * opens the socket, which starts the pipeline, which polls, which reconnects —
-   * so it is declared below with the rest of the driver rather than above this
-   * effect, and it is a fresh function on every render. Listing it as a
-   * dependency would hang up on the board and dial it again on every keystroke,
-   * which is the opposite of what this effect is for.
-   *
-   * The `setNodes` in the other branch is the socket telling React it has gone.
-   * That is precisely what an effect is meant to do with an external system; it
-   * simply happens synchronously, because closing a socket does.
-   */
-  useEffect(() => {
-    if (heltecId && heltecIp && heltecHilEnabled) {
-      if (!hilConnectedRef.current && (!hilSocketRef.current || hilSocketRef.current.readyState === WebSocket.CLOSED)) {
-        const node = nodes.find(n => n.id === heltecId);
-        if (node) {
-          // eslint-disable-next-line react-hooks/immutability
-          ensureHILConnection(heltecIp as string, node);
-        }
-      }
-    } else if (!heltecHilEnabled && hilSocketRef.current) {
-      // User turned HIL off (or the node lost its enable flag): tear the socket down.
-      hilRunningRef.current = false;
-      hilConnectedRef.current = false;
-      // Already closed, or never opened: either way the socket is going.
-      try { hilSocketRef.current.close(); } catch { /* closing a dead socket */ }
-      hilSocketRef.current = null;
-      if (heltecId) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setNodes(nds => nds.map(n => n.id === heltecId ? { ...n, data: { ...n.data, isConnected: false } } : n));
-      }
-    }
-    return () => {
-      // Clean up connection if no Heltec V4 node is present on the canvas
-      if (!nodes.some(n => n.type === 'heltec_v4')) {
-        hilRunningRef.current = false;
-        hilConnectedRef.current = false;
-        if (hilSocketRef.current) {
-          try {
-            hilSocketRef.current.close();
-          } catch {
-            // Already closed. The node is gone from the canvas either way.
-          }
-          hilSocketRef.current = null;
-        }
-      }
-    };
-    // A stable `ensureHILConnection` means restructuring the driver; see above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heltecId, heltecIp, heltecHilEnabled, nodes]);
-
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => {
       // Block structural changes (add/remove) while a simulation is running: HIL in
@@ -568,7 +434,7 @@ export default function App() {
         : changes;
       return applyNodeChanges(filtered, nds);
     }),
-    []
+    [hilRunningRef]
   );
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => setEdges((eds) => {
@@ -577,7 +443,7 @@ export default function App() {
         : changes;
       return applyEdgeChanges(filtered, eds);
     }),
-    []
+    [hilRunningRef]
   );
 
   const onConnect = useCallback(
@@ -591,769 +457,12 @@ export default function App() {
       }
       setEdges((eds) => addEdge(params, eds));
     },
-    [nodes, edges]
+    [nodes, edges, hilRunningRef]
   );
 
 
 
 
-
-  /** Returns false if no connection could even be attempted (e.g. blocked as mixed content). */
-  const ensureHILConnection = (ip: string, node: Node): boolean => {
-    if (hilSocketRef.current && (hilSocketRef.current.readyState === WebSocket.OPEN || hilSocketRef.current.readyState === WebSocket.CONNECTING)) {
-      return true;
-    }
-
-    // ws:// from an https page is blocked by the browser as mixed content, and the
-    // failed handshake can also wedge WebSerial. Bail out with a clear message instead
-    // of letting the socket fail opaquely.
-    const isSecurePage = typeof window !== 'undefined' && window.location.protocol === 'https:';
-    const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(ip);
-    if (isSecurePage && !isLocalHost && !/^wss:\/\//i.test(ip)) {
-      console.warn(`[HIL] Refusing to open ws://${ip} from an https page — the browser blocks mixed content. Serve the app over http (or tunnel the board over wss://) to use HIL.`);
-      setNodes(nds => nds.map(n => n.id === node.id
-        ? { ...n, data: { ...n.data, isConnected: false, hilEnabled: false, hilError: 'Blocked: ws:// cannot be opened from an https page.' } }
-        : n));
-      return false;
-    }
-
-    const url = /^wss?:\/\//i.test(ip) ? ip : `ws://${ip}`;
-    console.log(`[HIL] Connecting to CYD board at ${url}`);
-    // Mark the node as HIL-enabled so the background effect doesn't tear this socket
-    // down when the connection was initiated by starting a run rather than by the button.
-    setNodes(nds => nds.map(n => n.id === node.id ? { ...n, data: { ...n.data, isConnected: false, hilEnabled: true, hilError: undefined } } : n));
-
-    try {
-      const ws = new WebSocket(url);
-      hilSocketRef.current = ws;
-
-      ws.onopen = () => {
-        console.log(`[HIL] WebSocket connected to CYD at ${url}`);
-        hilConnectedRef.current = true;
-        setNodes(nds => nds.map(n => n.id === node.id ? { ...n, data: { ...n.data, isConnected: true } } : n));
-
-        const pins = (node.data.pins as Record<string, string>) || {};
-        let code = "print('[HIL] Bootstrap: starting...')\n";
-        code += "import lib.webserver as ws\n";
-        code += "import machine, utime\n";
-        code += "h = ws._mesh_get_heltec()\n";
-        code += "print('[HIL] Bootstrap: h =', h)\n";
-        if (hilRunningRef.current) {
-          // HIL is latency-sensitive: mesh relaying blocks the Heltec's main loop
-          // for 100-500ms per relayed packet, and GPS parsing adds more overhead.
-          // Disable both while running so gpio round-trips aren't stalled behind them.
-          code += "h.lora_mode('raw')\n";
-          code += "h.gps_power(0)\n";
-        }
-        const connectedBootPins = getConnectedHeltecPins(node.id, edgesRef.current);
-        Object.entries(pins).forEach(([pinId, mode]) => {
-          if (!connectedBootPins.has(pinId)) return;
-          const pinNum = parseInt(pinId.replace('GPIO_', ''));
-          const modeStr = mode === 'digital_out' ? 'out' : 'in';
-          code += `h.gpio_mode(${pinNum}, '${modeStr}')\n`;
-        });
-        ws.send(JSON.stringify({ cmd: 'repl_input', code }));
-
-        if (hilRunningRef.current) {
-          startHILPipeline();
-        } else {
-          setTimeout(runBackgroundHILPoll, 100);
-        }
-      };
-
-      ws.onmessage = async (evt) => {
-        try {
-          const msg = JSON.parse(evt.data);
-
-          if (msg.type === 'hil_slice_result') {
-            // Fast path: structured response from the fixed hil_slice handler (no exec()).
-            if (msg.ok && msg.values) {
-              const activeHILNode = nodesRef.current.find(n => n.type === 'heltec_v4') || node;
-              const pins = (activeHILNode.data.pins as Record<string, string>) || {};
-              for (const pinId of HELTEC_V4_GPIO_PINS) {
-                const pinNum = parseInt(pinId.replace('GPIO_', ''));
-                const raw = msg.values[String(pinNum)];
-                if (raw === undefined) continue;
-                let volt = raw;
-                if (pins[pinId] === 'analog_in') {
-                  volt = raw / 4095 * 3.3;
-                  if (pinId === 'GPIO_1' && selectedPresetRef.current === 'heltecLightToFreqHIL') {
-                    const minPhys = 0.45;
-                    const maxPhys = 2.2;
-                    const minVirt = 0.73;
-                    const maxVirt = 0.92;
-                    const norm = Math.min(Math.max((volt - minPhys) / (maxPhys - minPhys), 0), 1);
-                    volt = minVirt + norm * (maxVirt - minVirt);
-                  }
-                  // Low-pass filter analog readings before they drive the sim: the VCO's
-                  // operating point sits close to the transistor's turn-on threshold (needed
-                  // to get the requested frequency range), which amplifies ordinary ADC/light
-                  // sensor noise into visible oscillation-frequency jitter. Smoothing the input
-                  // damps that out while still tracking real light-level changes.
-                  const prevSmoothed = hilSmoothedValuesRef.current[pinId];
-                  const alpha = 0.15;
-                  volt = prevSmoothed === undefined ? volt : alpha * volt + (1 - alpha) * prevSmoothed;
-                  hilSmoothedValuesRef.current[pinId] = volt;
-                }
-                hilValuesRef.current[pinId] = volt;
-              }
-
-              setNodes(nds => nds.map(n => {
-                if (n.type === 'heltec_v4') {
-                  return { ...n, data: { ...n.data, pinVoltages: { ...hilValuesRef.current } } };
-                }
-                return n;
-              }));
-            }
-
-            // Pipeline dispatch: immediately send a batch of queued slices if ready
-            const batch = mergeAndDequeueHILBatch();
-            if (batch && ws.readyState === WebSocket.OPEN) {
-              lastSendTimeRef.current = performance.now();
-              ws.send(batch.payload);
-              hilWaitingForCommandRef.current = false;
-            } else {
-              hilWaitingForCommandRef.current = true;
-            }
-
-            // Keep the lookahead buffer topped up in the background so a slow
-            // SPICE call (e.g. a slice that lands on a switching edge) doesn't
-            // starve the device of its next command.
-            topUpHILQueue().catch(err => {
-              console.error("[HIL] Queue top-up failed:", err);
-            });
-            flushHILDisplay();
-            return;
-          }
-
-          if (msg.type === 'repl_output') {
-            if (msg.output && !msg.output.includes('HIL_BG_DATA:')) {
-              console.log("[HIL REPL Output]:", msg.output);
-            }
-            // Buffer the incoming REPL output chunks
-            hilBufferRef.current += msg.output;
-
-            // Process all complete lines in the buffer
-            let newlineIdx;
-            while ((newlineIdx = hilBufferRef.current.indexOf('\n')) !== -1) {
-              const line = hilBufferRef.current.slice(0, newlineIdx).trim();
-              hilBufferRef.current = hilBufferRef.current.slice(newlineIdx + 1);
-
-              if (line.startsWith('HIL_BG_DATA:')) {
-                const dataStr = line.replace('HIL_BG_DATA:', '').trim();
-
-                // Parse readings
-                if (dataStr !== 'ok') {
-                  const parts = dataStr.split(',');
-                  const activeHILNode = nodesRef.current.find(n => n.type === 'heltec_v4') || node;
-                  const pins = (activeHILNode.data.pins as Record<string, string>) || {};
-                  const connectedPins = getConnectedHeltecPins(activeHILNode.id, edgesRef.current);
-                  const inputPins = HELTEC_V4_GPIO_PINS
-                    .filter(pinId => connectedPins.has(pinId) && (pins[pinId] === 'analog_in' || pins[pinId] === 'digital_in'));
-
-                  parts.forEach((valStr, idx) => {
-                    const pinId = inputPins[idx];
-                    if (pinId) {
-                      let volt = parseFloat(valStr) || 0.0;
-                      if (pinId === 'GPIO_1' && selectedPresetRef.current === 'heltecLightToFreqHIL') {
-                        const minPhys = 0.45;
-                        const maxPhys = 2.2;
-                        const minVirt = 0.73;
-                        const maxVirt = 0.92;
-                        const norm = Math.min(Math.max((volt - minPhys) / (maxPhys - minPhys), 0), 1);
-                        volt = minVirt + norm * (maxVirt - minVirt);
-                      }
-                      hilValuesRef.current[pinId] = volt;
-                    }
-                  });
-
-                  // Update UI node voltages immediately
-                  setNodes(nds => nds.map(n => {
-                    if (n.type === 'heltec_v4') {
-                      return {
-                        ...n,
-                        data: {
-                          ...n.data,
-                          pinVoltages: { ...hilValuesRef.current }
-                        }
-                      };
-                    }
-                    return n;
-                  }));
-                }
-
-                setTimeout(runBackgroundHILPoll, 250);
-              }
-            }
-          }
-        } catch (e) {
-          console.error("[HIL] Error parsing websocket message:", e);
-        }
-      };
-
-      ws.onclose = () => {
-        console.log("[HIL] WebSocket connection closed");
-        hilConnectedRef.current = false;
-        setNodes(nds => nds.map(n => n.type === 'heltec_v4' ? { ...n, data: { ...n.data, isConnected: false } } : n));
-      };
-
-      ws.onerror = (err) => {
-        console.error("[HIL] WebSocket error:", err);
-      };
-    } catch (err) {
-      console.error("[HIL] Failed to open WebSocket:", err);
-      return false;
-    }
-    return true;
-  };
-
-  // Which of the heltec node's GPIO pins actually have a wire attached in the circuit graph.
-  // Pin *mode* (digital_in/analog_in/digital_out) still comes from the node's `pins` config,
-  // but polling/writing a pin that's configured yet unwired wastes a round trip for nothing —
-  // this bit us once already (a stale preset had 4 unconnected pins configured as digital_in,
-  // each costing its own UART round trip every slice for no reason).
-  const getConnectedHeltecPins = (nodeId: string, edgeList: Edge[]): Set<string> => {
-    const connected = new Set<string>();
-    for (const edge of edgeList) {
-      if (edge.source === nodeId && edge.sourceHandle && edge.sourceHandle.startsWith('GPIO_')) {
-        connected.add(edge.sourceHandle);
-      }
-      if (edge.target === nodeId && edge.targetHandle && edge.targetHandle.startsWith('GPIO_')) {
-        connected.add(edge.targetHandle);
-      }
-    }
-    return connected;
-  };
-
-  // Cached wrapper for the hot HIL slice loop: wiring essentially never changes mid-run,
-  // so recomputing this Set from scratch on every ~40ms slice is wasted work. Cache is
-  // keyed on the edgesRef array identity (which changes whenever edges state actually
-  // changes), so a live rewire is still picked up correctly, just without redoing the
-  // scan on every unrelated slice.
-  const hilConnectedPinsCacheRef = useRef<{ edges: Edge[]; nodeId: string; pins: Set<string> } | null>(null);
-  const getConnectedHeltecPinsCached = (nodeId: string): Set<string> => {
-    const cached = hilConnectedPinsCacheRef.current;
-    if (cached && cached.edges === edgesRef.current && cached.nodeId === nodeId) return cached.pins;
-    const pins = getConnectedHeltecPins(nodeId, edgesRef.current);
-    hilConnectedPinsCacheRef.current = { edges: edgesRef.current, nodeId, pins };
-    return pins;
-  };
-
-  // Picks which CYD-side handler processes the writes/reads payload — see
-  // hilExecutionMode above. Both produce the identical `{type:"hil_slice_result",
-  // ok, values}` response shape, so nothing downstream of dispatch needs to care
-  // which mode is active.
-  const hilCommandName = (): string => hilExecutionModeRef.current === 'native' ? 'hil_batch' : 'hil_slice';
-
-  // Builds the fast-path "hil_slice"/"hil_batch" WS payload (see handle_hil_slice /
-  // handle_hil_batch in cyd-native's lib/webserver.py) instead of a Python source
-  // string to exec() — exec() measured 700-800ms+ per call on-device even for a
-  // ~15-line script (compile overhead on this PSRAM-backed heap), which dominated
-  // HIL round-trip time. This is a fixed, already-loaded handler taking structured
-  // JSON, so there's no per-slice compilation at all.
-  /** `voltages` is the run-length encoded pin output: [value, hold in microseconds]. */
-  const buildHILSliceCommand = (pins: Record<string, string>, voltages: Record<string, [number, number][]>, connectedPins: Set<string>) => {
-    const writes: { pin: number; seq: [number, number][] }[] = [];
-    const reads: { pin: number; type: 'analog' | 'digital' }[] = [];
-    for (const pinId of HELTEC_V4_GPIO_PINS) {
-      if (!connectedPins.has(pinId)) continue;
-      const pinNum = parseInt(pinId.replace('GPIO_', ''));
-      if (pins[pinId] === 'digital_out') {
-        writes.push({ pin: pinNum, seq: voltages[pinId] || [[0, 0]] });
-      } else if (pins[pinId] === 'analog_in') {
-        reads.push({ pin: pinNum, type: 'analog' });
-      } else if (pins[pinId] === 'digital_in') {
-        reads.push({ pin: pinNum, type: 'digital' });
-      }
-    }
-    return { writes, reads };
-  };
-
-  // Merge several already-computed queue entries into one hil_slice command: the
-  // device plays a write's whole `seq` list in one shot before reporting back, so
-  // concatenating consecutive slices' seq arrays turns N WebSocket round trips into
-  // 1. This was previously unsafe because handle_hil_slice() played each (val,
-  // delay_us) entry as sleep-then-write, holding each value for the *next* entry's
-  // duration instead of its own — fine for the 0-1 edges in a lone 40ms slice, but
-  // batching pushed many more edges through one uninterrupted burst and the
-  // resulting drift snapped back visibly at each (now larger, less frequent) burst
-  // boundary. Now fixed device-side (write-then-sleep, matching the run-length
-  // encoding), so batching no longer distorts edge timing — only the analog-in
-  // reads (used to drive the next SPICE call) happen less often, which is fine
-  // since GPIO_1 already tracks a slow-changing light level.
-  const HIL_BATCH_TARGET_MS = 120;
-
-  const mergeAndDequeueHILBatch = (): { payload: string; durationMs: number } | null => {
-    if (hilQueueRef.current.length === 0) return null;
-    let totalMs = 0;
-    const writeOrder: number[] = [];
-    const writesByPin = new Map<number, [number, number][]>();
-    let reads: { pin: number; type: 'analog' | 'digital' }[] = [];
-    while (hilQueueRef.current.length > 0 && totalMs < HIL_BATCH_TARGET_MS) {
-      const item = hilQueueRef.current.shift()!;
-      hilQueuedMsRef.current -= item.durationMs;
-      totalMs += item.durationMs;
-      reads = item.reads;
-      for (const w of item.writes) {
-        let seq = writesByPin.get(w.pin);
-        if (!seq) {
-          seq = [];
-          writesByPin.set(w.pin, seq);
-          writeOrder.push(w.pin);
-        }
-        seq.push(...w.seq);
-      }
-    }
-    const writes = writeOrder.map(pin => ({ pin, seq: writesByPin.get(pin)! }));
-    return { payload: JSON.stringify({ cmd: hilCommandName(), writes, reads }), durationMs: totalMs };
-  };
-
-  function runBackgroundHILPoll() {
-    if (!hilBackgroundPollActiveRef.current || hilRunningRef.current || !hilConnectedRef.current || !hilSocketRef.current) return;
-    
-    const activeHILNode = nodesRef.current.find(n => n.type === 'heltec_v4');
-    if (!activeHILNode) return;
-    
-    const pins = (activeHILNode.data.pins as Record<string, string>) || {};
-    const connectedPins = getConnectedHeltecPins(activeHILNode.id, edgesRef.current);
-    let code = "print('HIL_BG_DATA:', ";
-    const reads: string[] = [];
-    for (const pinId of HELTEC_V4_GPIO_PINS) {
-      if (!connectedPins.has(pinId)) continue;
-      if (pins[pinId] === 'analog_in') {
-        const pinNum = parseInt(pinId.replace('GPIO_', ''));
-        reads.push(`h.adc_read(${pinNum}) / 4095 * 3.3`);
-      } else if (pins[pinId] === 'digital_in') {
-        const pinNum = parseInt(pinId.replace('GPIO_', ''));
-        reads.push(`h.gpio_read(${pinNum})`);
-      }
-    }
-    if (reads.length > 0) {
-      code += reads.map(r => `str(${r})`).join(" + ',' + ");
-    } else {
-      code += "'ok'";
-    }
-    code += ")\n";
-    
-    try {
-      hilSocketRef.current.send(JSON.stringify({ cmd: "repl_input", code }));
-    } catch (e) {
-      console.error("[HIL] Background poll send failed:", e);
-    }
-  }
-
-  // Target amount of buffered-but-not-yet-dispatched playback time. Depth (not
-  // per-slice size) is what absorbs a slow SPICE call, so this stays fixed
-  // regardless of how long any individual compute takes.
-  const HIL_BUFFER_TARGET_MS = 240;
-  const HIL_SLICE_STEP_MS = 40;
-  // A slice still solving after this has long since starved the board's
-  // lookahead, and the default minute would hold the whole pipeline with it.
-  // Past it the worker drops the engine and the next slice starts afresh.
-  const HIL_SLICE_TIMEOUT_MS = 2_000;
-
-  const topUpHILQueue = async () => {
-    if (hilToppingUpRef.current) return;
-    hilToppingUpRef.current = true;
-    try {
-      while (hilRunningRef.current && hilQueuedMsRef.current < HIL_BUFFER_TARGET_MS) {
-        await runHILSimulationSlice();
-      }
-    } finally {
-      hilToppingUpRef.current = false;
-    }
-  };
-
-  const startHILPipeline = async () => {
-    if (!hilConnectedRef.current || !hilSocketRef.current) return;
-
-    // Reset pipeline state
-    hilQueueRef.current = [];
-    hilQueuedMsRef.current = 0;
-    hilWaitingForCommandRef.current = false;
-
-    try {
-      // Fill the lookahead buffer before sending anything
-      await topUpHILQueue();
-
-      const firstBatch = mergeAndDequeueHILBatch();
-      if (firstBatch && hilSocketRef.current && hilSocketRef.current.readyState === WebSocket.OPEN) {
-        lastSendTimeRef.current = performance.now();
-        hilSocketRef.current.send(firstBatch.payload);
-
-        // Keep refilling in the background so the buffer stays topped up
-        // once the device starts reporting back slice results
-        topUpHILQueue().catch(err => {
-          console.error("[HIL] Queue top-up failed:", err);
-        });
-      }
-    } catch (err) {
-      console.error("[HIL] Pipeline start failed:", err);
-    }
-  };
-
-  // Flushes accumulated scope/LED history to React state. Called once per real
-  // hil_slice_result (device round trip), not once per computed SPICE slice — see
-  // the comment in runHILSimulationSlice for why those two cadences are decoupled.
-  const flushHILDisplay = () => {
-    const cutoff = hilNetlistAccumTimeRef.current - 1000;
-    setNodes(nds => nds.map(n => {
-      if (n.type === 'scope') {
-        const hist1 = hilHistoryRef.current[`${n.id}-ch1`];
-        const hist2 = hilHistoryRef.current[`${n.id}-ch2`];
-        if (!hist1 && !hist2) return n;
-        const relativePoints1 = (hist1 || []).map(p => ({ t: p.t - cutoff, v: p.v }));
-        const relativePoints2 = (hist2 || []).map(p => ({ t: p.t - cutoff, v: p.v }));
-        return { ...n, data: { ...n.data, voltageData: relativePoints1, voltageData1: relativePoints1, voltageData2: relativePoints2 } };
-      }
-      if (n.type === 'led') {
-        const hist = hilHistoryRef.current[n.id];
-        if (!hist) return n;
-        return { ...n, data: { ...n.data, time_points: hist.map(p => p.t - cutoff), current_array: hist.map(p => p.v) } };
-      }
-      return n;
-    }));
-  };
-
-  const runHILSimulationSlice = async () => {
-    if (!hilRunningRef.current) return;
-
-    const activeHILNode = nodesRef.current.find(n => n.type === 'heltec_v4');
-    if (!activeHILNode) return;
-
-    try {
-      const nextNodes = nodesRef.current.map(n => {
-        if (n.id === activeHILNode.id) {
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              pinVoltages: { ...hilValuesRef.current },
-              isConnected: hilConnectedRef.current
-            }
-          };
-        }
-        return n;
-      });
-
-      const now = performance.now();
-      if (hilStartTimeRef.current === null) hilStartTimeRef.current = now;
-      // Fixed-size steps: the lookahead queue (see hilQueueRef/topUpHILQueue) is what
-      // absorbs variance in how long any one SPICE call takes (e.g. a slice that lands
-      // on a switching edge vs. one that doesn't), so slice sizing no longer needs to
-      // reactively chase wall-clock drift the way a single-slot lookahead did.
-      const sliceDurationMs = HIL_SLICE_STEP_MS;
-      // The netlist must simulate the full slice duration, not a fixed smaller window — GPIO_3's
-      // hardware toggle sequence is now derived from the astable multivibrator's own simulated
-      // oscillation (see below), so it needs a waveform covering the whole real-time gap this
-      // burst has to fill. This used to be decoupled and fixed at 50ms as a workaround for
-      // ngspice convergence failure, but that was caused by the transistor model having zero
-      // switching timescale (CJC=0/CJE=0/TR=0/TF=0, see spice.ts), now fixed there — so longer
-      // simulated durations no longer blow up compute time or point counts unboundedly.
-      const netlistDurationMs = sliceDurationMs;
-      // Force 'normal' here regardless of the UI's simResolution setting: 'high' forces a
-      // fixed 0.1ms internal step across the whole slice, which is meant for smoother manual-run
-      // waveform display, not for HIL. ngspice's adaptive stepping already refines automatically
-      // near a switching edge (see the CJC/CJE fix), so forcing a small step here would just
-      // multiply point count/serialization cost per slice with no benefit at low frequencies.
-      // But at high frequencies the opposite problem appears: a fixed 1ms step can't resolve
-      // edges accurately once a half-period gets down to a few ms, so scale the step to
-      // whichever tracked digital_out pin is oscillating fastest (see hilHalfPeriodMsRef below)
-      // — resolve each half-period with ~10 samples, ceiling at 1ms (matches the existing
-      // low-frequency behavior, so nothing changes there for a slow-changing or non-oscillating
-      // pin). The floor is a POINT-COUNT BUDGET, not a guessed frequency cutoff: this hasn't
-      // been measured against actual per-slice SPICE compute time (see the earlier discussion
-      // on what really gates max frequency), so MAX_POINTS_PER_SLICE is a placeholder pending
-      // real profiling, not a validated ceiling — tune it down if slices start missing their
-      // real-time budget, up if there's compute headroom to spare.
-      const MAX_POINTS_PER_SLICE = 2000;
-      const minStepMs = netlistDurationMs / MAX_POINTS_PER_SLICE;
-      const trackedHalfPeriods = Object.values(hilHalfPeriodMsRef.current);
-      const fastestHalfPeriodMs = trackedHalfPeriods.length > 0 ? Math.min(...trackedHalfPeriods) : 50;
-      const hasSpeaker = nextNodes.some(n => n.type === 'speaker');
-      const maxStepLimit = hasSpeaker ? 0.1 : 1.0;
-      const hilMaxStepMs = Math.min(maxStepLimit, Math.max(minStepMs, fastestHalfPeriodMs / 10));
-
-      // Map physical voltages of heltec_v4 to connected mcu input pins
-      const mcuWaveforms: Record<string, Record<string, PWLPoint[]>> = {};
-      const heltecNode = nextNodes.find(n => n.type === 'heltec_v4');
-      const mcuNode = nextNodes.find(n => n.type === 'mcu');
-      if (heltecNode && mcuNode) {
-        mcuWaveforms[mcuNode.id] = {};
-        for (const edge of edgesRef.current) {
-          if (edge.source === heltecNode.id && edge.target === mcuNode.id) {
-            const heltecPin = edge.sourceHandle;
-            const mcuPin = edge.targetHandle;
-            if (heltecPin && mcuPin && heltecPin.startsWith('GPIO_')) {
-              const volt = hilValuesRef.current[heltecPin] ?? 0.0;
-              const prevVolt = hilPrevValuesRef.current[heltecPin] ?? volt;
-              mcuWaveforms[mcuNode.id][mcuPin] = [
-                { t: 0, v: prevVolt },
-                { t: sliceDurationMs, v: volt }
-              ];
-            }
-          }
-        }
-        // Save current values as previous values for the next slice
-        hilPrevValuesRef.current = { ...hilValuesRef.current };
-      }
-
-      // Configure HILMemoizer options from component properties
-      const memoizer = hilMemoizerRef.current;
-      memoizer.enabled = typeof activeHILNode.data.hilMemoizationEnabled === 'boolean' ? activeHILNode.data.hilMemoizationEnabled : true;
-      memoizer.inputDP = typeof activeHILNode.data.hilInputDP === 'number' ? activeHILNode.data.hilInputDP : 3;
-      memoizer.icDP = typeof activeHILNode.data.hilIcDP === 'number' ? activeHILNode.data.hilIcDP : 3;
-      memoizer.maxConsecutiveHits = typeof activeHILNode.data.hilMaxConsecutiveHits === 'number' ? activeHILNode.data.hilMaxConsecutiveHits : 50;
-
-      if (activeHILNode.data.hilClearCacheRequested) {
-        memoizer.clear();
-        setNodes(nds => nds.map(n => n.id === activeHILNode.id ? { ...n, data: { ...n.data, hilClearCacheRequested: undefined } } : n));
-      }
-
-      // Every slice moves each sketch on, cached or not: the program keeps
-      // running whether or not the circuit around it needs solving again. What
-      // it drives this slice goes into the cache key, since it changes the
-      // answer without changing any input.
-      const sketches = runSketches(nextNodes, netlistDurationMs / 1000, mcuWaveforms);
-      const drive = Object.keys(sketches.drives).length > 0 ? JSON.stringify(sketches.drives) : '';
-
-      const curInputs = { ...hilValuesRef.current };
-      const curICs = { ...hilInitialConditionsRef.current };
-      const cachedSlice = memoizer.get(curInputs, curICs, netlistDurationMs, hilMaxStepMs, drive);
-
-      let result: SpiceResult;
-      let portToNet: Record<string, string>;
-      let nextICs: Record<string, number>;
-      let outputs: Record<string, [number, number][]>;
-      let writes: { pin: number; seq: [number, number][] }[];
-      let reads: { pin: number; type: 'analog' | 'digital' }[];
-
-      if (cachedSlice) {
-        // CACHE HIT: Bypass SPICE WASM solver run
-        result = cachedSlice.result;
-        portToNet = cachedSlice.portToNet;
-        nextICs = cachedSlice.nextICs;
-        outputs = cachedSlice.outputs;
-        writes = cachedSlice.writes;
-        reads = cachedSlice.reads;
-        hilHalfPeriodMsRef.current = { ...cachedSlice.halfPeriods };
-      } else {
-        // CACHE MISS: Run SPICE WASM simulation
-        const netlistRes = generateSpiceNetlist(nextNodes, edgesRef.current, { simLength: netlistDurationMs / 1000, mcuDrives: sketches.drives, initialConditions: hilInitialConditionsRef.current, hilMaxStepMs });
-        portToNet = netlistRes.portToNet;
-
-        result = (await runSimInWorker(netlistRes.netlist, 'tran', HIL_SLICE_TIMEOUT_MS)).result;
-        const resultIndex = buildNetlistResultIndex(result);
-
-        nextICs = readEndState(result);
-
-        outputs = {};
-        const pins = (activeHILNode.data.pins as Record<string, string>) || {};
-        for (const pinId of HELTEC_V4_GPIO_PINS) {
-          if (pins[pinId] === 'digital_out') {
-            const seq: [number, number][] = [];
-            const net = portToNet[`${activeHILNode.id}-${pinId}`];
-            const graph = findNetGraph(result, net, resultIndex);
-            const threshold = 1.65; // half of 3.3V logic level
-            const MIN_PULSE_US = hilMaxStepMs * 1000 * 1.5;
-            let shortestPulseUs: number | null = null;
-            if (graph && graph.timestamps_ms.length > 0) {
-              let lastState = graph.voltage_levels[0] > threshold ? 1 : 0;
-              let lastT = 0;
-              for (let i = 1; i < graph.timestamps_ms.length; i++) {
-                const state = graph.voltage_levels[i] > threshold ? 1 : 0;
-                if (state !== lastState) {
-                  const t = graph.timestamps_ms[i];
-                  const durationUs = (t - lastT) * 1000;
-                  if (durationUs < MIN_PULSE_US) continue;
-                  seq.push([lastState, Math.round(durationUs)]);
-                  if (shortestPulseUs === null || durationUs < shortestPulseUs) shortestPulseUs = durationUs;
-                  lastState = state;
-                  lastT = t;
-                }
-              }
-              seq.push([lastState, Math.round((sliceDurationMs - lastT) * 1000)]);
-            } else {
-              seq.push([0, Math.round(sliceDurationMs * 1000)]);
-            }
-            if (shortestPulseUs !== null) {
-              const alpha = 0.3;
-              const prev = hilHalfPeriodMsRef.current[pinId] ?? 50;
-              hilHalfPeriodMsRef.current[pinId] = alpha * (shortestPulseUs / 1000) + (1 - alpha) * prev;
-            }
-            outputs[pinId] = seq;
-          }
-        }
-
-        const connectedPins = getConnectedHeltecPinsCached(activeHILNode.id);
-        const builtCmd = buildHILSliceCommand(pins, outputs, connectedPins);
-        writes = builtCmd.writes;
-        reads = builtCmd.reads;
-
-        memoizer.set(curInputs, curICs, netlistDurationMs, hilMaxStepMs, {
-          result,
-          portToNet,
-          nextICs,
-          outputs,
-          writes,
-          reads,
-          halfPeriods: { ...hilHalfPeriodMsRef.current }
-        }, drive);
-      }
-
-      lastSimulatedResultRef.current = result;
-      lastPortToNetRef.current = portToNet;
-      lastSliceDurationRef.current = netlistDurationMs;
-      const resultIndex = buildNetlistResultIndex(result);
-
-      // Stream simulated speaker audio to the CYD board over WebSocket
-      if (hilConnectedRef.current && hilSocketRef.current && hilSocketRef.current.readyState === WebSocket.OPEN) {
-        const speakerNode = nextNodes.find(n => n.type === 'speaker' && n.data.outputTarget === 'cyd');
-        if (speakerNode) {
-          const spkNet = portToNet[`${speakerNode.id}-in`];
-          const gndNet = portToNet[`${speakerNode.id}-gnd`];
-          const spkGraph = findNetGraph(result, spkNet, resultIndex);
-          const gndGraph = findNetGraph(result, gndNet, resultIndex);
-          if (spkGraph && spkGraph.timestamps_ms.length > 0) {
-            const times = spkGraph.timestamps_ms;
-            const volts = spkGraph.voltage_levels;
-            const gndVolts = gndGraph ? gndGraph.voltage_levels : null;
-            
-            const sampleRate = 16000;
-            const durationSec = sliceDurationMs / 1000;
-            const frameCount = Math.floor(sampleRate * durationSec);
-            const audioBuffer = new Int16Array(frameCount);
-            
-            let dataIdx = 0;
-            let sumV = 0;
-            const rawV = new Float32Array(frameCount);
-            for (let i = 0; i < frameCount; i++) {
-              const t_ms = (i / sampleRate) * 1000;
-              while (dataIdx < times.length - 2 && times[dataIdx + 1] < t_ms) {
-                dataIdx++;
-              }
-              const t1 = times[dataIdx];
-              const t2 = times[dataIdx + 1];
-              const v1 = volts[dataIdx] - (gndVolts ? gndVolts[dataIdx] : 0);
-              const v2 = volts[dataIdx + 1] - (gndVolts ? gndVolts[dataIdx + 1] : 0);
-              let v = v1;
-              if (t2 > t1) {
-                const fraction = (t_ms - t1) / (t2 - t1);
-                v = v1 + fraction * (v2 - v1);
-              }
-              rawV[i] = v;
-              sumV += v;
-            }
-            
-            // Subtract DC offset
-            const meanV = sumV / frameCount;
-            let maxAbs = 0.001;
-            for (let i = 0; i < frameCount; i++) {
-              rawV[i] -= meanV;
-              if (Math.abs(rawV[i]) > maxAbs) {
-                maxAbs = Math.abs(rawV[i]);
-              }
-            }
-            
-            // Normalize and convert to Int16
-            const targetPeak = 20000;
-            for (let i = 0; i < frameCount; i++) {
-              audioBuffer[i] = Math.round((rawV[i] / maxAbs) * targetPeak);
-            }
-            
-            // Send binary packet
-            hilSocketRef.current.send(audioBuffer.buffer);
-          }
-        }
-      }
-
-      // Carry ICs forward
-      hilInitialConditionsRef.current = nextICs;
-      setInitialConditions(nextICs);
-
-      const newAccum = hilAccumTimeRef.current + sliceDurationMs;
-      hilAccumTimeRef.current = newAccum;
-      const newNetlistAccum = hilNetlistAccumTimeRef.current + netlistDurationMs;
-      hilNetlistAccumTimeRef.current = newNetlistAccum;
-
-      if (hilWaitingForCommandRef.current && hilSocketRef.current && hilSocketRef.current.readyState === WebSocket.OPEN) {
-        lastSendTimeRef.current = performance.now();
-        hilSocketRef.current.send(JSON.stringify({ cmd: hilCommandName(), writes, reads }));
-        hilWaitingForCommandRef.current = false;
-      } else {
-        hilQueueRef.current.push({ writes, reads, durationMs: sliceDurationMs });
-        hilQueuedMsRef.current += sliceDurationMs;
-      }
-
-      // Update live memoization stats on node data for PropertiesPanel
-      const currentStats = memoizer.getStats();
-      setNodes(nds => nds.map(n => n.id === activeHILNode.id ? { ...n, data: { ...n.data, hilStats: currentStats } } : n));
-
-      // Update scope/LED history every slice (needed for correct, gap-free traces),
-      // but don't build a full node array + setNodes here — topUpHILQueue calls this
-      // several times back-to-back while refilling the lookahead buffer, and that
-      // would fire a React re-render for every one of them before any of that data
-      // has even reached the device. The actual UI flush (flushHILDisplay) happens
-      // once per real hil_slice_result instead, matching the device's own cadence.
-      for (const n of nextNodes) {
-        if (n.type === 'scope') {
-          const ch1Net = portToNet[`${n.id}-ch1`];
-          const ch2Net = portToNet[`${n.id}-ch2`];
-          const gndNet = portToNet[`${n.id}-gnd`];
-
-          const ch1Graph = findNetGraph(result, ch1Net, resultIndex);
-          const ch2Graph = findNetGraph(result, ch2Net, resultIndex);
-          const gndGraph = findNetGraph(result, gndNet, resultIndex);
-
-          if (ch1Graph) {
-            const newPoints = ch1Graph.timestamps_ms.map((t: number, idx: number) => ({
-              t: hilNetlistAccumTimeRef.current - netlistDurationMs + t,
-              v: ch1Graph.voltage_levels[idx] - (gndGraph ? gndGraph.voltage_levels[idx] : 0.0)
-            }));
-            const hist = [...(hilHistoryRef.current[`${n.id}-ch1`] || []), ...newPoints].filter(p => p.t >= newNetlistAccum - 1000);
-            hilHistoryRef.current[`${n.id}-ch1`] = hist;
-          }
-
-          if (ch2Graph) {
-            const newPoints = ch2Graph.timestamps_ms.map((t: number, idx: number) => ({
-              t: hilNetlistAccumTimeRef.current - netlistDurationMs + t,
-              v: ch2Graph.voltage_levels[idx] - (gndGraph ? gndGraph.voltage_levels[idx] : 0.0)
-            }));
-            const hist = [...(hilHistoryRef.current[`${n.id}-ch2`] || []), ...newPoints].filter(p => p.t >= newNetlistAccum - 1000);
-            hilHistoryRef.current[`${n.id}-ch2`] = hist;
-          }
-        }
-
-        if (n.type === 'led') {
-          const net = portToNet[`${n.id}-anode`];
-          const anodeGraph = findNetGraph(result, net, resultIndex);
-          const intGraph = findNetGraph(result, `int_led_${n.id}`, resultIndex);
-          if (anodeGraph && intGraph) {
-            const newPoints = anodeGraph.timestamps_ms.map((t: number, idx: number) => ({
-              t: hilNetlistAccumTimeRef.current - netlistDurationMs + t,
-              v: anodeGraph.voltage_levels[idx] - intGraph.voltage_levels[idx]
-            }));
-            const hist = [...(hilHistoryRef.current[n.id] || []), ...newPoints].filter(p => p.t >= newNetlistAccum - 1000);
-            hilHistoryRef.current[n.id] = hist;
-          }
-        }
-      }
-      setRunAdvisories(prev => (prev.some(a => a.id === 'hil:failed') ? prev.filter(a => a.id !== 'hil:failed') : prev));
-    } catch (e) {
-      console.error("[HIL] Simulation slice run failed:", e);
-      const messages = messagesFromError(e);
-      const explained = messages.some(m => m.includes('TIMED_OUT'))
-        ? {
-            title: 'A slice did not finish in time',
-            detail: `One ${HIL_SLICE_STEP_MS}ms slice was still solving after ${HIL_SLICE_TIMEOUT_MS / 1000}s, too slow to keep the board fed. Switching converters and fast oscillators are the usual cause.`,
-          }
-        : explainSpiceFailure(messages);
-      setRunAdvisories(prev => [
-        ...prev.filter(a => a.id !== 'hil:failed'),
-        { id: 'hil:failed', severity: 'warning', title: `HIL: ${explained.title}`, detail: explained.detail },
-      ]);
-    }
-  };
 
   /** True while a solve is in flight, so live re-runs queue instead of piling up. */
   const simInFlightRef = useRef(false);
@@ -1373,58 +482,10 @@ export default function App() {
         }
         setIsSpiceRunning(true);
         setIsSimulating(true);
-        hilRunningRef.current = true;
-        hilExecutionModeRef.current = (heltecNode.data.hilExecutionMode as 'legacy' | 'native') || 'native';
-        hilBackgroundPollActiveRef.current = true;
-        hilAccumTimeRef.current = 0;
-        hilNetlistAccumTimeRef.current = 0;
-        hilStartTimeRef.current = null;
-        hilHistoryRef.current = {};
-        hilSmoothedValuesRef.current = {};
-        hilInitialConditionsRef.current = {};
-        hilBufferRef.current = '';
-        hilQueueRef.current = [];
-        hilQueuedMsRef.current = 0;
-        hilHalfPeriodMsRef.current = {};
-        setInitialConditions({});
-        
-        const ip = (heltecNode.data.ip as string) || '192.168.1.244';
-        if (hilConnectedRef.current && hilSocketRef.current) {
-          const ws = hilSocketRef.current;
-          if (ws.readyState === WebSocket.OPEN) {
-            const pins = (heltecNode.data.pins as Record<string, string>) || {};
-            let code = "print('[HIL] Bootstrap: starting (existing ws)...')\n";
-            code += "import lib.webserver as ws\n";
-            code += "import machine, utime\n";
-            code += "h = ws._mesh_get_heltec()\n";
-            code += "print('[HIL] Bootstrap: h =', h)\n";
-            code += "h.lora_mode('raw')\n";
-            code += "h.gps_power(0)\n";
-            const connectedBootPins = getConnectedHeltecPins(heltecNode.id, edgesRef.current);
-            Object.entries(pins).forEach(([pinId, mode]) => {
-              if (!connectedBootPins.has(pinId)) return;
-              const pinNum = parseInt(pinId.replace('GPIO_', ''));
-              const modeStr = mode === 'digital_out' ? 'out' : 'in';
-              code += `h.gpio_mode(${pinNum}, '${modeStr}')\n`;
-            });
-            ws.send(JSON.stringify({ cmd: 'repl_input', code }));
-          }
-          setTimeout(() => {
-            if (hilRunningRef.current) {
-              startHILPipeline();
-            }
-          }, 150);
-        } else {
-          if (!ensureHILConnection(ip, heltecNode)) {
-            // Couldn't even attempt the socket (e.g. ws:// blocked on an https page) —
-            // unwind the run instead of leaving the UI stuck in "simulating".
-            hilRunningRef.current = false;
-            hilBackgroundPollActiveRef.current = false;
-            setIsSpiceRunning(false);
-            setIsSimulating(false);
-            alert(`Can't reach the board at ${ip}: the browser blocks plain ws:// connections from an https page. Run the app over http (or expose the board over wss://) to use hardware-in-the-loop.`);
-            return { ok: false };
-          }
+        if (!startHil(heltecNode)) {
+          setIsSpiceRunning(false);
+          setIsSimulating(false);
+          return { ok: false };
         }
         return { ok: true };
       }
@@ -1943,7 +1004,7 @@ export default function App() {
       }
     }, 200);
     return () => clearTimeout(t);
-  }, [dcMode, netlistSignature, simLength, simResolution, paintDcVoltages]);
+  }, [dcMode, netlistSignature, simLength, simResolution, paintDcVoltages, hilRunningRef]);
 
   /*
    * A small-signal sweep of the circuit as drawn.
