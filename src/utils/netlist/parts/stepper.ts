@@ -1,6 +1,6 @@
 import type { PartEmitter } from '../part';
 import { numParam } from '../params';
-import { emitTransducer } from '../../transducer';
+import { emitTransducer, type LinkedShaft } from '../../transducer';
 
 /** A NEMA 17 like the ones in 3D printers (17HS4401): 1.8° a step, 0.4N·m at 1.7A. */
 export const STEPPER_DEFAULTS = {
@@ -45,6 +45,7 @@ export const stepper: PartEmitter = {
       },
       initialConditions,
       true,
+      node.data.linkedShaft as LinkedShaft | undefined,
     );
   },
 };

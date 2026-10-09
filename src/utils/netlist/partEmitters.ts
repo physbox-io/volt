@@ -32,6 +32,7 @@ import { stepper } from './parts/stepper';
 import { stepdriver } from './parts/stepdriver';
 import { hbridge } from './parts/hbridge';
 import { fuse } from './parts/fuse';
+import { meshsignal } from './parts/meshsignal';
 
 /**
  * How each part type reaches SPICE, by `node.type`. A new part is a file in
@@ -81,4 +82,5 @@ export const partEmitters: Record<string, PartEmitter> = {
   stepdriver,
   hbridge,
   fuse,
+  meshsignal,
 };

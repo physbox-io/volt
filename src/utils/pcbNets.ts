@@ -259,6 +259,7 @@ const HANDLE_ORDER: Record<string, string[]> = {
   dcmotor: ['a', 'b'],
   stepper: ['a1', 'a2', 'b1', 'b2'],
   fuse: ['in', 'out'],
+  meshsignal: ['out', 'gnd'],
   hbridge: ['vm', 'gnd', 'in1', 'in2', 'out1', 'out2'],
 };
 

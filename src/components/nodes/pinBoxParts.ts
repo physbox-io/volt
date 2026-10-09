@@ -60,6 +60,12 @@ export const PIN_BOX_PARTS: Record<string, PinBoxPart> = {
       right('out1', 0, 'OUT1'), right('out2', 1, 'OUT2'),
     ],
   },
+  meshsignal: {
+    title: 'Mesh signal',
+    width: 80,
+    height: 48,
+    pins: [right('out', 0, 'OUT'), right('gnd', 1, 'GND')],
+  },
   stepdriver: {
     title: 'Step driver',
     width: 112,

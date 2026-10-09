@@ -8,6 +8,7 @@ import type { SimState } from '../utils/simState';
 import type { SpiceResult } from '../types/simulation';
 import type { Advisory } from '../types/advisories';
 import { initialSliceState, runSlice, type SliceState } from '../sim/sliceRunner';
+import { TraceHistory } from '../sim/traceHistory';
 import { encodeSpeakerAudio } from '../hil/pinEncoding';
 import {
   HeltecLink,
@@ -72,9 +73,7 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
   const smoothedValuesRef = useRef<Record<string, number>>({});
   const sliceStateRef = useRef<SliceState>(initialSliceState());
   /** The last second of each scope channel and LED, for the canvas. */
-  const historyRef = useRef<Record<string, { t: number; v: number }[]>>({});
-  /** Simulated time since the run started, ms. */
-  const simulatedMsRef = useRef(0);
+  const historyRef = useRef(new TraceHistory());
   const toppingUpRef = useRef(false);
   const memoizerRef = useRef(new HILMemoizer());
   const connectedPinsCacheRef = useRef<{ edges: Edge[]; nodeId: string; pins: Set<string> } | null>(null);
@@ -106,29 +105,11 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
     }
   }
 
-  // Flushes accumulated scope/LED history to React state. Called once per real
+  // Draws the accumulated scope/LED history. Called once per real
   // hil_slice_result (device round trip), not once per computed slice: the
   // lookahead computes several slices back to back, and a re-render for each
   // would come before any of that data had even reached the device.
-  const flushDisplay = () => {
-    const cutoff = simulatedMsRef.current - 1000;
-    setNodes(nds => nds.map(n => {
-      if (n.type === 'scope') {
-        const hist1 = historyRef.current[`${n.id}-ch1`];
-        const hist2 = historyRef.current[`${n.id}-ch2`];
-        if (!hist1 && !hist2) return n;
-        const relativePoints1 = (hist1 || []).map(p => ({ t: p.t - cutoff, v: p.v }));
-        const relativePoints2 = (hist2 || []).map(p => ({ t: p.t - cutoff, v: p.v }));
-        return { ...n, data: { ...n.data, voltageData: relativePoints1, voltageData1: relativePoints1, voltageData2: relativePoints2 } };
-      }
-      if (n.type === 'led') {
-        const hist = historyRef.current[n.id];
-        if (!hist) return n;
-        return { ...n, data: { ...n.data, time_points: hist.map(p => p.t - cutoff), current_array: hist.map(p => p.v) } };
-      }
-      return n;
-    }));
-  };
+  const flushDisplay = () => setNodes(nds => historyRef.current.applyTo(nds));
 
   const runOneSlice = async () => {
     if (!runningRef.current) return;
@@ -171,8 +152,6 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
       }
 
       setInitialConditions(slice.state.sim);
-      simulatedMsRef.current += sliceMs;
-      const now = simulatedMsRef.current;
 
       const pins = (board.data.pins as Record<string, string>) || {};
       link.push(buildSliceCommand(pins, slice.outputs, connectedPinsCached(board.id)), sliceMs);
@@ -182,33 +161,7 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
       setNodes(nds => nds.map(n => n.id === board.id ? { ...n, data: { ...n.data, hilStats: stats } } : n));
 
       // History every slice, for gap-free traces; drawn by flushDisplay.
-      const append = (key: string, points: { t: number; v: number }[]) => {
-        historyRef.current[key] = [...(historyRef.current[key] || []), ...points].filter(p => p.t >= now - 1000);
-      };
-      const at = (t: number) => now - sliceMs + t;
-      for (const n of slice.nodes) {
-        if (n.type === 'scope') {
-          const gndGraph = findNetGraph(result, portToNet[`${n.id}-gnd`], resultIndex);
-          for (const ch of ['ch1', 'ch2']) {
-            const graph = findNetGraph(result, portToNet[`${n.id}-${ch}`], resultIndex);
-            if (!graph) continue;
-            append(`${n.id}-${ch}`, graph.timestamps_ms.map((t, idx) => ({
-              t: at(t),
-              v: graph.voltage_levels[idx] - (gndGraph ? gndGraph.voltage_levels[idx] : 0.0),
-            })));
-          }
-        }
-        if (n.type === 'led') {
-          const anodeGraph = findNetGraph(result, portToNet[`${n.id}-anode`], resultIndex);
-          const intGraph = findNetGraph(result, `int_led_${n.id}`, resultIndex);
-          if (anodeGraph && intGraph) {
-            append(n.id, anodeGraph.timestamps_ms.map((t, idx) => ({
-              t: at(t),
-              v: anodeGraph.voltage_levels[idx] - intGraph.voltage_levels[idx],
-            })));
-          }
-        }
-      }
+      historyRef.current.append(slice.nodes, result, portToNet, sliceMs);
       setRunAdvisories(prev => (prev.some(a => a.id === 'hil:failed') ? prev.filter(a => a.id !== 'hil:failed') : prev));
     } catch (e) {
       console.error("[HIL] Simulation slice run failed:", e);
@@ -412,8 +365,7 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
     runningRef.current = true;
     link.executionMode = (board.data.hilExecutionMode as ExecutionMode) || 'native';
     bgPollActiveRef.current = true;
-    simulatedMsRef.current = 0;
-    historyRef.current = {};
+    historyRef.current.clear();
     smoothedValuesRef.current = {};
     sliceStateRef.current = initialSliceState();
     link.resetRepl();
@@ -455,9 +407,8 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
         console.error("[HIL] Failed to send stop state:", e);
       }
     }
-    historyRef.current = {};
+    historyRef.current.clear();
     smoothedValuesRef.current = {};
-    simulatedMsRef.current = 0;
     link.resetQueue();
     sliceStateRef.current = initialSliceState();
   };

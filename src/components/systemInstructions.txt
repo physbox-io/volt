@@ -167,6 +167,15 @@ explain a circuit ("probe pin 3 of U1").
                  Handles: "in" (left), "out" (right)
                  data: { rating: A (1), i2t: A²s (0.1), coldR: Ω (0.05) }   After a run: data.blown.
 
+'meshsignal'     Voltage source driven by a linked Mesh scene channel (joint angle/speed, body position, contact count).
+                 Handles: "out", "gnd" (right)
+                 data: { channel: e.g. "joint:arm.pos" | "body:jaw.contacts", gain (1), offset (0),
+                         threshold (unset = analog), hysteresis (0), high (5), low (0) }
+
+Linking to Mesh: the "Link Mesh" toolbar button opens Mesh and links to its scene. Set a dcmotor's or stepper's
+data.shaftJoint to a Mesh hinge/slide joint name and Run drives that joint in 5ms lock-step slices: the joint's
+inertia and load act on the motor, the motor's torque turns the joint. Runs until Stop.
+
 'and'|'or'|'nand'|'nor'|'xor'  2-Input Logic Gates.
                  Handles: "in1" (top-left), "in2" (bottom-left), "out" (right)
                  data: { label: string (e.g. "AND Gate") }

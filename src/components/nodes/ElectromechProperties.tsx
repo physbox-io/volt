@@ -4,6 +4,8 @@ import { STEPPER_DEFAULTS } from '../../utils/netlist/parts/stepper';
 import { STEP_DRIVER_DEFAULTS } from '../../utils/netlist/parts/stepdriver';
 import { HBRIDGE_DEFAULTS } from '../../utils/netlist/parts/hbridge';
 import { FUSE_DEFAULTS } from '../../utils/netlist/parts/fuse';
+import { MESH_SIGNAL_DEFAULTS } from '../../utils/netlist/parts/meshsignal';
+import { useMeshLinkInfo } from '../meshLinkContext';
 
 type Field = { key: string; label: string; unit: string; fallback: number };
 
@@ -36,6 +38,14 @@ const FIELDS: Record<string, Field[]> = {
   hbridge: [
     f('rdsOn', 'Switch resistance', 'Ω', HBRIDGE_DEFAULTS.rdsOn),
   ],
+  meshsignal: [
+    f('gain', 'Gain', 'V per unit', MESH_SIGNAL_DEFAULTS.gain),
+    f('offset', 'Offset', 'V', MESH_SIGNAL_DEFAULTS.offset),
+    f('threshold', 'Switch at (blank: no switching)', '', NaN),
+    f('hysteresis', 'Hysteresis band', '', MESH_SIGNAL_DEFAULTS.hysteresis),
+    f('high', 'Output when on', 'V', MESH_SIGNAL_DEFAULTS.high),
+    f('low', 'Output when off', 'V', MESH_SIGNAL_DEFAULTS.low),
+  ],
   fuse: [
     f('rating', 'Rating', 'A', FUSE_DEFAULTS.rating),
     f('i2t', 'Melting I²t', 'A²s', FUSE_DEFAULTS.i2t),
@@ -51,11 +61,62 @@ const INPUT =
  * Settings for the electromechanical parts. Values are kept as typed, SI
  * suffixes and all ("2.8m"), and read with `numParam` when the netlist is built.
  */
+/**
+ * A picker over the linked Mesh scene's channels. The current value stays on
+ * the list when the scene has no such channel (or nothing is linked), so a
+ * binding saved with the circuit is not lost by opening it unlinked.
+ */
+function ChannelPicker({ label, value, options, onChange, hint }: {
+  label: string; value: string; options: { value: string; label: string }[]; onChange: (v: string | undefined) => void; hint: string;
+}) {
+  const known = options.some(o => o.value === value);
+  return (
+    <div className="mb-3">
+      <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+      <select value={value} onChange={e => onChange(e.target.value || undefined)} className={INPUT}>
+        <option value="">Not bound</option>
+        {value && !known && <option value={value}>{value} (not in the linked scene)</option>}
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <div className="text-[10px] text-gray-400 mt-1">{hint}</div>
+    </div>
+  );
+}
+
 export function ElectromechProperties({ node, updateData }: NodePropertiesProps) {
   const fields = FIELDS[node.type ?? ''] ?? [];
   const data = node.data as Record<string, unknown>;
+  const mesh = useMeshLinkInfo();
+  const linkHint = mesh.status === 'linked'
+    ? `From ${mesh.scene || 'the linked Mesh scene'}.`
+    : 'Link Mesh (in the toolbar) to list its scene.';
+  const joints = mesh.channels
+    .filter(c => c.direction === 'input' && c.name.startsWith('joint:') && c.name.endsWith('.force'))
+    .map(c => c.name.slice('joint:'.length, -'.force'.length))
+    .map(j => ({ value: j, label: j }));
+  const outputs = mesh.channels
+    .filter(c => c.direction === 'output')
+    .map(c => ({ value: c.name, label: `${c.description} (${c.unit})` }));
   return (
     <>
+      {(node.type === 'dcmotor' || node.type === 'stepper') && (
+        <ChannelPicker
+          label="Shaft drives Mesh joint"
+          value={typeof data.shaftJoint === 'string' ? data.shaftJoint : ''}
+          options={joints}
+          onChange={v => updateData('shaftJoint', v)}
+          hint={`${linkHint} Bound, the joint's inertia and load act on the motor, and its torque turns the joint.`}
+        />
+      )}
+      {node.type === 'meshsignal' && (
+        <ChannelPicker
+          label="Reads"
+          value={typeof data.channel === 'string' ? data.channel : ''}
+          options={outputs}
+          onChange={v => updateData('channel', v)}
+          hint={`${linkHint} A joint angle makes a pot, a speed a tachometer, a contact count with a threshold a limit switch.`}
+        />
+      )}
       {node.type === 'stepdriver' && (
         <div className="mb-3">
           <label className="block text-xs font-medium text-gray-700 mb-1">Microstepping</label>
@@ -76,7 +137,7 @@ export function ElectromechProperties({ node, updateData }: NodePropertiesProps)
           <input
             type="text"
             value={data[field.key] === undefined ? '' : String(data[field.key])}
-            placeholder={String(field.fallback)}
+            placeholder={Number.isNaN(field.fallback) ? '' : String(field.fallback)}
             onChange={e => updateData(field.key, e.target.value.trim() === '' ? undefined : e.target.value)}
             className={INPUT}
           />

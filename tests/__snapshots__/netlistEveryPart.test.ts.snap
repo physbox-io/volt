@@ -137,6 +137,16 @@ B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
 R_fu1_h int_fu1_h 0 1e12
 B_fu1_h 0 int_fu1_h I = (V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500
+V_ms1 NC_ms1_out NC_ms1_gnd DC 0.8
+V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
+R_mot2_p1 NC_mot2_a int_mot2_p1r 2
+L_mot2_p1 int_mot2_p1r int_mot2_p1l 0.0005
+V_mot2_p1 int_mot2_p1l int_mot2_p1e DC 0
+B_mot2_e1 int_mot2_p1e NC_mot2_b V = (0.01) * V(int_mot2_w)
+B_mot2_tq int_mot2_tq 0 V = (0.01) * I(V_mot2_p1) + -(0.000001) * V(int_mot2_w)
+C_mot2_j int_mot2_w 0 0.000105
+R_mot2_b int_mot2_w 0 1000000
+B_mot2_t 0 int_mot2_w I = (0.01) * I(V_mot2_p1) + -0.01
 
 * Idealized Op-Amp Macro Model (Legacy compatibility)
 * Node order: IN+ IN- VCC VEE OUT
@@ -350,6 +360,12 @@ R_shunt_NC_hb1_out1 NC_hb1_out1 0 1G
 R_shunt_NC_hb1_out2 NC_hb1_out2 0 1G
 R_shunt_NC_fu1_in NC_fu1_in 0 1G
 R_shunt_NC_fu1_out NC_fu1_out 0 1G
+R_shunt_NC_ms1_out NC_ms1_out 0 1G
+R_shunt_NC_ms1_gnd NC_ms1_gnd 0 1G
+R_shunt_NC_ms2_out NC_ms2_out 0 1G
+R_shunt_NC_ms2_gnd NC_ms2_gnd 0 1G
+R_shunt_NC_mot2_a NC_mot2_a 0 1G
+R_shunt_NC_mot2_b NC_mot2_b 0 1G
 .save all
 .ac dec 10 1 1000000
 .end
@@ -493,6 +509,16 @@ B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
 R_fu1_h int_fu1_h 0 1e12
 B_fu1_h 0 int_fu1_h I = (V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500
+V_ms1 NC_ms1_out NC_ms1_gnd DC 0.8
+V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
+R_mot2_p1 NC_mot2_a int_mot2_p1r 2
+L_mot2_p1 int_mot2_p1r int_mot2_p1l 0.0005
+V_mot2_p1 int_mot2_p1l int_mot2_p1e DC 0
+B_mot2_e1 int_mot2_p1e NC_mot2_b V = (0.01) * V(int_mot2_w)
+B_mot2_tq int_mot2_tq 0 V = (0.01) * I(V_mot2_p1) + -(0.000001) * V(int_mot2_w)
+C_mot2_j int_mot2_w 0 0.000105
+R_mot2_b int_mot2_w 0 1000000
+B_mot2_t 0 int_mot2_w I = (0.01) * I(V_mot2_p1) + -0.01
 
 * Idealized Op-Amp Macro Model (Legacy compatibility)
 * Node order: IN+ IN- VCC VEE OUT
@@ -706,6 +732,12 @@ R_shunt_NC_hb1_out1 NC_hb1_out1 0 1G
 R_shunt_NC_hb1_out2 NC_hb1_out2 0 1G
 R_shunt_NC_fu1_in NC_fu1_in 0 1G
 R_shunt_NC_fu1_out NC_fu1_out 0 1G
+R_shunt_NC_ms1_out NC_ms1_out 0 1G
+R_shunt_NC_ms1_gnd NC_ms1_gnd 0 1G
+R_shunt_NC_ms2_out NC_ms2_out 0 1G
+R_shunt_NC_ms2_gnd NC_ms2_gnd 0 1G
+R_shunt_NC_mot2_a NC_mot2_a 0 1G
+R_shunt_NC_mot2_b NC_mot2_b 0 1G
 .save all
 .ac dec 10 1 1000000
 .end
@@ -849,6 +881,16 @@ B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
 R_fu1_h int_fu1_h 0 1e12
 B_fu1_h 0 int_fu1_h I = (V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500
+V_ms1 NC_ms1_out NC_ms1_gnd DC 0.8
+V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
+R_mot2_p1 NC_mot2_a int_mot2_p1r 2
+L_mot2_p1 int_mot2_p1r int_mot2_p1l 0.0005
+V_mot2_p1 int_mot2_p1l int_mot2_p1e DC 0
+B_mot2_e1 int_mot2_p1e NC_mot2_b V = (0.01) * V(int_mot2_w)
+B_mot2_tq int_mot2_tq 0 V = (0.01) * I(V_mot2_p1) + -(0.000001) * V(int_mot2_w)
+C_mot2_j int_mot2_w 0 0.000105
+R_mot2_b int_mot2_w 0 1000000
+B_mot2_t 0 int_mot2_w I = (0.01) * I(V_mot2_p1) + -0.01
 
 * Idealized Op-Amp Macro Model (Legacy compatibility)
 * Node order: IN+ IN- VCC VEE OUT
@@ -1062,6 +1104,12 @@ R_shunt_NC_hb1_out1 NC_hb1_out1 0 1G
 R_shunt_NC_hb1_out2 NC_hb1_out2 0 1G
 R_shunt_NC_fu1_in NC_fu1_in 0 1G
 R_shunt_NC_fu1_out NC_fu1_out 0 1G
+R_shunt_NC_ms1_out NC_ms1_out 0 1G
+R_shunt_NC_ms1_gnd NC_ms1_gnd 0 1G
+R_shunt_NC_ms2_out NC_ms2_out 0 1G
+R_shunt_NC_ms2_gnd NC_ms2_gnd 0 1G
+R_shunt_NC_mot2_a NC_mot2_a 0 1G
+R_shunt_NC_mot2_b NC_mot2_b 0 1G
 .save all
 .ac dec 10 1 1000000
 .end
@@ -1205,6 +1253,16 @@ B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
 R_fu1_h int_fu1_h 0 1e12
 B_fu1_h 0 int_fu1_h I = (V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500
+V_ms1 NC_ms1_out NC_ms1_gnd DC 0.8
+V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
+R_mot2_p1 NC_mot2_a int_mot2_p1r 2
+L_mot2_p1 int_mot2_p1r int_mot2_p1l 0.0005
+V_mot2_p1 int_mot2_p1l int_mot2_p1e DC 0
+B_mot2_e1 int_mot2_p1e NC_mot2_b V = (0.01) * V(int_mot2_w)
+B_mot2_tq int_mot2_tq 0 V = (0.01) * I(V_mot2_p1) + -(0.000001) * V(int_mot2_w)
+C_mot2_j int_mot2_w 0 0.000105
+R_mot2_b int_mot2_w 0 1000000
+B_mot2_t 0 int_mot2_w I = (0.01) * I(V_mot2_p1) + -0.01
 
 * Idealized Op-Amp Macro Model (Legacy compatibility)
 * Node order: IN+ IN- VCC VEE OUT
@@ -1418,6 +1476,12 @@ R_shunt_NC_hb1_out1 NC_hb1_out1 0 1G
 R_shunt_NC_hb1_out2 NC_hb1_out2 0 1G
 R_shunt_NC_fu1_in NC_fu1_in 0 1G
 R_shunt_NC_fu1_out NC_fu1_out 0 1G
+R_shunt_NC_ms1_out NC_ms1_out 0 1G
+R_shunt_NC_ms1_gnd NC_ms1_gnd 0 1G
+R_shunt_NC_ms2_out NC_ms2_out 0 1G
+R_shunt_NC_ms2_gnd NC_ms2_gnd 0 1G
+R_shunt_NC_mot2_a NC_mot2_a 0 1G
+R_shunt_NC_mot2_b NC_mot2_b 0 1G
 .save all
 .op
 .end
@@ -1577,6 +1641,12 @@ exports[`the cards every part writes > pins, in the order the generator met them
   "hb1.out2 NC_hb1_out2 (nc)",
   "fu1.in NC_fu1_in (nc)",
   "fu1.out NC_fu1_out (nc)",
+  "ms1.out NC_ms1_out (nc)",
+  "ms1.gnd NC_ms1_gnd (nc)",
+  "ms2.out NC_ms2_out (nc)",
+  "ms2.gnd NC_ms2_gnd (nc)",
+  "mot2.a NC_mot2_a (nc)",
+  "mot2.b NC_mot2_b (nc)",
 ]
 `;
 
@@ -1713,6 +1783,16 @@ B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
 R_fu1_h int_fu1_h 0 1e12
 B_fu1_h 0 int_fu1_h I = (V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500
+V_ms1 NC_ms1_out NC_ms1_gnd DC 0.8
+V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
+R_mot2_p1 NC_mot2_a int_mot2_p1r 2
+L_mot2_p1 int_mot2_p1r int_mot2_p1l 0.0005
+V_mot2_p1 int_mot2_p1l int_mot2_p1e DC 0
+B_mot2_e1 int_mot2_p1e NC_mot2_b V = (0.01) * V(int_mot2_w)
+B_mot2_tq int_mot2_tq 0 V = (0.01) * I(V_mot2_p1) + -(0.000001) * V(int_mot2_w)
+C_mot2_j int_mot2_w 0 0.000105
+R_mot2_b int_mot2_w 0 1000000
+B_mot2_t 0 int_mot2_w I = (0.01) * I(V_mot2_p1) + -0.01
 
 * Idealized Op-Amp Macro Model (Legacy compatibility)
 * Node order: IN+ IN- VCC VEE OUT
@@ -1922,6 +2002,12 @@ R_shunt_NC_hb1_out1 NC_hb1_out1 0 1G
 R_shunt_NC_hb1_out2 NC_hb1_out2 0 1G
 R_shunt_NC_fu1_in NC_fu1_in 0 1G
 R_shunt_NC_fu1_out NC_fu1_out 0 1G
+R_shunt_NC_ms1_out NC_ms1_out 0 1G
+R_shunt_NC_ms1_gnd NC_ms1_gnd 0 1G
+R_shunt_NC_ms2_out NC_ms2_out 0 1G
+R_shunt_NC_ms2_gnd NC_ms2_gnd 0 1G
+R_shunt_NC_mot2_a NC_mot2_a 0 1G
+R_shunt_NC_mot2_b NC_mot2_b 0 1G
 .save all
 .ic V(n1)=1.500000
 .tran 0.2m 0.04s 0 0.2m uic
@@ -2066,6 +2152,16 @@ B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
 R_fu1_h int_fu1_h 0 1e12
 B_fu1_h 0 int_fu1_h I = (V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500
+V_ms1 NC_ms1_out NC_ms1_gnd DC 0.8
+V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
+R_mot2_p1 NC_mot2_a int_mot2_p1r 2
+L_mot2_p1 int_mot2_p1r int_mot2_p1l 0.0005
+V_mot2_p1 int_mot2_p1l int_mot2_p1e DC 0
+B_mot2_e1 int_mot2_p1e NC_mot2_b V = (0.01) * V(int_mot2_w)
+B_mot2_tq int_mot2_tq 0 V = (0.01) * I(V_mot2_p1) + -(0.000001) * V(int_mot2_w)
+C_mot2_j int_mot2_w 0 0.000105
+R_mot2_b int_mot2_w 0 1000000
+B_mot2_t 0 int_mot2_w I = (0.01) * I(V_mot2_p1) + -0.01
 
 * Idealized Op-Amp Macro Model (Legacy compatibility)
 * Node order: IN+ IN- VCC VEE OUT
@@ -2279,6 +2375,12 @@ R_shunt_NC_hb1_out1 NC_hb1_out1 0 1G
 R_shunt_NC_hb1_out2 NC_hb1_out2 0 1G
 R_shunt_NC_fu1_in NC_fu1_in 0 1G
 R_shunt_NC_fu1_out NC_fu1_out 0 1G
+R_shunt_NC_ms1_out NC_ms1_out 0 1G
+R_shunt_NC_ms1_gnd NC_ms1_gnd 0 1G
+R_shunt_NC_ms2_out NC_ms2_out 0 1G
+R_shunt_NC_ms2_gnd NC_ms2_gnd 0 1G
+R_shunt_NC_mot2_a NC_mot2_a 0 1G
+R_shunt_NC_mot2_b NC_mot2_b 0 1G
 .save all
 .tran 0.05m 0.1s 0 0.05m
 .end

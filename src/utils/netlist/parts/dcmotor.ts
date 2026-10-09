@@ -1,6 +1,6 @@
 import type { PartEmitter } from '../part';
 import { numParam } from '../params';
-import { emitTransducer } from '../../transducer';
+import { emitTransducer, type LinkedShaft } from '../../transducer';
 
 /** A small brushed DC motor, unloaded: about 6000rpm at 6V. */
 export const DC_MOTOR_DEFAULTS = {
@@ -27,6 +27,7 @@ export const dcmotor: PartEmitter = {
       { j: p('inertia'), b: p('friction'), load: p('loadTorque') },
       initialConditions,
       false,
+      node.data.linkedShaft as LinkedShaft | undefined,
     );
   },
 };

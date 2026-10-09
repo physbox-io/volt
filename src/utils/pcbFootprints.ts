@@ -310,6 +310,8 @@ const DEFAULT_PACKAGE_BY_TYPE: Record<string, string> = {
   dcmotor: 'TERMINAL-2P',
   stepper: 'HEADER-1x04',
   fuse: '1206',
+  // A sensor in the scene: on the board, the connector it wires on at.
+  meshsignal: 'HEADER-1x02',
   // Driver breakouts plug in: a DRV8833 board on one row, an A4988/TMC2209
   // carrier on two 0.5"-apart rows of eight.
   hbridge: 'HEADER-1x06',
@@ -484,6 +486,7 @@ const PACKAGES_BY_TYPE: Record<string, string[]> = {
   dcmotor: ['TERMINAL-2P', 'HEADER-1x02'],
   stepper: ['HEADER-1x04', 'HEADER-2x02'],
   fuse: ['1206', '0805', '2512', 'AXIAL-0.3'],
+  meshsignal: ['HEADER-1x02', 'TERMINAL-2P'],
   hbridge: ['HEADER-1x06', 'HEADER-2x03'],
   stepdriver: [STEP_DRIVER_CARRIER, 'HEADER-2x08'],
 };

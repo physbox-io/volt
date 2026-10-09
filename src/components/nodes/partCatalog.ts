@@ -64,6 +64,7 @@ export const PART_CATALOG: CatalogPart[] = [
   { type: 'stepdriver', name: 'Stepper Driver', keywords: 'a4988 tmc2209 drv8825 step dir microstep', section: 'Tools' },
   { type: 'hbridge', name: 'H-Bridge', keywords: 'drv8833 l298 motor driver', section: 'Tools' },
   { type: 'fuse', name: 'Fuse', keywords: 'overcurrent protection i2t', section: 'Tools' },
+  { type: 'meshsignal', name: 'Mesh Signal', keywords: 'sensor limit switch encoder potentiometer tachometer link joint contact', section: 'Tools' },
 
   // Nets & power
   { type: 'netlabel', name: 'Net Label', label: 'Net', keywords: 'net name signal flag sda reset', section: 'Nets & Power' },

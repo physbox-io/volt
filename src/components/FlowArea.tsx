@@ -119,6 +119,7 @@ const nodeTypes = {
   stepdriver: PinBoxNode,
   hbridge: PinBoxNode,
   fuse: PinBoxNode,
+  meshsignal: PinBoxNode,
   junction: JunctionNode,
   pinheader: PinHeaderNode,
   via: ViaNode,

@@ -113,6 +113,7 @@ export const nodeRegistry: Record<string, NodeMeta> = {
   stepdriver: { Properties: ElectromechProperties },
   hbridge: { Properties: ElectromechProperties },
   fuse: { Properties: ElectromechProperties },
+  meshsignal: { Properties: ElectromechProperties },
   // Mechanical / board-only parts. They never reach the SPICE netlist.
   pinheader: { Properties: PinHeaderProperties, defaultData: pinHeaderDefaultData },
   via: { Properties: ViaProperties, defaultData: viaDefaultData },

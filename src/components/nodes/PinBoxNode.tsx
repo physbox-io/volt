@@ -14,6 +14,10 @@ function readout(type: string, data: ElectromechNodeData): string | null {
     return `${data.rpm.toFixed(0)} rpm${angle}`;
   }
   if (type === 'fuse') return data.blown === undefined ? null : data.blown ? 'BLOWN' : 'intact';
+  if (type === 'meshsignal') {
+    if (!data.channel) return 'unbound';
+    return data.signalValue === undefined ? data.channel : `${data.signalValue.toPrecision(3)}`;
+  }
   return null;
 }
 

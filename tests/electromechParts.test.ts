@@ -44,7 +44,7 @@ describe.each(Object.keys(PIN_BOX_PARTS))('%s', type => {
   it('simulates, and has a panel and a designator', () => {
     expect(partEmitters[type]).toBeDefined();
     expect(nodeRegistry[type]?.Properties).toBeDefined();
-    expect(getNodeDefaultName(`${type}1`, type)).toMatch(/^(M|U|F)/);
+    expect(getNodeDefaultName(`${type}1`, type)).toMatch(/^(M|U|F|V)/);
   });
 
   it('lands each pin on a pad of its own, in every package offered', () => {

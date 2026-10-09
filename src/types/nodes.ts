@@ -400,6 +400,19 @@ export type ElectromechNodeData = BaseNodeData & {
   rating?: number | string;
   i2t?: number | string;
   coldR?: number | string;
+  /** A motor's shaft bound to this Mesh joint, while linked. */
+  shaftJoint?: string;
+  /** Mesh signal: the channel it reads, and what it does with it. */
+  channel?: string;
+  gain?: number | string;
+  offset?: number | string;
+  threshold?: number | string;
+  hysteresis?: number | string;
+  high?: number | string;
+  low?: number | string;
+  /** Written by a linked run: the channel's latest reading, and a comparator's state. */
+  signalValue?: number;
+  latchedHigh?: boolean;
   /** Written by a run: shaft speed and angle at its end, and whether the fuse went. */
   rpm?: number;
   angleDeg?: number;

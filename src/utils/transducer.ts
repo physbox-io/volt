@@ -54,7 +54,26 @@ export const shaftNodes = (id: string) => ({
   speed: `int_${id}_w`,
   /** Voltage = x, rad. Present only when something depends on x. */
   position: `int_${id}_x`,
+  /** Linked only: voltage = the torque the shaft makes, N·m, to hand to Mesh. */
+  torque: `int_${id}_tq`,
 });
+
+/**
+ * A shaft coupled to a Mesh joint for one slice.
+ *
+ * The shaft's dynamics stay here, where the solver can resolve them however
+ * stiff they are (a stepper's rotor rings at a few hundred hertz), with the
+ * joint's inertia added to the rotor's and the scene's load on the joint as a
+ * constant torque. The slice starts from the joint's speed and angle (carried
+ * as initial conditions on the shaft nodes), and Mesh is handed the torque the
+ * shaft transmits, so both ends integrate the same motion.
+ */
+export type LinkedShaft = {
+  /** The joint's own inertia, kg·m² (its mass-matrix diagonal). */
+  inertia: number;
+  /** The torque the rest of the scene puts on the joint, N·m. */
+  load: number;
+};
 
 /** The element whose branch current is phase `index`'s current (1-based). */
 export const phaseSense = (id: string, index: number) => `V_${id}_p${index}`;
@@ -74,6 +93,7 @@ export function emitTransducer(
   shaft: ShaftModel,
   initialConditions: SimState | undefined,
   usesPosition: boolean,
+  linked?: LinkedShaft,
 ): string {
   const { speed: w, position: x } = shaftNodes(id);
   let cards = '';
@@ -92,11 +112,25 @@ export function emitTransducer(
     torques.push(`${k} * I(${phaseSense(id, n)})`);
   });
 
-  if (shaft.load) torques.push(`-(${num(shaft.load)})`);
-  if (shaft.spring) torques.push(`-(${num(shaft.spring)}) * V(${x})`);
-  if (shaft.detent) torques.push(`-(${shaft.detent(x)})`);
+  const springAndDetent: string[] = [];
+  if (shaft.spring) springAndDetent.push(`-(${num(shaft.spring)}) * V(${x})`);
+  if (shaft.detent) springAndDetent.push(`-(${shaft.detent(x)})`);
 
-  cards += `C_${id}_j ${w} 0 ${num(Math.max(shaft.j, 1e-12))}\n`;
+
+  if (linked) {
+    // What the motor itself makes, less its bearing friction: the torque it
+    // puts into the shaft, read back to work out what reaches the joint.
+    const friction = shaft.b > 0 ? [`-(${num(shaft.b)}) * V(${w})`] : [];
+    cards += `B_${id}_tq ${shaftNodes(id).torque} 0 V = ${[...torques, ...springAndDetent, ...friction].join(' + ')}\n`;
+    // The scene's load replaces the part's own.
+    torques.push(`${num(linked.load)}`);
+  } else if (shaft.load) {
+    torques.push(`-(${num(shaft.load)})`);
+  }
+  torques.push(...springAndDetent);
+
+  const j = shaft.j + (linked ? Math.max(linked.inertia, 0) : 0);
+  cards += `C_${id}_j ${w} 0 ${num(Math.max(j, 1e-12))}\n`;
   // Friction, and with none a leak too slow to matter, so the node has a DC path.
   cards += `R_${id}_b ${w} 0 ${num(shaft.b > 0 ? 1 / shaft.b : 1e12)}\n`;
   cards += `B_${id}_t 0 ${w} I = ${torques.join(' + ')}\n`;

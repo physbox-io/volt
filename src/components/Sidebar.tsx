@@ -591,6 +591,20 @@ export function Sidebar({
             </div>
             <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">Fuse</span>
           </div>
+
+          {/* Mesh signal */}
+          <div 
+            {...partProps('meshsignal')}
+          >
+            <div className={iconClass}>
+              <svg width="20" height="20" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M 8 30 L 18 18 L 26 26 L 40 12" />
+                <circle cx="40" cy="12" r="3" />
+                <line x1="8" y1="38" x2="40" y2="38" />
+              </svg>
+            </div>
+            <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">Mesh Signal</span>
+          </div>
         </div>
 
         {/*

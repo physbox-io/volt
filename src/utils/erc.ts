@@ -124,6 +124,9 @@ export function dcPathGroups(nodeType: string, data: Record<string, unknown>, ha
       return [['a1', 'a2'], ['b1', 'b2']];
     case 'fuse':
       return [['in', 'out']];
+    // A source: one pin driven against the other.
+    case 'meshsignal':
+      return [['out', 'gnd']];
     // Outputs are switched to the supply rails; the inputs are logic and reach nothing.
     case 'hbridge':
       return [['out1', 'out2', 'vm', 'gnd']];

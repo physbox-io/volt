@@ -358,6 +358,16 @@ export const datasheets: Record<string, DatasheetEntry> = {
       'Logic threshold 1.5V',
     ],
   },
+  meshsignal: {
+    title: 'Mesh Signal',
+    description: 'A voltage source driven by a linked Mesh scene: a joint angle, a joint speed, a body position or how many contacts a body is in. Scaled, it is a potentiometer or a tachometer; with a threshold, a limit switch.',
+    formula: 'V = gain·reading + offset, or high/low past the threshold ± hysteresis/2',
+    specs: [
+      'Link Mesh from the toolbar, then pick the channel in the inspector',
+      'Reads 0 while unlinked',
+      'Updated every 5ms slice of a linked run',
+    ],
+  },
   fuse: {
     title: 'Fuse',
     description: 'Opens when the heat from current over its rating adds up to its melting I²t. Below the rating it carries current indefinitely. A blown fuse stays blown until the simulation is reset.',

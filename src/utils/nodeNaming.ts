@@ -69,6 +69,7 @@ export const DESIGNATOR_PREFIXES: Record<string, string> = {
   acvoltage: 'V',
   signalgen: 'V',
   currentsource: 'I',
+  meshsignal: 'V',
 
   pinheader: 'J',
   jumper: 'JP',

@@ -42,7 +42,7 @@ import {
 } from './utils/shareLink';
 import { revokeShare, isProRequired } from './utils/apiClient';
 import { SIGN_IN_REQUESTED_EVENT, SIGNED_IN_EVENT } from './components/UserProfileButton';
-import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight, Wrench, Share2, Copy, Check, Gauge, Waves } from 'lucide-react';
+import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight, Wrench, Share2, Copy, Check, Gauge, Waves, Cable } from 'lucide-react';
 import AICopilotPanel from './components/AICopilotPanel';
 import { ExportPcbModal } from './components/ExportPcbModal';
 import { webSerialManager, type MachineState } from './utils/webSerialManager';
@@ -67,6 +67,8 @@ import { PropertiesPanel } from './components/PropertiesPanel';
 import { FlowArea } from './components/FlowArea';
 import { ProbeTooltip } from './components/ProbeTooltip';
 import { useHil } from './hooks/useHil';
+import { useMeshLink } from './hooks/useMeshLink';
+import { MeshLinkContext } from './components/meshLinkContext';
 import { readElectromech } from './utils/electromechReadouts';
 import { CanvasStateProvider } from './components/canvasState';
 import type { SpiceComplexResult, SpiceResult } from './types/simulation';
@@ -303,6 +305,19 @@ export default function App() {
     solve: async (netlist, timeoutMs) => (await runSimInWorker(netlist, 'tran', timeoutMs)).result,
   });
 
+  const meshLink = useMeshLink({
+    nodesRef, edgesRef, setNodes, setRunAdvisories,
+    solve: async (netlist, timeoutMs) => (await runSimInWorker(netlist, 'tran', timeoutMs)).result,
+    onRunEnded: () => {
+      setIsSimulating(false);
+      setIsSpiceRunning(false);
+    },
+  });
+  const meshLinkInfo = useMemo(
+    () => ({ status: meshLink.status, channels: meshLink.channels, scene: meshLink.scene }),
+    [meshLink.status, meshLink.channels, meshLink.scene],
+  );
+
   const stopSimulation = () => {
     setIsSimulating(false);
     setIsSpiceRunning(false);
@@ -310,6 +325,7 @@ export default function App() {
     setProbeData(null);
 
     stopHil();
+    meshLink.stop();
 
     setNodes(nds => nds.map(n => {
       if (n.type === 'led') {
@@ -474,6 +490,14 @@ export default function App() {
       const baseNodes = nodesOverride || nodes;
       const currentNodes = baseNodes.map(n => n.type === 'mcu' ? { ...n, data: { ...n.data, state: undefined } } : n);
       setNodes(currentNodes);
+      // A circuit bound to a linked Mesh scene runs in lock step with it until stopped.
+      if (meshLink.wouldDrive(currentNodes)) {
+        if (meshLink.runningRef.current) return { ok: true };
+        setIsSpiceRunning(true);
+        setIsSimulating(true);
+        meshLink.start(currentNodes);
+        return { ok: true };
+      }
       const heltecNode = currentNodes.find(n => n.type === 'heltec_v4');
       if (heltecNode) {
         if (hilRunningRef.current) {
@@ -780,7 +804,7 @@ export default function App() {
         current_array: _ca, time_points: _tp, timePoints: _tps,
         segmentVoltages: _sv, segmentVoltageArrays: _sva,
         pinVoltages: _pv, state: _st, logs: _lg, isSimulating: _is,
-        rpm: _rpm, angleDeg: _ang, blown: _bl,
+        rpm: _rpm, angleDeg: _ang, blown: _bl, signalValue: _sig, latchedHigh: _lat,
         ...kept
       } = n.data as Record<string, unknown>;
       return { ...n, data: kept };
@@ -837,7 +861,8 @@ export default function App() {
     'l_sec_label', 'label', 'lightLevel', 'lightSensitivity', 'loadTorque', 'mcuConfig',
     'microsteps', 'mode', 'photodiodeMode', 'pins', 'position', 'pwlData', 'r_dark',
     'rating', 'ratedCurrent', 'rdsOn', 'resistance', 'rotorTeeth', 'v_drop', 'voltage',
-    'vto', 'waveform', 'windingL', 'windingR',
+    'vto', 'waveform', 'windingL', 'windingR', 'shaftJoint', 'channel', 'gain', 'offset',
+    'threshold', 'hysteresis', 'high', 'low',
   ] as const;
 
   const netlistSignature = useMemo(() => {
@@ -872,9 +897,10 @@ export default function App() {
    */
   const rerunPendingRef = useRef(false);
   useEffect(() => {
-    if (!isSimulatingRef.current || hilRunningRef.current) return;
+    // A linked run reads values live each slice, so it needs no re-run either.
+    if (!isSimulatingRef.current || hilRunningRef.current || meshLink.runningRef.current) return;
     const t = setTimeout(() => {
-      if (!isSimulatingRef.current || hilRunningRef.current) return;
+      if (!isSimulatingRef.current || hilRunningRef.current || meshLink.runningRef.current) return;
       if (simInFlightRef.current) {
         // A solve is already running; take the newest values when it lands.
         rerunPendingRef.current = true;
@@ -1422,6 +1448,7 @@ export default function App() {
       duration, resolution — sat underneath the browser chrome and could not be
       reached. On a desktop the two are the same number.
     */
+    <MeshLinkContext.Provider value={meshLinkInfo}>
     <CanvasStateProvider value={canvasState}>
     <div className={`flex flex-col h-dvh w-full transition-colors duration-200 ${darkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'} font-sans overflow-hidden`}>
       {/*
@@ -2131,6 +2158,28 @@ export default function App() {
             <span>Bode</span>
           </button>
 
+          <button
+            onClick={() => {
+              if (meshLink.status === 'closed') {
+                if (!meshLink.open()) alert('The browser blocked the Mesh window. Allow pop-ups for this site and try again.');
+              } else {
+                stopSimulation();
+                meshLink.close();
+              }
+            }}
+            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] transition-colors cursor-pointer ${
+              meshLink.status === 'linked'
+                ? 'bg-amber-500 border-amber-600 text-white font-semibold shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+            }`}
+            title={meshLink.status === 'linked'
+              ? `Linked to ${meshLink.scene || 'a Mesh scene'}: motors bound to its joints turn them, Mesh signals read it. Click to unlink.`
+              : 'Open Mesh and link to its scene: bind a motor to a joint, or a Mesh signal to a joint angle or a contact'}
+          >
+            <Cable className="w-3.5 h-3.5" />
+            <span>{meshLink.status === 'linked' ? 'Mesh linked' : meshLink.status === 'opening' ? 'Opening Mesh…' : 'Link Mesh'}</span>
+          </button>
+
           <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
             <span>Nodes: {nodes.length}</span>
             <span>·</span>
@@ -2217,5 +2266,6 @@ export default function App() {
       </footer>
     </div>
     </CanvasStateProvider>
+    </MeshLinkContext.Provider>
   );
 }
