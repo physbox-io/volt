@@ -1,0 +1,3290 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the netlist each preset writes > astableMultivibrator: AC sweep 1`] = `
+"Circuit Simulation
+V_vcc N1 0 DC 5V AC 1
+Q_q1 N3 N8 0 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 N5 N7 0 NPN_MODEL_q2
+.model NPN_MODEL_q2 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_rc1 N1 N4 330
+R_rc2 N1 N6 330
+R_rb1 N1 N8 47k
+R_rb2 N1 N7 48k
+C_c1 N3 N7 10uF
+C_c2 N8 N5 10uF
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 N3 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_ammeter_led2 N6 int_led_led2 1
+D_led2 int_led_led2 N5 LED_MODEL_led2
+.model LED_MODEL_led2 D(IS=1e-22 RS=5 N=1.6666666666666667)
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > astableMultivibrator: operating point 1`] = `
+"Circuit Simulation
+V_vcc N1 0 DC 5V
+Q_q1 N3 N8 0 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 N5 N7 0 NPN_MODEL_q2
+.model NPN_MODEL_q2 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_rc1 N1 N4 330
+R_rc2 N1 N6 330
+R_rb1 N1 N8 47k
+R_rb2 N1 N7 48k
+C_c1 N3 N7 10uF
+C_c2 N8 N5 10uF
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 N3 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_ammeter_led2 N6 int_led_led2 1
+D_led2 int_led_led2 N5 LED_MODEL_led2
+.model LED_MODEL_led2 D(IS=1e-22 RS=5 N=1.6666666666666667)
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > astableMultivibrator: transient 1`] = `
+"Circuit Simulation
+V_vcc N1 0 DC 5V
+Q_q1 N3 N8 0 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 N5 N7 0 NPN_MODEL_q2
+.model NPN_MODEL_q2 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_rc1 N1 N4 330
+R_rc2 N1 N6 330
+R_rb1 N1 N8 47k
+R_rb2 N1 N7 48k
+C_c1 N3 N7 10uF
+C_c2 N8 N5 10uF
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 N3 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_ammeter_led2 N6 int_led_led2 1
+D_led2 int_led_led2 N5 LED_MODEL_led2
+.model LED_MODEL_led2 D(IS=1e-22 RS=5 N=1.6666666666666667)
+.save all
+.tran 1m 2s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > astableMultivibrator: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_vcc N1 0 DC 5V
+Q_q1 N3 N8 0 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 N5 N7 0 NPN_MODEL_q2
+.model NPN_MODEL_q2 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_rc1 N1 N4 330
+R_rc2 N1 N6 330
+R_rb1 N1 N8 47k
+R_rb2 N1 N7 48k
+C_c1 N3 N7 10uF
+C_c2 N8 N5 10uF
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 N3 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_ammeter_led2 N6 int_led_led2 1
+D_led2 int_led_led2 N5 LED_MODEL_led2
+.model LED_MODEL_led2 D(IS=1e-22 RS=5 N=1.6666666666666667)
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > basicBlink: AC sweep 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 PULSE(0 5 0 0.000001 0.000001 0.5 1) AC 1
+R_r1 N1 N2 330
+R_ammeter_led1 N2 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > basicBlink: operating point 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 PULSE(0 5 0 0.000001 0.000001 0.5 1)
+R_r1 N1 N2 330
+R_ammeter_led1 N2 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > basicBlink: transient 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 PULSE(0 5 0 0.000001 0.000001 0.5 1)
+R_r1 N1 N2 330
+R_ammeter_led1 N2 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+.save all
+.tran 1m 1s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > basicBlink: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 PULSE(0 5 0 0.000001 0.000001 0.5 1)
+R_r1 N1 N2 330
+R_ammeter_led1 N2 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > bistableMultivibrator: AC sweep 1`] = `
+"Circuit Simulation
+V_vcc N1 0 DC 5V AC 1
+Q_q1 N3 N8 0 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 N4 N7 0 NPN_MODEL_q2
+.model NPN_MODEL_q2 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_rc1 N1 N3 1k
+R_rc2 N1 N4 1.02k
+R_ammeter_led1 N5 int_led_led1 1
+D_led1 int_led_led1 N3 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_ammeter_led2 N6 int_led_led2 1
+D_led2 int_led_led2 N4 LED_MODEL_led2
+.model LED_MODEL_led2 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_rl1 N1 N5 330
+R_rl2 N1 N6 330
+R_rb1 N8 N4 10k
+R_rb2 N3 N7 10k
+R_sw1 N1 N9 1e12
+R_sw2 N1 N10 1e12
+R_r_trig1 N9 N8 1k
+R_r_trig2 N10 N7 1k
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > bistableMultivibrator: operating point 1`] = `
+"Circuit Simulation
+V_vcc N1 0 DC 5V
+Q_q1 N3 N8 0 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 N4 N7 0 NPN_MODEL_q2
+.model NPN_MODEL_q2 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_rc1 N1 N3 1k
+R_rc2 N1 N4 1.02k
+R_ammeter_led1 N5 int_led_led1 1
+D_led1 int_led_led1 N3 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_ammeter_led2 N6 int_led_led2 1
+D_led2 int_led_led2 N4 LED_MODEL_led2
+.model LED_MODEL_led2 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_rl1 N1 N5 330
+R_rl2 N1 N6 330
+R_rb1 N8 N4 10k
+R_rb2 N3 N7 10k
+R_sw1 N1 N9 1e12
+R_sw2 N1 N10 1e12
+R_r_trig1 N9 N8 1k
+R_r_trig2 N10 N7 1k
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > bistableMultivibrator: transient 1`] = `
+"Circuit Simulation
+V_vcc N1 0 DC 5V
+Q_q1 N3 N8 0 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 N4 N7 0 NPN_MODEL_q2
+.model NPN_MODEL_q2 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_rc1 N1 N3 1k
+R_rc2 N1 N4 1.02k
+R_ammeter_led1 N5 int_led_led1 1
+D_led1 int_led_led1 N3 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_ammeter_led2 N6 int_led_led2 1
+D_led2 int_led_led2 N4 LED_MODEL_led2
+.model LED_MODEL_led2 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_rl1 N1 N5 330
+R_rl2 N1 N6 330
+R_rb1 N8 N4 10k
+R_rb2 N3 N7 10k
+R_sw1 N1 N9 1e12
+R_sw2 N1 N10 1e12
+R_r_trig1 N9 N8 1k
+R_r_trig2 N10 N7 1k
+.save all
+.tran 1m 2s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > bistableMultivibrator: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_vcc N1 0 DC 5V
+Q_q1 N3 N8 0 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 N4 N7 0 NPN_MODEL_q2
+.model NPN_MODEL_q2 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_rc1 N1 N3 1k
+R_rc2 N1 N4 1.02k
+R_ammeter_led1 N5 int_led_led1 1
+D_led1 int_led_led1 N3 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_ammeter_led2 N6 int_led_led2 1
+D_led2 int_led_led2 N4 LED_MODEL_led2
+.model LED_MODEL_led2 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_rl1 N1 N5 330
+R_rl2 N1 N6 330
+R_rb1 N8 N4 10k
+R_rb2 N3 N7 10k
+R_sw1 N1 N9 1e12
+R_sw2 N1 N10 1e12
+R_r_trig1 N9 N8 1k
+R_r_trig2 N10 N7 1k
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > bjtAmp: AC sweep 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V AC 1
+V_mic1 N3 0 PWL(
++ 0.000000e+0 0.000000e+0 1.000000e-3 1.000000e-1 2.000000e-3 -1.000000e-1 3.000000e-3 0.000000e+0 
++ )
+C_cin N3 N_junc_j_bias 10uF
+R_r1 N1 N_junc_j_bias 47k
+R_r2 N_junc_j_bias 0 10k
+Q_q1 N4 N_junc_j_bias N5 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=74 BF=200 IKF=0.1 XTB=1.5 BR=3 CJC=3.5p CJE=4.5p TR=40n TF=0.4n RB=20)
+R_rc N1 N4 2.2k
+R_re N5 0 1k
+C_cout N4 N6 470uF
+R_spk1 N6 0 8
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > bjtAmp: operating point 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V
+V_mic1 N3 0 PWL(
++ 0.000000e+0 0.000000e+0 1.000000e-3 1.000000e-1 2.000000e-3 -1.000000e-1 3.000000e-3 0.000000e+0 
++ )
+C_cin N3 N_junc_j_bias 10uF
+R_r1 N1 N_junc_j_bias 47k
+R_r2 N_junc_j_bias 0 10k
+Q_q1 N4 N_junc_j_bias N5 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=74 BF=200 IKF=0.1 XTB=1.5 BR=3 CJC=3.5p CJE=4.5p TR=40n TF=0.4n RB=20)
+R_rc N1 N4 2.2k
+R_re N5 0 1k
+C_cout N4 N6 470uF
+R_spk1 N6 0 8
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > bjtAmp: transient 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V
+V_mic1 N3 0 PWL(
++ 0.000000e+0 0.000000e+0 1.000000e-3 1.000000e-1 2.000000e-3 -1.000000e-1 3.000000e-3 0.000000e+0 
++ )
+C_cin N3 N_junc_j_bias 10uF
+R_r1 N1 N_junc_j_bias 47k
+R_r2 N_junc_j_bias 0 10k
+Q_q1 N4 N_junc_j_bias N5 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=74 BF=200 IKF=0.1 XTB=1.5 BR=3 CJC=3.5p CJE=4.5p TR=40n TF=0.4n RB=20)
+R_rc N1 N4 2.2k
+R_re N5 0 1k
+C_cout N4 N6 470uF
+R_spk1 N6 0 8
+.save all
+.tran 0.05m 1s 0 0.05m
+.end
+"
+`;
+
+exports[`the netlist each preset writes > bjtAmp: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V
+V_mic1 N3 0 PWL(
++ 0.000000e+0 0.000000e+0 1.000000e-3 1.000000e-1 2.000000e-3 -1.000000e-1 3.000000e-3 0.000000e+0 
++ )
+C_cin N3 N_junc_j_bias 10uF
+R_r1 N1 N_junc_j_bias 47k
+R_r2 N_junc_j_bias 0 10k
+Q_q1 N4 N_junc_j_bias N5 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=74 BF=200 IKF=0.1 XTB=1.5 BR=3 CJC=3.5p CJE=4.5p TR=40n TF=0.4n RB=20)
+R_rc N1 N4 2.2k
+R_re N5 0 1k
+C_cout N4 N6 470uF
+R_spk1 N6 0 8
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > boostConverter: AC sweep 1`] = `
+"Circuit Simulation
+V_v5v N1 0 DC 5V AC 1
+L_l1 N1 N3 100uH
+M_sw1 N3 N4 0 0 NMOS_MODEL_sw1
+.model NMOS_MODEL_sw1 NMOS(LEVEL=1 VTO=2 KP=0.5 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+V_pwm1 N4 0 PULSE(0 5 0 2e-7 2e-7 0.00001 0.00002)
+D_d1 N3 N5 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=0.4285714285714286)
+C_c1 N5 0 100uF
+R_rload N5 0 1k
+R_mm_in N1 0 1G
+R_mm_out N5 0 1G
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > boostConverter: operating point 1`] = `
+"Circuit Simulation
+V_v5v N1 0 DC 5V
+L_l1 N1 N3 100uH
+M_sw1 N3 N4 0 0 NMOS_MODEL_sw1
+.model NMOS_MODEL_sw1 NMOS(LEVEL=1 VTO=2 KP=0.5 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+V_pwm1 N4 0 PULSE(0 5 0 2e-7 2e-7 0.00001 0.00002)
+D_d1 N3 N5 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=0.4285714285714286)
+C_c1 N5 0 100uF
+R_rload N5 0 1k
+R_mm_in N1 0 1G
+R_mm_out N5 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > boostConverter: transient 1`] = `
+"Circuit Simulation
+V_v5v N1 0 DC 5V
+L_l1 N1 N3 100uH
+M_sw1 N3 N4 0 0 NMOS_MODEL_sw1
+.model NMOS_MODEL_sw1 NMOS(LEVEL=1 VTO=2 KP=0.5 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+V_pwm1 N4 0 PULSE(0 5 0 2e-7 2e-7 0.00001 0.00002)
+D_d1 N3 N5 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=0.4285714285714286)
+C_c1 N5 0 100uF
+R_rload N5 0 1k
+R_mm_in N1 0 1G
+R_mm_out N5 0 1G
+.save all
+.tran 1m 0.05s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > boostConverter: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_v5v N1 0 DC 5V
+L_l1 N1 N3 100uH IC=1.000000e-3
+M_sw1 N3 N4 0 0 NMOS_MODEL_sw1
+.model NMOS_MODEL_sw1 NMOS(LEVEL=1 VTO=2 KP=0.5 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+V_pwm1 N4 0 PULSE(0 5 0 2e-7 2e-7 0.00001 0.00002)
+D_d1 N3 N5 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=0.4285714285714286)
+C_c1 N5 0 100uF
+R_rload N5 0 1k
+R_mm_in N1 0 1G
+R_mm_out N5 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > bridgeRectifier: AC sweep 1`] = `
+"Circuit Simulation
+V_vac N1 N2 SINE(0 10 60) AC 1
+D_d1 N1 N3 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=1)
+D_d2 0 N1 DIODE_MODEL_d2
+.model DIODE_MODEL_d2 D(IS=1e-14 RS=0.1 N=1)
+D_d3 N2 N3 DIODE_MODEL_d3
+.model DIODE_MODEL_d3 D(IS=1e-14 RS=0.1 N=1)
+D_d4 0 N2 DIODE_MODEL_d4
+.model DIODE_MODEL_d4 D(IS=1e-14 RS=0.1 N=1)
+R_rload N3 0 1k
+C_cfilter N3 0 100u
+R_scope_ch1_scope1 N1 0 1G
+R_scope_ch2_scope1 N3 0 1G
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > bridgeRectifier: operating point 1`] = `
+"Circuit Simulation
+V_vac N1 N2 SINE(0 10 60)
+D_d1 N1 N3 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=1)
+D_d2 0 N1 DIODE_MODEL_d2
+.model DIODE_MODEL_d2 D(IS=1e-14 RS=0.1 N=1)
+D_d3 N2 N3 DIODE_MODEL_d3
+.model DIODE_MODEL_d3 D(IS=1e-14 RS=0.1 N=1)
+D_d4 0 N2 DIODE_MODEL_d4
+.model DIODE_MODEL_d4 D(IS=1e-14 RS=0.1 N=1)
+R_rload N3 0 1k
+C_cfilter N3 0 100u
+R_scope_ch1_scope1 N1 0 1G
+R_scope_ch2_scope1 N3 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > bridgeRectifier: transient 1`] = `
+"Circuit Simulation
+V_vac N1 N2 SINE(0 10 60)
+D_d1 N1 N3 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=1)
+D_d2 0 N1 DIODE_MODEL_d2
+.model DIODE_MODEL_d2 D(IS=1e-14 RS=0.1 N=1)
+D_d3 N2 N3 DIODE_MODEL_d3
+.model DIODE_MODEL_d3 D(IS=1e-14 RS=0.1 N=1)
+D_d4 0 N2 DIODE_MODEL_d4
+.model DIODE_MODEL_d4 D(IS=1e-14 RS=0.1 N=1)
+R_rload N3 0 1k
+C_cfilter N3 0 100u
+R_scope_ch1_scope1 N1 0 1G
+R_scope_ch2_scope1 N3 0 1G
+.save all
+.tran 1m 1s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > bridgeRectifier: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_vac N1 N2 SINE(0 10 60)
+D_d1 N1 N3 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=1)
+D_d2 0 N1 DIODE_MODEL_d2
+.model DIODE_MODEL_d2 D(IS=1e-14 RS=0.1 N=1)
+D_d3 N2 N3 DIODE_MODEL_d3
+.model DIODE_MODEL_d3 D(IS=1e-14 RS=0.1 N=1)
+D_d4 0 N2 DIODE_MODEL_d4
+.model DIODE_MODEL_d4 D(IS=1e-14 RS=0.1 N=1)
+R_rload N3 0 1k
+C_cfilter N3 0 100u
+R_scope_ch1_scope1 N1 0 1G
+R_scope_ch2_scope1 N3 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > buckConverter: AC sweep 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 24V AC 1
+M_sw1 N1 N4 N3 N3 NMOS_MODEL_sw1
+.model NMOS_MODEL_sw1 NMOS(LEVEL=1 VTO=2 KP=0.5 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+V_pwm1 N4 N3 PULSE(0 10 0 0.000001 0.000001 0.00022 0.001)
+D_d1 0 N3 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=0.4285714285714286)
+L_l1 N3 N5 2mH
+C_c1 N5 0 1000uF
+R_rload N5 N6 5R
+R_mm1 N6 0 1G
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > buckConverter: operating point 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 24V
+M_sw1 N1 N4 N3 N3 NMOS_MODEL_sw1
+.model NMOS_MODEL_sw1 NMOS(LEVEL=1 VTO=2 KP=0.5 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+V_pwm1 N4 N3 PULSE(0 10 0 0.000001 0.000001 0.00022 0.001)
+D_d1 0 N3 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=0.4285714285714286)
+L_l1 N3 N5 2mH
+C_c1 N5 0 1000uF
+R_rload N5 N6 5R
+R_mm1 N6 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > buckConverter: transient 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 24V
+M_sw1 N1 N4 N3 N3 NMOS_MODEL_sw1
+.model NMOS_MODEL_sw1 NMOS(LEVEL=1 VTO=2 KP=0.5 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+V_pwm1 N4 N3 PULSE(0 10 0 0.000001 0.000001 0.00022 0.001)
+D_d1 0 N3 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=0.4285714285714286)
+L_l1 N3 N5 2mH
+C_c1 N5 0 1000uF
+R_rload N5 N6 5R
+R_mm1 N6 0 1G
+.save all
+.tran 1m 0.05s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > buckConverter: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 24V
+M_sw1 N1 N4 N3 N3 NMOS_MODEL_sw1
+.model NMOS_MODEL_sw1 NMOS(LEVEL=1 VTO=2 KP=0.5 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+V_pwm1 N4 N3 PULSE(0 10 0 0.000001 0.000001 0.00022 0.001)
+D_d1 0 N3 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=0.4285714285714286)
+L_l1 N3 N5 2mH IC=1.000000e-3
+C_c1 N5 0 1000uF
+R_rload N5 N6 5R
+R_mm1 N6 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > classABamp: AC sweep 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V AC 1
+V_mic1 N5 0 DC 0
+C_cin N5 N3 10uF
+R_r1 N1 N3 4.7k
+R_rbias N3 N4 1.1k
+R_r2 N4 0 4.7k
+Q_q1 N1 N3 N6 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 0 N4 N7 PNP_MODEL_q2
+.model PNP_MODEL_q2 PNP(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_re1 N6 N8 22
+R_re2 N7 N8 22
+C_cout N8 N9 470uF
+R_spk1 N9 0 8
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > classABamp: operating point 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V
+V_mic1 N5 0 DC 0
+C_cin N5 N3 10uF
+R_r1 N1 N3 4.7k
+R_rbias N3 N4 1.1k
+R_r2 N4 0 4.7k
+Q_q1 N1 N3 N6 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 0 N4 N7 PNP_MODEL_q2
+.model PNP_MODEL_q2 PNP(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_re1 N6 N8 22
+R_re2 N7 N8 22
+C_cout N8 N9 470uF
+R_spk1 N9 0 8
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > classABamp: transient 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V
+V_mic1 N5 0 DC 0
+C_cin N5 N3 10uF
+R_r1 N1 N3 4.7k
+R_rbias N3 N4 1.1k
+R_r2 N4 0 4.7k
+Q_q1 N1 N3 N6 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 0 N4 N7 PNP_MODEL_q2
+.model PNP_MODEL_q2 PNP(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_re1 N6 N8 22
+R_re2 N7 N8 22
+C_cout N8 N9 470uF
+R_spk1 N9 0 8
+.save all
+.tran 0.05m 1s 0 0.05m
+.end
+"
+`;
+
+exports[`the netlist each preset writes > classABamp: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V
+V_mic1 N5 0 DC 0
+C_cin N5 N3 10uF
+R_r1 N1 N3 4.7k
+R_rbias N3 N4 1.1k
+R_r2 N4 0 4.7k
+Q_q1 N1 N3 N6 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 0 N4 N7 PNP_MODEL_q2
+.model PNP_MODEL_q2 PNP(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_re1 N6 N8 22
+R_re2 N7 N8 22
+C_cout N8 N9 470uF
+R_spk1 N9 0 8
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > classBamp: AC sweep 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V AC 1
+V_mic1 N4 0 DC 0
+C_cin N4 N3 10uF
+R_r1 N1 N3 10k
+R_r2 N3 0 10k
+Q_q1 N1 N3 N5 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 0 N3 N5 PNP_MODEL_q2
+.model PNP_MODEL_q2 PNP(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+C_cout N5 N6 470uF
+R_spk1 N6 0 8
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > classBamp: operating point 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V
+V_mic1 N4 0 DC 0
+C_cin N4 N3 10uF
+R_r1 N1 N3 10k
+R_r2 N3 0 10k
+Q_q1 N1 N3 N5 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 0 N3 N5 PNP_MODEL_q2
+.model PNP_MODEL_q2 PNP(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+C_cout N5 N6 470uF
+R_spk1 N6 0 8
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > classBamp: transient 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V
+V_mic1 N4 0 DC 0
+C_cin N4 N3 10uF
+R_r1 N1 N3 10k
+R_r2 N3 0 10k
+Q_q1 N1 N3 N5 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 0 N3 N5 PNP_MODEL_q2
+.model PNP_MODEL_q2 PNP(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+C_cout N5 N6 470uF
+R_spk1 N6 0 8
+.save all
+.tran 0.05m 1s 0 0.05m
+.end
+"
+`;
+
+exports[`the netlist each preset writes > classBamp: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V
+V_mic1 N4 0 DC 0
+C_cin N4 N3 10uF
+R_r1 N1 N3 10k
+R_r2 N3 0 10k
+Q_q1 N1 N3 N5 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 0 N3 N5 PNP_MODEL_q2
+.model PNP_MODEL_q2 PNP(IS=1e-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+C_cout N5 N6 470uF
+R_spk1 N6 0 8
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > currentMirror: AC sweep 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V AC 1
+I_isrc N1 N2 DC 5m
+Q_q1 N3 N3 0 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 N5 N3 0 NPN_MODEL_q2
+.model NPN_MODEL_q2 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_rload N1 N4 1k
+V_ammeter_mm1 N2 N3 DC 0
+V_ammeter_mm2 N4 N5 DC 0
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > currentMirror: operating point 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V
+I_isrc N1 N2 DC 5m
+Q_q1 N3 N3 0 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 N5 N3 0 NPN_MODEL_q2
+.model NPN_MODEL_q2 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_rload N1 N4 1k
+V_ammeter_mm1 N2 N3 DC 0
+V_ammeter_mm2 N4 N5 DC 0
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > currentMirror: transient 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V
+I_isrc N1 N2 DC 5m
+Q_q1 N3 N3 0 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 N5 N3 0 NPN_MODEL_q2
+.model NPN_MODEL_q2 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_rload N1 N4 1k
+V_ammeter_mm1 N2 N3 DC 0
+V_ammeter_mm2 N4 N5 DC 0
+.save all
+.tran 1m 0.5s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > currentMirror: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 12V
+I_isrc N1 N2 DC 5m
+Q_q1 N3 N3 0 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 N5 N3 0 NPN_MODEL_q2
+.model NPN_MODEL_q2 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_rload N1 N4 1k
+V_ammeter_mm1 N2 N3 DC 0
+V_ammeter_mm2 N4 N5 DC 0
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > dffBlinker: AC sweep 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 PULSE(0 5 0 0.000001 0.000001 0.25 0.5) AC 1
+X_dff1 N2 N1 N3 N2 DFF
+R_r1 N3 N4 330
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+
+* Idealized Master-Slave D Flip-Flop
+* Node order: D CLK Q QBAR
+.SUBCKT DFF D CLK Q QBAR
+B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+
+* Master Latch: closed when clk_bar > 2.5
+S_M D state_m clk_bar 0 SMOD_DFF
+C_M state_m 0 10n
+R_M state_m 0 1G
+
+* Buffer master to slave to prevent charge sharing between C_M and C_S
+B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+
+* Slave Latch: closed when CLK > 2.5
+S_S state_m_buf state_s CLK 0 SMOD_DFF
+C_S state_s 0 10n
+R_S state_s 0 1G
+
+* Output Drivers
+B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
+B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+
+.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.ENDS DFF
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > dffBlinker: operating point 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 PULSE(0 5 0 0.000001 0.000001 0.25 0.5)
+X_dff1 N2 N1 N3 N2 DFF
+R_r1 N3 N4 330
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+
+* Idealized Master-Slave D Flip-Flop
+* Node order: D CLK Q QBAR
+.SUBCKT DFF D CLK Q QBAR
+B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+
+* Master Latch: closed when clk_bar > 2.5
+S_M D state_m clk_bar 0 SMOD_DFF
+C_M state_m 0 10n
+R_M state_m 0 1G
+
+* Buffer master to slave to prevent charge sharing between C_M and C_S
+B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+
+* Slave Latch: closed when CLK > 2.5
+S_S state_m_buf state_s CLK 0 SMOD_DFF
+C_S state_s 0 10n
+R_S state_s 0 1G
+
+* Output Drivers
+B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
+B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+
+.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.ENDS DFF
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > dffBlinker: transient 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 PULSE(0 5 0 0.000001 0.000001 0.25 0.5)
+X_dff1 N2 N1 N3 N2 DFF
+R_r1 N3 N4 330
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+
+* Idealized Master-Slave D Flip-Flop
+* Node order: D CLK Q QBAR
+.SUBCKT DFF D CLK Q QBAR
+B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+
+* Master Latch: closed when clk_bar > 2.5
+S_M D state_m clk_bar 0 SMOD_DFF
+C_M state_m 0 10n
+R_M state_m 0 1G
+
+* Buffer master to slave to prevent charge sharing between C_M and C_S
+B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+
+* Slave Latch: closed when CLK > 2.5
+S_S state_m_buf state_s CLK 0 SMOD_DFF
+C_S state_s 0 10n
+R_S state_s 0 1G
+
+* Output Drivers
+B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
+B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+
+.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.ENDS DFF
+.save all
+.tran 1m 2s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > dffBlinker: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 PULSE(0 5 0 0.000001 0.000001 0.25 0.5)
+X_dff1 N2 N1 N3 N2 DFF
+R_r1 N3 N4 330
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+
+* Idealized Master-Slave D Flip-Flop
+* Node order: D CLK Q QBAR
+.SUBCKT DFF D CLK Q QBAR
+B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+
+* Master Latch: closed when clk_bar > 2.5
+S_M D state_m clk_bar 0 SMOD_DFF
+C_M state_m 0 10n
+R_M state_m 0 1G
+
+* Buffer master to slave to prevent charge sharing between C_M and C_S
+B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+
+* Slave Latch: closed when CLK > 2.5
+S_S state_m_buf state_s CLK 0 SMOD_DFF
+C_S state_s 0 10n
+R_S state_s 0 1G
+
+* Output Drivers
+B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
+B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+
+.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.ENDS DFF
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > empty: operating point 1`] = `
+"Circuit Simulation
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > empty: transient 1`] = `
+"Circuit Simulation
+.save all
+.tran 1m 1s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > empty: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > heltecCc1101: operating point 1`] = `
+"Circuit Simulation
+V_heltec_heltec1_GPIO_1 N4 0 DC 0.0000
+V_heltec_heltec1_GPIO_3 N3 0 DC 0.0000
+V_heltec_heltec1_GPIO_33 N5 0 DC 0.0000
+V_heltec_heltec1_GPIO_36 N6 0 DC 0.0000
+V_heltec_heltec1_GPIO_37 N7 0 DC 0.0000
+V_heltec_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 DC 0.0000
+V_heltec_heltec1_3V3 N1 0 DC 3.3
+R_heltec_heltec1_GND 0 0 1m
+V_cc1101_VCC int_mcu_cc1101_VCC 0 DC 3.3
+R_cc1101_VCC_res int_mcu_cc1101_VCC N1 1
+R_cc1101_GND 0 0 1m
+R_cc1101_MOSI N3 0 100MEG
+R_cc1101_SCLK N5 0 100MEG
+R_cc1101_MISO N4 0 100MEG
+R_cc1101_GDO2 NC_cc1101_GDO2 0 100MEG
+R_cc1101_GDO0 N7 0 100MEG
+R_cc1101_CSN N6 0 100MEG
+R_shunt_NC_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 1G
+R_shunt_NC_cc1101_GDO2 NC_cc1101_GDO2 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > heltecCc1101: transient 1`] = `
+"Circuit Simulation
+V_heltec_heltec1_GPIO_1 N4 0 DC 0.0000
+V_heltec_heltec1_GPIO_3 N3 0 DC 0.0000
+V_heltec_heltec1_GPIO_33 N5 0 DC 0.0000
+V_heltec_heltec1_GPIO_36 N6 0 DC 0.0000
+V_heltec_heltec1_GPIO_37 N7 0 DC 0.0000
+V_heltec_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 DC 0.0000
+V_heltec_heltec1_3V3 N1 0 DC 3.3
+R_heltec_heltec1_GND 0 0 1m
+V_cc1101_VCC int_mcu_cc1101_VCC 0 DC 3.3
+R_cc1101_VCC_res int_mcu_cc1101_VCC N1 1
+R_cc1101_GND 0 0 1m
+V_cc1101_MOSI int_mcu_cc1101_MOSI 0 PWL(
++ 0.000000e+0 0.000000e+0 1.000000e+0 0.000000e+0 
++ )
+R_cc1101_MOSI_out int_mcu_cc1101_MOSI N3 20
+V_cc1101_SCLK int_mcu_cc1101_SCLK 0 PWL(
++ 0.000000e+0 0.000000e+0 1.000000e+0 0.000000e+0 
++ )
+R_cc1101_SCLK_out int_mcu_cc1101_SCLK N5 20
+R_cc1101_MISO N4 0 100MEG
+R_cc1101_GDO2 NC_cc1101_GDO2 0 100MEG
+R_cc1101_GDO0 N7 0 100MEG
+V_cc1101_CSN int_mcu_cc1101_CSN 0 PWL(
++ 0.000000e+0 5.000000e+0 1.000000e+0 5.000000e+0 
++ )
+R_cc1101_CSN_out int_mcu_cc1101_CSN N6 20
+R_shunt_NC_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 1G
+R_shunt_NC_cc1101_GDO2 NC_cc1101_GDO2 0 1G
+.save all
+.tran 1m 1s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > heltecCc1101: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_heltec_heltec1_GPIO_1 N4 0 DC 0.0000
+V_heltec_heltec1_GPIO_3 N3 0 DC 0.0000
+V_heltec_heltec1_GPIO_33 N5 0 DC 0.0000
+V_heltec_heltec1_GPIO_36 N6 0 DC 0.0000
+V_heltec_heltec1_GPIO_37 N7 0 DC 0.0000
+V_heltec_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 DC 0.0000
+V_heltec_heltec1_3V3 N1 0 DC 3.3
+R_heltec_heltec1_GND 0 0 1m
+V_cc1101_VCC int_mcu_cc1101_VCC 0 DC 3.3
+R_cc1101_VCC_res int_mcu_cc1101_VCC N1 1
+R_cc1101_GND 0 0 1m
+V_cc1101_MOSI int_mcu_cc1101_MOSI 0 PWL(
++ 0.000000e+0 0.000000e+0 4.000000e-2 0.000000e+0 
++ )
+R_cc1101_MOSI_out int_mcu_cc1101_MOSI N3 20
+V_cc1101_SCLK int_mcu_cc1101_SCLK 0 PWL(
++ 0.000000e+0 0.000000e+0 4.000000e-2 0.000000e+0 
++ )
+R_cc1101_SCLK_out int_mcu_cc1101_SCLK N5 20
+R_cc1101_MISO N4 0 100MEG
+R_cc1101_GDO2 NC_cc1101_GDO2 0 100MEG
+R_cc1101_GDO0 N7 0 100MEG
+V_cc1101_CSN int_mcu_cc1101_CSN 0 PWL(
++ 0.000000e+0 5.000000e+0 4.000000e-2 5.000000e+0 
++ )
+R_cc1101_CSN_out int_mcu_cc1101_CSN N6 20
+R_shunt_NC_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 1G
+R_shunt_NC_cc1101_GDO2 NC_cc1101_GDO2 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > heltecGPIOToCYDSpeakerHIL: operating point 1`] = `
+"Circuit Simulation
+V_heltec_heltec1_GPIO_1 N1 0 DC 0.0000
+V_heltec_heltec1_GPIO_3 NC_heltec1_GPIO_3 0 DC 0.0000
+V_heltec_heltec1_GPIO_33 NC_heltec1_GPIO_33 0 DC 0.0000
+V_heltec_heltec1_GPIO_36 NC_heltec1_GPIO_36 0 DC 0.0000
+V_heltec_heltec1_GPIO_37 NC_heltec1_GPIO_37 0 DC 0.0000
+V_heltec_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 DC 0.0000
+V_heltec_heltec1_3V3 NC_heltec1_3V3 0 DC 3.3
+R_heltec_heltec1_GND NC_heltec1_GND 0 1m
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 N2 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 N1 0 100MEG
+R_spk1 N2 0 8
+R_shunt_NC_heltec1_GPIO_3 NC_heltec1_GPIO_3 0 1G
+R_shunt_NC_heltec1_GPIO_33 NC_heltec1_GPIO_33 0 1G
+R_shunt_NC_heltec1_GPIO_36 NC_heltec1_GPIO_36 0 1G
+R_shunt_NC_heltec1_GPIO_37 NC_heltec1_GPIO_37 0 1G
+R_shunt_NC_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 1G
+R_shunt_NC_heltec1_3V3 NC_heltec1_3V3 0 1G
+R_shunt_NC_heltec1_GND NC_heltec1_GND 0 1G
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > heltecGPIOToCYDSpeakerHIL: transient 1`] = `
+"Circuit Simulation
+V_heltec_heltec1_GPIO_1 N1 0 DC 0.0000
+V_heltec_heltec1_GPIO_3 NC_heltec1_GPIO_3 0 DC 0.0000
+V_heltec_heltec1_GPIO_33 NC_heltec1_GPIO_33 0 DC 0.0000
+V_heltec_heltec1_GPIO_36 NC_heltec1_GPIO_36 0 DC 0.0000
+V_heltec_heltec1_GPIO_37 NC_heltec1_GPIO_37 0 DC 0.0000
+V_heltec_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 DC 0.0000
+V_heltec_heltec1_3V3 NC_heltec1_3V3 0 DC 3.3
+R_heltec_heltec1_GND NC_heltec1_GND 0 1m
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+V_mcu1_D1 int_mcu_mcu1_D1 0 PWL(
++ 0.000000e+0 5.000000e+0 2.499000e-3 5.000000e+0 2.500000e-3 0.000000e+0 4.999000e-3 0.000000e+0 5.000000e-3 5.000000e+0 7.499000e-3 5.000000e+0 7.500000e-3 0.000000e+0 9.999000e-3 0.000000e+0 
++ 1.000000e-2 5.000000e+0 1.249900e-2 5.000000e+0 1.250000e-2 0.000000e+0 1.499900e-2 0.000000e+0 1.500000e-2 5.000000e+0 1.749900e-2 5.000000e+0 1.750000e-2 0.000000e+0 1.999900e-2 0.000000e+0 
++ 2.000000e-2 5.000000e+0 2.249900e-2 5.000000e+0 2.250000e-2 0.000000e+0 2.499900e-2 0.000000e+0 2.500000e-2 5.000000e+0 2.749900e-2 5.000000e+0 2.750000e-2 0.000000e+0 2.999900e-2 0.000000e+0 
++ 3.000000e-2 5.000000e+0 3.249900e-2 5.000000e+0 3.250000e-2 0.000000e+0 3.499900e-2 0.000000e+0 3.500000e-2 5.000000e+0 3.749900e-2 5.000000e+0 3.750000e-2 0.000000e+0 3.999900e-2 0.000000e+0 
++ 4.000000e-2 5.000000e+0 4.249900e-2 5.000000e+0 4.250000e-2 0.000000e+0 4.499900e-2 0.000000e+0 4.500000e-2 5.000000e+0 4.749900e-2 5.000000e+0 4.750000e-2 0.000000e+0 5.000000e-2 0.000000e+0 
++ )
+R_mcu1_D1_out int_mcu_mcu1_D1 N2 20
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 N1 0 100MEG
+R_spk1 N2 0 8
+R_shunt_NC_heltec1_GPIO_3 NC_heltec1_GPIO_3 0 1G
+R_shunt_NC_heltec1_GPIO_33 NC_heltec1_GPIO_33 0 1G
+R_shunt_NC_heltec1_GPIO_36 NC_heltec1_GPIO_36 0 1G
+R_shunt_NC_heltec1_GPIO_37 NC_heltec1_GPIO_37 0 1G
+R_shunt_NC_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 1G
+R_shunt_NC_heltec1_3V3 NC_heltec1_3V3 0 1G
+R_shunt_NC_heltec1_GND NC_heltec1_GND 0 1G
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+.save all
+.tran 0.05m 0.05s 0 0.05m
+.end
+"
+`;
+
+exports[`the netlist each preset writes > heltecGPIOToCYDSpeakerHIL: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_heltec_heltec1_GPIO_1 N1 0 DC 0.0000
+V_heltec_heltec1_GPIO_3 NC_heltec1_GPIO_3 0 DC 0.0000
+V_heltec_heltec1_GPIO_33 NC_heltec1_GPIO_33 0 DC 0.0000
+V_heltec_heltec1_GPIO_36 NC_heltec1_GPIO_36 0 DC 0.0000
+V_heltec_heltec1_GPIO_37 NC_heltec1_GPIO_37 0 DC 0.0000
+V_heltec_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 DC 0.0000
+V_heltec_heltec1_3V3 NC_heltec1_3V3 0 DC 3.3
+R_heltec_heltec1_GND NC_heltec1_GND 0 1m
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+V_mcu1_D1 int_mcu_mcu1_D1 0 PWL(
++ 0.000000e+0 5.000000e+0 2.499000e-3 5.000000e+0 2.500000e-3 0.000000e+0 4.999000e-3 0.000000e+0 5.000000e-3 5.000000e+0 7.499000e-3 5.000000e+0 7.500000e-3 0.000000e+0 9.999000e-3 0.000000e+0 
++ 1.000000e-2 5.000000e+0 1.249900e-2 5.000000e+0 1.250000e-2 0.000000e+0 1.499900e-2 0.000000e+0 1.500000e-2 5.000000e+0 1.749900e-2 5.000000e+0 1.750000e-2 0.000000e+0 1.999900e-2 0.000000e+0 
++ 2.000000e-2 5.000000e+0 2.249900e-2 5.000000e+0 2.250000e-2 0.000000e+0 2.499900e-2 0.000000e+0 2.500000e-2 5.000000e+0 2.749900e-2 5.000000e+0 2.750000e-2 0.000000e+0 2.999900e-2 0.000000e+0 
++ 3.000000e-2 5.000000e+0 3.249900e-2 5.000000e+0 3.250000e-2 0.000000e+0 3.499900e-2 0.000000e+0 3.500000e-2 5.000000e+0 3.749900e-2 5.000000e+0 3.750000e-2 0.000000e+0 4.000000e-2 0.000000e+0 
++ )
+R_mcu1_D1_out int_mcu_mcu1_D1 N2 20
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 N1 0 100MEG
+R_spk1 N2 0 8
+R_shunt_NC_heltec1_GPIO_3 NC_heltec1_GPIO_3 0 1G
+R_shunt_NC_heltec1_GPIO_33 NC_heltec1_GPIO_33 0 1G
+R_shunt_NC_heltec1_GPIO_36 NC_heltec1_GPIO_36 0 1G
+R_shunt_NC_heltec1_GPIO_37 NC_heltec1_GPIO_37 0 1G
+R_shunt_NC_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 1G
+R_shunt_NC_heltec1_3V3 NC_heltec1_3V3 0 1G
+R_shunt_NC_heltec1_GND NC_heltec1_GND 0 1G
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > heltecLightToFreqHIL: operating point 1`] = `
+"Circuit Simulation
+V_heltec_heltec1_GPIO_1 N2 0 DC 0.0000
+R_heltec_heltec1_GPIO_3 N6 0 100k
+V_heltec_heltec1_GPIO_33 NC_heltec1_GPIO_33 0 DC 0.0000
+V_heltec_heltec1_GPIO_36 NC_heltec1_GPIO_36 0 DC 0.0000
+V_heltec_heltec1_GPIO_37 NC_heltec1_GPIO_37 0 DC 0.0000
+V_heltec_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 DC 0.0000
+V_heltec_heltec1_3V3 N1 0 DC 3.3
+R_heltec_heltec1_GND NC_heltec1_GND 0 1m
+R_r_c1 N1 N3 1000
+R_r_b1 N2 N4 27000
+R_r_b2 N2 N7 28000
+R_r_c2 N1 N6 1000
+C_c1 N3 N7 0.0000047
+C_c2 N6 N4 0.0000047
+Q_q1 N3 N4 0 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 N6 N7 0 NPN_MODEL_q2
+.model NPN_MODEL_q2 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_scope_ch1_scope1 N6 0 1G
+R_scope_ch2_scope1 NC_scope1_ch2 0 1G
+R_shunt_NC_heltec1_GPIO_33 NC_heltec1_GPIO_33 0 1G
+R_shunt_NC_heltec1_GPIO_36 NC_heltec1_GPIO_36 0 1G
+R_shunt_NC_heltec1_GPIO_37 NC_heltec1_GPIO_37 0 1G
+R_shunt_NC_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 1G
+R_shunt_NC_heltec1_GND NC_heltec1_GND 0 1G
+R_shunt_NC_scope1_ch2 NC_scope1_ch2 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > heltecLightToFreqHIL: transient 1`] = `
+"Circuit Simulation
+V_heltec_heltec1_GPIO_1 N2 0 DC 0.0000
+R_heltec_heltec1_GPIO_3 N6 0 100k
+V_heltec_heltec1_GPIO_33 NC_heltec1_GPIO_33 0 DC 0.0000
+V_heltec_heltec1_GPIO_36 NC_heltec1_GPIO_36 0 DC 0.0000
+V_heltec_heltec1_GPIO_37 NC_heltec1_GPIO_37 0 DC 0.0000
+V_heltec_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 DC 0.0000
+V_heltec_heltec1_3V3 N1 0 DC 3.3
+R_heltec_heltec1_GND NC_heltec1_GND 0 1m
+R_r_c1 N1 N3 1000
+R_r_b1 N2 N4 27000
+R_r_b2 N2 N7 28000
+R_r_c2 N1 N6 1000
+C_c1 N3 N7 0.0000047
+C_c2 N6 N4 0.0000047
+Q_q1 N3 N4 0 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 N6 N7 0 NPN_MODEL_q2
+.model NPN_MODEL_q2 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_scope_ch1_scope1 N6 0 1G
+R_scope_ch2_scope1 NC_scope1_ch2 0 1G
+R_shunt_NC_heltec1_GPIO_33 NC_heltec1_GPIO_33 0 1G
+R_shunt_NC_heltec1_GPIO_36 NC_heltec1_GPIO_36 0 1G
+R_shunt_NC_heltec1_GPIO_37 NC_heltec1_GPIO_37 0 1G
+R_shunt_NC_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 1G
+R_shunt_NC_heltec1_GND NC_heltec1_GND 0 1G
+R_shunt_NC_scope1_ch2 NC_scope1_ch2 0 1G
+.save all
+.tran 1m 0.05s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > heltecLightToFreqHIL: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_heltec_heltec1_GPIO_1 N2 0 DC 0.0000
+R_heltec_heltec1_GPIO_3 N6 0 100k
+V_heltec_heltec1_GPIO_33 NC_heltec1_GPIO_33 0 DC 0.0000
+V_heltec_heltec1_GPIO_36 NC_heltec1_GPIO_36 0 DC 0.0000
+V_heltec_heltec1_GPIO_37 NC_heltec1_GPIO_37 0 DC 0.0000
+V_heltec_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 DC 0.0000
+V_heltec_heltec1_3V3 N1 0 DC 3.3
+R_heltec_heltec1_GND NC_heltec1_GND 0 1m
+R_r_c1 N1 N3 1000
+R_r_b1 N2 N4 27000
+R_r_b2 N2 N7 28000
+R_r_c2 N1 N6 1000
+C_c1 N3 N7 0.0000047
+C_c2 N6 N4 0.0000047
+Q_q1 N3 N4 0 NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 N6 N7 0 NPN_MODEL_q2
+.model NPN_MODEL_q2 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+R_scope_ch1_scope1 N6 0 1G
+R_scope_ch2_scope1 NC_scope1_ch2 0 1G
+R_shunt_NC_heltec1_GPIO_33 NC_heltec1_GPIO_33 0 1G
+R_shunt_NC_heltec1_GPIO_36 NC_heltec1_GPIO_36 0 1G
+R_shunt_NC_heltec1_GPIO_37 NC_heltec1_GPIO_37 0 1G
+R_shunt_NC_heltec1_GPIO_41 NC_heltec1_GPIO_41 0 1G
+R_shunt_NC_heltec1_GND NC_heltec1_GND 0 1G
+R_shunt_NC_scope1_ch2 NC_scope1_ch2 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > ldrWebcamDemo: AC sweep 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V AC 1
+R_ldr1 N1 N2 50050.00
+R_r1 N2 0 10k
+R_mm1 N2 0 1G
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 N1 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+I_photo_led1 N1 int_led_led1 DC 2.500000e-5
+R_r2 N4 0 100k
+R_mm2 N4 0 1G
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > ldrWebcamDemo: operating point 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V
+R_ldr1 N1 N2 50050.00
+R_r1 N2 0 10k
+R_mm1 N2 0 1G
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 N1 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+I_photo_led1 N1 int_led_led1 DC 2.500000e-5
+R_r2 N4 0 100k
+R_mm2 N4 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > ldrWebcamDemo: transient 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V
+R_ldr1 N1 N2 50050.00
+R_r1 N2 0 10k
+R_mm1 N2 0 1G
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 N1 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+I_photo_led1 N1 int_led_led1 DC 2.500000e-5
+R_r2 N4 0 100k
+R_mm2 N4 0 1G
+.save all
+.tran 1m 1s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > ldrWebcamDemo: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V
+R_ldr1 N1 N2 50050.00
+R_r1 N2 0 10k
+R_mm1 N2 0 1G
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 N1 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+I_photo_led1 N1 int_led_led1 DC 2.500000e-5
+R_r2 N4 0 100k
+R_mm2 N4 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuAnalogIn: AC sweep 1`] = `
+"Circuit Simulation
+V_vac1 N1 0 SINE(0 5 40) AC 1
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 N1 0 100MEG
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuAnalogIn: operating point 1`] = `
+"Circuit Simulation
+V_vac1 N1 0 SINE(0 5 40)
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 N1 0 100MEG
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuAnalogIn: transient 1`] = `
+"Circuit Simulation
+V_vac1 N1 0 SINE(0 5 40)
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 N1 0 100MEG
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+.save all
+.tran 1m 1s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuAnalogIn: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_vac1 N1 0 SINE(0 5 40)
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 N1 0 100MEG
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuAnalogOut: operating point 1`] = `
+"Circuit Simulation
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 N1 0 100MEG
+R_scope_ch1_scope1 N1 0 1G
+R_scope_ch2_scope1 NC_scope1_ch2 0 1G
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+R_shunt_NC_scope1_ch2 NC_scope1_ch2 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuAnalogOut: transient 1`] = `
+"Circuit Simulation
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+V_mcu1_A0 int_mcu_mcu1_A0 0 PWL(
++ 0.000000e+0 2.490196e+0 9.999000e-3 2.490196e+0 1.000000e-2 3.259709e+0 1.999900e-2 3.259709e+0 2.000000e-2 3.953897e+0 2.999900e-2 3.953897e+0 3.000000e-2 4.504807e+0 3.999900e-2 4.504807e+0 
++ 4.000000e-2 4.858513e+0 4.999900e-2 4.858513e+0 5.000000e-2 4.980392e+0 5.999900e-2 4.980392e+0 6.000000e-2 4.858513e+0 6.999900e-2 4.858513e+0 7.000000e-2 4.504807e+0 7.999900e-2 4.504807e+0 
++ 8.000000e-2 3.953897e+0 8.999900e-2 3.953897e+0 9.000000e-2 3.259709e+0 9.999900e-2 3.259709e+0 1.000000e-1 2.490196e+0 1.099990e-1 2.490196e+0 1.100000e-1 1.720683e+0 1.199990e-1 1.720683e+0 
++ 1.200000e-1 1.026496e+0 1.299990e-1 1.026496e+0 1.300000e-1 4.755851e-1 1.399990e-1 4.755851e-1 1.400000e-1 1.218789e-1 1.499990e-1 1.218789e-1 1.500000e-1 0.000000e+0 1.599990e-1 0.000000e+0 
++ 1.600000e-1 1.218789e-1 1.699990e-1 1.218789e-1 1.700000e-1 4.755851e-1 1.799990e-1 4.755851e-1 1.800000e-1 1.026496e+0 1.899990e-1 1.026496e+0 1.900000e-1 1.720683e+0 1.999990e-1 1.720683e+0 
++ 2.000000e-1 2.490196e+0 2.099990e-1 2.490196e+0 2.100000e-1 3.259709e+0 2.199990e-1 3.259709e+0 2.200000e-1 3.953897e+0 2.299990e-1 3.953897e+0 2.300000e-1 4.504807e+0 2.399990e-1 4.504807e+0 
++ 2.400000e-1 4.858513e+0 2.499990e-1 4.858513e+0 2.500000e-1 4.980392e+0 2.599990e-1 4.980392e+0 2.600000e-1 4.858513e+0 2.699990e-1 4.858513e+0 2.700000e-1 4.504807e+0 2.799990e-1 4.504807e+0 
++ 2.800000e-1 3.953897e+0 2.899990e-1 3.953897e+0 2.900000e-1 3.259709e+0 2.999990e-1 3.259709e+0 3.000000e-1 2.490196e+0 3.099990e-1 2.490196e+0 3.100000e-1 1.720683e+0 3.199990e-1 1.720683e+0 
++ 3.200000e-1 1.026496e+0 3.299990e-1 1.026496e+0 3.300000e-1 4.755851e-1 3.399990e-1 4.755851e-1 3.400000e-1 1.218789e-1 3.499990e-1 1.218789e-1 3.500000e-1 0.000000e+0 3.599990e-1 0.000000e+0 
++ 3.600000e-1 1.218789e-1 3.699990e-1 1.218789e-1 3.700000e-1 4.755851e-1 3.799990e-1 4.755851e-1 3.800000e-1 1.026496e+0 3.899990e-1 1.026496e+0 3.900000e-1 1.720683e+0 3.999990e-1 1.720683e+0 
++ 4.000000e-1 2.490196e+0 4.099990e-1 2.490196e+0 4.100000e-1 3.259709e+0 4.199990e-1 3.259709e+0 4.200000e-1 3.953897e+0 4.299990e-1 3.953897e+0 4.300000e-1 4.504807e+0 4.399990e-1 4.504807e+0 
++ 4.400000e-1 4.858513e+0 4.499990e-1 4.858513e+0 4.500000e-1 4.980392e+0 4.599990e-1 4.980392e+0 4.600000e-1 4.858513e+0 4.699990e-1 4.858513e+0 4.700000e-1 4.504807e+0 4.799990e-1 4.504807e+0 
++ 4.800000e-1 3.953897e+0 4.899990e-1 3.953897e+0 4.900000e-1 3.259709e+0 4.999990e-1 3.259709e+0 5.000000e-1 2.490196e+0 5.099990e-1 2.490196e+0 5.100000e-1 1.720683e+0 5.199990e-1 1.720683e+0 
++ 5.200000e-1 1.026496e+0 5.299990e-1 1.026496e+0 5.300000e-1 4.755851e-1 5.399990e-1 4.755851e-1 5.400000e-1 1.218789e-1 5.499990e-1 1.218789e-1 5.500000e-1 0.000000e+0 5.599990e-1 0.000000e+0 
++ 5.600000e-1 1.218789e-1 5.699990e-1 1.218789e-1 5.700000e-1 4.755851e-1 5.799990e-1 4.755851e-1 5.800000e-1 1.026496e+0 5.899990e-1 1.026496e+0 5.900000e-1 1.720683e+0 5.999990e-1 1.720683e+0 
++ 6.000000e-1 2.490196e+0 6.099990e-1 2.490196e+0 6.100000e-1 3.259709e+0 6.199990e-1 3.259709e+0 6.200000e-1 3.953897e+0 6.299990e-1 3.953897e+0 6.300000e-1 4.504807e+0 6.399990e-1 4.504807e+0 
++ 6.400000e-1 4.858513e+0 6.499990e-1 4.858513e+0 6.500000e-1 4.980392e+0 6.599990e-1 4.980392e+0 6.600000e-1 4.858513e+0 6.699990e-1 4.858513e+0 6.700000e-1 4.504807e+0 6.799990e-1 4.504807e+0 
++ 6.800000e-1 3.953897e+0 6.899990e-1 3.953897e+0 6.900000e-1 3.259709e+0 6.999990e-1 3.259709e+0 7.000000e-1 2.490196e+0 7.099990e-1 2.490196e+0 7.100000e-1 1.720683e+0 7.199990e-1 1.720683e+0 
++ 7.200000e-1 1.026496e+0 7.299990e-1 1.026496e+0 7.300000e-1 4.755851e-1 7.399990e-1 4.755851e-1 7.400000e-1 1.218789e-1 7.499990e-1 1.218789e-1 7.500000e-1 0.000000e+0 7.599990e-1 0.000000e+0 
++ 7.600000e-1 1.218789e-1 7.699990e-1 1.218789e-1 7.700000e-1 4.755851e-1 7.799990e-1 4.755851e-1 7.800000e-1 1.026496e+0 7.899990e-1 1.026496e+0 7.900000e-1 1.720683e+0 7.999990e-1 1.720683e+0 
++ 8.000000e-1 2.490196e+0 8.099990e-1 2.490196e+0 8.100000e-1 3.259709e+0 8.199990e-1 3.259709e+0 8.200000e-1 3.953897e+0 8.299990e-1 3.953897e+0 8.300000e-1 4.504807e+0 8.399990e-1 4.504807e+0 
++ 8.400000e-1 4.858513e+0 8.499990e-1 4.858513e+0 8.500000e-1 4.980392e+0 8.599990e-1 4.980392e+0 8.600000e-1 4.858513e+0 8.699990e-1 4.858513e+0 8.700000e-1 4.504807e+0 8.799990e-1 4.504807e+0 
++ 8.800000e-1 3.953897e+0 8.899990e-1 3.953897e+0 8.900000e-1 3.259709e+0 8.999990e-1 3.259709e+0 9.000000e-1 2.490196e+0 9.099990e-1 2.490196e+0 9.100000e-1 1.720683e+0 9.199990e-1 1.720683e+0 
++ 9.200000e-1 1.026496e+0 9.299990e-1 1.026496e+0 9.300000e-1 4.755851e-1 9.399990e-1 4.755851e-1 9.400000e-1 1.218789e-1 9.499990e-1 1.218789e-1 9.500000e-1 0.000000e+0 9.599990e-1 0.000000e+0 
++ 9.600000e-1 1.218789e-1 9.699990e-1 1.218789e-1 9.700000e-1 4.755851e-1 9.799990e-1 4.755851e-1 9.800000e-1 1.026496e+0 9.899990e-1 1.026496e+0 9.900000e-1 1.720683e+0 1.000000e+0 1.720683e+0 
++ )
+R_mcu1_A0_out int_mcu_mcu1_A0 N1 20
+R_scope_ch1_scope1 N1 0 1G
+R_scope_ch2_scope1 NC_scope1_ch2 0 1G
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+R_shunt_NC_scope1_ch2 NC_scope1_ch2 0 1G
+.save all
+.tran 1m 1s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuAnalogOut: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+V_mcu1_A0 int_mcu_mcu1_A0 0 PWL(
++ 0.000000e+0 2.490196e+0 9.999000e-3 2.490196e+0 1.000000e-2 3.259709e+0 1.999900e-2 3.259709e+0 2.000000e-2 3.953897e+0 2.999900e-2 3.953897e+0 3.000000e-2 4.504807e+0 4.000000e-2 4.504807e+0 
++ )
+R_mcu1_A0_out int_mcu_mcu1_A0 N1 20
+R_scope_ch1_scope1 N1 0 1G
+R_scope_ch2_scope1 NC_scope1_ch2 0 1G
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+R_shunt_NC_scope1_ch2 NC_scope1_ch2 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuBlink: operating point 1`] = `
+"Circuit Simulation
+R_mcu1_D0 N1 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 NC_mcu1_A0 0 100MEG
+R_r1 N1 N2 330
+R_ammeter_led1 N2 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+R_shunt_NC_mcu1_A0 NC_mcu1_A0 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuBlink: transient 1`] = `
+"Circuit Simulation
+V_mcu1_D0 int_mcu_mcu1_D0 0 PWL(
++ 0.000000e+0 5.000000e+0 4.999990e-1 5.000000e+0 5.000000e-1 0.000000e+0 1.000000e+0 0.000000e+0 
++ )
+R_mcu1_D0_out int_mcu_mcu1_D0 N1 20
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 NC_mcu1_A0 0 100MEG
+R_r1 N1 N2 330
+R_ammeter_led1 N2 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+R_shunt_NC_mcu1_A0 NC_mcu1_A0 0 1G
+.save all
+.tran 1m 1s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuBlink: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_mcu1_D0 int_mcu_mcu1_D0 0 PWL(
++ 0.000000e+0 5.000000e+0 4.000000e-2 5.000000e+0 
++ )
+R_mcu1_D0_out int_mcu_mcu1_D0 N1 20
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 NC_mcu1_A0 0 100MEG
+R_r1 N1 N2 330
+R_ammeter_led1 N2 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+R_shunt_NC_mcu1_A0 NC_mcu1_A0 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuCleanAudioSampler: AC sweep 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 2 440) AC 1
+C_cin N1 N5 0.00001
+V_v1 N3 0 DC 5V
+R_r1 N3 N5 10k
+R_r2 N5 0 10k
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 N6 0 100MEG
+R_mcu1_A0 N5 0 100MEG
+R_rout N6 N7 1k
+C_cout N7 0 0.1uF
+R_spk1 N7 0 8
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuCleanAudioSampler: operating point 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 2 440)
+C_cin N1 N5 0.00001
+V_v1 N3 0 DC 5V
+R_r1 N3 N5 10k
+R_r2 N5 0 10k
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 N6 0 100MEG
+R_mcu1_A0 N5 0 100MEG
+R_rout N6 N7 1k
+C_cout N7 0 0.1uF
+R_spk1 N7 0 8
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuCleanAudioSampler: transient 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 2 440)
+C_cin N1 N5 0.00001
+V_v1 N3 0 DC 5V
+R_r1 N3 N5 10k
+R_r2 N5 0 10k
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+V_mcu1_A1 int_mcu_mcu1_A1 0 PWL(
++ 0.000000e+0 0.000000e+0 1.000000e+0 0.000000e+0 
++ )
+R_mcu1_A1_out int_mcu_mcu1_A1 N6 20
+R_mcu1_A0 N5 0 100MEG
+R_rout N6 N7 1k
+C_cout N7 0 0.1uF
+R_spk1 N7 0 8
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+.save all
+.tran 0.05m 1s 0 0.05m
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuCleanAudioSampler: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 2 440)
+C_cin N1 N5 0.00001
+V_v1 N3 0 DC 5V
+R_r1 N3 N5 10k
+R_r2 N5 0 10k
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+V_mcu1_A1 int_mcu_mcu1_A1 0 PWL(
++ 0.000000e+0 0.000000e+0 4.000000e-2 0.000000e+0 
++ )
+R_mcu1_A1_out int_mcu_mcu1_A1 N6 20
+R_mcu1_A0 N5 0 100MEG
+R_rout N6 N7 1k
+C_cout N7 0 0.1uF
+R_spk1 N7 0 8
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuPassThrough: AC sweep 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 5 440) AC 1
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 N3 0 100MEG
+R_mcu1_A0 N1 0 100MEG
+R_spk1 N3 0 8
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuPassThrough: operating point 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 5 440)
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 N3 0 100MEG
+R_mcu1_A0 N1 0 100MEG
+R_spk1 N3 0 8
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuPassThrough: transient 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 5 440)
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+V_mcu1_A1 int_mcu_mcu1_A1 0 PWL(
++ 0.000000e+0 0.000000e+0 1.000000e+0 0.000000e+0 
++ )
+R_mcu1_A1_out int_mcu_mcu1_A1 N3 20
+R_mcu1_A0 N1 0 100MEG
+R_spk1 N3 0 8
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+.save all
+.tran 0.05m 1s 0 0.05m
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuPassThrough: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 5 440)
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+V_mcu1_A1 int_mcu_mcu1_A1 0 PWL(
++ 0.000000e+0 0.000000e+0 4.000000e-2 0.000000e+0 
++ )
+R_mcu1_A1_out int_mcu_mcu1_A1 N3 20
+R_mcu1_A0 N1 0 100MEG
+R_spk1 N3 0 8
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuSpeaker: operating point 1`] = `
+"Circuit Simulation
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 N1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 NC_mcu1_A0 0 100MEG
+R_spk1 N1 0 8
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+R_shunt_NC_mcu1_A0 NC_mcu1_A0 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuSpeaker: transient 1`] = `
+"Circuit Simulation
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+V_mcu1_D1 int_mcu_mcu1_D1 0 PWL(
++ 0.000000e+0 5.000000e+0 9.990000e-4 5.000000e+0 1.000000e-3 0.000000e+0 1.999000e-3 0.000000e+0 2.000000e-3 5.000000e+0 2.999000e-3 5.000000e+0 3.000000e-3 0.000000e+0 3.999000e-3 0.000000e+0 
++ 4.000000e-3 5.000000e+0 4.999000e-3 5.000000e+0 5.000000e-3 0.000000e+0 5.999000e-3 0.000000e+0 6.000000e-3 5.000000e+0 6.999000e-3 5.000000e+0 7.000000e-3 0.000000e+0 7.999000e-3 0.000000e+0 
++ 8.000000e-3 5.000000e+0 8.999000e-3 5.000000e+0 9.000000e-3 0.000000e+0 9.999000e-3 0.000000e+0 1.000000e-2 5.000000e+0 1.099900e-2 5.000000e+0 1.100000e-2 0.000000e+0 1.199900e-2 0.000000e+0 
++ 1.200000e-2 5.000000e+0 1.299900e-2 5.000000e+0 1.300000e-2 0.000000e+0 1.399900e-2 0.000000e+0 1.400000e-2 5.000000e+0 1.499900e-2 5.000000e+0 1.500000e-2 0.000000e+0 1.599900e-2 0.000000e+0 
++ 1.600000e-2 5.000000e+0 1.699900e-2 5.000000e+0 1.700000e-2 0.000000e+0 1.799900e-2 0.000000e+0 1.800000e-2 5.000000e+0 1.899900e-2 5.000000e+0 1.900000e-2 0.000000e+0 1.999900e-2 0.000000e+0 
++ 2.000000e-2 5.000000e+0 2.099900e-2 5.000000e+0 2.100000e-2 0.000000e+0 2.199900e-2 0.000000e+0 2.200000e-2 5.000000e+0 2.299900e-2 5.000000e+0 2.300000e-2 0.000000e+0 2.399900e-2 0.000000e+0 
++ 2.400000e-2 5.000000e+0 2.499900e-2 5.000000e+0 2.500000e-2 0.000000e+0 2.599900e-2 0.000000e+0 2.600000e-2 5.000000e+0 2.699900e-2 5.000000e+0 2.700000e-2 0.000000e+0 2.799900e-2 0.000000e+0 
++ 2.800000e-2 5.000000e+0 2.899900e-2 5.000000e+0 2.900000e-2 0.000000e+0 2.999900e-2 0.000000e+0 3.000000e-2 5.000000e+0 3.099900e-2 5.000000e+0 3.100000e-2 0.000000e+0 3.199900e-2 0.000000e+0 
++ 3.200000e-2 5.000000e+0 3.299900e-2 5.000000e+0 3.300000e-2 0.000000e+0 3.399900e-2 0.000000e+0 3.400000e-2 5.000000e+0 3.499900e-2 5.000000e+0 3.500000e-2 0.000000e+0 3.599900e-2 0.000000e+0 
++ 3.600000e-2 5.000000e+0 3.699900e-2 5.000000e+0 3.700000e-2 0.000000e+0 3.799900e-2 0.000000e+0 3.800000e-2 5.000000e+0 3.899900e-2 5.000000e+0 3.900000e-2 0.000000e+0 3.999900e-2 0.000000e+0 
++ 4.000000e-2 5.000000e+0 4.099900e-2 5.000000e+0 4.100000e-2 0.000000e+0 4.199900e-2 0.000000e+0 4.200000e-2 5.000000e+0 4.299900e-2 5.000000e+0 4.300000e-2 0.000000e+0 4.399900e-2 0.000000e+0 
++ 4.400000e-2 5.000000e+0 4.499900e-2 5.000000e+0 4.500000e-2 0.000000e+0 4.599900e-2 0.000000e+0 4.600000e-2 5.000000e+0 4.699900e-2 5.000000e+0 4.700000e-2 0.000000e+0 4.799900e-2 0.000000e+0 
++ 4.800000e-2 5.000000e+0 4.899900e-2 5.000000e+0 4.900000e-2 0.000000e+0 4.999900e-2 0.000000e+0 5.000000e-2 5.000000e+0 5.099900e-2 5.000000e+0 5.100000e-2 0.000000e+0 5.199900e-2 0.000000e+0 
++ 5.200000e-2 5.000000e+0 5.299900e-2 5.000000e+0 5.300000e-2 0.000000e+0 5.399900e-2 0.000000e+0 5.400000e-2 5.000000e+0 5.499900e-2 5.000000e+0 5.500000e-2 0.000000e+0 5.599900e-2 0.000000e+0 
++ 5.600000e-2 5.000000e+0 5.699900e-2 5.000000e+0 5.700000e-2 0.000000e+0 5.799900e-2 0.000000e+0 5.800000e-2 5.000000e+0 5.899900e-2 5.000000e+0 5.900000e-2 0.000000e+0 5.999900e-2 0.000000e+0 
++ 6.000000e-2 5.000000e+0 6.099900e-2 5.000000e+0 6.100000e-2 0.000000e+0 6.199900e-2 0.000000e+0 6.200000e-2 5.000000e+0 6.299900e-2 5.000000e+0 6.300000e-2 0.000000e+0 6.399900e-2 0.000000e+0 
++ 6.400000e-2 5.000000e+0 6.499900e-2 5.000000e+0 6.500000e-2 0.000000e+0 6.599900e-2 0.000000e+0 6.600000e-2 5.000000e+0 6.699900e-2 5.000000e+0 6.700000e-2 0.000000e+0 6.799900e-2 0.000000e+0 
++ 6.800000e-2 5.000000e+0 6.899900e-2 5.000000e+0 6.900000e-2 0.000000e+0 6.999900e-2 0.000000e+0 7.000000e-2 5.000000e+0 7.099900e-2 5.000000e+0 7.100000e-2 0.000000e+0 7.199900e-2 0.000000e+0 
++ 7.200000e-2 5.000000e+0 7.299900e-2 5.000000e+0 7.300000e-2 0.000000e+0 7.399900e-2 0.000000e+0 7.400000e-2 5.000000e+0 7.499900e-2 5.000000e+0 7.500000e-2 0.000000e+0 7.599900e-2 0.000000e+0 
++ 7.600000e-2 5.000000e+0 7.699900e-2 5.000000e+0 7.700000e-2 0.000000e+0 7.799900e-2 0.000000e+0 7.800000e-2 5.000000e+0 7.899900e-2 5.000000e+0 7.900000e-2 0.000000e+0 7.999900e-2 0.000000e+0 
++ 8.000000e-2 5.000000e+0 8.099900e-2 5.000000e+0 8.100000e-2 0.000000e+0 8.199900e-2 0.000000e+0 8.200000e-2 5.000000e+0 8.299900e-2 5.000000e+0 8.300000e-2 0.000000e+0 8.399900e-2 0.000000e+0 
++ 8.400000e-2 5.000000e+0 8.499900e-2 5.000000e+0 8.500000e-2 0.000000e+0 8.599900e-2 0.000000e+0 8.600000e-2 5.000000e+0 8.699900e-2 5.000000e+0 8.700000e-2 0.000000e+0 8.799900e-2 0.000000e+0 
++ 8.800000e-2 5.000000e+0 8.899900e-2 5.000000e+0 8.900000e-2 0.000000e+0 8.999900e-2 0.000000e+0 9.000000e-2 5.000000e+0 9.099900e-2 5.000000e+0 9.100000e-2 0.000000e+0 9.199900e-2 0.000000e+0 
++ 9.200000e-2 5.000000e+0 9.299900e-2 5.000000e+0 9.300000e-2 0.000000e+0 9.399900e-2 0.000000e+0 9.400000e-2 5.000000e+0 9.499900e-2 5.000000e+0 9.500000e-2 0.000000e+0 9.599900e-2 0.000000e+0 
++ 9.600000e-2 5.000000e+0 9.699900e-2 5.000000e+0 9.700000e-2 0.000000e+0 9.799900e-2 0.000000e+0 9.800000e-2 5.000000e+0 9.899900e-2 5.000000e+0 9.900000e-2 0.000000e+0 9.999900e-2 0.000000e+0 
++ 1.000000e-1 5.000000e+0 1.009990e-1 5.000000e+0 1.010000e-1 0.000000e+0 1.019990e-1 0.000000e+0 1.020000e-1 5.000000e+0 1.029990e-1 5.000000e+0 1.030000e-1 0.000000e+0 1.039990e-1 0.000000e+0 
++ 1.040000e-1 5.000000e+0 1.049990e-1 5.000000e+0 1.050000e-1 0.000000e+0 1.059990e-1 0.000000e+0 1.060000e-1 5.000000e+0 1.069990e-1 5.000000e+0 1.070000e-1 0.000000e+0 1.079990e-1 0.000000e+0 
++ 1.080000e-1 5.000000e+0 1.089990e-1 5.000000e+0 1.090000e-1 0.000000e+0 1.099990e-1 0.000000e+0 1.100000e-1 5.000000e+0 1.109990e-1 5.000000e+0 1.110000e-1 0.000000e+0 1.119990e-1 0.000000e+0 
++ 1.120000e-1 5.000000e+0 1.129990e-1 5.000000e+0 1.130000e-1 0.000000e+0 1.139990e-1 0.000000e+0 1.140000e-1 5.000000e+0 1.149990e-1 5.000000e+0 1.150000e-1 0.000000e+0 1.159990e-1 0.000000e+0 
++ 1.160000e-1 5.000000e+0 1.169990e-1 5.000000e+0 1.170000e-1 0.000000e+0 1.179990e-1 0.000000e+0 1.180000e-1 5.000000e+0 1.189990e-1 5.000000e+0 1.190000e-1 0.000000e+0 1.199990e-1 0.000000e+0 
++ 1.200000e-1 5.000000e+0 1.209990e-1 5.000000e+0 1.210000e-1 0.000000e+0 1.219990e-1 0.000000e+0 1.220000e-1 5.000000e+0 1.229990e-1 5.000000e+0 1.230000e-1 0.000000e+0 1.239990e-1 0.000000e+0 
++ 1.240000e-1 5.000000e+0 1.249990e-1 5.000000e+0 1.250000e-1 0.000000e+0 1.259990e-1 0.000000e+0 1.260000e-1 5.000000e+0 1.269990e-1 5.000000e+0 1.270000e-1 0.000000e+0 1.279990e-1 0.000000e+0 
++ 1.280000e-1 5.000000e+0 1.289990e-1 5.000000e+0 1.290000e-1 0.000000e+0 1.299990e-1 0.000000e+0 1.300000e-1 5.000000e+0 1.309990e-1 5.000000e+0 1.310000e-1 0.000000e+0 1.319990e-1 0.000000e+0 
++ 1.320000e-1 5.000000e+0 1.329990e-1 5.000000e+0 1.330000e-1 0.000000e+0 1.339990e-1 0.000000e+0 1.340000e-1 5.000000e+0 1.349990e-1 5.000000e+0 1.350000e-1 0.000000e+0 1.359990e-1 0.000000e+0 
++ 1.360000e-1 5.000000e+0 1.369990e-1 5.000000e+0 1.370000e-1 0.000000e+0 1.379990e-1 0.000000e+0 1.380000e-1 5.000000e+0 1.389990e-1 5.000000e+0 1.390000e-1 0.000000e+0 1.399990e-1 0.000000e+0 
++ 1.400000e-1 5.000000e+0 1.409990e-1 5.000000e+0 1.410000e-1 0.000000e+0 1.419990e-1 0.000000e+0 1.420000e-1 5.000000e+0 1.429990e-1 5.000000e+0 1.430000e-1 0.000000e+0 1.439990e-1 0.000000e+0 
++ 1.440000e-1 5.000000e+0 1.449990e-1 5.000000e+0 1.450000e-1 0.000000e+0 1.459990e-1 0.000000e+0 1.460000e-1 5.000000e+0 1.469990e-1 5.000000e+0 1.470000e-1 0.000000e+0 1.479990e-1 0.000000e+0 
++ 1.480000e-1 5.000000e+0 1.489990e-1 5.000000e+0 1.490000e-1 0.000000e+0 1.499990e-1 0.000000e+0 1.500000e-1 5.000000e+0 1.509990e-1 5.000000e+0 1.510000e-1 0.000000e+0 1.519990e-1 0.000000e+0 
++ 1.520000e-1 5.000000e+0 1.529990e-1 5.000000e+0 1.530000e-1 0.000000e+0 1.539990e-1 0.000000e+0 1.540000e-1 5.000000e+0 1.549990e-1 5.000000e+0 1.550000e-1 0.000000e+0 1.559990e-1 0.000000e+0 
++ 1.560000e-1 5.000000e+0 1.569990e-1 5.000000e+0 1.570000e-1 0.000000e+0 1.579990e-1 0.000000e+0 1.580000e-1 5.000000e+0 1.589990e-1 5.000000e+0 1.590000e-1 0.000000e+0 1.599990e-1 0.000000e+0 
++ 1.600000e-1 5.000000e+0 1.609990e-1 5.000000e+0 1.610000e-1 0.000000e+0 1.619990e-1 0.000000e+0 1.620000e-1 5.000000e+0 1.629990e-1 5.000000e+0 1.630000e-1 0.000000e+0 1.639990e-1 0.000000e+0 
++ 1.640000e-1 5.000000e+0 1.649990e-1 5.000000e+0 1.650000e-1 0.000000e+0 1.659990e-1 0.000000e+0 1.660000e-1 5.000000e+0 1.669990e-1 5.000000e+0 1.670000e-1 0.000000e+0 1.679990e-1 0.000000e+0 
++ 1.680000e-1 5.000000e+0 1.689990e-1 5.000000e+0 1.690000e-1 0.000000e+0 1.699990e-1 0.000000e+0 1.700000e-1 5.000000e+0 1.709990e-1 5.000000e+0 1.710000e-1 0.000000e+0 1.719990e-1 0.000000e+0 
++ 1.720000e-1 5.000000e+0 1.729990e-1 5.000000e+0 1.730000e-1 0.000000e+0 1.739990e-1 0.000000e+0 1.740000e-1 5.000000e+0 1.749990e-1 5.000000e+0 1.750000e-1 0.000000e+0 1.759990e-1 0.000000e+0 
++ 1.760000e-1 5.000000e+0 1.769990e-1 5.000000e+0 1.770000e-1 0.000000e+0 1.779990e-1 0.000000e+0 1.780000e-1 5.000000e+0 1.789990e-1 5.000000e+0 1.790000e-1 0.000000e+0 1.799990e-1 0.000000e+0 
++ 1.800000e-1 5.000000e+0 1.809990e-1 5.000000e+0 1.810000e-1 0.000000e+0 1.819990e-1 0.000000e+0 1.820000e-1 5.000000e+0 1.829990e-1 5.000000e+0 1.830000e-1 0.000000e+0 1.839990e-1 0.000000e+0 
++ 1.840000e-1 5.000000e+0 1.849990e-1 5.000000e+0 1.850000e-1 0.000000e+0 1.859990e-1 0.000000e+0 1.860000e-1 5.000000e+0 1.869990e-1 5.000000e+0 1.870000e-1 0.000000e+0 1.879990e-1 0.000000e+0 
++ 1.880000e-1 5.000000e+0 1.889990e-1 5.000000e+0 1.890000e-1 0.000000e+0 1.899990e-1 0.000000e+0 1.900000e-1 5.000000e+0 1.909990e-1 5.000000e+0 1.910000e-1 0.000000e+0 1.919990e-1 0.000000e+0 
++ 1.920000e-1 5.000000e+0 1.929990e-1 5.000000e+0 1.930000e-1 0.000000e+0 1.939990e-1 0.000000e+0 1.940000e-1 5.000000e+0 1.949990e-1 5.000000e+0 1.950000e-1 0.000000e+0 1.959990e-1 0.000000e+0 
++ 1.960000e-1 5.000000e+0 1.969990e-1 5.000000e+0 1.970000e-1 0.000000e+0 1.979990e-1 0.000000e+0 1.980000e-1 5.000000e+0 1.989990e-1 5.000000e+0 1.990000e-1 0.000000e+0 1.999990e-1 0.000000e+0 
++ 2.000000e-1 5.000000e+0 2.009990e-1 5.000000e+0 2.010000e-1 0.000000e+0 2.019990e-1 0.000000e+0 2.020000e-1 5.000000e+0 2.029990e-1 5.000000e+0 2.030000e-1 0.000000e+0 2.039990e-1 0.000000e+0 
++ 2.040000e-1 5.000000e+0 2.049990e-1 5.000000e+0 2.050000e-1 0.000000e+0 2.059990e-1 0.000000e+0 2.060000e-1 5.000000e+0 2.069990e-1 5.000000e+0 2.070000e-1 0.000000e+0 2.079990e-1 0.000000e+0 
++ 2.080000e-1 5.000000e+0 2.089990e-1 5.000000e+0 2.090000e-1 0.000000e+0 2.099990e-1 0.000000e+0 2.100000e-1 5.000000e+0 2.109990e-1 5.000000e+0 2.110000e-1 0.000000e+0 2.119990e-1 0.000000e+0 
++ 2.120000e-1 5.000000e+0 2.129990e-1 5.000000e+0 2.130000e-1 0.000000e+0 2.139990e-1 0.000000e+0 2.140000e-1 5.000000e+0 2.149990e-1 5.000000e+0 2.150000e-1 0.000000e+0 2.159990e-1 0.000000e+0 
++ 2.160000e-1 5.000000e+0 2.169990e-1 5.000000e+0 2.170000e-1 0.000000e+0 2.179990e-1 0.000000e+0 2.180000e-1 5.000000e+0 2.189990e-1 5.000000e+0 2.190000e-1 0.000000e+0 2.199990e-1 0.000000e+0 
++ 2.200000e-1 5.000000e+0 2.209990e-1 5.000000e+0 2.210000e-1 0.000000e+0 2.219990e-1 0.000000e+0 2.220000e-1 5.000000e+0 2.229990e-1 5.000000e+0 2.230000e-1 0.000000e+0 2.239990e-1 0.000000e+0 
++ 2.240000e-1 5.000000e+0 2.249990e-1 5.000000e+0 2.250000e-1 0.000000e+0 2.259990e-1 0.000000e+0 2.260000e-1 5.000000e+0 2.269990e-1 5.000000e+0 2.270000e-1 0.000000e+0 2.279990e-1 0.000000e+0 
++ 2.280000e-1 5.000000e+0 2.289990e-1 5.000000e+0 2.290000e-1 0.000000e+0 2.299990e-1 0.000000e+0 2.300000e-1 5.000000e+0 2.309990e-1 5.000000e+0 2.310000e-1 0.000000e+0 2.319990e-1 0.000000e+0 
++ 2.320000e-1 5.000000e+0 2.329990e-1 5.000000e+0 2.330000e-1 0.000000e+0 2.339990e-1 0.000000e+0 2.340000e-1 5.000000e+0 2.349990e-1 5.000000e+0 2.350000e-1 0.000000e+0 2.359990e-1 0.000000e+0 
++ 2.360000e-1 5.000000e+0 2.369990e-1 5.000000e+0 2.370000e-1 0.000000e+0 2.379990e-1 0.000000e+0 2.380000e-1 5.000000e+0 2.389990e-1 5.000000e+0 2.390000e-1 0.000000e+0 2.399990e-1 0.000000e+0 
++ 2.400000e-1 5.000000e+0 2.409990e-1 5.000000e+0 2.410000e-1 0.000000e+0 2.419990e-1 0.000000e+0 2.420000e-1 5.000000e+0 2.429990e-1 5.000000e+0 2.430000e-1 0.000000e+0 2.439990e-1 0.000000e+0 
++ 2.440000e-1 5.000000e+0 2.449990e-1 5.000000e+0 2.450000e-1 0.000000e+0 2.459990e-1 0.000000e+0 2.460000e-1 5.000000e+0 2.469990e-1 5.000000e+0 2.470000e-1 0.000000e+0 2.479990e-1 0.000000e+0 
++ 2.480000e-1 5.000000e+0 2.489990e-1 5.000000e+0 2.490000e-1 0.000000e+0 2.499990e-1 0.000000e+0 2.500000e-1 5.000000e+0 2.509990e-1 5.000000e+0 2.510000e-1 0.000000e+0 2.519990e-1 0.000000e+0 
++ 2.520000e-1 5.000000e+0 2.529990e-1 5.000000e+0 2.530000e-1 0.000000e+0 2.539990e-1 0.000000e+0 2.540000e-1 5.000000e+0 2.549990e-1 5.000000e+0 2.550000e-1 0.000000e+0 2.559990e-1 0.000000e+0 
++ 2.560000e-1 5.000000e+0 2.569990e-1 5.000000e+0 2.570000e-1 0.000000e+0 2.579990e-1 0.000000e+0 2.580000e-1 5.000000e+0 2.589990e-1 5.000000e+0 2.590000e-1 0.000000e+0 2.599990e-1 0.000000e+0 
++ 2.600000e-1 5.000000e+0 2.609990e-1 5.000000e+0 2.610000e-1 0.000000e+0 2.619990e-1 0.000000e+0 2.620000e-1 5.000000e+0 2.629990e-1 5.000000e+0 2.630000e-1 0.000000e+0 2.639990e-1 0.000000e+0 
++ 2.640000e-1 5.000000e+0 2.649990e-1 5.000000e+0 2.650000e-1 0.000000e+0 2.659990e-1 0.000000e+0 2.660000e-1 5.000000e+0 2.669990e-1 5.000000e+0 2.670000e-1 0.000000e+0 2.679990e-1 0.000000e+0 
++ 2.680000e-1 5.000000e+0 2.689990e-1 5.000000e+0 2.690000e-1 0.000000e+0 2.699990e-1 0.000000e+0 2.700000e-1 5.000000e+0 2.709990e-1 5.000000e+0 2.710000e-1 0.000000e+0 2.719990e-1 0.000000e+0 
++ 2.720000e-1 5.000000e+0 2.729990e-1 5.000000e+0 2.730000e-1 0.000000e+0 2.739990e-1 0.000000e+0 2.740000e-1 5.000000e+0 2.749990e-1 5.000000e+0 2.750000e-1 0.000000e+0 2.759990e-1 0.000000e+0 
++ 2.760000e-1 5.000000e+0 2.769990e-1 5.000000e+0 2.770000e-1 0.000000e+0 2.779990e-1 0.000000e+0 2.780000e-1 5.000000e+0 2.789990e-1 5.000000e+0 2.790000e-1 0.000000e+0 2.799990e-1 0.000000e+0 
++ 2.800000e-1 5.000000e+0 2.809990e-1 5.000000e+0 2.810000e-1 0.000000e+0 2.819990e-1 0.000000e+0 2.820000e-1 5.000000e+0 2.829990e-1 5.000000e+0 2.830000e-1 0.000000e+0 2.839990e-1 0.000000e+0 
++ 2.840000e-1 5.000000e+0 2.849990e-1 5.000000e+0 2.850000e-1 0.000000e+0 2.859990e-1 0.000000e+0 2.860000e-1 5.000000e+0 2.869990e-1 5.000000e+0 2.870000e-1 0.000000e+0 2.879990e-1 0.000000e+0 
++ 2.880000e-1 5.000000e+0 2.889990e-1 5.000000e+0 2.890000e-1 0.000000e+0 2.899990e-1 0.000000e+0 2.900000e-1 5.000000e+0 2.909990e-1 5.000000e+0 2.910000e-1 0.000000e+0 2.919990e-1 0.000000e+0 
++ 2.920000e-1 5.000000e+0 2.929990e-1 5.000000e+0 2.930000e-1 0.000000e+0 2.939990e-1 0.000000e+0 2.940000e-1 5.000000e+0 2.949990e-1 5.000000e+0 2.950000e-1 0.000000e+0 2.959990e-1 0.000000e+0 
++ 2.960000e-1 5.000000e+0 2.969990e-1 5.000000e+0 2.970000e-1 0.000000e+0 2.979990e-1 0.000000e+0 2.980000e-1 5.000000e+0 2.989990e-1 5.000000e+0 2.990000e-1 0.000000e+0 2.999990e-1 0.000000e+0 
++ 3.000000e-1 5.000000e+0 3.009990e-1 5.000000e+0 3.010000e-1 0.000000e+0 3.019990e-1 0.000000e+0 3.020000e-1 5.000000e+0 3.029990e-1 5.000000e+0 3.030000e-1 0.000000e+0 3.039990e-1 0.000000e+0 
++ 3.040000e-1 5.000000e+0 3.049990e-1 5.000000e+0 3.050000e-1 0.000000e+0 3.059990e-1 0.000000e+0 3.060000e-1 5.000000e+0 3.069990e-1 5.000000e+0 3.070000e-1 0.000000e+0 3.079990e-1 0.000000e+0 
++ 3.080000e-1 5.000000e+0 3.089990e-1 5.000000e+0 3.090000e-1 0.000000e+0 3.099990e-1 0.000000e+0 3.100000e-1 5.000000e+0 3.109990e-1 5.000000e+0 3.110000e-1 0.000000e+0 3.119990e-1 0.000000e+0 
++ 3.120000e-1 5.000000e+0 3.129990e-1 5.000000e+0 3.130000e-1 0.000000e+0 3.139990e-1 0.000000e+0 3.140000e-1 5.000000e+0 3.149990e-1 5.000000e+0 3.150000e-1 0.000000e+0 3.159990e-1 0.000000e+0 
++ 3.160000e-1 5.000000e+0 3.169990e-1 5.000000e+0 3.170000e-1 0.000000e+0 3.179990e-1 0.000000e+0 3.180000e-1 5.000000e+0 3.189990e-1 5.000000e+0 3.190000e-1 0.000000e+0 3.199990e-1 0.000000e+0 
++ 3.200000e-1 5.000000e+0 3.209990e-1 5.000000e+0 3.210000e-1 0.000000e+0 3.219990e-1 0.000000e+0 3.220000e-1 5.000000e+0 3.229990e-1 5.000000e+0 3.230000e-1 0.000000e+0 3.239990e-1 0.000000e+0 
++ 3.240000e-1 5.000000e+0 3.249990e-1 5.000000e+0 3.250000e-1 0.000000e+0 3.259990e-1 0.000000e+0 3.260000e-1 5.000000e+0 3.269990e-1 5.000000e+0 3.270000e-1 0.000000e+0 3.279990e-1 0.000000e+0 
++ 3.280000e-1 5.000000e+0 3.289990e-1 5.000000e+0 3.290000e-1 0.000000e+0 3.299990e-1 0.000000e+0 3.300000e-1 5.000000e+0 3.309990e-1 5.000000e+0 3.310000e-1 0.000000e+0 3.319990e-1 0.000000e+0 
++ 3.320000e-1 5.000000e+0 3.329990e-1 5.000000e+0 3.330000e-1 0.000000e+0 3.339990e-1 0.000000e+0 3.340000e-1 5.000000e+0 3.349990e-1 5.000000e+0 3.350000e-1 0.000000e+0 3.359990e-1 0.000000e+0 
++ 3.360000e-1 5.000000e+0 3.369990e-1 5.000000e+0 3.370000e-1 0.000000e+0 3.379990e-1 0.000000e+0 3.380000e-1 5.000000e+0 3.389990e-1 5.000000e+0 3.390000e-1 0.000000e+0 3.399990e-1 0.000000e+0 
++ 3.400000e-1 5.000000e+0 3.409990e-1 5.000000e+0 3.410000e-1 0.000000e+0 3.419990e-1 0.000000e+0 3.420000e-1 5.000000e+0 3.429990e-1 5.000000e+0 3.430000e-1 0.000000e+0 3.439990e-1 0.000000e+0 
++ 3.440000e-1 5.000000e+0 3.449990e-1 5.000000e+0 3.450000e-1 0.000000e+0 3.459990e-1 0.000000e+0 3.460000e-1 5.000000e+0 3.469990e-1 5.000000e+0 3.470000e-1 0.000000e+0 3.479990e-1 0.000000e+0 
++ 3.480000e-1 5.000000e+0 3.489990e-1 5.000000e+0 3.490000e-1 0.000000e+0 3.499990e-1 0.000000e+0 3.500000e-1 5.000000e+0 3.509990e-1 5.000000e+0 3.510000e-1 0.000000e+0 3.519990e-1 0.000000e+0 
++ 3.520000e-1 5.000000e+0 3.529990e-1 5.000000e+0 3.530000e-1 0.000000e+0 3.539990e-1 0.000000e+0 3.540000e-1 5.000000e+0 3.549990e-1 5.000000e+0 3.550000e-1 0.000000e+0 3.559990e-1 0.000000e+0 
++ 3.560000e-1 5.000000e+0 3.569990e-1 5.000000e+0 3.570000e-1 0.000000e+0 3.579990e-1 0.000000e+0 3.580000e-1 5.000000e+0 3.589990e-1 5.000000e+0 3.590000e-1 0.000000e+0 3.599990e-1 0.000000e+0 
++ 3.600000e-1 5.000000e+0 3.609990e-1 5.000000e+0 3.610000e-1 0.000000e+0 3.619990e-1 0.000000e+0 3.620000e-1 5.000000e+0 3.629990e-1 5.000000e+0 3.630000e-1 0.000000e+0 3.639990e-1 0.000000e+0 
++ 3.640000e-1 5.000000e+0 3.649990e-1 5.000000e+0 3.650000e-1 0.000000e+0 3.659990e-1 0.000000e+0 3.660000e-1 5.000000e+0 3.669990e-1 5.000000e+0 3.670000e-1 0.000000e+0 3.679990e-1 0.000000e+0 
++ 3.680000e-1 5.000000e+0 3.689990e-1 5.000000e+0 3.690000e-1 0.000000e+0 3.699990e-1 0.000000e+0 3.700000e-1 5.000000e+0 3.709990e-1 5.000000e+0 3.710000e-1 0.000000e+0 3.719990e-1 0.000000e+0 
++ 3.720000e-1 5.000000e+0 3.729990e-1 5.000000e+0 3.730000e-1 0.000000e+0 3.739990e-1 0.000000e+0 3.740000e-1 5.000000e+0 3.749990e-1 5.000000e+0 3.750000e-1 0.000000e+0 3.759990e-1 0.000000e+0 
++ 3.760000e-1 5.000000e+0 3.769990e-1 5.000000e+0 3.770000e-1 0.000000e+0 3.779990e-1 0.000000e+0 3.780000e-1 5.000000e+0 3.789990e-1 5.000000e+0 3.790000e-1 0.000000e+0 3.799990e-1 0.000000e+0 
++ 3.800000e-1 5.000000e+0 3.809990e-1 5.000000e+0 3.810000e-1 0.000000e+0 3.819990e-1 0.000000e+0 3.820000e-1 5.000000e+0 3.829990e-1 5.000000e+0 3.830000e-1 0.000000e+0 3.839990e-1 0.000000e+0 
++ 3.840000e-1 5.000000e+0 3.849990e-1 5.000000e+0 3.850000e-1 0.000000e+0 3.859990e-1 0.000000e+0 3.860000e-1 5.000000e+0 3.869990e-1 5.000000e+0 3.870000e-1 0.000000e+0 3.879990e-1 0.000000e+0 
++ 3.880000e-1 5.000000e+0 3.889990e-1 5.000000e+0 3.890000e-1 0.000000e+0 3.899990e-1 0.000000e+0 3.900000e-1 5.000000e+0 3.909990e-1 5.000000e+0 3.910000e-1 0.000000e+0 3.919990e-1 0.000000e+0 
++ 3.920000e-1 5.000000e+0 3.929990e-1 5.000000e+0 3.930000e-1 0.000000e+0 3.939990e-1 0.000000e+0 3.940000e-1 5.000000e+0 3.949990e-1 5.000000e+0 3.950000e-1 0.000000e+0 3.959990e-1 0.000000e+0 
++ 3.960000e-1 5.000000e+0 3.969990e-1 5.000000e+0 3.970000e-1 0.000000e+0 3.979990e-1 0.000000e+0 3.980000e-1 5.000000e+0 3.989990e-1 5.000000e+0 3.990000e-1 0.000000e+0 3.999990e-1 0.000000e+0 
++ 4.000000e-1 5.000000e+0 4.009990e-1 5.000000e+0 4.010000e-1 0.000000e+0 4.019990e-1 0.000000e+0 4.020000e-1 5.000000e+0 4.029990e-1 5.000000e+0 4.030000e-1 0.000000e+0 4.039990e-1 0.000000e+0 
++ 4.040000e-1 5.000000e+0 4.049990e-1 5.000000e+0 4.050000e-1 0.000000e+0 4.059990e-1 0.000000e+0 4.060000e-1 5.000000e+0 4.069990e-1 5.000000e+0 4.070000e-1 0.000000e+0 4.079990e-1 0.000000e+0 
++ 4.080000e-1 5.000000e+0 4.089990e-1 5.000000e+0 4.090000e-1 0.000000e+0 4.099990e-1 0.000000e+0 4.100000e-1 5.000000e+0 4.109990e-1 5.000000e+0 4.110000e-1 0.000000e+0 4.119990e-1 0.000000e+0 
++ 4.120000e-1 5.000000e+0 4.129990e-1 5.000000e+0 4.130000e-1 0.000000e+0 4.139990e-1 0.000000e+0 4.140000e-1 5.000000e+0 4.149990e-1 5.000000e+0 4.150000e-1 0.000000e+0 4.159990e-1 0.000000e+0 
++ 4.160000e-1 5.000000e+0 4.169990e-1 5.000000e+0 4.170000e-1 0.000000e+0 4.179990e-1 0.000000e+0 4.180000e-1 5.000000e+0 4.189990e-1 5.000000e+0 4.190000e-1 0.000000e+0 4.199990e-1 0.000000e+0 
++ 4.200000e-1 5.000000e+0 4.209990e-1 5.000000e+0 4.210000e-1 0.000000e+0 4.219990e-1 0.000000e+0 4.220000e-1 5.000000e+0 4.229990e-1 5.000000e+0 4.230000e-1 0.000000e+0 4.239990e-1 0.000000e+0 
++ 4.240000e-1 5.000000e+0 4.249990e-1 5.000000e+0 4.250000e-1 0.000000e+0 4.259990e-1 0.000000e+0 4.260000e-1 5.000000e+0 4.269990e-1 5.000000e+0 4.270000e-1 0.000000e+0 4.279990e-1 0.000000e+0 
++ 4.280000e-1 5.000000e+0 4.289990e-1 5.000000e+0 4.290000e-1 0.000000e+0 4.299990e-1 0.000000e+0 4.300000e-1 5.000000e+0 4.309990e-1 5.000000e+0 4.310000e-1 0.000000e+0 4.319990e-1 0.000000e+0 
++ 4.320000e-1 5.000000e+0 4.329990e-1 5.000000e+0 4.330000e-1 0.000000e+0 4.339990e-1 0.000000e+0 4.340000e-1 5.000000e+0 4.349990e-1 5.000000e+0 4.350000e-1 0.000000e+0 4.359990e-1 0.000000e+0 
++ 4.360000e-1 5.000000e+0 4.369990e-1 5.000000e+0 4.370000e-1 0.000000e+0 4.379990e-1 0.000000e+0 4.380000e-1 5.000000e+0 4.389990e-1 5.000000e+0 4.390000e-1 0.000000e+0 4.399990e-1 0.000000e+0 
++ 4.400000e-1 5.000000e+0 4.409990e-1 5.000000e+0 4.410000e-1 0.000000e+0 4.419990e-1 0.000000e+0 4.420000e-1 5.000000e+0 4.429990e-1 5.000000e+0 4.430000e-1 0.000000e+0 4.439990e-1 0.000000e+0 
++ 4.440000e-1 5.000000e+0 4.449990e-1 5.000000e+0 4.450000e-1 0.000000e+0 4.459990e-1 0.000000e+0 4.460000e-1 5.000000e+0 4.469990e-1 5.000000e+0 4.470000e-1 0.000000e+0 4.479990e-1 0.000000e+0 
++ 4.480000e-1 5.000000e+0 4.489990e-1 5.000000e+0 4.490000e-1 0.000000e+0 4.499990e-1 0.000000e+0 4.500000e-1 5.000000e+0 4.509990e-1 5.000000e+0 4.510000e-1 0.000000e+0 4.519990e-1 0.000000e+0 
++ 4.520000e-1 5.000000e+0 4.529990e-1 5.000000e+0 4.530000e-1 0.000000e+0 4.539990e-1 0.000000e+0 4.540000e-1 5.000000e+0 4.549990e-1 5.000000e+0 4.550000e-1 0.000000e+0 4.559990e-1 0.000000e+0 
++ 4.560000e-1 5.000000e+0 4.569990e-1 5.000000e+0 4.570000e-1 0.000000e+0 4.579990e-1 0.000000e+0 4.580000e-1 5.000000e+0 4.589990e-1 5.000000e+0 4.590000e-1 0.000000e+0 4.599990e-1 0.000000e+0 
++ 4.600000e-1 5.000000e+0 4.609990e-1 5.000000e+0 4.610000e-1 0.000000e+0 4.619990e-1 0.000000e+0 4.620000e-1 5.000000e+0 4.629990e-1 5.000000e+0 4.630000e-1 0.000000e+0 4.639990e-1 0.000000e+0 
++ 4.640000e-1 5.000000e+0 4.649990e-1 5.000000e+0 4.650000e-1 0.000000e+0 4.659990e-1 0.000000e+0 4.660000e-1 5.000000e+0 4.669990e-1 5.000000e+0 4.670000e-1 0.000000e+0 4.679990e-1 0.000000e+0 
++ 4.680000e-1 5.000000e+0 4.689990e-1 5.000000e+0 4.690000e-1 0.000000e+0 4.699990e-1 0.000000e+0 4.700000e-1 5.000000e+0 4.709990e-1 5.000000e+0 4.710000e-1 0.000000e+0 4.719990e-1 0.000000e+0 
++ 4.720000e-1 5.000000e+0 4.729990e-1 5.000000e+0 4.730000e-1 0.000000e+0 4.739990e-1 0.000000e+0 4.740000e-1 5.000000e+0 4.749990e-1 5.000000e+0 4.750000e-1 0.000000e+0 4.759990e-1 0.000000e+0 
++ 4.760000e-1 5.000000e+0 4.769990e-1 5.000000e+0 4.770000e-1 0.000000e+0 4.779990e-1 0.000000e+0 4.780000e-1 5.000000e+0 4.789990e-1 5.000000e+0 4.790000e-1 0.000000e+0 4.799990e-1 0.000000e+0 
++ 4.800000e-1 5.000000e+0 4.809990e-1 5.000000e+0 4.810000e-1 0.000000e+0 4.819990e-1 0.000000e+0 4.820000e-1 5.000000e+0 4.829990e-1 5.000000e+0 4.830000e-1 0.000000e+0 4.839990e-1 0.000000e+0 
++ 4.840000e-1 5.000000e+0 4.849990e-1 5.000000e+0 4.850000e-1 0.000000e+0 4.859990e-1 0.000000e+0 4.860000e-1 5.000000e+0 4.869990e-1 5.000000e+0 4.870000e-1 0.000000e+0 4.879990e-1 0.000000e+0 
++ 4.880000e-1 5.000000e+0 4.889990e-1 5.000000e+0 4.890000e-1 0.000000e+0 4.899990e-1 0.000000e+0 4.900000e-1 5.000000e+0 4.909990e-1 5.000000e+0 4.910000e-1 0.000000e+0 4.919990e-1 0.000000e+0 
++ 4.920000e-1 5.000000e+0 4.929990e-1 5.000000e+0 4.930000e-1 0.000000e+0 4.939990e-1 0.000000e+0 4.940000e-1 5.000000e+0 4.949990e-1 5.000000e+0 4.950000e-1 0.000000e+0 4.959990e-1 0.000000e+0 
++ 4.960000e-1 5.000000e+0 4.969990e-1 5.000000e+0 4.970000e-1 0.000000e+0 4.979990e-1 0.000000e+0 4.980000e-1 5.000000e+0 4.989990e-1 5.000000e+0 4.990000e-1 0.000000e+0 4.999990e-1 0.000000e+0 
++ 5.000000e-1 5.000000e+0 5.009990e-1 5.000000e+0 5.010000e-1 0.000000e+0 5.019990e-1 0.000000e+0 5.020000e-1 5.000000e+0 5.029990e-1 5.000000e+0 5.030000e-1 0.000000e+0 5.039990e-1 0.000000e+0 
++ 5.040000e-1 5.000000e+0 5.049990e-1 5.000000e+0 5.050000e-1 0.000000e+0 5.059990e-1 0.000000e+0 5.060000e-1 5.000000e+0 5.069990e-1 5.000000e+0 5.070000e-1 0.000000e+0 5.079990e-1 0.000000e+0 
++ 5.080000e-1 5.000000e+0 5.089990e-1 5.000000e+0 5.090000e-1 0.000000e+0 5.099990e-1 0.000000e+0 5.100000e-1 5.000000e+0 5.109990e-1 5.000000e+0 5.110000e-1 0.000000e+0 5.119990e-1 0.000000e+0 
++ 5.120000e-1 5.000000e+0 5.129990e-1 5.000000e+0 5.130000e-1 0.000000e+0 5.139990e-1 0.000000e+0 5.140000e-1 5.000000e+0 5.149990e-1 5.000000e+0 5.150000e-1 0.000000e+0 5.159990e-1 0.000000e+0 
++ 5.160000e-1 5.000000e+0 5.169990e-1 5.000000e+0 5.170000e-1 0.000000e+0 5.179990e-1 0.000000e+0 5.180000e-1 5.000000e+0 5.189990e-1 5.000000e+0 5.190000e-1 0.000000e+0 5.199990e-1 0.000000e+0 
++ 5.200000e-1 5.000000e+0 5.209990e-1 5.000000e+0 5.210000e-1 0.000000e+0 5.219990e-1 0.000000e+0 5.220000e-1 5.000000e+0 5.229990e-1 5.000000e+0 5.230000e-1 0.000000e+0 5.239990e-1 0.000000e+0 
++ 5.240000e-1 5.000000e+0 5.249990e-1 5.000000e+0 5.250000e-1 0.000000e+0 5.259990e-1 0.000000e+0 5.260000e-1 5.000000e+0 5.269990e-1 5.000000e+0 5.270000e-1 0.000000e+0 5.279990e-1 0.000000e+0 
++ 5.280000e-1 5.000000e+0 5.289990e-1 5.000000e+0 5.290000e-1 0.000000e+0 5.299990e-1 0.000000e+0 5.300000e-1 5.000000e+0 5.309990e-1 5.000000e+0 5.310000e-1 0.000000e+0 5.319990e-1 0.000000e+0 
++ 5.320000e-1 5.000000e+0 5.329990e-1 5.000000e+0 5.330000e-1 0.000000e+0 5.339990e-1 0.000000e+0 5.340000e-1 5.000000e+0 5.349990e-1 5.000000e+0 5.350000e-1 0.000000e+0 5.359990e-1 0.000000e+0 
++ 5.360000e-1 5.000000e+0 5.369990e-1 5.000000e+0 5.370000e-1 0.000000e+0 5.379990e-1 0.000000e+0 5.380000e-1 5.000000e+0 5.389990e-1 5.000000e+0 5.390000e-1 0.000000e+0 5.399990e-1 0.000000e+0 
++ 5.400000e-1 5.000000e+0 5.409990e-1 5.000000e+0 5.410000e-1 0.000000e+0 5.419990e-1 0.000000e+0 5.420000e-1 5.000000e+0 5.429990e-1 5.000000e+0 5.430000e-1 0.000000e+0 5.439990e-1 0.000000e+0 
++ 5.440000e-1 5.000000e+0 5.449990e-1 5.000000e+0 5.450000e-1 0.000000e+0 5.459990e-1 0.000000e+0 5.460000e-1 5.000000e+0 5.469990e-1 5.000000e+0 5.470000e-1 0.000000e+0 5.479990e-1 0.000000e+0 
++ 5.480000e-1 5.000000e+0 5.489990e-1 5.000000e+0 5.490000e-1 0.000000e+0 5.499990e-1 0.000000e+0 5.500000e-1 5.000000e+0 5.509990e-1 5.000000e+0 5.510000e-1 0.000000e+0 5.519990e-1 0.000000e+0 
++ 5.520000e-1 5.000000e+0 5.529990e-1 5.000000e+0 5.530000e-1 0.000000e+0 5.539990e-1 0.000000e+0 5.540000e-1 5.000000e+0 5.549990e-1 5.000000e+0 5.550000e-1 0.000000e+0 5.559990e-1 0.000000e+0 
++ 5.560000e-1 5.000000e+0 5.569990e-1 5.000000e+0 5.570000e-1 0.000000e+0 5.579990e-1 0.000000e+0 5.580000e-1 5.000000e+0 5.589990e-1 5.000000e+0 5.590000e-1 0.000000e+0 5.599990e-1 0.000000e+0 
++ 5.600000e-1 5.000000e+0 5.609990e-1 5.000000e+0 5.610000e-1 0.000000e+0 5.619990e-1 0.000000e+0 5.620000e-1 5.000000e+0 5.629990e-1 5.000000e+0 5.630000e-1 0.000000e+0 5.639990e-1 0.000000e+0 
++ 5.640000e-1 5.000000e+0 5.649990e-1 5.000000e+0 5.650000e-1 0.000000e+0 5.659990e-1 0.000000e+0 5.660000e-1 5.000000e+0 5.669990e-1 5.000000e+0 5.670000e-1 0.000000e+0 5.679990e-1 0.000000e+0 
++ 5.680000e-1 5.000000e+0 5.689990e-1 5.000000e+0 5.690000e-1 0.000000e+0 5.699990e-1 0.000000e+0 5.700000e-1 5.000000e+0 5.709990e-1 5.000000e+0 5.710000e-1 0.000000e+0 5.719990e-1 0.000000e+0 
++ 5.720000e-1 5.000000e+0 5.729990e-1 5.000000e+0 5.730000e-1 0.000000e+0 5.739990e-1 0.000000e+0 5.740000e-1 5.000000e+0 5.749990e-1 5.000000e+0 5.750000e-1 0.000000e+0 5.759990e-1 0.000000e+0 
++ 5.760000e-1 5.000000e+0 5.769990e-1 5.000000e+0 5.770000e-1 0.000000e+0 5.779990e-1 0.000000e+0 5.780000e-1 5.000000e+0 5.789990e-1 5.000000e+0 5.790000e-1 0.000000e+0 5.799990e-1 0.000000e+0 
++ 5.800000e-1 5.000000e+0 5.809990e-1 5.000000e+0 5.810000e-1 0.000000e+0 5.819990e-1 0.000000e+0 5.820000e-1 5.000000e+0 5.829990e-1 5.000000e+0 5.830000e-1 0.000000e+0 5.839990e-1 0.000000e+0 
++ 5.840000e-1 5.000000e+0 5.849990e-1 5.000000e+0 5.850000e-1 0.000000e+0 5.859990e-1 0.000000e+0 5.860000e-1 5.000000e+0 5.869990e-1 5.000000e+0 5.870000e-1 0.000000e+0 5.879990e-1 0.000000e+0 
++ 5.880000e-1 5.000000e+0 5.889990e-1 5.000000e+0 5.890000e-1 0.000000e+0 5.899990e-1 0.000000e+0 5.900000e-1 5.000000e+0 5.909990e-1 5.000000e+0 5.910000e-1 0.000000e+0 5.919990e-1 0.000000e+0 
++ 5.920000e-1 5.000000e+0 5.929990e-1 5.000000e+0 5.930000e-1 0.000000e+0 5.939990e-1 0.000000e+0 5.940000e-1 5.000000e+0 5.949990e-1 5.000000e+0 5.950000e-1 0.000000e+0 5.959990e-1 0.000000e+0 
++ 5.960000e-1 5.000000e+0 5.969990e-1 5.000000e+0 5.970000e-1 0.000000e+0 5.979990e-1 0.000000e+0 5.980000e-1 5.000000e+0 5.989990e-1 5.000000e+0 5.990000e-1 0.000000e+0 5.999990e-1 0.000000e+0 
++ 6.000000e-1 5.000000e+0 6.009990e-1 5.000000e+0 6.010000e-1 0.000000e+0 6.019990e-1 0.000000e+0 6.020000e-1 5.000000e+0 6.029990e-1 5.000000e+0 6.030000e-1 0.000000e+0 6.039990e-1 0.000000e+0 
++ 6.040000e-1 5.000000e+0 6.049990e-1 5.000000e+0 6.050000e-1 0.000000e+0 6.059990e-1 0.000000e+0 6.060000e-1 5.000000e+0 6.069990e-1 5.000000e+0 6.070000e-1 0.000000e+0 6.079990e-1 0.000000e+0 
++ 6.080000e-1 5.000000e+0 6.089990e-1 5.000000e+0 6.090000e-1 0.000000e+0 6.099990e-1 0.000000e+0 6.100000e-1 5.000000e+0 6.109990e-1 5.000000e+0 6.110000e-1 0.000000e+0 6.119990e-1 0.000000e+0 
++ 6.120000e-1 5.000000e+0 6.129990e-1 5.000000e+0 6.130000e-1 0.000000e+0 6.139990e-1 0.000000e+0 6.140000e-1 5.000000e+0 6.149990e-1 5.000000e+0 6.150000e-1 0.000000e+0 6.159990e-1 0.000000e+0 
++ 6.160000e-1 5.000000e+0 6.169990e-1 5.000000e+0 6.170000e-1 0.000000e+0 6.179990e-1 0.000000e+0 6.180000e-1 5.000000e+0 6.189990e-1 5.000000e+0 6.190000e-1 0.000000e+0 6.199990e-1 0.000000e+0 
++ 6.200000e-1 5.000000e+0 6.209990e-1 5.000000e+0 6.210000e-1 0.000000e+0 6.219990e-1 0.000000e+0 6.220000e-1 5.000000e+0 6.229990e-1 5.000000e+0 6.230000e-1 0.000000e+0 6.239990e-1 0.000000e+0 
++ 6.240000e-1 5.000000e+0 6.249990e-1 5.000000e+0 6.250000e-1 0.000000e+0 6.259990e-1 0.000000e+0 6.260000e-1 5.000000e+0 6.269990e-1 5.000000e+0 6.270000e-1 0.000000e+0 6.279990e-1 0.000000e+0 
++ 6.280000e-1 5.000000e+0 6.289990e-1 5.000000e+0 6.290000e-1 0.000000e+0 6.299990e-1 0.000000e+0 6.300000e-1 5.000000e+0 6.309990e-1 5.000000e+0 6.310000e-1 0.000000e+0 6.319990e-1 0.000000e+0 
++ 6.320000e-1 5.000000e+0 6.329990e-1 5.000000e+0 6.330000e-1 0.000000e+0 6.339990e-1 0.000000e+0 6.340000e-1 5.000000e+0 6.349990e-1 5.000000e+0 6.350000e-1 0.000000e+0 6.359990e-1 0.000000e+0 
++ 6.360000e-1 5.000000e+0 6.369990e-1 5.000000e+0 6.370000e-1 0.000000e+0 6.379990e-1 0.000000e+0 6.380000e-1 5.000000e+0 6.389990e-1 5.000000e+0 6.390000e-1 0.000000e+0 6.399990e-1 0.000000e+0 
++ 6.400000e-1 5.000000e+0 6.409990e-1 5.000000e+0 6.410000e-1 0.000000e+0 6.419990e-1 0.000000e+0 6.420000e-1 5.000000e+0 6.429990e-1 5.000000e+0 6.430000e-1 0.000000e+0 6.439990e-1 0.000000e+0 
++ 6.440000e-1 5.000000e+0 6.449990e-1 5.000000e+0 6.450000e-1 0.000000e+0 6.459990e-1 0.000000e+0 6.460000e-1 5.000000e+0 6.469990e-1 5.000000e+0 6.470000e-1 0.000000e+0 6.479990e-1 0.000000e+0 
++ 6.480000e-1 5.000000e+0 6.489990e-1 5.000000e+0 6.490000e-1 0.000000e+0 6.499990e-1 0.000000e+0 6.500000e-1 5.000000e+0 6.509990e-1 5.000000e+0 6.510000e-1 0.000000e+0 6.519990e-1 0.000000e+0 
++ 6.520000e-1 5.000000e+0 6.529990e-1 5.000000e+0 6.530000e-1 0.000000e+0 6.539990e-1 0.000000e+0 6.540000e-1 5.000000e+0 6.549990e-1 5.000000e+0 6.550000e-1 0.000000e+0 6.559990e-1 0.000000e+0 
++ 6.560000e-1 5.000000e+0 6.569990e-1 5.000000e+0 6.570000e-1 0.000000e+0 6.579990e-1 0.000000e+0 6.580000e-1 5.000000e+0 6.589990e-1 5.000000e+0 6.590000e-1 0.000000e+0 6.599990e-1 0.000000e+0 
++ 6.600000e-1 5.000000e+0 6.609990e-1 5.000000e+0 6.610000e-1 0.000000e+0 6.619990e-1 0.000000e+0 6.620000e-1 5.000000e+0 6.629990e-1 5.000000e+0 6.630000e-1 0.000000e+0 6.639990e-1 0.000000e+0 
++ 6.640000e-1 5.000000e+0 6.649990e-1 5.000000e+0 6.650000e-1 0.000000e+0 6.659990e-1 0.000000e+0 6.660000e-1 5.000000e+0 6.669990e-1 5.000000e+0 6.670000e-1 0.000000e+0 6.679990e-1 0.000000e+0 
++ 6.680000e-1 5.000000e+0 6.689990e-1 5.000000e+0 6.690000e-1 0.000000e+0 6.699990e-1 0.000000e+0 6.700000e-1 5.000000e+0 6.709990e-1 5.000000e+0 6.710000e-1 0.000000e+0 6.719990e-1 0.000000e+0 
++ 6.720000e-1 5.000000e+0 6.729990e-1 5.000000e+0 6.730000e-1 0.000000e+0 6.739990e-1 0.000000e+0 6.740000e-1 5.000000e+0 6.749990e-1 5.000000e+0 6.750000e-1 0.000000e+0 6.759990e-1 0.000000e+0 
++ 6.760000e-1 5.000000e+0 6.769990e-1 5.000000e+0 6.770000e-1 0.000000e+0 6.779990e-1 0.000000e+0 6.780000e-1 5.000000e+0 6.789990e-1 5.000000e+0 6.790000e-1 0.000000e+0 6.799990e-1 0.000000e+0 
++ 6.800000e-1 5.000000e+0 6.809990e-1 5.000000e+0 6.810000e-1 0.000000e+0 6.819990e-1 0.000000e+0 6.820000e-1 5.000000e+0 6.829990e-1 5.000000e+0 6.830000e-1 0.000000e+0 6.839990e-1 0.000000e+0 
++ 6.840000e-1 5.000000e+0 6.849990e-1 5.000000e+0 6.850000e-1 0.000000e+0 6.859990e-1 0.000000e+0 6.860000e-1 5.000000e+0 6.869990e-1 5.000000e+0 6.870000e-1 0.000000e+0 6.879990e-1 0.000000e+0 
++ 6.880000e-1 5.000000e+0 6.889990e-1 5.000000e+0 6.890000e-1 0.000000e+0 6.899990e-1 0.000000e+0 6.900000e-1 5.000000e+0 6.909990e-1 5.000000e+0 6.910000e-1 0.000000e+0 6.919990e-1 0.000000e+0 
++ 6.920000e-1 5.000000e+0 6.929990e-1 5.000000e+0 6.930000e-1 0.000000e+0 6.939990e-1 0.000000e+0 6.940000e-1 5.000000e+0 6.949990e-1 5.000000e+0 6.950000e-1 0.000000e+0 6.959990e-1 0.000000e+0 
++ 6.960000e-1 5.000000e+0 6.969990e-1 5.000000e+0 6.970000e-1 0.000000e+0 6.979990e-1 0.000000e+0 6.980000e-1 5.000000e+0 6.989990e-1 5.000000e+0 6.990000e-1 0.000000e+0 6.999990e-1 0.000000e+0 
++ 7.000000e-1 5.000000e+0 7.009990e-1 5.000000e+0 7.010000e-1 0.000000e+0 7.019990e-1 0.000000e+0 7.020000e-1 5.000000e+0 7.029990e-1 5.000000e+0 7.030000e-1 0.000000e+0 7.039990e-1 0.000000e+0 
++ 7.040000e-1 5.000000e+0 7.049990e-1 5.000000e+0 7.050000e-1 0.000000e+0 7.059990e-1 0.000000e+0 7.060000e-1 5.000000e+0 7.069990e-1 5.000000e+0 7.070000e-1 0.000000e+0 7.079990e-1 0.000000e+0 
++ 7.080000e-1 5.000000e+0 7.089990e-1 5.000000e+0 7.090000e-1 0.000000e+0 7.099990e-1 0.000000e+0 7.100000e-1 5.000000e+0 7.109990e-1 5.000000e+0 7.110000e-1 0.000000e+0 7.119990e-1 0.000000e+0 
++ 7.120000e-1 5.000000e+0 7.129990e-1 5.000000e+0 7.130000e-1 0.000000e+0 7.139990e-1 0.000000e+0 7.140000e-1 5.000000e+0 7.149990e-1 5.000000e+0 7.150000e-1 0.000000e+0 7.159990e-1 0.000000e+0 
++ 7.160000e-1 5.000000e+0 7.169990e-1 5.000000e+0 7.170000e-1 0.000000e+0 7.179990e-1 0.000000e+0 7.180000e-1 5.000000e+0 7.189990e-1 5.000000e+0 7.190000e-1 0.000000e+0 7.199990e-1 0.000000e+0 
++ 7.200000e-1 5.000000e+0 7.209990e-1 5.000000e+0 7.210000e-1 0.000000e+0 7.219990e-1 0.000000e+0 7.220000e-1 5.000000e+0 7.229990e-1 5.000000e+0 7.230000e-1 0.000000e+0 7.239990e-1 0.000000e+0 
++ 7.240000e-1 5.000000e+0 7.249990e-1 5.000000e+0 7.250000e-1 0.000000e+0 7.259990e-1 0.000000e+0 7.260000e-1 5.000000e+0 7.269990e-1 5.000000e+0 7.270000e-1 0.000000e+0 7.279990e-1 0.000000e+0 
++ 7.280000e-1 5.000000e+0 7.289990e-1 5.000000e+0 7.290000e-1 0.000000e+0 7.299990e-1 0.000000e+0 7.300000e-1 5.000000e+0 7.309990e-1 5.000000e+0 7.310000e-1 0.000000e+0 7.319990e-1 0.000000e+0 
++ 7.320000e-1 5.000000e+0 7.329990e-1 5.000000e+0 7.330000e-1 0.000000e+0 7.339990e-1 0.000000e+0 7.340000e-1 5.000000e+0 7.349990e-1 5.000000e+0 7.350000e-1 0.000000e+0 7.359990e-1 0.000000e+0 
++ 7.360000e-1 5.000000e+0 7.369990e-1 5.000000e+0 7.370000e-1 0.000000e+0 7.379990e-1 0.000000e+0 7.380000e-1 5.000000e+0 7.389990e-1 5.000000e+0 7.390000e-1 0.000000e+0 7.399990e-1 0.000000e+0 
++ 7.400000e-1 5.000000e+0 7.409990e-1 5.000000e+0 7.410000e-1 0.000000e+0 7.419990e-1 0.000000e+0 7.420000e-1 5.000000e+0 7.429990e-1 5.000000e+0 7.430000e-1 0.000000e+0 7.439990e-1 0.000000e+0 
++ 7.440000e-1 5.000000e+0 7.449990e-1 5.000000e+0 7.450000e-1 0.000000e+0 7.459990e-1 0.000000e+0 7.460000e-1 5.000000e+0 7.469990e-1 5.000000e+0 7.470000e-1 0.000000e+0 7.479990e-1 0.000000e+0 
++ 7.480000e-1 5.000000e+0 7.489990e-1 5.000000e+0 7.490000e-1 0.000000e+0 7.499990e-1 0.000000e+0 7.500000e-1 5.000000e+0 7.509990e-1 5.000000e+0 7.510000e-1 0.000000e+0 7.519990e-1 0.000000e+0 
++ 7.520000e-1 5.000000e+0 7.529990e-1 5.000000e+0 7.530000e-1 0.000000e+0 7.539990e-1 0.000000e+0 7.540000e-1 5.000000e+0 7.549990e-1 5.000000e+0 7.550000e-1 0.000000e+0 7.559990e-1 0.000000e+0 
++ 7.560000e-1 5.000000e+0 7.569990e-1 5.000000e+0 7.570000e-1 0.000000e+0 7.579990e-1 0.000000e+0 7.580000e-1 5.000000e+0 7.589990e-1 5.000000e+0 7.590000e-1 0.000000e+0 7.599990e-1 0.000000e+0 
++ 7.600000e-1 5.000000e+0 7.609990e-1 5.000000e+0 7.610000e-1 0.000000e+0 7.619990e-1 0.000000e+0 7.620000e-1 5.000000e+0 7.629990e-1 5.000000e+0 7.630000e-1 0.000000e+0 7.639990e-1 0.000000e+0 
++ 7.640000e-1 5.000000e+0 7.649990e-1 5.000000e+0 7.650000e-1 0.000000e+0 7.659990e-1 0.000000e+0 7.660000e-1 5.000000e+0 7.669990e-1 5.000000e+0 7.670000e-1 0.000000e+0 7.679990e-1 0.000000e+0 
++ 7.680000e-1 5.000000e+0 7.689990e-1 5.000000e+0 7.690000e-1 0.000000e+0 7.699990e-1 0.000000e+0 7.700000e-1 5.000000e+0 7.709990e-1 5.000000e+0 7.710000e-1 0.000000e+0 7.719990e-1 0.000000e+0 
++ 7.720000e-1 5.000000e+0 7.729990e-1 5.000000e+0 7.730000e-1 0.000000e+0 7.739990e-1 0.000000e+0 7.740000e-1 5.000000e+0 7.749990e-1 5.000000e+0 7.750000e-1 0.000000e+0 7.759990e-1 0.000000e+0 
++ 7.760000e-1 5.000000e+0 7.769990e-1 5.000000e+0 7.770000e-1 0.000000e+0 7.779990e-1 0.000000e+0 7.780000e-1 5.000000e+0 7.789990e-1 5.000000e+0 7.790000e-1 0.000000e+0 7.799990e-1 0.000000e+0 
++ 7.800000e-1 5.000000e+0 7.809990e-1 5.000000e+0 7.810000e-1 0.000000e+0 7.819990e-1 0.000000e+0 7.820000e-1 5.000000e+0 7.829990e-1 5.000000e+0 7.830000e-1 0.000000e+0 7.839990e-1 0.000000e+0 
++ 7.840000e-1 5.000000e+0 7.849990e-1 5.000000e+0 7.850000e-1 0.000000e+0 7.859990e-1 0.000000e+0 7.860000e-1 5.000000e+0 7.869990e-1 5.000000e+0 7.870000e-1 0.000000e+0 7.879990e-1 0.000000e+0 
++ 7.880000e-1 5.000000e+0 7.889990e-1 5.000000e+0 7.890000e-1 0.000000e+0 7.899990e-1 0.000000e+0 7.900000e-1 5.000000e+0 7.909990e-1 5.000000e+0 7.910000e-1 0.000000e+0 7.919990e-1 0.000000e+0 
++ 7.920000e-1 5.000000e+0 7.929990e-1 5.000000e+0 7.930000e-1 0.000000e+0 7.939990e-1 0.000000e+0 7.940000e-1 5.000000e+0 7.949990e-1 5.000000e+0 7.950000e-1 0.000000e+0 7.959990e-1 0.000000e+0 
++ 7.960000e-1 5.000000e+0 7.969990e-1 5.000000e+0 7.970000e-1 0.000000e+0 7.979990e-1 0.000000e+0 7.980000e-1 5.000000e+0 7.989990e-1 5.000000e+0 7.990000e-1 0.000000e+0 7.999990e-1 0.000000e+0 
++ 8.000000e-1 5.000000e+0 8.009990e-1 5.000000e+0 8.010000e-1 0.000000e+0 8.019990e-1 0.000000e+0 8.020000e-1 5.000000e+0 8.029990e-1 5.000000e+0 8.030000e-1 0.000000e+0 8.039990e-1 0.000000e+0 
++ 8.040000e-1 5.000000e+0 8.049990e-1 5.000000e+0 8.050000e-1 0.000000e+0 8.059990e-1 0.000000e+0 8.060000e-1 5.000000e+0 8.069990e-1 5.000000e+0 8.070000e-1 0.000000e+0 8.079990e-1 0.000000e+0 
++ 8.080000e-1 5.000000e+0 8.089990e-1 5.000000e+0 8.090000e-1 0.000000e+0 8.099990e-1 0.000000e+0 8.100000e-1 5.000000e+0 8.109990e-1 5.000000e+0 8.110000e-1 0.000000e+0 8.119990e-1 0.000000e+0 
++ 8.120000e-1 5.000000e+0 8.129990e-1 5.000000e+0 8.130000e-1 0.000000e+0 8.139990e-1 0.000000e+0 8.140000e-1 5.000000e+0 8.149990e-1 5.000000e+0 8.150000e-1 0.000000e+0 8.159990e-1 0.000000e+0 
++ 8.160000e-1 5.000000e+0 8.169990e-1 5.000000e+0 8.170000e-1 0.000000e+0 8.179990e-1 0.000000e+0 8.180000e-1 5.000000e+0 8.189990e-1 5.000000e+0 8.190000e-1 0.000000e+0 8.199990e-1 0.000000e+0 
++ 8.200000e-1 5.000000e+0 8.209990e-1 5.000000e+0 8.210000e-1 0.000000e+0 8.219990e-1 0.000000e+0 8.220000e-1 5.000000e+0 8.229990e-1 5.000000e+0 8.230000e-1 0.000000e+0 8.239990e-1 0.000000e+0 
++ 8.240000e-1 5.000000e+0 8.249990e-1 5.000000e+0 8.250000e-1 0.000000e+0 8.259990e-1 0.000000e+0 8.260000e-1 5.000000e+0 8.269990e-1 5.000000e+0 8.270000e-1 0.000000e+0 8.279990e-1 0.000000e+0 
++ 8.280000e-1 5.000000e+0 8.289990e-1 5.000000e+0 8.290000e-1 0.000000e+0 8.299990e-1 0.000000e+0 8.300000e-1 5.000000e+0 8.309990e-1 5.000000e+0 8.310000e-1 0.000000e+0 8.319990e-1 0.000000e+0 
++ 8.320000e-1 5.000000e+0 8.329990e-1 5.000000e+0 8.330000e-1 0.000000e+0 8.339990e-1 0.000000e+0 8.340000e-1 5.000000e+0 8.349990e-1 5.000000e+0 8.350000e-1 0.000000e+0 8.359990e-1 0.000000e+0 
++ 8.360000e-1 5.000000e+0 8.369990e-1 5.000000e+0 8.370000e-1 0.000000e+0 8.379990e-1 0.000000e+0 8.380000e-1 5.000000e+0 8.389990e-1 5.000000e+0 8.390000e-1 0.000000e+0 8.399990e-1 0.000000e+0 
++ 8.400000e-1 5.000000e+0 8.409990e-1 5.000000e+0 8.410000e-1 0.000000e+0 8.419990e-1 0.000000e+0 8.420000e-1 5.000000e+0 8.429990e-1 5.000000e+0 8.430000e-1 0.000000e+0 8.439990e-1 0.000000e+0 
++ 8.440000e-1 5.000000e+0 8.449990e-1 5.000000e+0 8.450000e-1 0.000000e+0 8.459990e-1 0.000000e+0 8.460000e-1 5.000000e+0 8.469990e-1 5.000000e+0 8.470000e-1 0.000000e+0 8.479990e-1 0.000000e+0 
++ 8.480000e-1 5.000000e+0 8.489990e-1 5.000000e+0 8.490000e-1 0.000000e+0 8.499990e-1 0.000000e+0 8.500000e-1 5.000000e+0 8.509990e-1 5.000000e+0 8.510000e-1 0.000000e+0 8.519990e-1 0.000000e+0 
++ 8.520000e-1 5.000000e+0 8.529990e-1 5.000000e+0 8.530000e-1 0.000000e+0 8.539990e-1 0.000000e+0 8.540000e-1 5.000000e+0 8.549990e-1 5.000000e+0 8.550000e-1 0.000000e+0 8.559990e-1 0.000000e+0 
++ 8.560000e-1 5.000000e+0 8.569990e-1 5.000000e+0 8.570000e-1 0.000000e+0 8.579990e-1 0.000000e+0 8.580000e-1 5.000000e+0 8.589990e-1 5.000000e+0 8.590000e-1 0.000000e+0 8.599990e-1 0.000000e+0 
++ 8.600000e-1 5.000000e+0 8.609990e-1 5.000000e+0 8.610000e-1 0.000000e+0 8.619990e-1 0.000000e+0 8.620000e-1 5.000000e+0 8.629990e-1 5.000000e+0 8.630000e-1 0.000000e+0 8.639990e-1 0.000000e+0 
++ 8.640000e-1 5.000000e+0 8.649990e-1 5.000000e+0 8.650000e-1 0.000000e+0 8.659990e-1 0.000000e+0 8.660000e-1 5.000000e+0 8.669990e-1 5.000000e+0 8.670000e-1 0.000000e+0 8.679990e-1 0.000000e+0 
++ 8.680000e-1 5.000000e+0 8.689990e-1 5.000000e+0 8.690000e-1 0.000000e+0 8.699990e-1 0.000000e+0 8.700000e-1 5.000000e+0 8.709990e-1 5.000000e+0 8.710000e-1 0.000000e+0 8.719990e-1 0.000000e+0 
++ 8.720000e-1 5.000000e+0 8.729990e-1 5.000000e+0 8.730000e-1 0.000000e+0 8.739990e-1 0.000000e+0 8.740000e-1 5.000000e+0 8.749990e-1 5.000000e+0 8.750000e-1 0.000000e+0 8.759990e-1 0.000000e+0 
++ 8.760000e-1 5.000000e+0 8.769990e-1 5.000000e+0 8.770000e-1 0.000000e+0 8.779990e-1 0.000000e+0 8.780000e-1 5.000000e+0 8.789990e-1 5.000000e+0 8.790000e-1 0.000000e+0 8.799990e-1 0.000000e+0 
++ 8.800000e-1 5.000000e+0 8.809990e-1 5.000000e+0 8.810000e-1 0.000000e+0 8.819990e-1 0.000000e+0 8.820000e-1 5.000000e+0 8.829990e-1 5.000000e+0 8.830000e-1 0.000000e+0 8.839990e-1 0.000000e+0 
++ 8.840000e-1 5.000000e+0 8.849990e-1 5.000000e+0 8.850000e-1 0.000000e+0 8.859990e-1 0.000000e+0 8.860000e-1 5.000000e+0 8.869990e-1 5.000000e+0 8.870000e-1 0.000000e+0 8.879990e-1 0.000000e+0 
++ 8.880000e-1 5.000000e+0 8.889990e-1 5.000000e+0 8.890000e-1 0.000000e+0 8.899990e-1 0.000000e+0 8.900000e-1 5.000000e+0 8.909990e-1 5.000000e+0 8.910000e-1 0.000000e+0 8.919990e-1 0.000000e+0 
++ 8.920000e-1 5.000000e+0 8.929990e-1 5.000000e+0 8.930000e-1 0.000000e+0 8.939990e-1 0.000000e+0 8.940000e-1 5.000000e+0 8.949990e-1 5.000000e+0 8.950000e-1 0.000000e+0 8.959990e-1 0.000000e+0 
++ 8.960000e-1 5.000000e+0 8.969990e-1 5.000000e+0 8.970000e-1 0.000000e+0 8.979990e-1 0.000000e+0 8.980000e-1 5.000000e+0 8.989990e-1 5.000000e+0 8.990000e-1 0.000000e+0 8.999990e-1 0.000000e+0 
++ 9.000000e-1 5.000000e+0 9.009990e-1 5.000000e+0 9.010000e-1 0.000000e+0 9.019990e-1 0.000000e+0 9.020000e-1 5.000000e+0 9.029990e-1 5.000000e+0 9.030000e-1 0.000000e+0 9.039990e-1 0.000000e+0 
++ 9.040000e-1 5.000000e+0 9.049990e-1 5.000000e+0 9.050000e-1 0.000000e+0 9.059990e-1 0.000000e+0 9.060000e-1 5.000000e+0 9.069990e-1 5.000000e+0 9.070000e-1 0.000000e+0 9.079990e-1 0.000000e+0 
++ 9.080000e-1 5.000000e+0 9.089990e-1 5.000000e+0 9.090000e-1 0.000000e+0 9.099990e-1 0.000000e+0 9.100000e-1 5.000000e+0 9.109990e-1 5.000000e+0 9.110000e-1 0.000000e+0 9.119990e-1 0.000000e+0 
++ 9.120000e-1 5.000000e+0 9.129990e-1 5.000000e+0 9.130000e-1 0.000000e+0 9.139990e-1 0.000000e+0 9.140000e-1 5.000000e+0 9.149990e-1 5.000000e+0 9.150000e-1 0.000000e+0 9.159990e-1 0.000000e+0 
++ 9.160000e-1 5.000000e+0 9.169990e-1 5.000000e+0 9.170000e-1 0.000000e+0 9.179990e-1 0.000000e+0 9.180000e-1 5.000000e+0 9.189990e-1 5.000000e+0 9.190000e-1 0.000000e+0 9.199990e-1 0.000000e+0 
++ 9.200000e-1 5.000000e+0 9.209990e-1 5.000000e+0 9.210000e-1 0.000000e+0 9.219990e-1 0.000000e+0 9.220000e-1 5.000000e+0 9.229990e-1 5.000000e+0 9.230000e-1 0.000000e+0 9.239990e-1 0.000000e+0 
++ 9.240000e-1 5.000000e+0 9.249990e-1 5.000000e+0 9.250000e-1 0.000000e+0 9.259990e-1 0.000000e+0 9.260000e-1 5.000000e+0 9.269990e-1 5.000000e+0 9.270000e-1 0.000000e+0 9.279990e-1 0.000000e+0 
++ 9.280000e-1 5.000000e+0 9.289990e-1 5.000000e+0 9.290000e-1 0.000000e+0 9.299990e-1 0.000000e+0 9.300000e-1 5.000000e+0 9.309990e-1 5.000000e+0 9.310000e-1 0.000000e+0 9.319990e-1 0.000000e+0 
++ 9.320000e-1 5.000000e+0 9.329990e-1 5.000000e+0 9.330000e-1 0.000000e+0 9.339990e-1 0.000000e+0 9.340000e-1 5.000000e+0 9.349990e-1 5.000000e+0 9.350000e-1 0.000000e+0 9.359990e-1 0.000000e+0 
++ 9.360000e-1 5.000000e+0 9.369990e-1 5.000000e+0 9.370000e-1 0.000000e+0 9.379990e-1 0.000000e+0 9.380000e-1 5.000000e+0 9.389990e-1 5.000000e+0 9.390000e-1 0.000000e+0 9.399990e-1 0.000000e+0 
++ 9.400000e-1 5.000000e+0 9.409990e-1 5.000000e+0 9.410000e-1 0.000000e+0 9.419990e-1 0.000000e+0 9.420000e-1 5.000000e+0 9.429990e-1 5.000000e+0 9.430000e-1 0.000000e+0 9.439990e-1 0.000000e+0 
++ 9.440000e-1 5.000000e+0 9.449990e-1 5.000000e+0 9.450000e-1 0.000000e+0 9.459990e-1 0.000000e+0 9.460000e-1 5.000000e+0 9.469990e-1 5.000000e+0 9.470000e-1 0.000000e+0 9.479990e-1 0.000000e+0 
++ 9.480000e-1 5.000000e+0 9.489990e-1 5.000000e+0 9.490000e-1 0.000000e+0 9.499990e-1 0.000000e+0 9.500000e-1 5.000000e+0 9.509990e-1 5.000000e+0 9.510000e-1 0.000000e+0 9.519990e-1 0.000000e+0 
++ 9.520000e-1 5.000000e+0 9.529990e-1 5.000000e+0 9.530000e-1 0.000000e+0 9.539990e-1 0.000000e+0 9.540000e-1 5.000000e+0 9.549990e-1 5.000000e+0 9.550000e-1 0.000000e+0 9.559990e-1 0.000000e+0 
++ 9.560000e-1 5.000000e+0 9.569990e-1 5.000000e+0 9.570000e-1 0.000000e+0 9.579990e-1 0.000000e+0 9.580000e-1 5.000000e+0 9.589990e-1 5.000000e+0 9.590000e-1 0.000000e+0 9.599990e-1 0.000000e+0 
++ 9.600000e-1 5.000000e+0 9.609990e-1 5.000000e+0 9.610000e-1 0.000000e+0 9.619990e-1 0.000000e+0 9.620000e-1 5.000000e+0 9.629990e-1 5.000000e+0 9.630000e-1 0.000000e+0 9.639990e-1 0.000000e+0 
++ 9.640000e-1 5.000000e+0 9.649990e-1 5.000000e+0 9.650000e-1 0.000000e+0 9.659990e-1 0.000000e+0 9.660000e-1 5.000000e+0 9.669990e-1 5.000000e+0 9.670000e-1 0.000000e+0 9.679990e-1 0.000000e+0 
++ 9.680000e-1 5.000000e+0 9.689990e-1 5.000000e+0 9.690000e-1 0.000000e+0 9.699990e-1 0.000000e+0 9.700000e-1 5.000000e+0 9.709990e-1 5.000000e+0 9.710000e-1 0.000000e+0 9.719990e-1 0.000000e+0 
++ 9.720000e-1 5.000000e+0 9.729990e-1 5.000000e+0 9.730000e-1 0.000000e+0 9.739990e-1 0.000000e+0 9.740000e-1 5.000000e+0 9.749990e-1 5.000000e+0 9.750000e-1 0.000000e+0 9.759990e-1 0.000000e+0 
++ 9.760000e-1 5.000000e+0 9.769990e-1 5.000000e+0 9.770000e-1 0.000000e+0 9.779990e-1 0.000000e+0 9.780000e-1 5.000000e+0 9.789990e-1 5.000000e+0 9.790000e-1 0.000000e+0 9.799990e-1 0.000000e+0 
++ 9.800000e-1 5.000000e+0 9.809990e-1 5.000000e+0 9.810000e-1 0.000000e+0 9.819990e-1 0.000000e+0 9.820000e-1 5.000000e+0 9.829990e-1 5.000000e+0 9.830000e-1 0.000000e+0 9.839990e-1 0.000000e+0 
++ 9.840000e-1 5.000000e+0 9.849990e-1 5.000000e+0 9.850000e-1 0.000000e+0 9.859990e-1 0.000000e+0 9.860000e-1 5.000000e+0 9.869990e-1 5.000000e+0 9.870000e-1 0.000000e+0 9.879990e-1 0.000000e+0 
++ 9.880000e-1 5.000000e+0 9.889990e-1 5.000000e+0 9.890000e-1 0.000000e+0 9.899990e-1 0.000000e+0 9.900000e-1 5.000000e+0 9.909990e-1 5.000000e+0 9.910000e-1 0.000000e+0 9.919990e-1 0.000000e+0 
++ 9.920000e-1 5.000000e+0 9.929990e-1 5.000000e+0 9.930000e-1 0.000000e+0 9.939990e-1 0.000000e+0 9.940000e-1 5.000000e+0 9.949990e-1 5.000000e+0 9.950000e-1 0.000000e+0 9.959990e-1 0.000000e+0 
++ 9.960000e-1 5.000000e+0 9.969990e-1 5.000000e+0 9.970000e-1 0.000000e+0 9.979990e-1 0.000000e+0 9.980000e-1 5.000000e+0 9.989990e-1 5.000000e+0 9.990000e-1 0.000000e+0 1.000000e+0 0.000000e+0 
++ )
+R_mcu1_D1_out int_mcu_mcu1_D1 N1 20
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 NC_mcu1_A0 0 100MEG
+R_spk1 N1 0 8
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+R_shunt_NC_mcu1_A0 NC_mcu1_A0 0 1G
+.save all
+.tran 0.05m 1s 0 0.05m
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mcuSpeaker: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+V_mcu1_D1 int_mcu_mcu1_D1 0 PWL(
++ 0.000000e+0 5.000000e+0 9.990000e-4 5.000000e+0 1.000000e-3 0.000000e+0 1.999000e-3 0.000000e+0 2.000000e-3 5.000000e+0 2.999000e-3 5.000000e+0 3.000000e-3 0.000000e+0 3.999000e-3 0.000000e+0 
++ 4.000000e-3 5.000000e+0 4.999000e-3 5.000000e+0 5.000000e-3 0.000000e+0 5.999000e-3 0.000000e+0 6.000000e-3 5.000000e+0 6.999000e-3 5.000000e+0 7.000000e-3 0.000000e+0 7.999000e-3 0.000000e+0 
++ 8.000000e-3 5.000000e+0 8.999000e-3 5.000000e+0 9.000000e-3 0.000000e+0 9.999000e-3 0.000000e+0 1.000000e-2 5.000000e+0 1.099900e-2 5.000000e+0 1.100000e-2 0.000000e+0 1.199900e-2 0.000000e+0 
++ 1.200000e-2 5.000000e+0 1.299900e-2 5.000000e+0 1.300000e-2 0.000000e+0 1.399900e-2 0.000000e+0 1.400000e-2 5.000000e+0 1.499900e-2 5.000000e+0 1.500000e-2 0.000000e+0 1.599900e-2 0.000000e+0 
++ 1.600000e-2 5.000000e+0 1.699900e-2 5.000000e+0 1.700000e-2 0.000000e+0 1.799900e-2 0.000000e+0 1.800000e-2 5.000000e+0 1.899900e-2 5.000000e+0 1.900000e-2 0.000000e+0 1.999900e-2 0.000000e+0 
++ 2.000000e-2 5.000000e+0 2.099900e-2 5.000000e+0 2.100000e-2 0.000000e+0 2.199900e-2 0.000000e+0 2.200000e-2 5.000000e+0 2.299900e-2 5.000000e+0 2.300000e-2 0.000000e+0 2.399900e-2 0.000000e+0 
++ 2.400000e-2 5.000000e+0 2.499900e-2 5.000000e+0 2.500000e-2 0.000000e+0 2.599900e-2 0.000000e+0 2.600000e-2 5.000000e+0 2.699900e-2 5.000000e+0 2.700000e-2 0.000000e+0 2.799900e-2 0.000000e+0 
++ 2.800000e-2 5.000000e+0 2.899900e-2 5.000000e+0 2.900000e-2 0.000000e+0 2.999900e-2 0.000000e+0 3.000000e-2 5.000000e+0 3.099900e-2 5.000000e+0 3.100000e-2 0.000000e+0 3.199900e-2 0.000000e+0 
++ 3.200000e-2 5.000000e+0 3.299900e-2 5.000000e+0 3.300000e-2 0.000000e+0 3.399900e-2 0.000000e+0 3.400000e-2 5.000000e+0 3.499900e-2 5.000000e+0 3.500000e-2 0.000000e+0 3.599900e-2 0.000000e+0 
++ 3.600000e-2 5.000000e+0 3.699900e-2 5.000000e+0 3.700000e-2 0.000000e+0 3.799900e-2 0.000000e+0 3.800000e-2 5.000000e+0 3.899900e-2 5.000000e+0 3.900000e-2 0.000000e+0 4.000000e-2 0.000000e+0 
++ )
+R_mcu1_D1_out int_mcu_mcu1_D1 N1 20
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND 0 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 NC_mcu1_A0 0 100MEG
+R_spk1 N1 0 8
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+R_shunt_NC_mcu1_A0 NC_mcu1_A0 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > micSpeaker: operating point 1`] = `
+"Circuit Simulation
+V_mic1 N1 0 DC 0
+R_spk1 N1 0 8
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > micSpeaker: transient 1`] = `
+"Circuit Simulation
+V_mic1 N1 0 DC 0
+R_spk1 N1 0 8
+.save all
+.tran 0.05m 1s 0 0.05m
+.end
+"
+`;
+
+exports[`the netlist each preset writes > micSpeaker: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_mic1 N1 0 DC 0
+R_spk1 N1 0 8
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mixedLogicBlink: AC sweep 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 PULSE(0 5 0 0.000001 0.000001 0.5 1) AC 1
+V_sg2 N2 0 PULSE(0 5 0 0.000001 0.000001 0.25 0.5)
+B_gate_and1 N5 0 V = V(N1) > 2.5 ? (V(N2) > 2.5 ? 5 : 0) : 0
+R_r1 N5 N6 330
+R_ammeter_led1 N6 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mixedLogicBlink: operating point 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 PULSE(0 5 0 0.000001 0.000001 0.5 1)
+V_sg2 N2 0 PULSE(0 5 0 0.000001 0.000001 0.25 0.5)
+B_gate_and1 N5 0 V = V(N1) > 2.5 ? (V(N2) > 2.5 ? 5 : 0) : 0
+R_r1 N5 N6 330
+R_ammeter_led1 N6 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mixedLogicBlink: transient 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 PULSE(0 5 0 0.000001 0.000001 0.5 1)
+V_sg2 N2 0 PULSE(0 5 0 0.000001 0.000001 0.25 0.5)
+B_gate_and1 N5 0 V = V(N1) > 2.5 ? (V(N2) > 2.5 ? 5 : 0) : 0
+R_r1 N5 N6 330
+R_ammeter_led1 N6 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+.save all
+.tran 1m 1s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > mixedLogicBlink: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 PULSE(0 5 0 0.000001 0.000001 0.5 1)
+V_sg2 N2 0 PULSE(0 5 0 0.000001 0.000001 0.25 0.5)
+B_gate_and1 N5 0 V = V(N1) > 2.5 ? (V(N2) > 2.5 ? 5 : 0) : 0
+R_r1 N5 N6 330
+R_ammeter_led1 N6 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > opAmpAmp: AC sweep 1`] = `
+"Circuit Simulation
+V_vcc N1 0 DC 12V AC 1
+V_mic1 N5 0 DC 0
+C_cin N5 N_junc_j_op_bias 0.1uF
+R_r_b1 N1 N_junc_j_op_bias 100k
+R_r_b2 N_junc_j_op_bias 0 100k
+X_oa1 N_junc_j_op_bias N8 N1 0 N7 OPAMP_MODEL_oa1
+R_rf N7 N8 10k
+R_rg N8 N9 1k
+C_cg N9 0 100uF
+C_cout N7 N11 47uF
+R_spk1 N11 0 8
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for oa1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_oa1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_oa1
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > opAmpAmp: operating point 1`] = `
+"Circuit Simulation
+V_vcc N1 0 DC 12V
+V_mic1 N5 0 DC 0
+C_cin N5 N_junc_j_op_bias 0.1uF
+R_r_b1 N1 N_junc_j_op_bias 100k
+R_r_b2 N_junc_j_op_bias 0 100k
+X_oa1 N_junc_j_op_bias N8 N1 0 N7 OPAMP_MODEL_oa1
+R_rf N7 N8 10k
+R_rg N8 N9 1k
+C_cg N9 0 100uF
+C_cout N7 N11 47uF
+R_spk1 N11 0 8
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for oa1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_oa1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_oa1
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > opAmpAmp: transient 1`] = `
+"Circuit Simulation
+V_vcc N1 0 DC 12V
+V_mic1 N5 0 DC 0
+C_cin N5 N_junc_j_op_bias 0.1uF
+R_r_b1 N1 N_junc_j_op_bias 100k
+R_r_b2 N_junc_j_op_bias 0 100k
+X_oa1 N_junc_j_op_bias N8 N1 0 N7 OPAMP_MODEL_oa1
+R_rf N7 N8 10k
+R_rg N8 N9 1k
+C_cg N9 0 100uF
+C_cout N7 N11 47uF
+R_spk1 N11 0 8
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for oa1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_oa1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_oa1
+.save all
+.tran 0.05m 1s 0 0.05m
+.end
+"
+`;
+
+exports[`the netlist each preset writes > opAmpAmp: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_vcc N1 0 DC 12V
+V_mic1 N5 0 DC 0
+C_cin N5 N_junc_j_op_bias 0.1uF
+R_r_b1 N1 N_junc_j_op_bias 100k
+R_r_b2 N_junc_j_op_bias 0 100k
+X_oa1 N_junc_j_op_bias N8 N1 0 N7 OPAMP_MODEL_oa1
+R_rf N7 N8 10k
+R_rg N8 N9 1k
+C_cg N9 0 100uF
+C_cout N7 N11 47uF
+R_spk1 N11 0 8
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for oa1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_oa1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_oa1
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > potDimmer: AC sweep 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V AC 1
+R_pot1_top N1 N3 500
+R_pot1_bot N3 0 500
+R_r1 N3 N4 100
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_mm1 N3 0 1G
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > potDimmer: operating point 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V
+R_pot1_top N1 N3 500
+R_pot1_bot N3 0 500
+R_r1 N3 N4 100
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_mm1 N3 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > potDimmer: transient 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V
+R_pot1_top N1 N3 500
+R_pot1_bot N3 0 500
+R_r1 N3 N4 100
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_mm1 N3 0 1G
+.save all
+.tran 1m 0.5s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > potDimmer: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V
+R_pot1_top N1 N3 500
+R_pot1_bot N3 0 500
+R_r1 N3 N4 100
+R_ammeter_led1 N4 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+R_mm1 N3 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > sallenKeyFilter: AC sweep 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 1 300) AC 1
+R_r1 N1 N3 10k
+R_r2 N3 N5 10k
+C_c1 N3 N4 22nF
+C_c2 N5 0 10nF
+X_u1 N5 N4 N7 N8 N4 OPAMP_MODEL_u1
+R_scope_ch1_scope1 N4 0 1G
+R_scope_ch2_scope1 N1 0 1G
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for u1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_u1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_u1
+V_rail_N7 N7 0 DC 12
+V_rail_N8 N8 0 DC -12
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > sallenKeyFilter: operating point 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 1 300)
+R_r1 N1 N3 10k
+R_r2 N3 N5 10k
+C_c1 N3 N4 22nF
+C_c2 N5 0 10nF
+X_u1 N5 N4 N7 N8 N4 OPAMP_MODEL_u1
+R_scope_ch1_scope1 N4 0 1G
+R_scope_ch2_scope1 N1 0 1G
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for u1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_u1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_u1
+V_rail_N7 N7 0 DC 12
+V_rail_N8 N8 0 DC -12
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > sallenKeyFilter: transient 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 1 300)
+R_r1 N1 N3 10k
+R_r2 N3 N5 10k
+C_c1 N3 N4 22nF
+C_c2 N5 0 10nF
+X_u1 N5 N4 N7 N8 N4 OPAMP_MODEL_u1
+R_scope_ch1_scope1 N4 0 1G
+R_scope_ch2_scope1 N1 0 1G
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for u1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_u1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_u1
+V_rail_N7 N7 0 DC 12
+V_rail_N8 N8 0 DC -12
+.save all
+.tran 1m 0.02s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > sallenKeyFilter: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 1 300)
+R_r1 N1 N3 10k
+R_r2 N3 N5 10k
+C_c1 N3 N4 22nF
+C_c2 N5 0 10nF
+X_u1 N5 N4 N7 N8 N4 OPAMP_MODEL_u1
+R_scope_ch1_scope1 N4 0 1G
+R_scope_ch2_scope1 N1 0 1G
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for u1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_u1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_u1
+V_rail_N7 N7 0 DC 12
+V_rail_N8 N8 0 DC -12
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > sevenSegDirect: AC sweep 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V AC 1
+R_seg1_a N2 0 1G
+R_seg1_b N3 0 1G
+R_seg1_c N4 0 1G
+R_seg1_d N5 0 1G
+R_seg1_e N6 0 1G
+R_seg1_f N7 0 1G
+R_seg1_g NC_seg1_g 0 1G
+R_ra N1 N2 330
+R_rb N1 N3 330
+R_rc N1 N4 330
+R_rd N1 N5 330
+R_re N1 N6 330
+R_rf N1 N7 330
+R_shunt_NC_seg1_g NC_seg1_g 0 1G
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > sevenSegDirect: operating point 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V
+R_seg1_a N2 0 1G
+R_seg1_b N3 0 1G
+R_seg1_c N4 0 1G
+R_seg1_d N5 0 1G
+R_seg1_e N6 0 1G
+R_seg1_f N7 0 1G
+R_seg1_g NC_seg1_g 0 1G
+R_ra N1 N2 330
+R_rb N1 N3 330
+R_rc N1 N4 330
+R_rd N1 N5 330
+R_re N1 N6 330
+R_rf N1 N7 330
+R_shunt_NC_seg1_g NC_seg1_g 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > sevenSegDirect: transient 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V
+R_seg1_a N2 0 1G
+R_seg1_b N3 0 1G
+R_seg1_c N4 0 1G
+R_seg1_d N5 0 1G
+R_seg1_e N6 0 1G
+R_seg1_f N7 0 1G
+R_seg1_g NC_seg1_g 0 1G
+R_ra N1 N2 330
+R_rb N1 N3 330
+R_rc N1 N4 330
+R_rd N1 N5 330
+R_re N1 N6 330
+R_rf N1 N7 330
+R_shunt_NC_seg1_g NC_seg1_g 0 1G
+.save all
+.tran 1m 1s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > sevenSegDirect: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V
+R_seg1_a N2 0 1G
+R_seg1_b N3 0 1G
+R_seg1_c N4 0 1G
+R_seg1_d N5 0 1G
+R_seg1_e N6 0 1G
+R_seg1_f N7 0 1G
+R_seg1_g NC_seg1_g 0 1G
+R_ra N1 N2 330
+R_rb N1 N3 330
+R_rc N1 N4 330
+R_rd N1 N5 330
+R_re N1 N6 330
+R_rf N1 N7 330
+R_shunt_NC_seg1_g NC_seg1_g 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > sineAudio: AC sweep 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 2 440) AC 1
+R_spk1 N1 0 8
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > sineAudio: operating point 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 2 440)
+R_spk1 N1 0 8
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > sineAudio: transient 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 2 440)
+R_spk1 N1 0 8
+.save all
+.tran 0.05m 1s 0 0.05m
+.end
+"
+`;
+
+exports[`the netlist each preset writes > sineAudio: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_sg1 N1 0 SINE(0 2 440)
+R_spk1 N1 0 8
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > timer555Blink: AC sweep 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V AC 1
+X_t555 0 N4 N6 N1 NC_t555_5 N4 N3 N1 NE555
+R_r1 N1 N3 10k
+R_r2 N3 N4 47k
+C_c1 N4 0 10uF
+R_r3 N6 N7 330
+R_ammeter_led1 N7 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+
+* Idealized NE555 Timer Macro Model
+* Node order: GND TRIG OUT RST CTRL THR DIS VCC
+.SUBCKT NE555 1 2 3 4 5 6 7 8
+* Voltage divider
+R1 8 5 5k
+R2 5 61 5k
+R3 61 1 5k
+
+* Smooth SR Latch Integrator
+* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+S_SET 8 state 61 2 SMOD_ON
+S_RST state 1 6 5 SMOD_ON
+C1 state 1 100p
+* Add parallel resistor to guarantee DC convergence
+R4 state 1 10G
+
+* Output buffer
+E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+
+* Discharge
+S_DIS 7 1 8 state SMOD_DIS
+
+.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
+.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.ENDS NE555
+R_shunt_NC_t555_5 NC_t555_5 0 1G
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > timer555Blink: operating point 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V
+X_t555 0 N4 N6 N1 NC_t555_5 N4 N3 N1 NE555
+R_r1 N1 N3 10k
+R_r2 N3 N4 47k
+C_c1 N4 0 10uF
+R_r3 N6 N7 330
+R_ammeter_led1 N7 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+
+* Idealized NE555 Timer Macro Model
+* Node order: GND TRIG OUT RST CTRL THR DIS VCC
+.SUBCKT NE555 1 2 3 4 5 6 7 8
+* Voltage divider
+R1 8 5 5k
+R2 5 61 5k
+R3 61 1 5k
+
+* Smooth SR Latch Integrator
+* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+S_SET 8 state 61 2 SMOD_ON
+S_RST state 1 6 5 SMOD_ON
+C1 state 1 100p
+* Add parallel resistor to guarantee DC convergence
+R4 state 1 10G
+
+* Output buffer
+E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+
+* Discharge
+S_DIS 7 1 8 state SMOD_DIS
+
+.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
+.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.ENDS NE555
+R_shunt_NC_t555_5 NC_t555_5 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > timer555Blink: transient 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V
+X_t555 0 N4 N6 N1 NC_t555_5 N4 N3 N1 NE555
+R_r1 N1 N3 10k
+R_r2 N3 N4 47k
+C_c1 N4 0 10uF
+R_r3 N6 N7 330
+R_ammeter_led1 N7 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+
+* Idealized NE555 Timer Macro Model
+* Node order: GND TRIG OUT RST CTRL THR DIS VCC
+.SUBCKT NE555 1 2 3 4 5 6 7 8
+* Voltage divider
+R1 8 5 5k
+R2 5 61 5k
+R3 61 1 5k
+
+* Smooth SR Latch Integrator
+* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+S_SET 8 state 61 2 SMOD_ON
+S_RST state 1 6 5 SMOD_ON
+C1 state 1 100p
+* Add parallel resistor to guarantee DC convergence
+R4 state 1 10G
+
+* Output buffer
+E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+
+* Discharge
+S_DIS 7 1 8 state SMOD_DIS
+
+.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
+.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.ENDS NE555
+R_shunt_NC_t555_5 NC_t555_5 0 1G
+.save all
+.tran 1m 1s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > timer555Blink: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5V
+X_t555 0 N4 N6 N1 NC_t555_5 N4 N3 N1 NE555
+R_r1 N1 N3 10k
+R_r2 N3 N4 47k
+C_c1 N4 0 10uF
+R_r3 N6 N7 330
+R_ammeter_led1 N7 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+
+* Idealized NE555 Timer Macro Model
+* Node order: GND TRIG OUT RST CTRL THR DIS VCC
+.SUBCKT NE555 1 2 3 4 5 6 7 8
+* Voltage divider
+R1 8 5 5k
+R2 5 61 5k
+R3 61 1 5k
+
+* Smooth SR Latch Integrator
+* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+S_SET 8 state 61 2 SMOD_ON
+S_RST state 1 6 5 SMOD_ON
+C1 state 1 100p
+* Add parallel resistor to guarantee DC convergence
+R4 state 1 10G
+
+* Output buffer
+E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+
+* Discharge
+S_DIS 7 1 8 state SMOD_DIS
+
+.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
+.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.ENDS NE555
+R_shunt_NC_t555_5 NC_t555_5 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > transformerRectifier: AC sweep 1`] = `
+"Circuit Simulation
+V_vac1 N1 0 SINE(0 24 60) AC 1
+L_pri_xfmr1 N1 0 1H
+L_sec_xfmr1 N3 N4 75mH
+K_xfmr1 L_pri_xfmr1 L_sec_xfmr1 0.99
+D_d1 N3 N5 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=1)
+D_d2 0 N3 DIODE_MODEL_d2
+.model DIODE_MODEL_d2 D(IS=1e-14 RS=0.1 N=1)
+D_d3 N4 N5 DIODE_MODEL_d3
+.model DIODE_MODEL_d3 D(IS=1e-14 RS=0.1 N=1)
+D_d4 0 N4 DIODE_MODEL_d4
+.model DIODE_MODEL_d4 D(IS=1e-14 RS=0.1 N=1)
+C_c1 N5 0 220u
+R_r1 N5 0 1k
+R_mm1 N5 0 1G
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > transformerRectifier: operating point 1`] = `
+"Circuit Simulation
+V_vac1 N1 0 SINE(0 24 60)
+L_pri_xfmr1 N1 0 1H
+L_sec_xfmr1 N3 N4 75mH
+K_xfmr1 L_pri_xfmr1 L_sec_xfmr1 0.99
+D_d1 N3 N5 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=1)
+D_d2 0 N3 DIODE_MODEL_d2
+.model DIODE_MODEL_d2 D(IS=1e-14 RS=0.1 N=1)
+D_d3 N4 N5 DIODE_MODEL_d3
+.model DIODE_MODEL_d3 D(IS=1e-14 RS=0.1 N=1)
+D_d4 0 N4 DIODE_MODEL_d4
+.model DIODE_MODEL_d4 D(IS=1e-14 RS=0.1 N=1)
+C_c1 N5 0 220u
+R_r1 N5 0 1k
+R_mm1 N5 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > transformerRectifier: transient 1`] = `
+"Circuit Simulation
+V_vac1 N1 0 SINE(0 24 60)
+L_pri_xfmr1 N1 0 1H
+L_sec_xfmr1 N3 N4 75mH
+K_xfmr1 L_pri_xfmr1 L_sec_xfmr1 0.99
+D_d1 N3 N5 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=1)
+D_d2 0 N3 DIODE_MODEL_d2
+.model DIODE_MODEL_d2 D(IS=1e-14 RS=0.1 N=1)
+D_d3 N4 N5 DIODE_MODEL_d3
+.model DIODE_MODEL_d3 D(IS=1e-14 RS=0.1 N=1)
+D_d4 0 N4 DIODE_MODEL_d4
+.model DIODE_MODEL_d4 D(IS=1e-14 RS=0.1 N=1)
+C_c1 N5 0 220u
+R_r1 N5 0 1k
+R_mm1 N5 0 1G
+.save all
+.tran 1m 0.1s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > transformerRectifier: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_vac1 N1 0 SINE(0 24 60)
+L_pri_xfmr1 N1 0 1H IC=2.000000e-3
+L_sec_xfmr1 N3 N4 75mH IC=-2.000000e-3
+K_xfmr1 L_pri_xfmr1 L_sec_xfmr1 0.99
+D_d1 N3 N5 DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=1)
+D_d2 0 N3 DIODE_MODEL_d2
+.model DIODE_MODEL_d2 D(IS=1e-14 RS=0.1 N=1)
+D_d3 N4 N5 DIODE_MODEL_d3
+.model DIODE_MODEL_d3 D(IS=1e-14 RS=0.1 N=1)
+D_d4 0 N4 DIODE_MODEL_d4
+.model DIODE_MODEL_d4 D(IS=1e-14 RS=0.1 N=1)
+C_c1 N5 0 220u
+R_r1 N5 0 1k
+R_mm1 N5 0 1G
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
+exports[`the netlist each preset writes > voltageComparator: AC sweep 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5 AC 1
+R_pot1_top N1 N3 4000
+R_pot1_bot N3 0 6000
+R_mm1 N3 0 1G
+R_rtop N1 N4 2.9k
+R_rbot N4 0 2.1k
+X_op1 N3 N4 N1 0 N5 OPAMP_MODEL_op1
+R_r3 N5 N6 330
+R_ammeter_led1 N6 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for op1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_op1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_op1
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > voltageComparator: operating point 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5
+R_pot1_top N1 N3 4000
+R_pot1_bot N3 0 6000
+R_mm1 N3 0 1G
+R_rtop N1 N4 2.9k
+R_rbot N4 0 2.1k
+X_op1 N3 N4 N1 0 N5 OPAMP_MODEL_op1
+R_r3 N5 N6 330
+R_ammeter_led1 N6 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for op1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_op1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_op1
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > voltageComparator: transient 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5
+R_pot1_top N1 N3 4000
+R_pot1_bot N3 0 6000
+R_mm1 N3 0 1G
+R_rtop N1 N4 2.9k
+R_rbot N4 0 2.1k
+X_op1 N3 N4 N1 0 N5 OPAMP_MODEL_op1
+R_r3 N5 N6 330
+R_ammeter_led1 N6 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for op1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_op1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_op1
+.save all
+.tran 1m 1s
+.end
+"
+`;
+
+exports[`the netlist each preset writes > voltageComparator: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_v1 N1 0 DC 5
+R_pot1_top N1 N3 4000
+R_pot1_bot N3 0 6000
+R_mm1 N3 0 1G
+R_rtop N1 N4 2.9k
+R_rbot N4 0 2.1k
+X_op1 N3 N4 N1 0 N5 OPAMP_MODEL_op1
+R_r3 N5 N6 330
+R_ammeter_led1 N6 int_led_led1 1
+D_led1 int_led_led1 0 LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.6666666666666667)
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for op1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_op1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_op1
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
