@@ -947,6 +947,10 @@ export default function App() {
   // regardless of how long any individual compute takes.
   const HIL_BUFFER_TARGET_MS = 240;
   const HIL_SLICE_STEP_MS = 40;
+  // A slice still solving after this has long since starved the board's
+  // lookahead, and the default minute would hold the whole pipeline with it.
+  // Past it the worker drops the engine and the next slice starts afresh.
+  const HIL_SLICE_TIMEOUT_MS = 2_000;
 
   const topUpHILQueue = async () => {
     if (hilToppingUpRef.current) return;
@@ -1131,7 +1135,7 @@ export default function App() {
         const netlistRes = generateSpiceNetlist(nextNodes, edgesRef.current, netlistDurationMs / 1000, 'normal', mcuWaveforms, hilInitialConditionsRef.current, hilMaxStepMs);
         portToNet = netlistRes.portToNet;
 
-        result = (await runSimInWorker(netlistRes.netlist)).result;
+        result = (await runSimInWorker(netlistRes.netlist, 'tran', HIL_SLICE_TIMEOUT_MS)).result;
         const resultIndex = buildNetlistResultIndex(result);
 
         nextICs = readEndState(result);
@@ -1327,8 +1331,20 @@ export default function App() {
           }
         }
       }
+      setRunAdvisories(prev => (prev.some(a => a.id === 'hil:failed') ? prev.filter(a => a.id !== 'hil:failed') : prev));
     } catch (e) {
       console.error("[HIL] Simulation slice run failed:", e);
+      const messages = messagesFromError(e);
+      const explained = messages.some(m => m.includes('TIMED_OUT'))
+        ? {
+            title: 'A slice did not finish in time',
+            detail: `One ${HIL_SLICE_STEP_MS}ms slice was still solving after ${HIL_SLICE_TIMEOUT_MS / 1000}s, too slow to keep the board fed. Switching converters and fast oscillators are the usual cause.`,
+          }
+        : explainSpiceFailure(messages);
+      setRunAdvisories(prev => [
+        ...prev.filter(a => a.id !== 'hil:failed'),
+        { id: 'hil:failed', severity: 'warning', title: `HIL: ${explained.title}`, detail: explained.detail },
+      ]);
     }
   };
 
