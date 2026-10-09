@@ -18,6 +18,7 @@ import type { Advisory } from '../types/advisories';
 import type { PinRef } from './spice';
 import { isVirtualPortKey, nodeNetName, virtualNetPort } from './netNaming';
 import { NON_SIMULATING_TYPES } from './spice';
+import { pinBoxPart } from '../components/nodes/pinBoxParts';
 
 /** The net every DC path is measured against. */
 const GND = '0';
@@ -48,6 +49,8 @@ const PIN_LABELS: Record<string, string> = {
 };
 
 export function pinLabel(nodeType: string, handleId: string): string {
+  const boxPin = pinBoxPart(nodeType)?.pins.find(p => p.id === handleId);
+  if (boxPin?.label) return `${boxPin.label} pin`;
   const known = PIN_LABELS[handleId.toLowerCase()];
   if (known) return known;
   if (nodeType === 'timer555') {
@@ -114,6 +117,19 @@ export function dcPathGroups(nodeType: string, data: Record<string, unknown>, ha
     case 'mcu':
     case 'heltec_v4':
       return [[...handles, GND]];
+    // A coil is a DC path end to end; the shaft is not a pin.
+    case 'dcmotor':
+      return [['a', 'b']];
+    case 'stepper':
+      return [['a1', 'a2'], ['b1', 'b2']];
+    case 'fuse':
+      return [['in', 'out']];
+    // Outputs are switched to the supply rails; the inputs are logic and reach nothing.
+    case 'hbridge':
+      return [['out1', 'out2', 'vm', 'gnd']];
+    // Phases are driven against the driver's ground; STEP, DIR and EN are logic.
+    case 'stepdriver':
+      return [['a1', 'a2', 'b1', 'b2', 'gnd']];
     default:
       return [handles];
   }

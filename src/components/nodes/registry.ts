@@ -77,6 +77,7 @@ import {
 import { OpAmpProperties } from './OpAmpNode';
 import { NetLabelProperties } from './NetLabelNode';
 import { PowerRailProperties } from './PowerRailNode';
+import { ElectromechProperties } from './ElectromechProperties';
 
 export const nodeRegistry: Record<string, NodeMeta> = {
   voltage: { Properties: VoltageProperties },
@@ -106,6 +107,12 @@ export const nodeRegistry: Record<string, NodeMeta> = {
   sevenseg: { Properties: SevenSegmentProperties },
   currentsource: { Properties: CurrentSourceProperties },
   heltec_v4: { Properties: HeltecV4Properties, defaultData: heltecV4DefaultData },
+  // Electromechanical: settings left blank simulate at the part's defaults.
+  dcmotor: { Properties: ElectromechProperties },
+  stepper: { Properties: ElectromechProperties },
+  stepdriver: { Properties: ElectromechProperties },
+  hbridge: { Properties: ElectromechProperties },
+  fuse: { Properties: ElectromechProperties },
   // Mechanical / board-only parts. They never reach the SPICE netlist.
   pinheader: { Properties: PinHeaderProperties, defaultData: pinHeaderDefaultData },
   via: { Properties: ViaProperties, defaultData: viaDefaultData },

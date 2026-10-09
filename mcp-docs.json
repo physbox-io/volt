@@ -83,7 +83,7 @@
   "schema": {
     "nodeFields": {
       "id": "string — unique component identifier",
-      "type": "string — component type (resistor, capacitor, inductor, diode, zener, led, switch, multimeter, scope, speaker, microphone, npn, pnp, nmos, pmos, voltage, currentsource, acvoltage, signalgen, ground, mcu, heltec_v4, sevenseg, potentiometer, opamp, timer555, transformer, dff, ldr, junction, and, or, not, nand, nor, xor, jumper, pinheader, via, mountinghole, cutout, netlabel, powerrail)",
+      "type": "string — component type (resistor, capacitor, inductor, diode, zener, led, switch, multimeter, scope, speaker, microphone, npn, pnp, nmos, pmos, voltage, currentsource, acvoltage, signalgen, ground, mcu, heltec_v4, sevenseg, potentiometer, opamp, timer555, transformer, dff, ldr, junction, and, or, not, nand, nor, xor, jumper, pinheader, via, mountinghole, cutout, netlabel, powerrail, dcmotor, stepper, stepdriver, hbridge, fuse)",
       "position": {
         "x": "number — X position on canvas",
         "y": "number — Y position on canvas"
@@ -292,6 +292,39 @@
         "a",
         "b"
       ],
+      "dcmotor": [
+        "a",
+        "b"
+      ],
+      "stepper": [
+        "a1",
+        "a2",
+        "b1",
+        "b2"
+      ],
+      "stepdriver": [
+        "vm",
+        "gnd",
+        "step",
+        "dir",
+        "en",
+        "a1",
+        "a2",
+        "b1",
+        "b2"
+      ],
+      "hbridge": [
+        "vm",
+        "gnd",
+        "in1",
+        "in2",
+        "out1",
+        "out2"
+      ],
+      "fuse": [
+        "in",
+        "out"
+      ],
       "pinheader": [
         "1",
         "2",
@@ -452,6 +485,46 @@
             "irf9540": "power, -23 A: vto -3.5, kp 0.8, lambda 0.005, rd 0.058, rs 0.058, cgs 1.1n, cgd 150p"
           }
         }
+      },
+      "electromechanical": {
+        "description": "dcmotor and stepper are one primitive: phases of R + L + back-EMF on one shaft, coupled by k(x) so that back-EMF = k·ω and torque = k·i. The shaft is simulated inside the netlist (speed and angle are node voltages, carried across HIL slices and continued runs). Every numeric field may be a number or SI-suffixed text ('2.8m'); a field left out takes the default shown.",
+        "dcmotor": {
+          "windingR": "Ω, default 2",
+          "windingL": "H, default 0.5m",
+          "kt": "torque constant N·m/A (= back-EMF V·s/rad), default 0.01",
+          "inertia": "kg·m², default 5u",
+          "friction": "viscous, N·m·s/rad, default 1u",
+          "loadTorque": "constant torque against forward rotation, N·m, default 0",
+          "behaviour": "Free speed Kt·V/(Kt²+R·b); stall current V/R; mechanical time constant J·R/Kt². After a Run, data.rpm and data.angleDeg hold the final speed and shaft angle."
+        },
+        "stepper": {
+          "holdingTorque": "N·m at ratedCurrent, default 0.4",
+          "ratedCurrent": "A, default 1.7 (Kt = holdingTorque/ratedCurrent)",
+          "windingR": "Ω per phase, default 1.5",
+          "windingL": "H per phase, default 2.8m",
+          "detentTorque": "N·m, default 0.015",
+          "rotorTeeth": "default 50 (1.8° per full step)",
+          "inertia": "kg·m², default 5.4u",
+          "friction": "N·m·s/rad, default 0.2m",
+          "loadTorque": "N·m, default 0",
+          "behaviour": "Phase A current holds the rotor at 0, phase B a quarter tooth on. A load past Kt·I slips (loses steps)."
+        },
+        "stepdriver": {
+          "microsteps": "1, 2, 4, 8 or 16 (default 16)",
+          "currentLimit": "peak phase current, A, default 1",
+          "behaviour": "Each rising STEP edge (1.5V threshold) moves one microstep; DIR high = forward; EN is active low and, high, drives no current. Phase A is regulated to Ilim·cos θ and B to Ilim·sin θ from θ = 45°, up to the VM supply, and VM supplies the power delivered. Wire a1/a2 to the stepper's a1/a2 and b1/b2 to b1/b2.",
+          "pcb": "Pololu-style 2x8 carrier: 1 EN, 7 STEP, 8 DIR, 11 1B, 12 1A, 13 2A, 14 2B, 15 GND, 16 VMOT."
+        },
+        "hbridge": {
+          "rdsOn": "Ω per switch, default 0.18",
+          "behaviour": "DRV8833 truth table: IN1/IN2 = 1/0 forward (OUT1 high), 0/1 reverse, 1/1 brake (both low), 0/0 coast (both off). Body diodes carry a coasting motor's current."
+        },
+        "fuse": {
+          "rating": "A carried indefinitely, default 1",
+          "i2t": "melting I²t over the rating, A²s, default 0.1",
+          "coldR": "Ω intact, default 0.05",
+          "behaviour": "Blows after i2t/(I² − rating²) seconds and stays blown across slices and continued runs until Reset. After a Run, data.blown says whether it went."
+        }
       }
     },
     "probeMode": {
@@ -468,7 +541,7 @@
       "note": "Placed, drilled and routed on the board but emitting no SPICE device. Edges to a pin header or via still join nets — the part itself just contributes no component. 'jumper' is the exception: the router draws no copper for it, but electrically it is a wire (a 1 milliohm resistor between its 'a' and 'b' terminals) and it does simulate."
     },
     "referenceDesignators": {
-      "description": "Every part is numbered automatically and shown beside its symbol: R (resistor, LDR), RV (potentiometer), C, L, T, D (diode, zener, LED), Q (any transistor), U (any IC or logic gate), DS (seven-segment), LS (speaker), MK (microphone), SW (switch), V (voltage, AC and signal generator), I (current source), J (pin header), JP (jumper), MH (mounting hole).",
+      "description": "Every part is numbered automatically and shown beside its symbol: R (resistor, LDR), RV (potentiometer), C, L, T, D (diode, zener, LED), Q (any transistor), U (any IC or logic gate), DS (seven-segment), LS (speaker), MK (microphone), SW (switch), V (voltage, AC and signal generator), I (current source), J (pin header), JP (jumper), MH (mounting hole), M (DC motor, stepper), F (fuse); the step driver and H-bridge are U.",
       "numbering": "Per letter, from 1, in the order parts were created, so adding a part never renumbers the drawing. Ground, junctions, net labels, power rails, vias, cutouts and the instruments are not numbered.",
       "override": "Set data.name to pin a designator by hand; it is kept and the automatic numbering counts around it. Leave it unset otherwise. The board layout, the DRC messages and the export report use the same name, which is how a footprint is matched back to a symbol.",
       "note": "Refer to parts by designator when explaining a circuit - 'probe pin 3 of U1', 'swap R2 for 10k'."

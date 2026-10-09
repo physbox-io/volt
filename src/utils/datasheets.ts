@@ -315,6 +315,59 @@ export const datasheets: Record<string, DatasheetEntry> = {
       'Digit 8: all segments  •  Digit 9: a,b,c,d,f,g',
     ],
   },
+  dcmotor: {
+    title: 'DC Motor',
+    description: 'A brushed permanent-magnet motor. Current through the winding makes torque; the spinning rotor makes a back-EMF that opposes the supply, so a free motor draws little and a stalled one draws V/R.',
+    formula: 'τ = Kt·I − b·ω − load,  V = I·R + L·dI/dt + Kt·ω',
+    specs: [
+      'Free speed: ω = Kt·V / (Kt² + R·b)',
+      'Stall current: V / R — what trips a fuse when it jams',
+      'Mechanical time constant: J·R / Kt²',
+      'Shown after a run: speed (rpm) and shaft angle',
+    ],
+  },
+  stepper: {
+    title: 'Stepper Motor (two-phase hybrid)',
+    description: 'A NEMA 17 like the ones in 3D printers. Current in phase A holds the rotor at one position, in phase B a quarter tooth on: 1.8° a full step with 50 rotor teeth.',
+    formula: 'τ = Kt·(−I_A·sin Nθ + I_B·cos Nθ) − T_detent·sin 4Nθ − load',
+    specs: [
+      'Kt = holding torque / rated current',
+      'Step angle: 360° / 4N (1.8° for N = 50)',
+      'Load past Kt·I and it slips — loses steps',
+      'Drive it with a Step Driver, or two H-bridges',
+    ],
+  },
+  stepdriver: {
+    title: 'Stepper Driver (A4988 / TMC2209)',
+    description: 'Each rising edge on STEP moves the motor one microstep, forward with DIR high. EN is active low. The driver regulates each phase to the sine table at the current limit, up to its supply.',
+    formula: 'I_A = Ilim·cos θ,  I_B = Ilim·sin θ,  θ = 45° + steps·90°/microsteps',
+    specs: [
+      'Microstepping: full, 1/2, 1/4, 1/8, 1/16',
+      'Current limit sets peak phase current (the trimmer on a real board)',
+      'Draws from VM the power it delivers to the coils',
+      'PCB: Pololu-style 2×8 carrier pinout',
+    ],
+  },
+  hbridge: {
+    title: 'H-Bridge (DRV8833)',
+    description: 'Drives a motor either way from two logic inputs. Both low coasts, both high brakes. Body diodes carry the motor current while it coasts.',
+    specs: [
+      'IN1=1, IN2=0: OUT1 high, OUT2 low (forward)',
+      'IN1=0, IN2=1: reverse  •  1,1: brake  •  0,0: coast',
+      'Switch resistance Rds(on) per switch, 0.18Ω by default',
+      'Logic threshold 1.5V',
+    ],
+  },
+  fuse: {
+    title: 'Fuse',
+    description: 'Opens when the heat from current over its rating adds up to its melting I²t. Below the rating it carries current indefinitely. A blown fuse stays blown until the simulation is reset.',
+    formula: 't_blow = I²t / (I² − I_rated²)',
+    specs: [
+      'Rating: the current it carries forever',
+      'Melting I²t sets how fast an overload opens it',
+      'Use it to trip on a stalled motor',
+    ],
+  },
   currentsource: {
     title: 'Constant Current Source',
     description: 'Delivers a fixed current regardless of load voltage. Current flows from + to −.',

@@ -369,6 +369,43 @@ export type PowerRailNodeData = BaseNodeData & {
   voltage?: number;
 };
 
+/* ── Electromechanical ─────────────────────────────────────────────────── */
+
+/**
+ * The DC motor, stepper, step driver, H-bridge and fuse. Numbers may arrive
+ * as text with an SI suffix ("2.8m"); see `numParam`.
+ */
+export type ElectromechNodeData = BaseNodeData & {
+  /** Winding resistance, Ω, and inductance, H. */
+  windingR?: number | string;
+  windingL?: number | string;
+  /** DC motor torque constant, N·m/A. */
+  kt?: number | string;
+  /** Stepper: torque at rated current, N·m, and that current, A. */
+  holdingTorque?: number | string;
+  ratedCurrent?: number | string;
+  detentTorque?: number | string;
+  rotorTeeth?: number | string;
+  /** Rotor inertia, kg·m², and viscous friction, N·m·s/rad. */
+  inertia?: number | string;
+  friction?: number | string;
+  /** A constant torque against forward rotation, N·m. */
+  loadTorque?: number | string;
+  /** Step driver. */
+  microsteps?: number | string;
+  currentLimit?: number | string;
+  /** H-bridge switch resistance, Ω. */
+  rdsOn?: number | string;
+  /** Fuse: rating, A; melting I²t, A²s; resistance intact, Ω. */
+  rating?: number | string;
+  i2t?: number | string;
+  coldR?: number | string;
+  /** Written by a run: shaft speed and angle at its end, and whether the fuse went. */
+  rpm?: number;
+  angleDeg?: number;
+  blown?: boolean;
+};
+
 /**
  * Every field any part can carry, all optional.
  *
@@ -409,7 +446,8 @@ export type AnyNodeData = ResistorNodeData &
   JumperNodeData &
   CutoutNodeData &
   NetLabelNodeData &
-  PowerRailNodeData;
+  PowerRailNodeData &
+  ElectromechNodeData;
 
 /**
  * A node's `data` as React Flow hands it over, before its kind is known.

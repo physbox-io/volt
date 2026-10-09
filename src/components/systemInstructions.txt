@@ -144,6 +144,29 @@ explain a circuit ("probe pin 3 of U1").
                  Handles: "pos" (current exit, top), "neg" (current enter, bottom)
                  data: { label: string, value: number (in A, e.g. 0.001 for 1mA) }
 
+'dcmotor'        Brushed DC Motor (winding R + L, back-EMF, rotor inertia and friction).
+                 Handles: "a" (+, left), "b" (−, right)
+                 data: { windingR: Ω (2), windingL: H (0.5m), kt: N·m/A (0.01), inertia: kg·m² (5u),
+                         friction: N·m·s/rad (1u), loadTorque: N·m (0) }   values may be SI-suffixed text
+                 After a run: data.rpm and data.angleDeg. Stalled, it draws V/R.
+
+'stepper'        Two-phase hybrid stepper (NEMA 17, 1.8°/step).
+                 Handles: "a1","a2" (phase A, left), "b1","b2" (phase B, right)
+                 data: { holdingTorque: N·m (0.4), ratedCurrent: A (1.7), windingR (1.5), windingL (2.8m),
+                         detentTorque (0.015), rotorTeeth (50), inertia (5.4u), friction (0.2m), loadTorque (0) }
+
+'stepdriver'     Stepper driver, A4988/TMC2209 style. Rising STEP edge = one microstep; DIR high = forward; EN active low.
+                 Handles: "vm","gnd","step","dir","en" (left), "a1","a2","b1","b2" (right, to the stepper's phases)
+                 data: { microsteps: 1|2|4|8|16 (16), currentLimit: A peak (1) }
+
+'hbridge'        H-bridge, DRV8833 style. IN1/IN2: 10 forward, 01 reverse, 11 brake, 00 coast.
+                 Handles: "vm","gnd","in1","in2" (left), "out1","out2" (right)
+                 data: { rdsOn: Ω per switch (0.18) }
+
+'fuse'           Fuse that blows on I²t: t = i2t / (I² − rating²). Stays blown until Reset.
+                 Handles: "in" (left), "out" (right)
+                 data: { rating: A (1), i2t: A²s (0.1), coldR: Ω (0.05) }   After a run: data.blown.
+
 'and'|'or'|'nand'|'nor'|'xor'  2-Input Logic Gates.
                  Handles: "in1" (top-left), "in2" (bottom-left), "out" (right)
                  data: { label: string (e.g. "AND Gate") }

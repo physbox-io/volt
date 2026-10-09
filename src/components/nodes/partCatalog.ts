@@ -59,6 +59,11 @@ export const PART_CATALOG: CatalogPart[] = [
   { type: 'transformer', name: 'Transformer', keywords: 'coupled coils primary secondary', section: 'Tools' },
   { type: 'dff', name: 'D Flip-Flop', keywords: 'latch register clock', section: 'Tools' },
   { type: 'ldr', name: 'LDR', keywords: 'photoresistor light sensor', section: 'Tools' },
+  { type: 'dcmotor', name: 'DC Motor', keywords: 'brushed motor gearmotor actuator', section: 'Tools' },
+  { type: 'stepper', name: 'Stepper Motor', keywords: 'nema 17 stepping motor 3d printer', section: 'Tools' },
+  { type: 'stepdriver', name: 'Stepper Driver', keywords: 'a4988 tmc2209 drv8825 step dir microstep', section: 'Tools' },
+  { type: 'hbridge', name: 'H-Bridge', keywords: 'drv8833 l298 motor driver', section: 'Tools' },
+  { type: 'fuse', name: 'Fuse', keywords: 'overcurrent protection i2t', section: 'Tools' },
 
   // Nets & power
   { type: 'netlabel', name: 'Net Label', label: 'Net', keywords: 'net name signal flag sda reset', section: 'Nets & Power' },

@@ -256,6 +256,10 @@ const HANDLE_ORDER: Record<string, string[]> = {
   // Board-only parts. Pin headers and vias name their handles after the pad
   // number, so they resolve by direct match and need no entry here.
   jumper: ['a', 'b'],
+  dcmotor: ['a', 'b'],
+  stepper: ['a1', 'a2', 'b1', 'b2'],
+  fuse: ['in', 'out'],
+  hbridge: ['vm', 'gnd', 'in1', 'in2', 'out1', 'out2'],
 };
 
 /**
@@ -264,6 +268,19 @@ const HANDLE_ORDER: Record<string, string[]> = {
  * classic case (pins 1, 5 and 8 are unused).
  */
 const HANDLE_PIN_OVERRIDE: Record<string, Record<string, string>> = {
+  // Pololu stepper-driver carrier: 1 EN … 7 STEP, 8 DIR down one side;
+  // 9 GND, 10 VDD, 11 1B, 12 1A, 13 2A, 14 2B, 15 GND, 16 VMOT up the other.
+  stepdriver: {
+    en: '1',
+    step: '7',
+    dir: '8',
+    a2: '11',
+    a1: '12',
+    b1: '13',
+    b2: '14',
+    gnd: '15',
+    vm: '16',
+  },
   // Single op-amp in a DIP-8 (pins 1, 5, 8 unused).
   opamp: {
     in_inv: '2',

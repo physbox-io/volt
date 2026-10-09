@@ -531,6 +531,66 @@ export function Sidebar({
             </div>
             <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">LDR</span>
           </div>
+
+          {/* DC Motor */}
+          <div 
+            {...partProps('dcmotor')}
+          >
+            <div className={iconClass}>
+              <svg width="20" height="20" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="24" cy="24" r="14" />
+                <path d="M 17 31 V 17 L 24 26 L 31 17 V 31" />
+              </svg>
+            </div>
+            <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">DC Motor</span>
+          </div>
+
+          {/* Stepper motor */}
+          <div 
+            {...partProps('stepper')}
+          >
+            <div className={iconClass}>
+              <svg width="20" height="20" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="10" y="10" width="28" height="28" rx="3" />
+                <circle cx="24" cy="24" r="7" />
+                <line x1="24" y1="24" x2="24" y2="17" />
+              </svg>
+            </div>
+            <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">Stepper</span>
+          </div>
+
+          {/* Stepper driver */}
+          <div 
+            {...partProps('stepdriver')}
+          >
+            <div className={iconClass}>
+              <div className="border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 text-[7px] font-bold">A4988</div>
+            </div>
+            <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">Step Driver</span>
+          </div>
+
+          {/* H-bridge */}
+          <div 
+            {...partProps('hbridge')}
+          >
+            <div className={iconClass}>
+              <div className="border border-slate-300 dark:border-slate-600 rounded px-1 py-0.5 text-[7px] font-bold">H-BR</div>
+            </div>
+            <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">H-Bridge</span>
+          </div>
+
+          {/* Fuse */}
+          <div 
+            {...partProps('fuse')}
+          >
+            <div className={iconClass}>
+              <svg width="20" height="20" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="12" y="18" width="24" height="12" rx="2" />
+                <line x1="4" y1="24" x2="44" y2="24" />
+              </svg>
+            </div>
+            <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">Fuse</span>
+          </div>
         </div>
 
         {/*

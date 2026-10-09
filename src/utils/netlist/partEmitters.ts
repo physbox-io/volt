@@ -27,6 +27,11 @@ import { transformer } from './parts/transformer';
 import { dff } from './parts/dff';
 import { ldr } from './parts/ldr';
 import { heltec } from './parts/heltec';
+import { dcmotor } from './parts/dcmotor';
+import { stepper } from './parts/stepper';
+import { stepdriver } from './parts/stepdriver';
+import { hbridge } from './parts/hbridge';
+import { fuse } from './parts/fuse';
 
 /**
  * How each part type reaches SPICE, by `node.type`. A new part is a file in
@@ -71,4 +76,9 @@ export const partEmitters: Record<string, PartEmitter> = {
   dff,
   ldr,
   heltec_v4: heltec,
+  dcmotor,
+  stepper,
+  stepdriver,
+  hbridge,
+  fuse,
 };

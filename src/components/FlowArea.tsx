@@ -53,6 +53,7 @@ import { CurrentSourceNode } from './nodes/CurrentSourceNode';
 import { TransformerNode } from './nodes/TransformerNode';
 import { DFlipFlopNode } from './nodes/DFlipFlopNode';
 import { LDRNode } from './nodes/LDRNode';
+import { PinBoxNode } from './nodes/PinBoxNode';
 import { JunctionNode } from './nodes/JunctionNode';
 import { PinHeaderNode } from './nodes/PinHeaderNode';
 import { ViaNode } from './nodes/ViaNode';
@@ -113,6 +114,11 @@ const nodeTypes = {
   transformer: TransformerNode,
   dff: DFlipFlopNode,
   ldr: LDRNode,
+  dcmotor: PinBoxNode,
+  stepper: PinBoxNode,
+  stepdriver: PinBoxNode,
+  hbridge: PinBoxNode,
+  fuse: PinBoxNode,
   junction: JunctionNode,
   pinheader: PinHeaderNode,
   via: ViaNode,

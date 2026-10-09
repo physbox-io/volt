@@ -46,6 +46,8 @@ export const DESIGNATOR_PREFIXES: Record<string, string> = {
   dff: 'U',
   mcu: 'U',
   heltec_v4: 'U',
+  stepdriver: 'U',
+  hbridge: 'U',
   and: 'U',
   or: 'U',
   not: 'U',
@@ -57,6 +59,9 @@ export const DESIGNATOR_PREFIXES: Record<string, string> = {
   speaker: 'LS',
   microphone: 'MK',
   switch: 'SW',
+  dcmotor: 'M',
+  stepper: 'M',
+  fuse: 'F',
 
   // Sources share one sequence, as they do in every other EDA package: the
   // circuit has one V1, whether it is a battery or a generator.

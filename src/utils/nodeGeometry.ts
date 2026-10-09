@@ -147,6 +147,7 @@ export function rotateOrientation(nodeType: string, orientation: unknown): strin
 }
 
 import { getEffectiveMcuConfig } from './mcuConfig';
+import { pinBoxOffset, pinBoxPart } from '../components/nodes/pinBoxParts';
 import {
   getPinHeaderGeometry,
   getPinHeaderHandles,
@@ -155,6 +156,8 @@ import {
 } from '../components/nodes/boardGeometry';
 
 export function getHandlesForNode(node: Node): string[] {
+  const box = pinBoxPart(node.type);
+  if (box) return box.pins.map(p => p.id);
   if (node.type === 'timer555') {
     return ['1', '2', '3', '4', '5', '6', '7', '8'];
   }
@@ -244,6 +247,13 @@ export function getHandleCoord(node: Node, handleId: string): { x: number; y: nu
   const y = node.position.y;
   const w = node.measured?.width || getNodeDimensions(node.type ?? '', node.data).width;
   const h = node.measured?.height || getNodeDimensions(node.type ?? '', node.data).height;
+
+  const box = pinBoxPart(node.type);
+  const boxPin = box?.pins.find(p => p.id === handleId);
+  if (box && boxPin) {
+    const at = pinBoxOffset(box, boxPin);
+    return { x: x + at.x, y: y + at.y };
+  }
 
   // Diode/LED pins are electrically named but sit where in/out sit; without
   // this mapping they fell through to the node-center fallback, which put
@@ -475,6 +485,8 @@ export function getHandleCoord(node: Node, handleId: string): { x: number; y: nu
 }
 
 export const getHandlePosition = (node: Node, handleId: string): string => {
+  const boxPin = pinBoxPart(node.type)?.pins.find(p => p.id === handleId);
+  if (boxPin) return boxPin.side;
   if (node.type === 'mcu') {
     const cfg = getEffectiveMcuConfig(node.data);
     const pin = cfg.pins.find(p => p.id === handleId);

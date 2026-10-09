@@ -1,6 +1,7 @@
 import { type Edge, type Node, type Position, getSmoothStepPath } from '@xyflow/react';
 import { getEffectiveMcuConfig } from './mcuConfig';
 import { getPinHeaderSize, getCutoutSize } from '../components/nodes/boardGeometry';
+import { pinBoxPart } from '../components/nodes/pinBoxParts';
 
 /**
  * How big a part is on the canvas, and how a wire gets from one of its pins to
@@ -17,6 +18,9 @@ import { getPinHeaderSize, getCutoutSize } from '../components/nodes/boardGeomet
 export function getNodeDimensions(type: string, data: Node['data'] | undefined) {
   const orientation = data?.orientation || 'horizontal';
   const isHorizontal = orientation === 'horizontal' || orientation === 'left';
+
+  const box = pinBoxPart(type);
+  if (box) return { width: box.width, height: box.height };
 
   switch (type) {
     case 'resistor':

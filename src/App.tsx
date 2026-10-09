@@ -67,6 +67,7 @@ import { PropertiesPanel } from './components/PropertiesPanel';
 import { FlowArea } from './components/FlowArea';
 import { ProbeTooltip } from './components/ProbeTooltip';
 import { useHil } from './hooks/useHil';
+import { readElectromech } from './utils/electromechReadouts';
 import { CanvasStateProvider } from './components/canvasState';
 import type { SpiceComplexResult, SpiceResult } from './types/simulation';
 import type { PwlPoint } from './types/nodes';
@@ -634,6 +635,9 @@ export default function App() {
           newNode.data = { ...newNode.data, voltageData: vd };
         } else if (n.type === 'mcu') {
           newNode.data.logs = mcuLogs[n.id];
+        } else if (n.type === 'dcmotor' || n.type === 'stepper' || n.type === 'fuse') {
+          const measured = readElectromech(n, result);
+          if (measured) newNode.data = { ...newNode.data, ...measured };
         } else if (n.type === 'sevenseg') {
           const segs = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
           const commonGraph = findGraph(portToNet[`${n.id}-common`]);
@@ -776,6 +780,7 @@ export default function App() {
         current_array: _ca, time_points: _tp, timePoints: _tps,
         segmentVoltages: _sv, segmentVoltageArrays: _sva,
         pinVoltages: _pv, state: _st, logs: _lg, isSimulating: _is,
+        rpm: _rpm, angleDeg: _ang, blown: _bl,
         ...kept
       } = n.data as Record<string, unknown>;
       return { ...n, data: kept };
@@ -826,11 +831,13 @@ export default function App() {
    * `state`, are deliberately absent.
    */
   const NETLIST_FIELDS = [
-    'amplification', 'amplitude', 'bf', 'capacitance', 'code', 'dutyCycle', 'frequency',
-    'inductance', 'isOpen', 'k', 'kp', 'l_pri', 'l_pri_label', 'l_sec', 'l_sec_label',
-    'label', 'lightLevel', 'lightSensitivity', 'mcuConfig', 'mode', 'photodiodeMode',
-    'pins', 'position', 'pwlData', 'r_dark', 'resistance', 'v_drop', 'voltage', 'vto',
-    'waveform',
+    'amplification', 'amplitude', 'bf', 'capacitance', 'code', 'coldR', 'currentLimit',
+    'detentTorque', 'dutyCycle', 'frequency', 'friction', 'holdingTorque', 'i2t',
+    'inductance', 'inertia', 'isOpen', 'k', 'kp', 'kt', 'l_pri', 'l_pri_label', 'l_sec',
+    'l_sec_label', 'label', 'lightLevel', 'lightSensitivity', 'loadTorque', 'mcuConfig',
+    'microsteps', 'mode', 'photodiodeMode', 'pins', 'position', 'pwlData', 'r_dark',
+    'rating', 'ratedCurrent', 'rdsOn', 'resistance', 'rotorTeeth', 'v_drop', 'voltage',
+    'vto', 'waveform', 'windingL', 'windingR',
   ] as const;
 
   const netlistSignature = useMemo(() => {

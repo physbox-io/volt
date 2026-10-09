@@ -260,6 +260,9 @@ const RAW_STANDARD_FOOTPRINTS: Record<string, ComponentFootprint> = {
   },
 };
 
+/** The Pololu-style carrier the A4988, DRV8825 and TMC2209 come on: 2×8 pins, rows 0.5" apart. */
+export const STEP_DRIVER_CARRIER = 'MODULE-2x8-P2.54-R12.7-B15.24x20.32';
+
 export const STANDARD_FOOTPRINTS: Record<string, ComponentFootprint> = Object.fromEntries(
   Object.entries(RAW_STANDARD_FOOTPRINTS).map(([id, fp]) => [id, withContainedCourtyard(fp)])
 );
@@ -303,6 +306,14 @@ const DEFAULT_PACKAGE_BY_TYPE: Record<string, string> = {
   // Dev boards break out to pin headers.
   mcu: 'HEADER-1x08',
   heltec_v4: 'HELTEC-V4',
+  // Motors are off the board: they wire on at a connector.
+  dcmotor: 'TERMINAL-2P',
+  stepper: 'HEADER-1x04',
+  fuse: '1206',
+  // Driver breakouts plug in: a DRV8833 board on one row, an A4988/TMC2209
+  // carrier on two 0.5"-apart rows of eight.
+  hbridge: 'HEADER-1x06',
+  stepdriver: STEP_DRIVER_CARRIER,
 };
 
 // ---------------------------------------------------------------------------
@@ -351,6 +362,7 @@ const PACKAGE_CATALOG: { group: string; id: string; label: string }[] = [
   { group: 'Connectors & Headers', id: 'TERMINAL-3P', label: '5.08mm Screw Terminal (3-Pin)' },
 
   { group: 'Modules', id: 'CC1101', label: 'CC1101 RF Module (2x4 Dupont Header)' },
+  { group: 'Modules', id: STEP_DRIVER_CARRIER, label: 'Stepper Driver Carrier (Pololu 2x8, 0.5" rows)' },
   { group: 'Modules', id: 'HELTEC-V4', label: 'Heltec WiFi LoRa 32 V4 (Dual Header Board)' },
 
   { group: 'Surface Mount — Passives', id: '0402', label: 'SMD 0402 Passive (1.0 x 0.5mm)' },
@@ -469,6 +481,11 @@ const PACKAGES_BY_TYPE: Record<string, string[]> = {
   microphone: ['TERMINAL-2P', 'HEADER-1x02', 'HEADER-1x03'],
 
   heltec_v4: ['HELTEC-V4', 'HEADER-2x08', 'HEADER-1x08'],
+  dcmotor: ['TERMINAL-2P', 'HEADER-1x02'],
+  stepper: ['HEADER-1x04', 'HEADER-2x02'],
+  fuse: ['1206', '0805', '2512', 'AXIAL-0.3'],
+  hbridge: ['HEADER-1x06', 'HEADER-2x03'],
+  stepdriver: [STEP_DRIVER_CARRIER, 'HEADER-2x08'],
 };
 
 /**

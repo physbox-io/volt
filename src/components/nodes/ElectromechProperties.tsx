@@ -1,0 +1,90 @@
+import type { NodePropertiesProps } from './registry';
+import { DC_MOTOR_DEFAULTS } from '../../utils/netlist/parts/dcmotor';
+import { STEPPER_DEFAULTS } from '../../utils/netlist/parts/stepper';
+import { STEP_DRIVER_DEFAULTS } from '../../utils/netlist/parts/stepdriver';
+import { HBRIDGE_DEFAULTS } from '../../utils/netlist/parts/hbridge';
+import { FUSE_DEFAULTS } from '../../utils/netlist/parts/fuse';
+
+type Field = { key: string; label: string; unit: string; fallback: number };
+
+const f = (key: string, label: string, unit: string, fallback: number): Field => ({ key, label, unit, fallback });
+
+/** The settings each part shows, with the value it simulates at when left blank. */
+const FIELDS: Record<string, Field[]> = {
+  dcmotor: [
+    f('windingR', 'Winding resistance', 'Ω', DC_MOTOR_DEFAULTS.windingR),
+    f('windingL', 'Winding inductance', 'H', DC_MOTOR_DEFAULTS.windingL),
+    f('kt', 'Torque constant', 'N·m/A', DC_MOTOR_DEFAULTS.kt),
+    f('inertia', 'Rotor inertia', 'kg·m²', DC_MOTOR_DEFAULTS.inertia),
+    f('friction', 'Friction', 'N·m·s/rad', DC_MOTOR_DEFAULTS.friction),
+    f('loadTorque', 'Load torque', 'N·m', DC_MOTOR_DEFAULTS.loadTorque),
+  ],
+  stepper: [
+    f('holdingTorque', 'Holding torque', 'N·m', STEPPER_DEFAULTS.holdingTorque),
+    f('ratedCurrent', 'Rated current', 'A', STEPPER_DEFAULTS.ratedCurrent),
+    f('windingR', 'Phase resistance', 'Ω', STEPPER_DEFAULTS.windingR),
+    f('windingL', 'Phase inductance', 'H', STEPPER_DEFAULTS.windingL),
+    f('detentTorque', 'Detent torque', 'N·m', STEPPER_DEFAULTS.detentTorque),
+    f('rotorTeeth', 'Rotor teeth', '', STEPPER_DEFAULTS.rotorTeeth),
+    f('inertia', 'Rotor inertia', 'kg·m²', STEPPER_DEFAULTS.inertia),
+    f('friction', 'Friction', 'N·m·s/rad', STEPPER_DEFAULTS.friction),
+    f('loadTorque', 'Load torque', 'N·m', STEPPER_DEFAULTS.loadTorque),
+  ],
+  stepdriver: [
+    f('currentLimit', 'Current limit (peak)', 'A', STEP_DRIVER_DEFAULTS.currentLimit),
+  ],
+  hbridge: [
+    f('rdsOn', 'Switch resistance', 'Ω', HBRIDGE_DEFAULTS.rdsOn),
+  ],
+  fuse: [
+    f('rating', 'Rating', 'A', FUSE_DEFAULTS.rating),
+    f('i2t', 'Melting I²t', 'A²s', FUSE_DEFAULTS.i2t),
+    f('coldR', 'Resistance', 'Ω', FUSE_DEFAULTS.coldR),
+  ],
+};
+
+const INPUT =
+  'w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 ' +
+  'text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none';
+
+/**
+ * Settings for the electromechanical parts. Values are kept as typed, SI
+ * suffixes and all ("2.8m"), and read with `numParam` when the netlist is built.
+ */
+export function ElectromechProperties({ node, updateData }: NodePropertiesProps) {
+  const fields = FIELDS[node.type ?? ''] ?? [];
+  const data = node.data as Record<string, unknown>;
+  return (
+    <>
+      {node.type === 'stepdriver' && (
+        <div className="mb-3">
+          <label className="block text-xs font-medium text-gray-700 mb-1">Microstepping</label>
+          <select
+            value={String(data.microsteps ?? STEP_DRIVER_DEFAULTS.microsteps)}
+            onChange={e => updateData('microsteps', Number(e.target.value))}
+            className={INPUT}
+          >
+            {[1, 2, 4, 8, 16].map(m => <option key={m} value={m}>{m === 1 ? 'Full step' : `1/${m} step`}</option>)}
+          </select>
+        </div>
+      )}
+      {fields.map(field => (
+        <div className="mb-3" key={field.key}>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            {field.label}{field.unit && <span className="text-gray-400"> ({field.unit})</span>}
+          </label>
+          <input
+            type="text"
+            value={data[field.key] === undefined ? '' : String(data[field.key])}
+            placeholder={String(field.fallback)}
+            onChange={e => updateData(field.key, e.target.value.trim() === '' ? undefined : e.target.value)}
+            className={INPUT}
+          />
+        </div>
+      ))}
+      {node.type === 'fuse' && data.blown && (
+        <div className="text-[11px] text-red-600">Blown. Reset the simulation to fit a new one.</div>
+      )}
+    </>
+  );
+}
