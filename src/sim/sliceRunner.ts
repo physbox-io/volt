@@ -1,7 +1,8 @@
 import type { Node, Edge } from '@xyflow/react';
 import { dependsOnTime, generateSpiceNetlist } from '../utils/spice';
 import { SIM_TIME, readEndState, simTime, withoutTime, type SimState } from '../utils/simState';
-import { buildNetlistResultIndex, findNetGraph } from '../utils/netlistResult';
+import { buildNetlistResultIndex, findNetGraph, type NetlistResultIndex } from '../utils/netlistResult';
+import { hashDrives } from '../utils/mcu';
 import { runSketches, type PWLPoint } from '../utils/mcu';
 import type { HILMemoizer } from '../utils/hilMemoizer';
 import type { SpiceResult } from '../types/simulation';
@@ -34,7 +35,7 @@ export type SliceInput = {
   edges: Edge[];
   /** The board in the loop. */
   boardId: string;
-  /** The voltage last read off each of the board's input pins. */
+  /** The voltage last read off each of the board's input pins. Not modified, and may be kept. */
   inputs: Record<string, number>;
   sliceMs: number;
 };
@@ -50,6 +51,8 @@ export type SliceOutcome = {
   /** The nodes the slice was built from, the board's readings on it. */
   nodes: Node[];
   result: SpiceResult;
+  /** `result`'s lookup index, for reading more nets off it. */
+  index: NetlistResultIndex;
   portToNet: Record<string, string>;
   /** Each digital_out pin's level over the slice, as holds. */
   outputs: Record<string, Hold[]>;
@@ -92,16 +95,17 @@ export async function runSlice(state: SliceState, input: SliceInput, { solve, me
   // The cache keys on the circuit's state, not the clock — except when a
   // source in it is a function of time, when the clock is part of the answer.
   const clock = dependsOnTime(nodes) ? `@${simTime(state.sim).toFixed(6)}` : '';
-  const drive = (Object.keys(sketches.drives).length > 0 ? JSON.stringify(sketches.drives) : '') + clock;
+  const drive = (Object.keys(sketches.drives).length > 0 ? hashDrives(sketches.drives) : '') + clock;
   const circuitState = withoutTime(state.sim);
 
-  const cached = memoizer.get({ ...inputs }, circuitState, sliceMs, maxStepMs, drive);
+  const cached = memoizer.get(inputs, circuitState, sliceMs, maxStepMs, drive);
   if (cached) {
     // A hit from another time moves the clock on from this one.
     return {
       state: { sim: { ...cached.nextICs, [SIM_TIME]: simTime(state.sim) + sliceMs / 1000 }, prevInputs, halfPeriods: { ...cached.halfPeriods } },
       nodes,
       result: cached.result,
+      index: cached.index,
       portToNet: cached.portToNet,
       outputs: cached.outputs,
     };
@@ -125,9 +129,9 @@ export async function runSlice(state: SliceState, input: SliceInput, { solve, me
     outputs[pinId] = seq;
   }
 
-  memoizer.set({ ...inputs }, circuitState, sliceMs, maxStepMs, {
-    result, portToNet, nextICs: sim, outputs, halfPeriods: { ...halfPeriods },
+  memoizer.set(inputs, circuitState, sliceMs, maxStepMs, {
+    result, index: resultIndex, portToNet, nextICs: sim, outputs, halfPeriods: { ...halfPeriods },
   }, drive);
 
-  return { state: { sim, prevInputs, halfPeriods }, nodes, result, portToNet, outputs };
+  return { state: { sim, prevInputs, halfPeriods }, nodes, result, index: resultIndex, portToNet, outputs };
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef, type Dispatch, type RefObject, type SetStateAction }
 import type { Node, Edge } from '@xyflow/react';
 import { HELTEC_V4_GPIO_PINS } from '../components/nodes/partDefaults';
 import { HILMemoizer } from '../utils/hilMemoizer';
-import { buildNetlistResultIndex, findNetGraph } from '../utils/netlistResult';
+import { findNetGraph } from '../utils/netlistResult';
 import { explainSpiceFailure, messagesFromError } from '../utils/simDiagnostics';
 import type { SimState } from '../utils/simState';
 import type { SpiceResult } from '../types/simulation';
@@ -109,7 +109,15 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
   // hil_slice_result (device round trip), not once per computed slice: the
   // lookahead computes several slices back to back, and a re-render for each
   // would come before any of that data had even reached the device.
-  const flushDisplay = () => setNodes(nds => historyRef.current.applyTo(nds));
+  //
+  // The circuit state and the cache's stats go out here too, once per round
+  // trip, rather than as two more canvas updates for every computed slice.
+  const flushDisplay = () => {
+    const stats = memoizerRef.current.getStats();
+    const boardId = nodesRef.current.find(isBoard)?.id;
+    setNodes(nds => historyRef.current.applyTo(nds).map(n => (n.id === boardId ? { ...n, data: { ...n.data, hilStats: stats } } : n)));
+    setInitialConditions(sliceStateRef.current.sim);
+  };
 
   const runOneSlice = async () => {
     if (!runningRef.current) return;
@@ -135,8 +143,7 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
         { solve: netlist => solve(netlist, HIL_SLICE_TIMEOUT_MS), memoizer },
       );
       sliceStateRef.current = slice.state;
-      const { result, portToNet } = slice;
-      const resultIndex = buildNetlistResultIndex(result);
+      const { result, portToNet, index: resultIndex } = slice;
 
       // Stream simulated speaker audio to the CYD board
       if (link.connected) {
@@ -151,17 +158,11 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
         }
       }
 
-      setInitialConditions(slice.state.sim);
-
       const pins = (board.data.pins as Record<string, string>) || {};
       link.push(buildSliceCommand(pins, slice.outputs, connectedPinsCached(board.id)), sliceMs);
 
-      // Live memoization stats for the properties panel
-      const stats = memoizer.getStats();
-      setNodes(nds => nds.map(n => n.id === board.id ? { ...n, data: { ...n.data, hilStats: stats } } : n));
-
       // History every slice, for gap-free traces; drawn by flushDisplay.
-      historyRef.current.append(slice.nodes, result, portToNet, sliceMs);
+      historyRef.current.append(slice.nodes, result, portToNet, sliceMs, resultIndex);
       setRunAdvisories(prev => (prev.some(a => a.id === 'hil:failed') ? prev.filter(a => a.id !== 'hil:failed') : prev));
     } catch (e) {
       console.error("[HIL] Simulation slice run failed:", e);
@@ -407,6 +408,8 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
         console.error("[HIL] Failed to send stop state:", e);
       }
     }
+    // Where the run got to, for a run after it to continue from.
+    if (Object.keys(sliceStateRef.current.sim).length > 0) setInitialConditions(sliceStateRef.current.sim);
     historyRef.current.clear();
     smoothedValuesRef.current = {};
     link.resetQueue();

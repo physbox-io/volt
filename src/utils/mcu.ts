@@ -276,3 +276,53 @@ export function runSketches(
   }
   return { drives, logs };
 }
+
+/**
+ * A 64-bit fingerprint of what every MCU drives over a slice, for a cache key.
+ *
+ * The HIL cache keyed on `JSON.stringify` of the drives, which writes every
+ * PWL point of every pin as text on every slice, hit or miss. This folds the
+ * same content — MCU ids, pin modes, and each point's time and voltage, all
+ * in sorted order — through two FNV-1a lanes over the numbers' bits instead.
+ */
+export function hashDrives(drives: Record<string, McuDrive>): string {
+  let a = 0x811c9dc5;
+  let b = 0x01000193 ^ 0x5bd1e995;
+  const mixInt = (x: number) => {
+    a = Math.imul(a ^ (x & 0xff), 0x01000193) >>> 0;
+    a = Math.imul(a ^ ((x >>> 8) & 0xff), 0x01000193) >>> 0;
+    a = Math.imul(a ^ ((x >>> 16) & 0xff), 0x01000193) >>> 0;
+    a = Math.imul(a ^ (x >>> 24), 0x01000193) >>> 0;
+    b = Math.imul(b ^ x, 0x5bd1e995) >>> 0;
+    b = (b ^ (b >>> 15)) >>> 0;
+  };
+  const mixStr = (s: string) => {
+    for (let i = 0; i < s.length; i++) mixInt(s.charCodeAt(i));
+    mixInt(0xffff);
+  };
+  const f64 = new Float64Array(1);
+  const u32 = new Uint32Array(f64.buffer);
+  const mixNum = (x: number) => {
+    f64[0] = x;
+    mixInt(u32[0]);
+    mixInt(u32[1]);
+  };
+  for (const id of Object.keys(drives).sort()) {
+    mixStr(id);
+    const { pwlOutputs, pinModes } = drives[id];
+    for (const pin of Object.keys(pinModes).sort()) {
+      mixStr(pin);
+      mixStr(String(pinModes[pin]));
+    }
+    for (const pin of Object.keys(pwlOutputs).sort()) {
+      mixStr(pin);
+      const points = pwlOutputs[pin];
+      mixInt(points.length);
+      for (const p of points) {
+        mixNum(p.t);
+        mixNum(p.v);
+      }
+    }
+  }
+  return `${a.toString(16).padStart(8, '0')}${b.toString(16).padStart(8, '0')}`;
+}

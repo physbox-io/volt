@@ -1,8 +1,11 @@
 import type { SpiceResult } from '../types/simulation';
+import type { NetlistResultIndex } from './netlistResult';
 
 export interface CachedHILSliceResult {
   /** The SPICE run for the slice, carried verbatim and handed straight back. */
   result: SpiceResult;
+  /** Its lookup index, built once rather than on every hit. */
+  index: NetlistResultIndex;
   portToNet: Record<string, string>;
   nextICs: Record<string, number>;
   outputs: Record<string, [number, number][]>;

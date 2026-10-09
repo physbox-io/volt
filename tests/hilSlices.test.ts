@@ -5,6 +5,8 @@ import { encodePinEdges, chooseMaxStepMs, type Hold } from '../src/hil/pinEncodi
 import { buildSliceCommand, mergeSlices, polledPins, backgroundPollCode, boardUrl, connectedHeltecPins } from '../src/hil/heltecLink';
 import { runSlice, initialSliceState, type SliceState } from '../src/sim/sliceRunner';
 import { HILMemoizer } from '../src/utils/hilMemoizer';
+import { hashDrives } from '../src/utils/mcu';
+import { TraceHistory } from '../src/sim/traceHistory';
 import { findNetGraph } from '../src/utils/netlistResult';
 import type { SpiceResult } from '../src/types/simulation';
 
@@ -187,5 +189,66 @@ describe('one HIL slice, against the engine', () => {
     expect(solves).toBe(before);
     expect(again.outputs).toEqual(first.outputs);
     expect(again.state).toEqual(first.state);
+  });
+});
+
+describe('the drive fingerprint in the HIL cache key', () => {
+  const drive = (v: number, t = 0.5) => ({
+    U1: { pinModes: { D0: 'OUTPUT' as const, D1: 'INPUT' as const }, pwlOutputs: { D0: [{ t: 0, v: 0 }, { t, v }] } },
+  });
+
+  it('is the same for the same drive, written in any key order', () => {
+    const a = drive(5);
+    const b = { U1: { pwlOutputs: { D0: [{ t: 0, v: 0 }, { t: 0.5, v: 5 }] }, pinModes: { D1: 'INPUT' as const, D0: 'OUTPUT' as const } } };
+    expect(hashDrives(a)).toBe(hashDrives(b));
+  });
+
+  it('changes with any time, voltage, mode, pin or part', () => {
+    const base = hashDrives(drive(5));
+    const variants = [
+      drive(5.000001), drive(5, 0.5000001), drive(0),
+      { U1: { ...drive(5).U1, pinModes: { D0: 'INPUT' as const, D1: 'INPUT' as const } } },
+      { U1: { ...drive(5).U1, pwlOutputs: { D2: drive(5).U1.pwlOutputs.D0 } } },
+      { U2: drive(5).U1 },
+      { ...drive(5), U2: drive(5).U1 },
+    ];
+    const seen = new Set([base]);
+    for (const v of variants) seen.add(hashDrives(v));
+    expect(seen.size).toBe(variants.length + 1);
+  });
+});
+
+describe('the trace history of a sliced run', () => {
+  /** A scope on net N1 and an LED, as a fake result whose samples are their absolute times. */
+  const nodes = [
+    { id: 'S', type: 'scope', position: { x: 0, y: 0 }, data: {} },
+    { id: 'L', type: 'led', position: { x: 0, y: 0 }, data: {} },
+  ] as Node[];
+  const portToNet = { 'S-ch1': 'n1', 'S-gnd': '0', 'L-anode': 'n2' };
+  const fake = (startMs: number, sliceMs: number, samples: number): SpiceResult => {
+    const t = Array.from({ length: samples }, (_, i) => (i * sliceMs) / (samples - 1) / 1000);
+    return {
+      variableNames: ['time', 'v(n1)', 'v(n2)', 'v(int_led_l)'],
+      data: [{ values: t }, { values: t.map(x => startMs + x * 1000) }, { values: t.map(() => 3) }, { values: t.map(() => 1) }],
+    } as unknown as SpiceResult;
+  };
+
+  it('holds exactly the last window, whatever the slice size', () => {
+    for (const [sliceMs, samples] of [[40, 400], [5, 50], [7.3, 11]] as const) {
+      const history = new TraceHistory(1000);
+      let start = 0;
+      for (let k = 0; k < 600; k++) {
+        history.append(nodes, fake(start, sliceMs, samples), portToNet, sliceMs);
+        start += sliceMs;
+      }
+      const [scope, led] = history.applyTo(nodes);
+      const pts = scope.data.voltageData1 as { t: number; v: number }[];
+      // Each point's voltage is its absolute time; shown relative to the window's start.
+      expect(pts.every(p => p.t >= 0 && p.t <= 1000 + 1e-9)).toBe(true);
+      expect(pts.every(p => Math.abs(p.v - (p.t + start - 1000)) < 1e-6)).toBe(true);
+      expect(pts[pts.length - 1].t).toBeCloseTo(1000, 6);
+      expect(pts[0].t).toBeLessThan(sliceMs);
+      expect((led.data.current_array as number[]).every(v => v === 2)).toBe(true);
+    }
   });
 });
