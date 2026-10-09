@@ -1450,6 +1450,10 @@ export default function App() {
            }
          }
          
+         // Pass 1 ran each sketch to the end of the run. Pass 2 replays the
+         // same window against the inputs pass 1 measured, so it starts the
+         // sketch again rather than resuming it a whole run later.
+         for (const mcu of mcuNodes) mcu.data.state = undefined;
          const pass2 = generateSpiceNetlist(currentNodes, edges, simLength, simResolution, mcuWaveforms, customICs !== undefined ? customICs : initialConditions);
          netlist = pass2.netlist;
          portToNet = pass2.portToNet;

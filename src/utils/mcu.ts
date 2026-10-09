@@ -19,7 +19,10 @@ export interface McuExecutionResult {
  * sketch run forever and every output start again from 0V.
  */
 export interface McuState {
+  /** Time within the current slice; the PWL outputs are written against it. */
   mcuTimeMs: number;
+  /** Time at which the current slice began, so `millis()` keeps counting across slices. */
+  sliceStartMs?: number;
   simLengthMs: number;
   inputWaveforms: Record<string, PWLPoint[]>;
   logs: string[];
@@ -47,6 +50,7 @@ export function executeMcuCode(
 
   // Setup execution context inside state to share with generator closures
   state.mcuTimeMs = 0;
+  state.sliceStartMs = state.sliceStartMs ?? 0;
   state.inputWaveforms = inputWaveforms;
   state.simLengthMs = simLengthSeconds * 1000;
   state.logs = [];
@@ -148,7 +152,7 @@ export function executeMcuCode(
        // Generator-based sleep is resolved outside via yield
     },
     wait: (_ms: number) => {},
-    millis: () => state.mcuTimeMs,
+    millis: () => (state.sliceStartMs ?? 0) + state.mcuTimeMs,
     Serial: {
       println: (msg: unknown) => state.logs.push(String(msg)),
       print: (msg: unknown) => {
@@ -218,6 +222,7 @@ export function executeMcuCode(
   }
 
   state.pendingYield = currentYield;
+  state.sliceStartMs += state.simLengthMs;
 
   // Finish off PWL arrays to extend to the end of the simulation slice
   for (const pin in state.pwlOutputs) {
