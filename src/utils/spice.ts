@@ -96,20 +96,38 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], options: Netl
   } = options;
   let netlist = "Circuit Simulation\n";
   
-  // 1. Map connections to nets
-  // We'll use a Union-Find or a simple adjacency list to group connected ports into 'nets'.
-  // A port is defined by `${node.id}-${handle}`.
+  // 1. Map connections to nets. A port is `${node.id}-${handle}`.
   let netIdCounter = 1;
   const portToNet: Record<string, string> = {};
+  /**
+   * Every net's ports, so a merge relabels only the net it absorbs instead of
+   * scanning every port in the circuit — which made building a large
+   * schematic's netlist quadratic in its wires.
+   */
+  const members = new Map<string, string[]>();
+  const assign = (port: string, net: string) => {
+    portToNet[port] = net;
+    const list = members.get(net);
+    if (list) list.push(port);
+    else members.set(net, [port]);
+  };
+  /** Moves every port of net `from` onto net `to`; `to` keeps its name. */
+  const relabel = (from: string, to: string) => {
+    const moving = members.get(from);
+    if (!moving || from === to) return;
+    members.delete(from);
+    for (const port of moving) portToNet[port] = to;
+    const list = members.get(to);
+    if (list) list.push(...moving);
+    else members.set(to, moving);
+  };
 
   // Pre-populate junction nodes so in/out ports are electrically connected
   nodes.forEach(node => {
     if (node.type === 'junction') {
-      const portIn = `${node.id}-in`;
-      const portOut = `${node.id}-out`;
       const netId = `N_junc_${node.id}`;
-      portToNet[portIn] = netId;
-      portToNet[portOut] = netId;
+      assign(`${node.id}-in`, netId);
+      assign(`${node.id}-out`, netId);
     }
   });
 
@@ -120,19 +138,14 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], options: Netl
 
     if (!netA && !netB) {
       const netId = `N${netIdCounter++}`;
-      portToNet[portA] = netId;
-      portToNet[portB] = netId;
+      assign(portA, netId);
+      assign(portB, netId);
     } else if (netA && !netB) {
-      portToNet[portB] = netA;
+      assign(portB, netA);
     } else if (!netA && netB) {
-      portToNet[portA] = netB;
+      assign(portA, netB);
     } else if (netA !== netB) {
-      // Merge nets (simplistic, assumes no complex graphs for now, better to use proper disjoint set if it gets complex)
-      Object.keys(portToNet).forEach(port => {
-        if (portToNet[port] === netB) {
-          portToNet[port] = netA;
-        }
-      });
+      relabel(netB, netA);
     }
   };
 
@@ -159,15 +172,8 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], options: Netl
   if (portToNet['GND-global'] !== undefined) groundPorts.push('GND-global');
   groundPorts.forEach(groundPortIn => {
     const net = portToNet[groundPortIn];
-    if (net) {
-      Object.keys(portToNet).forEach(port => {
-        if (portToNet[port] === net) {
-          portToNet[port] = '0';
-        }
-      });
-    } else {
-       portToNet[groundPortIn] = '0';
-    }
+    if (net) relabel(net, '0');
+    else assign(groundPortIn, '0');
   });
 
   const unconnectedNets = new Set<string>();
