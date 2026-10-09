@@ -1,0 +1,1819 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the cards every part writes > AC sweep from ac1 1`] = `
+"Circuit Simulation
+R_jp1 NC_jp1_a NC_jp1_b 0.001
+R_r1 N1 N2 4.7k
+R_r2 N4 N6 2k
+C_c1 N6 NC_c1_out 10uF
+L_l1 N2 0 1mH
+L_pri_t1 NC_t1_p1 NC_t1_p2 10m
+L_sec_t1 NC_t1_s1 NC_t1_s2 2.5m
+K_t1 L_pri_t1 L_sec_t1 0.95
+V_v1 N1 0 DC 9V
+V_ac1 NC_ac1_pos NC_ac1_neg SINE(0 12 50) AC 1
+V_sg_sine NC_sg_sine_out NC_sg_sine_gnd SINE(0 2 1000)
+V_sg_sq NC_sg_sq_out NC_sg_sq_gnd PULSE(0 5 0 0.000001 0.000001 0.0025 0.01)
+V_sg_dc NC_sg_dc_out NC_sg_dc_gnd DC 3
+I_i1 NC_i1_pos NC_i1_neg DC 20mA
+R_ammeter_led1 NC_led1_anode int_led_led1 1
+D_led1 int_led_led1 NC_led1_cathode LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.7500000000000002)
+R_ammeter_led2 NC_led2_anode int_led_led2 1
+D_led2 int_led_led2 NC_led2_cathode LED_MODEL_led2
+.model LED_MODEL_led2 D(IS=1e-22 RS=5 N=1.6666666666666667)
+I_photo_led2 NC_led2_cathode int_led_led2 DC 8.000000e-6
+D_d1 NC_d1_anode NC_d1_cathode DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=0.8571428571428572)
+D_z1 NC_z1_anode NC_z1_cathode ZENER_MODEL_z1
+.model ZENER_MODEL_z1 D(IS=1e-11 BV=3.3 IBV=1e-3)
+R_sw_open NC_sw_open_in NC_sw_open_out 1e12
+R_sw_closed NC_sw_closed_in NC_sw_closed_out 0.01
+R_mm_v NC_mm_v_pos NC_mm_v_neg 1G
+V_ammeter_mm_i NC_mm_i_pos NC_mm_i_neg DC 0
+R_scope_ch1_scope1 NC_scope1_ch1 NC_scope1_gnd 1G
+R_scope_ch2_scope1 NC_scope1_ch2 NC_scope1_gnd 1G
+R_pot1_top NC_pot1_in NC_pot1_wiper 9990
+R_pot1_bot NC_pot1_wiper NC_pot1_out 10
+R_seg1_a NC_seg1_a NC_seg1_common 1G
+R_seg1_b NC_seg1_b NC_seg1_common 1G
+R_seg1_c NC_seg1_c NC_seg1_common 1G
+R_seg1_d NC_seg1_d NC_seg1_common 1G
+R_seg1_e NC_seg1_e NC_seg1_common 1G
+R_seg1_f NC_seg1_f NC_seg1_common 1G
+R_seg1_g NC_seg1_g NC_seg1_common 1G
+R_spk1 NC_spk1_in NC_spk1_gnd 8
+V_mic_pwl NC_mic_pwl_out NC_mic_pwl_gnd PWL(
++ 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
++ )
+V_mic_dc NC_mic_dc_out NC_mic_dc_gnd DC 0
+R_ldr_fixed NC_ldr_fixed_in NC_ldr_fixed_out 100050.00
+V_light_ldr_pwl light_node_ldr_pwl 0 PWL(
++ 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
++ )
+B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / (100 + (100000 - 100) * (1 - V(light_node_ldr_pwl)))
+Q_q1 NC_q1_c NC_q1_b NC_q1_e NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 NC_q2_c NC_q2_b NC_q2_e PNP_MODEL_q2
+.model PNP_MODEL_q2 PNP(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+M_m1 NC_m1_d NC_m1_g NC_m1_s NC_m1_s NMOS_MODEL_m1
+.model NMOS_MODEL_m1 NMOS(LEVEL=1 VTO=2 KP=0.05 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+M_m2 NC_m2_d NC_m2_g NC_m2_s NC_m2_s PMOS_MODEL_m2
+.model PMOS_MODEL_m2 PMOS(LEVEL=1 VTO=-2 KP=0.02 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+X_u1 NC_u1_in_non NC_u1_in_inv NC_u1_vcc NC_u1_vee NC_u1_out OPAMP_MODEL_u1
+X_u2 NC_u2_1 NC_u2_2 NC_u2_3 NC_u2_4 NC_u2_5 NC_u2_6 NC_u2_7 NC_u2_8 NE555
+X_u3 NC_u3_d NC_u3_clk NC_u3_q NC_u3_qbar DFF
+B_gate_g_and NC_g_and_out 0 V = V(NC_g_and_in1) > 2.5 ? (V(NC_g_and_in2) > 2.5 ? 5 : 0) : 0
+B_gate_g_or NC_g_or_out 0 V = V(NC_g_or_in1) > 2.5 ? 5 : (V(NC_g_or_in2) > 2.5 ? 5 : 0)
+B_gate_g_nand NC_g_nand_out 0 V = V(NC_g_nand_in1) > 2.5 ? (V(NC_g_nand_in2) > 2.5 ? 0 : 5) : 5
+B_gate_g_nor NC_g_nor_out 0 V = V(NC_g_nor_in1) > 2.5 ? 0 : (V(NC_g_nor_in2) > 2.5 ? 0 : 5)
+B_gate_g_xor NC_g_xor_out 0 V = V(NC_g_xor_in1) > 2.5 ? (V(NC_g_xor_in2) > 2.5 ? 0 : 5) : (V(NC_g_xor_in2) > 2.5 ? 5 : 0)
+B_gate_g_not NC_g_not_out 0 V = V(NC_g_not_in1) > 2.5 ? 0 : 5
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND NC_mcu1_GND 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 NC_mcu1_A0 0 100MEG
+V_heltec_h1_GPIO_1 NC_h1_GPIO_1 0 DC 1.2340
+R_heltec_h1_GPIO_3 NC_h1_GPIO_3 0 100k
+V_heltec_h1_GPIO_33 NC_h1_GPIO_33 0 DC 3.3000
+V_heltec_h1_GPIO_36 NC_h1_GPIO_36 0 DC 0.0000
+V_heltec_h1_GPIO_37 NC_h1_GPIO_37 0 DC 0.0000
+V_heltec_h1_GPIO_41 NC_h1_GPIO_41 0 DC 0.0000
+V_heltec_h1_3V3 NC_h1_3V3 0 DC 3.3
+R_heltec_h1_GND NC_h1_GND 0 1m
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for u1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_u1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_u1
+
+* Idealized NE555 Timer Macro Model
+* Node order: GND TRIG OUT RST CTRL THR DIS VCC
+.SUBCKT NE555 1 2 3 4 5 6 7 8
+* Voltage divider
+R1 8 5 5k
+R2 5 61 5k
+R3 61 1 5k
+
+* Smooth SR Latch Integrator
+* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+S_SET 8 state 61 2 SMOD_ON
+S_RST state 1 6 5 SMOD_ON
+C1 state 1 100p
+* Add parallel resistor to guarantee DC convergence
+R4 state 1 10G
+
+* Output buffer
+E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+
+* Discharge
+S_DIS 7 1 8 state SMOD_DIS
+
+.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
+.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.ENDS NE555
+
+* Idealized Master-Slave D Flip-Flop
+* Node order: D CLK Q QBAR
+.SUBCKT DFF D CLK Q QBAR
+B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+
+* Master Latch: closed when clk_bar > 2.5
+S_M D state_m clk_bar 0 SMOD_DFF
+C_M state_m 0 10n
+R_M state_m 0 1G
+
+* Buffer master to slave to prevent charge sharing between C_M and C_S
+B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+
+* Slave Latch: closed when CLK > 2.5
+S_S state_m_buf state_s CLK 0 SMOD_DFF
+C_S state_s 0 10n
+R_S state_s 0 1G
+
+* Output Drivers
+B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
+B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+
+.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.ENDS DFF
+V_rail_N4 N4 0 DC 5
+R_shunt_NC_jp1_a NC_jp1_a 0 1G
+R_shunt_NC_jp1_b NC_jp1_b 0 1G
+R_shunt_NC_c1_out NC_c1_out 0 1G
+R_shunt_NC_t1_p1 NC_t1_p1 0 1G
+R_shunt_NC_t1_p2 NC_t1_p2 0 1G
+R_shunt_NC_t1_s1 NC_t1_s1 0 1G
+R_shunt_NC_t1_s2 NC_t1_s2 0 1G
+R_shunt_NC_ac1_pos NC_ac1_pos 0 1G
+R_shunt_NC_ac1_neg NC_ac1_neg 0 1G
+R_shunt_NC_sg_sine_out NC_sg_sine_out 0 1G
+R_shunt_NC_sg_sine_gnd NC_sg_sine_gnd 0 1G
+R_shunt_NC_sg_sq_out NC_sg_sq_out 0 1G
+R_shunt_NC_sg_sq_gnd NC_sg_sq_gnd 0 1G
+R_shunt_NC_sg_dc_out NC_sg_dc_out 0 1G
+R_shunt_NC_sg_dc_gnd NC_sg_dc_gnd 0 1G
+R_shunt_NC_i1_pos NC_i1_pos 0 1G
+R_shunt_NC_i1_neg NC_i1_neg 0 1G
+R_shunt_NC_led1_anode NC_led1_anode 0 1G
+R_shunt_NC_led1_cathode NC_led1_cathode 0 1G
+R_shunt_NC_led2_anode NC_led2_anode 0 1G
+R_shunt_NC_led2_cathode NC_led2_cathode 0 1G
+R_shunt_NC_d1_anode NC_d1_anode 0 1G
+R_shunt_NC_d1_cathode NC_d1_cathode 0 1G
+R_shunt_NC_z1_anode NC_z1_anode 0 1G
+R_shunt_NC_z1_cathode NC_z1_cathode 0 1G
+R_shunt_NC_sw_open_in NC_sw_open_in 0 1G
+R_shunt_NC_sw_open_out NC_sw_open_out 0 1G
+R_shunt_NC_sw_closed_in NC_sw_closed_in 0 1G
+R_shunt_NC_sw_closed_out NC_sw_closed_out 0 1G
+R_shunt_NC_mm_v_pos NC_mm_v_pos 0 1G
+R_shunt_NC_mm_v_neg NC_mm_v_neg 0 1G
+R_shunt_NC_mm_i_pos NC_mm_i_pos 0 1G
+R_shunt_NC_mm_i_neg NC_mm_i_neg 0 1G
+R_shunt_NC_scope1_ch1 NC_scope1_ch1 0 1G
+R_shunt_NC_scope1_ch2 NC_scope1_ch2 0 1G
+R_shunt_NC_scope1_gnd NC_scope1_gnd 0 1G
+R_shunt_NC_pot1_in NC_pot1_in 0 1G
+R_shunt_NC_pot1_out NC_pot1_out 0 1G
+R_shunt_NC_pot1_wiper NC_pot1_wiper 0 1G
+R_shunt_NC_seg1_common NC_seg1_common 0 1G
+R_shunt_NC_seg1_a NC_seg1_a 0 1G
+R_shunt_NC_seg1_b NC_seg1_b 0 1G
+R_shunt_NC_seg1_c NC_seg1_c 0 1G
+R_shunt_NC_seg1_d NC_seg1_d 0 1G
+R_shunt_NC_seg1_e NC_seg1_e 0 1G
+R_shunt_NC_seg1_f NC_seg1_f 0 1G
+R_shunt_NC_seg1_g NC_seg1_g 0 1G
+R_shunt_NC_spk1_in NC_spk1_in 0 1G
+R_shunt_NC_spk1_gnd NC_spk1_gnd 0 1G
+R_shunt_NC_mic_pwl_out NC_mic_pwl_out 0 1G
+R_shunt_NC_mic_pwl_gnd NC_mic_pwl_gnd 0 1G
+R_shunt_NC_mic_dc_out NC_mic_dc_out 0 1G
+R_shunt_NC_mic_dc_gnd NC_mic_dc_gnd 0 1G
+R_shunt_NC_ldr_fixed_in NC_ldr_fixed_in 0 1G
+R_shunt_NC_ldr_fixed_out NC_ldr_fixed_out 0 1G
+R_shunt_NC_ldr_pwl_in NC_ldr_pwl_in 0 1G
+R_shunt_NC_ldr_pwl_out NC_ldr_pwl_out 0 1G
+R_shunt_NC_q1_c NC_q1_c 0 1G
+R_shunt_NC_q1_b NC_q1_b 0 1G
+R_shunt_NC_q1_e NC_q1_e 0 1G
+R_shunt_NC_q2_c NC_q2_c 0 1G
+R_shunt_NC_q2_b NC_q2_b 0 1G
+R_shunt_NC_q2_e NC_q2_e 0 1G
+R_shunt_NC_m1_d NC_m1_d 0 1G
+R_shunt_NC_m1_g NC_m1_g 0 1G
+R_shunt_NC_m1_s NC_m1_s 0 1G
+R_shunt_NC_m2_d NC_m2_d 0 1G
+R_shunt_NC_m2_g NC_m2_g 0 1G
+R_shunt_NC_m2_s NC_m2_s 0 1G
+R_shunt_NC_u1_in_non NC_u1_in_non 0 1G
+R_shunt_NC_u1_in_inv NC_u1_in_inv 0 1G
+R_shunt_NC_u1_vcc NC_u1_vcc 0 1G
+R_shunt_NC_u1_vee NC_u1_vee 0 1G
+R_shunt_NC_u1_out NC_u1_out 0 1G
+R_shunt_NC_u2_1 NC_u2_1 0 1G
+R_shunt_NC_u2_2 NC_u2_2 0 1G
+R_shunt_NC_u2_3 NC_u2_3 0 1G
+R_shunt_NC_u2_4 NC_u2_4 0 1G
+R_shunt_NC_u2_5 NC_u2_5 0 1G
+R_shunt_NC_u2_6 NC_u2_6 0 1G
+R_shunt_NC_u2_7 NC_u2_7 0 1G
+R_shunt_NC_u2_8 NC_u2_8 0 1G
+R_shunt_NC_u3_d NC_u3_d 0 1G
+R_shunt_NC_u3_clk NC_u3_clk 0 1G
+R_shunt_NC_u3_q NC_u3_q 0 1G
+R_shunt_NC_u3_qbar NC_u3_qbar 0 1G
+R_shunt_NC_g_and_in1 NC_g_and_in1 0 1G
+R_shunt_NC_g_and_in2 NC_g_and_in2 0 1G
+R_shunt_NC_g_and_out NC_g_and_out 0 1G
+R_shunt_NC_g_or_in1 NC_g_or_in1 0 1G
+R_shunt_NC_g_or_in2 NC_g_or_in2 0 1G
+R_shunt_NC_g_or_out NC_g_or_out 0 1G
+R_shunt_NC_g_nand_in1 NC_g_nand_in1 0 1G
+R_shunt_NC_g_nand_in2 NC_g_nand_in2 0 1G
+R_shunt_NC_g_nand_out NC_g_nand_out 0 1G
+R_shunt_NC_g_nor_in1 NC_g_nor_in1 0 1G
+R_shunt_NC_g_nor_in2 NC_g_nor_in2 0 1G
+R_shunt_NC_g_nor_out NC_g_nor_out 0 1G
+R_shunt_NC_g_xor_in1 NC_g_xor_in1 0 1G
+R_shunt_NC_g_xor_in2 NC_g_xor_in2 0 1G
+R_shunt_NC_g_xor_out NC_g_xor_out 0 1G
+R_shunt_NC_g_not_in1 NC_g_not_in1 0 1G
+R_shunt_NC_g_not_out NC_g_not_out 0 1G
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_GND NC_mcu1_GND 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+R_shunt_NC_mcu1_A0 NC_mcu1_A0 0 1G
+R_shunt_NC_h1_GPIO_1 NC_h1_GPIO_1 0 1G
+R_shunt_NC_h1_GPIO_3 NC_h1_GPIO_3 0 1G
+R_shunt_NC_h1_GPIO_33 NC_h1_GPIO_33 0 1G
+R_shunt_NC_h1_GPIO_36 NC_h1_GPIO_36 0 1G
+R_shunt_NC_h1_GPIO_37 NC_h1_GPIO_37 0 1G
+R_shunt_NC_h1_GPIO_41 NC_h1_GPIO_41 0 1G
+R_shunt_NC_h1_3V3 NC_h1_3V3 0 1G
+R_shunt_NC_h1_GND NC_h1_GND 0 1G
+.save all
+.ac dec 10 1 1000000
+.end
+"
+`;
+
+exports[`the cards every part writes > AC sweep from sg_sine 1`] = `
+"Circuit Simulation
+R_jp1 NC_jp1_a NC_jp1_b 0.001
+R_r1 N1 N2 4.7k
+R_r2 N4 N6 2k
+C_c1 N6 NC_c1_out 10uF
+L_l1 N2 0 1mH
+L_pri_t1 NC_t1_p1 NC_t1_p2 10m
+L_sec_t1 NC_t1_s1 NC_t1_s2 2.5m
+K_t1 L_pri_t1 L_sec_t1 0.95
+V_v1 N1 0 DC 9V
+V_ac1 NC_ac1_pos NC_ac1_neg SINE(0 12 50)
+V_sg_sine NC_sg_sine_out NC_sg_sine_gnd SINE(0 2 1000) AC 1
+V_sg_sq NC_sg_sq_out NC_sg_sq_gnd PULSE(0 5 0 0.000001 0.000001 0.0025 0.01)
+V_sg_dc NC_sg_dc_out NC_sg_dc_gnd DC 3
+I_i1 NC_i1_pos NC_i1_neg DC 20mA
+R_ammeter_led1 NC_led1_anode int_led_led1 1
+D_led1 int_led_led1 NC_led1_cathode LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.7500000000000002)
+R_ammeter_led2 NC_led2_anode int_led_led2 1
+D_led2 int_led_led2 NC_led2_cathode LED_MODEL_led2
+.model LED_MODEL_led2 D(IS=1e-22 RS=5 N=1.6666666666666667)
+I_photo_led2 NC_led2_cathode int_led_led2 DC 8.000000e-6
+D_d1 NC_d1_anode NC_d1_cathode DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=0.8571428571428572)
+D_z1 NC_z1_anode NC_z1_cathode ZENER_MODEL_z1
+.model ZENER_MODEL_z1 D(IS=1e-11 BV=3.3 IBV=1e-3)
+R_sw_open NC_sw_open_in NC_sw_open_out 1e12
+R_sw_closed NC_sw_closed_in NC_sw_closed_out 0.01
+R_mm_v NC_mm_v_pos NC_mm_v_neg 1G
+V_ammeter_mm_i NC_mm_i_pos NC_mm_i_neg DC 0
+R_scope_ch1_scope1 NC_scope1_ch1 NC_scope1_gnd 1G
+R_scope_ch2_scope1 NC_scope1_ch2 NC_scope1_gnd 1G
+R_pot1_top NC_pot1_in NC_pot1_wiper 9990
+R_pot1_bot NC_pot1_wiper NC_pot1_out 10
+R_seg1_a NC_seg1_a NC_seg1_common 1G
+R_seg1_b NC_seg1_b NC_seg1_common 1G
+R_seg1_c NC_seg1_c NC_seg1_common 1G
+R_seg1_d NC_seg1_d NC_seg1_common 1G
+R_seg1_e NC_seg1_e NC_seg1_common 1G
+R_seg1_f NC_seg1_f NC_seg1_common 1G
+R_seg1_g NC_seg1_g NC_seg1_common 1G
+R_spk1 NC_spk1_in NC_spk1_gnd 8
+V_mic_pwl NC_mic_pwl_out NC_mic_pwl_gnd PWL(
++ 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
++ )
+V_mic_dc NC_mic_dc_out NC_mic_dc_gnd DC 0
+R_ldr_fixed NC_ldr_fixed_in NC_ldr_fixed_out 100050.00
+V_light_ldr_pwl light_node_ldr_pwl 0 PWL(
++ 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
++ )
+B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / (100 + (100000 - 100) * (1 - V(light_node_ldr_pwl)))
+Q_q1 NC_q1_c NC_q1_b NC_q1_e NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 NC_q2_c NC_q2_b NC_q2_e PNP_MODEL_q2
+.model PNP_MODEL_q2 PNP(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+M_m1 NC_m1_d NC_m1_g NC_m1_s NC_m1_s NMOS_MODEL_m1
+.model NMOS_MODEL_m1 NMOS(LEVEL=1 VTO=2 KP=0.05 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+M_m2 NC_m2_d NC_m2_g NC_m2_s NC_m2_s PMOS_MODEL_m2
+.model PMOS_MODEL_m2 PMOS(LEVEL=1 VTO=-2 KP=0.02 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+X_u1 NC_u1_in_non NC_u1_in_inv NC_u1_vcc NC_u1_vee NC_u1_out OPAMP_MODEL_u1
+X_u2 NC_u2_1 NC_u2_2 NC_u2_3 NC_u2_4 NC_u2_5 NC_u2_6 NC_u2_7 NC_u2_8 NE555
+X_u3 NC_u3_d NC_u3_clk NC_u3_q NC_u3_qbar DFF
+B_gate_g_and NC_g_and_out 0 V = V(NC_g_and_in1) > 2.5 ? (V(NC_g_and_in2) > 2.5 ? 5 : 0) : 0
+B_gate_g_or NC_g_or_out 0 V = V(NC_g_or_in1) > 2.5 ? 5 : (V(NC_g_or_in2) > 2.5 ? 5 : 0)
+B_gate_g_nand NC_g_nand_out 0 V = V(NC_g_nand_in1) > 2.5 ? (V(NC_g_nand_in2) > 2.5 ? 0 : 5) : 5
+B_gate_g_nor NC_g_nor_out 0 V = V(NC_g_nor_in1) > 2.5 ? 0 : (V(NC_g_nor_in2) > 2.5 ? 0 : 5)
+B_gate_g_xor NC_g_xor_out 0 V = V(NC_g_xor_in1) > 2.5 ? (V(NC_g_xor_in2) > 2.5 ? 0 : 5) : (V(NC_g_xor_in2) > 2.5 ? 5 : 0)
+B_gate_g_not NC_g_not_out 0 V = V(NC_g_not_in1) > 2.5 ? 0 : 5
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND NC_mcu1_GND 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 NC_mcu1_A0 0 100MEG
+V_heltec_h1_GPIO_1 NC_h1_GPIO_1 0 DC 1.2340
+R_heltec_h1_GPIO_3 NC_h1_GPIO_3 0 100k
+V_heltec_h1_GPIO_33 NC_h1_GPIO_33 0 DC 3.3000
+V_heltec_h1_GPIO_36 NC_h1_GPIO_36 0 DC 0.0000
+V_heltec_h1_GPIO_37 NC_h1_GPIO_37 0 DC 0.0000
+V_heltec_h1_GPIO_41 NC_h1_GPIO_41 0 DC 0.0000
+V_heltec_h1_3V3 NC_h1_3V3 0 DC 3.3
+R_heltec_h1_GND NC_h1_GND 0 1m
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for u1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_u1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_u1
+
+* Idealized NE555 Timer Macro Model
+* Node order: GND TRIG OUT RST CTRL THR DIS VCC
+.SUBCKT NE555 1 2 3 4 5 6 7 8
+* Voltage divider
+R1 8 5 5k
+R2 5 61 5k
+R3 61 1 5k
+
+* Smooth SR Latch Integrator
+* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+S_SET 8 state 61 2 SMOD_ON
+S_RST state 1 6 5 SMOD_ON
+C1 state 1 100p
+* Add parallel resistor to guarantee DC convergence
+R4 state 1 10G
+
+* Output buffer
+E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+
+* Discharge
+S_DIS 7 1 8 state SMOD_DIS
+
+.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
+.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.ENDS NE555
+
+* Idealized Master-Slave D Flip-Flop
+* Node order: D CLK Q QBAR
+.SUBCKT DFF D CLK Q QBAR
+B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+
+* Master Latch: closed when clk_bar > 2.5
+S_M D state_m clk_bar 0 SMOD_DFF
+C_M state_m 0 10n
+R_M state_m 0 1G
+
+* Buffer master to slave to prevent charge sharing between C_M and C_S
+B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+
+* Slave Latch: closed when CLK > 2.5
+S_S state_m_buf state_s CLK 0 SMOD_DFF
+C_S state_s 0 10n
+R_S state_s 0 1G
+
+* Output Drivers
+B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
+B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+
+.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.ENDS DFF
+V_rail_N4 N4 0 DC 5
+R_shunt_NC_jp1_a NC_jp1_a 0 1G
+R_shunt_NC_jp1_b NC_jp1_b 0 1G
+R_shunt_NC_c1_out NC_c1_out 0 1G
+R_shunt_NC_t1_p1 NC_t1_p1 0 1G
+R_shunt_NC_t1_p2 NC_t1_p2 0 1G
+R_shunt_NC_t1_s1 NC_t1_s1 0 1G
+R_shunt_NC_t1_s2 NC_t1_s2 0 1G
+R_shunt_NC_ac1_pos NC_ac1_pos 0 1G
+R_shunt_NC_ac1_neg NC_ac1_neg 0 1G
+R_shunt_NC_sg_sine_out NC_sg_sine_out 0 1G
+R_shunt_NC_sg_sine_gnd NC_sg_sine_gnd 0 1G
+R_shunt_NC_sg_sq_out NC_sg_sq_out 0 1G
+R_shunt_NC_sg_sq_gnd NC_sg_sq_gnd 0 1G
+R_shunt_NC_sg_dc_out NC_sg_dc_out 0 1G
+R_shunt_NC_sg_dc_gnd NC_sg_dc_gnd 0 1G
+R_shunt_NC_i1_pos NC_i1_pos 0 1G
+R_shunt_NC_i1_neg NC_i1_neg 0 1G
+R_shunt_NC_led1_anode NC_led1_anode 0 1G
+R_shunt_NC_led1_cathode NC_led1_cathode 0 1G
+R_shunt_NC_led2_anode NC_led2_anode 0 1G
+R_shunt_NC_led2_cathode NC_led2_cathode 0 1G
+R_shunt_NC_d1_anode NC_d1_anode 0 1G
+R_shunt_NC_d1_cathode NC_d1_cathode 0 1G
+R_shunt_NC_z1_anode NC_z1_anode 0 1G
+R_shunt_NC_z1_cathode NC_z1_cathode 0 1G
+R_shunt_NC_sw_open_in NC_sw_open_in 0 1G
+R_shunt_NC_sw_open_out NC_sw_open_out 0 1G
+R_shunt_NC_sw_closed_in NC_sw_closed_in 0 1G
+R_shunt_NC_sw_closed_out NC_sw_closed_out 0 1G
+R_shunt_NC_mm_v_pos NC_mm_v_pos 0 1G
+R_shunt_NC_mm_v_neg NC_mm_v_neg 0 1G
+R_shunt_NC_mm_i_pos NC_mm_i_pos 0 1G
+R_shunt_NC_mm_i_neg NC_mm_i_neg 0 1G
+R_shunt_NC_scope1_ch1 NC_scope1_ch1 0 1G
+R_shunt_NC_scope1_ch2 NC_scope1_ch2 0 1G
+R_shunt_NC_scope1_gnd NC_scope1_gnd 0 1G
+R_shunt_NC_pot1_in NC_pot1_in 0 1G
+R_shunt_NC_pot1_out NC_pot1_out 0 1G
+R_shunt_NC_pot1_wiper NC_pot1_wiper 0 1G
+R_shunt_NC_seg1_common NC_seg1_common 0 1G
+R_shunt_NC_seg1_a NC_seg1_a 0 1G
+R_shunt_NC_seg1_b NC_seg1_b 0 1G
+R_shunt_NC_seg1_c NC_seg1_c 0 1G
+R_shunt_NC_seg1_d NC_seg1_d 0 1G
+R_shunt_NC_seg1_e NC_seg1_e 0 1G
+R_shunt_NC_seg1_f NC_seg1_f 0 1G
+R_shunt_NC_seg1_g NC_seg1_g 0 1G
+R_shunt_NC_spk1_in NC_spk1_in 0 1G
+R_shunt_NC_spk1_gnd NC_spk1_gnd 0 1G
+R_shunt_NC_mic_pwl_out NC_mic_pwl_out 0 1G
+R_shunt_NC_mic_pwl_gnd NC_mic_pwl_gnd 0 1G
+R_shunt_NC_mic_dc_out NC_mic_dc_out 0 1G
+R_shunt_NC_mic_dc_gnd NC_mic_dc_gnd 0 1G
+R_shunt_NC_ldr_fixed_in NC_ldr_fixed_in 0 1G
+R_shunt_NC_ldr_fixed_out NC_ldr_fixed_out 0 1G
+R_shunt_NC_ldr_pwl_in NC_ldr_pwl_in 0 1G
+R_shunt_NC_ldr_pwl_out NC_ldr_pwl_out 0 1G
+R_shunt_NC_q1_c NC_q1_c 0 1G
+R_shunt_NC_q1_b NC_q1_b 0 1G
+R_shunt_NC_q1_e NC_q1_e 0 1G
+R_shunt_NC_q2_c NC_q2_c 0 1G
+R_shunt_NC_q2_b NC_q2_b 0 1G
+R_shunt_NC_q2_e NC_q2_e 0 1G
+R_shunt_NC_m1_d NC_m1_d 0 1G
+R_shunt_NC_m1_g NC_m1_g 0 1G
+R_shunt_NC_m1_s NC_m1_s 0 1G
+R_shunt_NC_m2_d NC_m2_d 0 1G
+R_shunt_NC_m2_g NC_m2_g 0 1G
+R_shunt_NC_m2_s NC_m2_s 0 1G
+R_shunt_NC_u1_in_non NC_u1_in_non 0 1G
+R_shunt_NC_u1_in_inv NC_u1_in_inv 0 1G
+R_shunt_NC_u1_vcc NC_u1_vcc 0 1G
+R_shunt_NC_u1_vee NC_u1_vee 0 1G
+R_shunt_NC_u1_out NC_u1_out 0 1G
+R_shunt_NC_u2_1 NC_u2_1 0 1G
+R_shunt_NC_u2_2 NC_u2_2 0 1G
+R_shunt_NC_u2_3 NC_u2_3 0 1G
+R_shunt_NC_u2_4 NC_u2_4 0 1G
+R_shunt_NC_u2_5 NC_u2_5 0 1G
+R_shunt_NC_u2_6 NC_u2_6 0 1G
+R_shunt_NC_u2_7 NC_u2_7 0 1G
+R_shunt_NC_u2_8 NC_u2_8 0 1G
+R_shunt_NC_u3_d NC_u3_d 0 1G
+R_shunt_NC_u3_clk NC_u3_clk 0 1G
+R_shunt_NC_u3_q NC_u3_q 0 1G
+R_shunt_NC_u3_qbar NC_u3_qbar 0 1G
+R_shunt_NC_g_and_in1 NC_g_and_in1 0 1G
+R_shunt_NC_g_and_in2 NC_g_and_in2 0 1G
+R_shunt_NC_g_and_out NC_g_and_out 0 1G
+R_shunt_NC_g_or_in1 NC_g_or_in1 0 1G
+R_shunt_NC_g_or_in2 NC_g_or_in2 0 1G
+R_shunt_NC_g_or_out NC_g_or_out 0 1G
+R_shunt_NC_g_nand_in1 NC_g_nand_in1 0 1G
+R_shunt_NC_g_nand_in2 NC_g_nand_in2 0 1G
+R_shunt_NC_g_nand_out NC_g_nand_out 0 1G
+R_shunt_NC_g_nor_in1 NC_g_nor_in1 0 1G
+R_shunt_NC_g_nor_in2 NC_g_nor_in2 0 1G
+R_shunt_NC_g_nor_out NC_g_nor_out 0 1G
+R_shunt_NC_g_xor_in1 NC_g_xor_in1 0 1G
+R_shunt_NC_g_xor_in2 NC_g_xor_in2 0 1G
+R_shunt_NC_g_xor_out NC_g_xor_out 0 1G
+R_shunt_NC_g_not_in1 NC_g_not_in1 0 1G
+R_shunt_NC_g_not_out NC_g_not_out 0 1G
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_GND NC_mcu1_GND 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+R_shunt_NC_mcu1_A0 NC_mcu1_A0 0 1G
+R_shunt_NC_h1_GPIO_1 NC_h1_GPIO_1 0 1G
+R_shunt_NC_h1_GPIO_3 NC_h1_GPIO_3 0 1G
+R_shunt_NC_h1_GPIO_33 NC_h1_GPIO_33 0 1G
+R_shunt_NC_h1_GPIO_36 NC_h1_GPIO_36 0 1G
+R_shunt_NC_h1_GPIO_37 NC_h1_GPIO_37 0 1G
+R_shunt_NC_h1_GPIO_41 NC_h1_GPIO_41 0 1G
+R_shunt_NC_h1_3V3 NC_h1_3V3 0 1G
+R_shunt_NC_h1_GND NC_h1_GND 0 1G
+.save all
+.ac dec 10 1 1000000
+.end
+"
+`;
+
+exports[`the cards every part writes > AC sweep from v1 1`] = `
+"Circuit Simulation
+R_jp1 NC_jp1_a NC_jp1_b 0.001
+R_r1 N1 N2 4.7k
+R_r2 N4 N6 2k
+C_c1 N6 NC_c1_out 10uF
+L_l1 N2 0 1mH
+L_pri_t1 NC_t1_p1 NC_t1_p2 10m
+L_sec_t1 NC_t1_s1 NC_t1_s2 2.5m
+K_t1 L_pri_t1 L_sec_t1 0.95
+V_v1 N1 0 DC 9V AC 1
+V_ac1 NC_ac1_pos NC_ac1_neg SINE(0 12 50)
+V_sg_sine NC_sg_sine_out NC_sg_sine_gnd SINE(0 2 1000)
+V_sg_sq NC_sg_sq_out NC_sg_sq_gnd PULSE(0 5 0 0.000001 0.000001 0.0025 0.01)
+V_sg_dc NC_sg_dc_out NC_sg_dc_gnd DC 3
+I_i1 NC_i1_pos NC_i1_neg DC 20mA
+R_ammeter_led1 NC_led1_anode int_led_led1 1
+D_led1 int_led_led1 NC_led1_cathode LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.7500000000000002)
+R_ammeter_led2 NC_led2_anode int_led_led2 1
+D_led2 int_led_led2 NC_led2_cathode LED_MODEL_led2
+.model LED_MODEL_led2 D(IS=1e-22 RS=5 N=1.6666666666666667)
+I_photo_led2 NC_led2_cathode int_led_led2 DC 8.000000e-6
+D_d1 NC_d1_anode NC_d1_cathode DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=0.8571428571428572)
+D_z1 NC_z1_anode NC_z1_cathode ZENER_MODEL_z1
+.model ZENER_MODEL_z1 D(IS=1e-11 BV=3.3 IBV=1e-3)
+R_sw_open NC_sw_open_in NC_sw_open_out 1e12
+R_sw_closed NC_sw_closed_in NC_sw_closed_out 0.01
+R_mm_v NC_mm_v_pos NC_mm_v_neg 1G
+V_ammeter_mm_i NC_mm_i_pos NC_mm_i_neg DC 0
+R_scope_ch1_scope1 NC_scope1_ch1 NC_scope1_gnd 1G
+R_scope_ch2_scope1 NC_scope1_ch2 NC_scope1_gnd 1G
+R_pot1_top NC_pot1_in NC_pot1_wiper 9990
+R_pot1_bot NC_pot1_wiper NC_pot1_out 10
+R_seg1_a NC_seg1_a NC_seg1_common 1G
+R_seg1_b NC_seg1_b NC_seg1_common 1G
+R_seg1_c NC_seg1_c NC_seg1_common 1G
+R_seg1_d NC_seg1_d NC_seg1_common 1G
+R_seg1_e NC_seg1_e NC_seg1_common 1G
+R_seg1_f NC_seg1_f NC_seg1_common 1G
+R_seg1_g NC_seg1_g NC_seg1_common 1G
+R_spk1 NC_spk1_in NC_spk1_gnd 8
+V_mic_pwl NC_mic_pwl_out NC_mic_pwl_gnd PWL(
++ 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
++ )
+V_mic_dc NC_mic_dc_out NC_mic_dc_gnd DC 0
+R_ldr_fixed NC_ldr_fixed_in NC_ldr_fixed_out 100050.00
+V_light_ldr_pwl light_node_ldr_pwl 0 PWL(
++ 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
++ )
+B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / (100 + (100000 - 100) * (1 - V(light_node_ldr_pwl)))
+Q_q1 NC_q1_c NC_q1_b NC_q1_e NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 NC_q2_c NC_q2_b NC_q2_e PNP_MODEL_q2
+.model PNP_MODEL_q2 PNP(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+M_m1 NC_m1_d NC_m1_g NC_m1_s NC_m1_s NMOS_MODEL_m1
+.model NMOS_MODEL_m1 NMOS(LEVEL=1 VTO=2 KP=0.05 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+M_m2 NC_m2_d NC_m2_g NC_m2_s NC_m2_s PMOS_MODEL_m2
+.model PMOS_MODEL_m2 PMOS(LEVEL=1 VTO=-2 KP=0.02 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+X_u1 NC_u1_in_non NC_u1_in_inv NC_u1_vcc NC_u1_vee NC_u1_out OPAMP_MODEL_u1
+X_u2 NC_u2_1 NC_u2_2 NC_u2_3 NC_u2_4 NC_u2_5 NC_u2_6 NC_u2_7 NC_u2_8 NE555
+X_u3 NC_u3_d NC_u3_clk NC_u3_q NC_u3_qbar DFF
+B_gate_g_and NC_g_and_out 0 V = V(NC_g_and_in1) > 2.5 ? (V(NC_g_and_in2) > 2.5 ? 5 : 0) : 0
+B_gate_g_or NC_g_or_out 0 V = V(NC_g_or_in1) > 2.5 ? 5 : (V(NC_g_or_in2) > 2.5 ? 5 : 0)
+B_gate_g_nand NC_g_nand_out 0 V = V(NC_g_nand_in1) > 2.5 ? (V(NC_g_nand_in2) > 2.5 ? 0 : 5) : 5
+B_gate_g_nor NC_g_nor_out 0 V = V(NC_g_nor_in1) > 2.5 ? 0 : (V(NC_g_nor_in2) > 2.5 ? 0 : 5)
+B_gate_g_xor NC_g_xor_out 0 V = V(NC_g_xor_in1) > 2.5 ? (V(NC_g_xor_in2) > 2.5 ? 0 : 5) : (V(NC_g_xor_in2) > 2.5 ? 5 : 0)
+B_gate_g_not NC_g_not_out 0 V = V(NC_g_not_in1) > 2.5 ? 0 : 5
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND NC_mcu1_GND 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 NC_mcu1_A0 0 100MEG
+V_heltec_h1_GPIO_1 NC_h1_GPIO_1 0 DC 1.2340
+R_heltec_h1_GPIO_3 NC_h1_GPIO_3 0 100k
+V_heltec_h1_GPIO_33 NC_h1_GPIO_33 0 DC 3.3000
+V_heltec_h1_GPIO_36 NC_h1_GPIO_36 0 DC 0.0000
+V_heltec_h1_GPIO_37 NC_h1_GPIO_37 0 DC 0.0000
+V_heltec_h1_GPIO_41 NC_h1_GPIO_41 0 DC 0.0000
+V_heltec_h1_3V3 NC_h1_3V3 0 DC 3.3
+R_heltec_h1_GND NC_h1_GND 0 1m
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for u1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_u1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_u1
+
+* Idealized NE555 Timer Macro Model
+* Node order: GND TRIG OUT RST CTRL THR DIS VCC
+.SUBCKT NE555 1 2 3 4 5 6 7 8
+* Voltage divider
+R1 8 5 5k
+R2 5 61 5k
+R3 61 1 5k
+
+* Smooth SR Latch Integrator
+* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+S_SET 8 state 61 2 SMOD_ON
+S_RST state 1 6 5 SMOD_ON
+C1 state 1 100p
+* Add parallel resistor to guarantee DC convergence
+R4 state 1 10G
+
+* Output buffer
+E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+
+* Discharge
+S_DIS 7 1 8 state SMOD_DIS
+
+.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
+.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.ENDS NE555
+
+* Idealized Master-Slave D Flip-Flop
+* Node order: D CLK Q QBAR
+.SUBCKT DFF D CLK Q QBAR
+B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+
+* Master Latch: closed when clk_bar > 2.5
+S_M D state_m clk_bar 0 SMOD_DFF
+C_M state_m 0 10n
+R_M state_m 0 1G
+
+* Buffer master to slave to prevent charge sharing between C_M and C_S
+B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+
+* Slave Latch: closed when CLK > 2.5
+S_S state_m_buf state_s CLK 0 SMOD_DFF
+C_S state_s 0 10n
+R_S state_s 0 1G
+
+* Output Drivers
+B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
+B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+
+.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.ENDS DFF
+V_rail_N4 N4 0 DC 5
+R_shunt_NC_jp1_a NC_jp1_a 0 1G
+R_shunt_NC_jp1_b NC_jp1_b 0 1G
+R_shunt_NC_c1_out NC_c1_out 0 1G
+R_shunt_NC_t1_p1 NC_t1_p1 0 1G
+R_shunt_NC_t1_p2 NC_t1_p2 0 1G
+R_shunt_NC_t1_s1 NC_t1_s1 0 1G
+R_shunt_NC_t1_s2 NC_t1_s2 0 1G
+R_shunt_NC_ac1_pos NC_ac1_pos 0 1G
+R_shunt_NC_ac1_neg NC_ac1_neg 0 1G
+R_shunt_NC_sg_sine_out NC_sg_sine_out 0 1G
+R_shunt_NC_sg_sine_gnd NC_sg_sine_gnd 0 1G
+R_shunt_NC_sg_sq_out NC_sg_sq_out 0 1G
+R_shunt_NC_sg_sq_gnd NC_sg_sq_gnd 0 1G
+R_shunt_NC_sg_dc_out NC_sg_dc_out 0 1G
+R_shunt_NC_sg_dc_gnd NC_sg_dc_gnd 0 1G
+R_shunt_NC_i1_pos NC_i1_pos 0 1G
+R_shunt_NC_i1_neg NC_i1_neg 0 1G
+R_shunt_NC_led1_anode NC_led1_anode 0 1G
+R_shunt_NC_led1_cathode NC_led1_cathode 0 1G
+R_shunt_NC_led2_anode NC_led2_anode 0 1G
+R_shunt_NC_led2_cathode NC_led2_cathode 0 1G
+R_shunt_NC_d1_anode NC_d1_anode 0 1G
+R_shunt_NC_d1_cathode NC_d1_cathode 0 1G
+R_shunt_NC_z1_anode NC_z1_anode 0 1G
+R_shunt_NC_z1_cathode NC_z1_cathode 0 1G
+R_shunt_NC_sw_open_in NC_sw_open_in 0 1G
+R_shunt_NC_sw_open_out NC_sw_open_out 0 1G
+R_shunt_NC_sw_closed_in NC_sw_closed_in 0 1G
+R_shunt_NC_sw_closed_out NC_sw_closed_out 0 1G
+R_shunt_NC_mm_v_pos NC_mm_v_pos 0 1G
+R_shunt_NC_mm_v_neg NC_mm_v_neg 0 1G
+R_shunt_NC_mm_i_pos NC_mm_i_pos 0 1G
+R_shunt_NC_mm_i_neg NC_mm_i_neg 0 1G
+R_shunt_NC_scope1_ch1 NC_scope1_ch1 0 1G
+R_shunt_NC_scope1_ch2 NC_scope1_ch2 0 1G
+R_shunt_NC_scope1_gnd NC_scope1_gnd 0 1G
+R_shunt_NC_pot1_in NC_pot1_in 0 1G
+R_shunt_NC_pot1_out NC_pot1_out 0 1G
+R_shunt_NC_pot1_wiper NC_pot1_wiper 0 1G
+R_shunt_NC_seg1_common NC_seg1_common 0 1G
+R_shunt_NC_seg1_a NC_seg1_a 0 1G
+R_shunt_NC_seg1_b NC_seg1_b 0 1G
+R_shunt_NC_seg1_c NC_seg1_c 0 1G
+R_shunt_NC_seg1_d NC_seg1_d 0 1G
+R_shunt_NC_seg1_e NC_seg1_e 0 1G
+R_shunt_NC_seg1_f NC_seg1_f 0 1G
+R_shunt_NC_seg1_g NC_seg1_g 0 1G
+R_shunt_NC_spk1_in NC_spk1_in 0 1G
+R_shunt_NC_spk1_gnd NC_spk1_gnd 0 1G
+R_shunt_NC_mic_pwl_out NC_mic_pwl_out 0 1G
+R_shunt_NC_mic_pwl_gnd NC_mic_pwl_gnd 0 1G
+R_shunt_NC_mic_dc_out NC_mic_dc_out 0 1G
+R_shunt_NC_mic_dc_gnd NC_mic_dc_gnd 0 1G
+R_shunt_NC_ldr_fixed_in NC_ldr_fixed_in 0 1G
+R_shunt_NC_ldr_fixed_out NC_ldr_fixed_out 0 1G
+R_shunt_NC_ldr_pwl_in NC_ldr_pwl_in 0 1G
+R_shunt_NC_ldr_pwl_out NC_ldr_pwl_out 0 1G
+R_shunt_NC_q1_c NC_q1_c 0 1G
+R_shunt_NC_q1_b NC_q1_b 0 1G
+R_shunt_NC_q1_e NC_q1_e 0 1G
+R_shunt_NC_q2_c NC_q2_c 0 1G
+R_shunt_NC_q2_b NC_q2_b 0 1G
+R_shunt_NC_q2_e NC_q2_e 0 1G
+R_shunt_NC_m1_d NC_m1_d 0 1G
+R_shunt_NC_m1_g NC_m1_g 0 1G
+R_shunt_NC_m1_s NC_m1_s 0 1G
+R_shunt_NC_m2_d NC_m2_d 0 1G
+R_shunt_NC_m2_g NC_m2_g 0 1G
+R_shunt_NC_m2_s NC_m2_s 0 1G
+R_shunt_NC_u1_in_non NC_u1_in_non 0 1G
+R_shunt_NC_u1_in_inv NC_u1_in_inv 0 1G
+R_shunt_NC_u1_vcc NC_u1_vcc 0 1G
+R_shunt_NC_u1_vee NC_u1_vee 0 1G
+R_shunt_NC_u1_out NC_u1_out 0 1G
+R_shunt_NC_u2_1 NC_u2_1 0 1G
+R_shunt_NC_u2_2 NC_u2_2 0 1G
+R_shunt_NC_u2_3 NC_u2_3 0 1G
+R_shunt_NC_u2_4 NC_u2_4 0 1G
+R_shunt_NC_u2_5 NC_u2_5 0 1G
+R_shunt_NC_u2_6 NC_u2_6 0 1G
+R_shunt_NC_u2_7 NC_u2_7 0 1G
+R_shunt_NC_u2_8 NC_u2_8 0 1G
+R_shunt_NC_u3_d NC_u3_d 0 1G
+R_shunt_NC_u3_clk NC_u3_clk 0 1G
+R_shunt_NC_u3_q NC_u3_q 0 1G
+R_shunt_NC_u3_qbar NC_u3_qbar 0 1G
+R_shunt_NC_g_and_in1 NC_g_and_in1 0 1G
+R_shunt_NC_g_and_in2 NC_g_and_in2 0 1G
+R_shunt_NC_g_and_out NC_g_and_out 0 1G
+R_shunt_NC_g_or_in1 NC_g_or_in1 0 1G
+R_shunt_NC_g_or_in2 NC_g_or_in2 0 1G
+R_shunt_NC_g_or_out NC_g_or_out 0 1G
+R_shunt_NC_g_nand_in1 NC_g_nand_in1 0 1G
+R_shunt_NC_g_nand_in2 NC_g_nand_in2 0 1G
+R_shunt_NC_g_nand_out NC_g_nand_out 0 1G
+R_shunt_NC_g_nor_in1 NC_g_nor_in1 0 1G
+R_shunt_NC_g_nor_in2 NC_g_nor_in2 0 1G
+R_shunt_NC_g_nor_out NC_g_nor_out 0 1G
+R_shunt_NC_g_xor_in1 NC_g_xor_in1 0 1G
+R_shunt_NC_g_xor_in2 NC_g_xor_in2 0 1G
+R_shunt_NC_g_xor_out NC_g_xor_out 0 1G
+R_shunt_NC_g_not_in1 NC_g_not_in1 0 1G
+R_shunt_NC_g_not_out NC_g_not_out 0 1G
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_GND NC_mcu1_GND 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+R_shunt_NC_mcu1_A0 NC_mcu1_A0 0 1G
+R_shunt_NC_h1_GPIO_1 NC_h1_GPIO_1 0 1G
+R_shunt_NC_h1_GPIO_3 NC_h1_GPIO_3 0 1G
+R_shunt_NC_h1_GPIO_33 NC_h1_GPIO_33 0 1G
+R_shunt_NC_h1_GPIO_36 NC_h1_GPIO_36 0 1G
+R_shunt_NC_h1_GPIO_37 NC_h1_GPIO_37 0 1G
+R_shunt_NC_h1_GPIO_41 NC_h1_GPIO_41 0 1G
+R_shunt_NC_h1_3V3 NC_h1_3V3 0 1G
+R_shunt_NC_h1_GND NC_h1_GND 0 1G
+.save all
+.ac dec 10 1 1000000
+.end
+"
+`;
+
+exports[`the cards every part writes > operating point 1`] = `
+"Circuit Simulation
+R_jp1 NC_jp1_a NC_jp1_b 0.001
+R_r1 N1 N2 4.7k
+R_r2 N4 N6 2k
+C_c1 N6 NC_c1_out 10uF
+L_l1 N2 0 1mH
+L_pri_t1 NC_t1_p1 NC_t1_p2 10m
+L_sec_t1 NC_t1_s1 NC_t1_s2 2.5m
+K_t1 L_pri_t1 L_sec_t1 0.95
+V_v1 N1 0 DC 9V
+V_ac1 NC_ac1_pos NC_ac1_neg SINE(0 12 50)
+V_sg_sine NC_sg_sine_out NC_sg_sine_gnd SINE(0 2 1000)
+V_sg_sq NC_sg_sq_out NC_sg_sq_gnd PULSE(0 5 0 0.000001 0.000001 0.0025 0.01)
+V_sg_dc NC_sg_dc_out NC_sg_dc_gnd DC 3
+I_i1 NC_i1_pos NC_i1_neg DC 20mA
+R_ammeter_led1 NC_led1_anode int_led_led1 1
+D_led1 int_led_led1 NC_led1_cathode LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.7500000000000002)
+R_ammeter_led2 NC_led2_anode int_led_led2 1
+D_led2 int_led_led2 NC_led2_cathode LED_MODEL_led2
+.model LED_MODEL_led2 D(IS=1e-22 RS=5 N=1.6666666666666667)
+I_photo_led2 NC_led2_cathode int_led_led2 DC 8.000000e-6
+D_d1 NC_d1_anode NC_d1_cathode DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=0.8571428571428572)
+D_z1 NC_z1_anode NC_z1_cathode ZENER_MODEL_z1
+.model ZENER_MODEL_z1 D(IS=1e-11 BV=3.3 IBV=1e-3)
+R_sw_open NC_sw_open_in NC_sw_open_out 1e12
+R_sw_closed NC_sw_closed_in NC_sw_closed_out 0.01
+R_mm_v NC_mm_v_pos NC_mm_v_neg 1G
+V_ammeter_mm_i NC_mm_i_pos NC_mm_i_neg DC 0
+R_scope_ch1_scope1 NC_scope1_ch1 NC_scope1_gnd 1G
+R_scope_ch2_scope1 NC_scope1_ch2 NC_scope1_gnd 1G
+R_pot1_top NC_pot1_in NC_pot1_wiper 9990
+R_pot1_bot NC_pot1_wiper NC_pot1_out 10
+R_seg1_a NC_seg1_a NC_seg1_common 1G
+R_seg1_b NC_seg1_b NC_seg1_common 1G
+R_seg1_c NC_seg1_c NC_seg1_common 1G
+R_seg1_d NC_seg1_d NC_seg1_common 1G
+R_seg1_e NC_seg1_e NC_seg1_common 1G
+R_seg1_f NC_seg1_f NC_seg1_common 1G
+R_seg1_g NC_seg1_g NC_seg1_common 1G
+R_spk1 NC_spk1_in NC_spk1_gnd 8
+V_mic_pwl NC_mic_pwl_out NC_mic_pwl_gnd PWL(
++ 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
++ )
+V_mic_dc NC_mic_dc_out NC_mic_dc_gnd DC 0
+R_ldr_fixed NC_ldr_fixed_in NC_ldr_fixed_out 100050.00
+V_light_ldr_pwl light_node_ldr_pwl 0 PWL(
++ 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
++ )
+B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / (100 + (100000 - 100) * (1 - V(light_node_ldr_pwl)))
+Q_q1 NC_q1_c NC_q1_b NC_q1_e NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 NC_q2_c NC_q2_b NC_q2_e PNP_MODEL_q2
+.model PNP_MODEL_q2 PNP(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+M_m1 NC_m1_d NC_m1_g NC_m1_s NC_m1_s NMOS_MODEL_m1
+.model NMOS_MODEL_m1 NMOS(LEVEL=1 VTO=2 KP=0.05 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+M_m2 NC_m2_d NC_m2_g NC_m2_s NC_m2_s PMOS_MODEL_m2
+.model PMOS_MODEL_m2 PMOS(LEVEL=1 VTO=-2 KP=0.02 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+X_u1 NC_u1_in_non NC_u1_in_inv NC_u1_vcc NC_u1_vee NC_u1_out OPAMP_MODEL_u1
+X_u2 NC_u2_1 NC_u2_2 NC_u2_3 NC_u2_4 NC_u2_5 NC_u2_6 NC_u2_7 NC_u2_8 NE555
+X_u3 NC_u3_d NC_u3_clk NC_u3_q NC_u3_qbar DFF
+B_gate_g_and NC_g_and_out 0 V = V(NC_g_and_in1) > 2.5 ? (V(NC_g_and_in2) > 2.5 ? 5 : 0) : 0
+B_gate_g_or NC_g_or_out 0 V = V(NC_g_or_in1) > 2.5 ? 5 : (V(NC_g_or_in2) > 2.5 ? 5 : 0)
+B_gate_g_nand NC_g_nand_out 0 V = V(NC_g_nand_in1) > 2.5 ? (V(NC_g_nand_in2) > 2.5 ? 0 : 5) : 5
+B_gate_g_nor NC_g_nor_out 0 V = V(NC_g_nor_in1) > 2.5 ? 0 : (V(NC_g_nor_in2) > 2.5 ? 0 : 5)
+B_gate_g_xor NC_g_xor_out 0 V = V(NC_g_xor_in1) > 2.5 ? (V(NC_g_xor_in2) > 2.5 ? 0 : 5) : (V(NC_g_xor_in2) > 2.5 ? 5 : 0)
+B_gate_g_not NC_g_not_out 0 V = V(NC_g_not_in1) > 2.5 ? 0 : 5
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND NC_mcu1_GND 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 NC_mcu1_A0 0 100MEG
+V_heltec_h1_GPIO_1 NC_h1_GPIO_1 0 DC 1.2340
+R_heltec_h1_GPIO_3 NC_h1_GPIO_3 0 100k
+V_heltec_h1_GPIO_33 NC_h1_GPIO_33 0 DC 3.3000
+V_heltec_h1_GPIO_36 NC_h1_GPIO_36 0 DC 0.0000
+V_heltec_h1_GPIO_37 NC_h1_GPIO_37 0 DC 0.0000
+V_heltec_h1_GPIO_41 NC_h1_GPIO_41 0 DC 0.0000
+V_heltec_h1_3V3 NC_h1_3V3 0 DC 3.3
+R_heltec_h1_GND NC_h1_GND 0 1m
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for u1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_u1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_u1
+
+* Idealized NE555 Timer Macro Model
+* Node order: GND TRIG OUT RST CTRL THR DIS VCC
+.SUBCKT NE555 1 2 3 4 5 6 7 8
+* Voltage divider
+R1 8 5 5k
+R2 5 61 5k
+R3 61 1 5k
+
+* Smooth SR Latch Integrator
+* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+S_SET 8 state 61 2 SMOD_ON
+S_RST state 1 6 5 SMOD_ON
+C1 state 1 100p
+* Add parallel resistor to guarantee DC convergence
+R4 state 1 10G
+
+* Output buffer
+E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+
+* Discharge
+S_DIS 7 1 8 state SMOD_DIS
+
+.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
+.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.ENDS NE555
+
+* Idealized Master-Slave D Flip-Flop
+* Node order: D CLK Q QBAR
+.SUBCKT DFF D CLK Q QBAR
+B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+
+* Master Latch: closed when clk_bar > 2.5
+S_M D state_m clk_bar 0 SMOD_DFF
+C_M state_m 0 10n
+R_M state_m 0 1G
+
+* Buffer master to slave to prevent charge sharing between C_M and C_S
+B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+
+* Slave Latch: closed when CLK > 2.5
+S_S state_m_buf state_s CLK 0 SMOD_DFF
+C_S state_s 0 10n
+R_S state_s 0 1G
+
+* Output Drivers
+B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
+B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+
+.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.ENDS DFF
+V_rail_N4 N4 0 DC 5
+R_shunt_NC_jp1_a NC_jp1_a 0 1G
+R_shunt_NC_jp1_b NC_jp1_b 0 1G
+R_shunt_NC_c1_out NC_c1_out 0 1G
+R_shunt_NC_t1_p1 NC_t1_p1 0 1G
+R_shunt_NC_t1_p2 NC_t1_p2 0 1G
+R_shunt_NC_t1_s1 NC_t1_s1 0 1G
+R_shunt_NC_t1_s2 NC_t1_s2 0 1G
+R_shunt_NC_ac1_pos NC_ac1_pos 0 1G
+R_shunt_NC_ac1_neg NC_ac1_neg 0 1G
+R_shunt_NC_sg_sine_out NC_sg_sine_out 0 1G
+R_shunt_NC_sg_sine_gnd NC_sg_sine_gnd 0 1G
+R_shunt_NC_sg_sq_out NC_sg_sq_out 0 1G
+R_shunt_NC_sg_sq_gnd NC_sg_sq_gnd 0 1G
+R_shunt_NC_sg_dc_out NC_sg_dc_out 0 1G
+R_shunt_NC_sg_dc_gnd NC_sg_dc_gnd 0 1G
+R_shunt_NC_i1_pos NC_i1_pos 0 1G
+R_shunt_NC_i1_neg NC_i1_neg 0 1G
+R_shunt_NC_led1_anode NC_led1_anode 0 1G
+R_shunt_NC_led1_cathode NC_led1_cathode 0 1G
+R_shunt_NC_led2_anode NC_led2_anode 0 1G
+R_shunt_NC_led2_cathode NC_led2_cathode 0 1G
+R_shunt_NC_d1_anode NC_d1_anode 0 1G
+R_shunt_NC_d1_cathode NC_d1_cathode 0 1G
+R_shunt_NC_z1_anode NC_z1_anode 0 1G
+R_shunt_NC_z1_cathode NC_z1_cathode 0 1G
+R_shunt_NC_sw_open_in NC_sw_open_in 0 1G
+R_shunt_NC_sw_open_out NC_sw_open_out 0 1G
+R_shunt_NC_sw_closed_in NC_sw_closed_in 0 1G
+R_shunt_NC_sw_closed_out NC_sw_closed_out 0 1G
+R_shunt_NC_mm_v_pos NC_mm_v_pos 0 1G
+R_shunt_NC_mm_v_neg NC_mm_v_neg 0 1G
+R_shunt_NC_mm_i_pos NC_mm_i_pos 0 1G
+R_shunt_NC_mm_i_neg NC_mm_i_neg 0 1G
+R_shunt_NC_scope1_ch1 NC_scope1_ch1 0 1G
+R_shunt_NC_scope1_ch2 NC_scope1_ch2 0 1G
+R_shunt_NC_scope1_gnd NC_scope1_gnd 0 1G
+R_shunt_NC_pot1_in NC_pot1_in 0 1G
+R_shunt_NC_pot1_out NC_pot1_out 0 1G
+R_shunt_NC_pot1_wiper NC_pot1_wiper 0 1G
+R_shunt_NC_seg1_common NC_seg1_common 0 1G
+R_shunt_NC_seg1_a NC_seg1_a 0 1G
+R_shunt_NC_seg1_b NC_seg1_b 0 1G
+R_shunt_NC_seg1_c NC_seg1_c 0 1G
+R_shunt_NC_seg1_d NC_seg1_d 0 1G
+R_shunt_NC_seg1_e NC_seg1_e 0 1G
+R_shunt_NC_seg1_f NC_seg1_f 0 1G
+R_shunt_NC_seg1_g NC_seg1_g 0 1G
+R_shunt_NC_spk1_in NC_spk1_in 0 1G
+R_shunt_NC_spk1_gnd NC_spk1_gnd 0 1G
+R_shunt_NC_mic_pwl_out NC_mic_pwl_out 0 1G
+R_shunt_NC_mic_pwl_gnd NC_mic_pwl_gnd 0 1G
+R_shunt_NC_mic_dc_out NC_mic_dc_out 0 1G
+R_shunt_NC_mic_dc_gnd NC_mic_dc_gnd 0 1G
+R_shunt_NC_ldr_fixed_in NC_ldr_fixed_in 0 1G
+R_shunt_NC_ldr_fixed_out NC_ldr_fixed_out 0 1G
+R_shunt_NC_ldr_pwl_in NC_ldr_pwl_in 0 1G
+R_shunt_NC_ldr_pwl_out NC_ldr_pwl_out 0 1G
+R_shunt_NC_q1_c NC_q1_c 0 1G
+R_shunt_NC_q1_b NC_q1_b 0 1G
+R_shunt_NC_q1_e NC_q1_e 0 1G
+R_shunt_NC_q2_c NC_q2_c 0 1G
+R_shunt_NC_q2_b NC_q2_b 0 1G
+R_shunt_NC_q2_e NC_q2_e 0 1G
+R_shunt_NC_m1_d NC_m1_d 0 1G
+R_shunt_NC_m1_g NC_m1_g 0 1G
+R_shunt_NC_m1_s NC_m1_s 0 1G
+R_shunt_NC_m2_d NC_m2_d 0 1G
+R_shunt_NC_m2_g NC_m2_g 0 1G
+R_shunt_NC_m2_s NC_m2_s 0 1G
+R_shunt_NC_u1_in_non NC_u1_in_non 0 1G
+R_shunt_NC_u1_in_inv NC_u1_in_inv 0 1G
+R_shunt_NC_u1_vcc NC_u1_vcc 0 1G
+R_shunt_NC_u1_vee NC_u1_vee 0 1G
+R_shunt_NC_u1_out NC_u1_out 0 1G
+R_shunt_NC_u2_1 NC_u2_1 0 1G
+R_shunt_NC_u2_2 NC_u2_2 0 1G
+R_shunt_NC_u2_3 NC_u2_3 0 1G
+R_shunt_NC_u2_4 NC_u2_4 0 1G
+R_shunt_NC_u2_5 NC_u2_5 0 1G
+R_shunt_NC_u2_6 NC_u2_6 0 1G
+R_shunt_NC_u2_7 NC_u2_7 0 1G
+R_shunt_NC_u2_8 NC_u2_8 0 1G
+R_shunt_NC_u3_d NC_u3_d 0 1G
+R_shunt_NC_u3_clk NC_u3_clk 0 1G
+R_shunt_NC_u3_q NC_u3_q 0 1G
+R_shunt_NC_u3_qbar NC_u3_qbar 0 1G
+R_shunt_NC_g_and_in1 NC_g_and_in1 0 1G
+R_shunt_NC_g_and_in2 NC_g_and_in2 0 1G
+R_shunt_NC_g_and_out NC_g_and_out 0 1G
+R_shunt_NC_g_or_in1 NC_g_or_in1 0 1G
+R_shunt_NC_g_or_in2 NC_g_or_in2 0 1G
+R_shunt_NC_g_or_out NC_g_or_out 0 1G
+R_shunt_NC_g_nand_in1 NC_g_nand_in1 0 1G
+R_shunt_NC_g_nand_in2 NC_g_nand_in2 0 1G
+R_shunt_NC_g_nand_out NC_g_nand_out 0 1G
+R_shunt_NC_g_nor_in1 NC_g_nor_in1 0 1G
+R_shunt_NC_g_nor_in2 NC_g_nor_in2 0 1G
+R_shunt_NC_g_nor_out NC_g_nor_out 0 1G
+R_shunt_NC_g_xor_in1 NC_g_xor_in1 0 1G
+R_shunt_NC_g_xor_in2 NC_g_xor_in2 0 1G
+R_shunt_NC_g_xor_out NC_g_xor_out 0 1G
+R_shunt_NC_g_not_in1 NC_g_not_in1 0 1G
+R_shunt_NC_g_not_out NC_g_not_out 0 1G
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_GND NC_mcu1_GND 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+R_shunt_NC_mcu1_A0 NC_mcu1_A0 0 1G
+R_shunt_NC_h1_GPIO_1 NC_h1_GPIO_1 0 1G
+R_shunt_NC_h1_GPIO_3 NC_h1_GPIO_3 0 1G
+R_shunt_NC_h1_GPIO_33 NC_h1_GPIO_33 0 1G
+R_shunt_NC_h1_GPIO_36 NC_h1_GPIO_36 0 1G
+R_shunt_NC_h1_GPIO_37 NC_h1_GPIO_37 0 1G
+R_shunt_NC_h1_GPIO_41 NC_h1_GPIO_41 0 1G
+R_shunt_NC_h1_3V3 NC_h1_3V3 0 1G
+R_shunt_NC_h1_GND NC_h1_GND 0 1G
+.save all
+.op
+.end
+"
+`;
+
+exports[`the cards every part writes > pins, in the order the generator met them 1`] = `
+[
+  "jp1.a NC_jp1_a (nc)",
+  "jp1.b NC_jp1_b (nc)",
+  "r1.in N1",
+  "r1.out N2",
+  "r2.in N4",
+  "r2.out N6",
+  "c1.in N6",
+  "c1.out NC_c1_out (nc)",
+  "l1.in N2",
+  "l1.out 0",
+  "t1.p1 NC_t1_p1 (nc)",
+  "t1.p2 NC_t1_p2 (nc)",
+  "t1.s1 NC_t1_s1 (nc)",
+  "t1.s2 NC_t1_s2 (nc)",
+  "v1.pos N1",
+  "v1.neg 0",
+  "ac1.pos NC_ac1_pos (nc)",
+  "ac1.neg NC_ac1_neg (nc)",
+  "sg_sine.out NC_sg_sine_out (nc)",
+  "sg_sine.gnd NC_sg_sine_gnd (nc)",
+  "sg_sq.out NC_sg_sq_out (nc)",
+  "sg_sq.gnd NC_sg_sq_gnd (nc)",
+  "sg_dc.out NC_sg_dc_out (nc)",
+  "sg_dc.gnd NC_sg_dc_gnd (nc)",
+  "i1.pos NC_i1_pos (nc)",
+  "i1.neg NC_i1_neg (nc)",
+  "led1.anode NC_led1_anode (nc)",
+  "led1.cathode NC_led1_cathode (nc)",
+  "led2.anode NC_led2_anode (nc)",
+  "led2.cathode NC_led2_cathode (nc)",
+  "d1.anode NC_d1_anode (nc)",
+  "d1.cathode NC_d1_cathode (nc)",
+  "z1.anode NC_z1_anode (nc)",
+  "z1.cathode NC_z1_cathode (nc)",
+  "sw_open.in NC_sw_open_in (nc)",
+  "sw_open.out NC_sw_open_out (nc)",
+  "sw_closed.in NC_sw_closed_in (nc)",
+  "sw_closed.out NC_sw_closed_out (nc)",
+  "mm_v.pos NC_mm_v_pos (nc)",
+  "mm_v.neg NC_mm_v_neg (nc)",
+  "mm_i.pos NC_mm_i_pos (nc)",
+  "mm_i.neg NC_mm_i_neg (nc)",
+  "scope1.ch1 NC_scope1_ch1 (nc)",
+  "scope1.ch2 NC_scope1_ch2 (nc)",
+  "scope1.gnd NC_scope1_gnd (nc)",
+  "pot1.in NC_pot1_in (nc)",
+  "pot1.out NC_pot1_out (nc)",
+  "pot1.wiper NC_pot1_wiper (nc)",
+  "seg1.common NC_seg1_common (nc)",
+  "seg1.a NC_seg1_a (nc)",
+  "seg1.b NC_seg1_b (nc)",
+  "seg1.c NC_seg1_c (nc)",
+  "seg1.d NC_seg1_d (nc)",
+  "seg1.e NC_seg1_e (nc)",
+  "seg1.f NC_seg1_f (nc)",
+  "seg1.g NC_seg1_g (nc)",
+  "spk1.in NC_spk1_in (nc)",
+  "spk1.gnd NC_spk1_gnd (nc)",
+  "mic_pwl.out NC_mic_pwl_out (nc)",
+  "mic_pwl.gnd NC_mic_pwl_gnd (nc)",
+  "mic_dc.out NC_mic_dc_out (nc)",
+  "mic_dc.gnd NC_mic_dc_gnd (nc)",
+  "ldr_fixed.in NC_ldr_fixed_in (nc)",
+  "ldr_fixed.out NC_ldr_fixed_out (nc)",
+  "ldr_pwl.in NC_ldr_pwl_in (nc)",
+  "ldr_pwl.out NC_ldr_pwl_out (nc)",
+  "q1.c NC_q1_c (nc)",
+  "q1.b NC_q1_b (nc)",
+  "q1.e NC_q1_e (nc)",
+  "q2.c NC_q2_c (nc)",
+  "q2.b NC_q2_b (nc)",
+  "q2.e NC_q2_e (nc)",
+  "m1.d NC_m1_d (nc)",
+  "m1.g NC_m1_g (nc)",
+  "m1.s NC_m1_s (nc)",
+  "m2.d NC_m2_d (nc)",
+  "m2.g NC_m2_g (nc)",
+  "m2.s NC_m2_s (nc)",
+  "u1.in_non NC_u1_in_non (nc)",
+  "u1.in_inv NC_u1_in_inv (nc)",
+  "u1.vcc NC_u1_vcc (nc)",
+  "u1.vee NC_u1_vee (nc)",
+  "u1.out NC_u1_out (nc)",
+  "u2.1 NC_u2_1 (nc)",
+  "u2.2 NC_u2_2 (nc)",
+  "u2.3 NC_u2_3 (nc)",
+  "u2.4 NC_u2_4 (nc)",
+  "u2.5 NC_u2_5 (nc)",
+  "u2.6 NC_u2_6 (nc)",
+  "u2.7 NC_u2_7 (nc)",
+  "u2.8 NC_u2_8 (nc)",
+  "u3.d NC_u3_d (nc)",
+  "u3.clk NC_u3_clk (nc)",
+  "u3.q NC_u3_q (nc)",
+  "u3.qbar NC_u3_qbar (nc)",
+  "g_and.in1 NC_g_and_in1 (nc)",
+  "g_and.in2 NC_g_and_in2 (nc)",
+  "g_and.out NC_g_and_out (nc)",
+  "g_or.in1 NC_g_or_in1 (nc)",
+  "g_or.in2 NC_g_or_in2 (nc)",
+  "g_or.out NC_g_or_out (nc)",
+  "g_nand.in1 NC_g_nand_in1 (nc)",
+  "g_nand.in2 NC_g_nand_in2 (nc)",
+  "g_nand.out NC_g_nand_out (nc)",
+  "g_nor.in1 NC_g_nor_in1 (nc)",
+  "g_nor.in2 NC_g_nor_in2 (nc)",
+  "g_nor.out NC_g_nor_out (nc)",
+  "g_xor.in1 NC_g_xor_in1 (nc)",
+  "g_xor.in2 NC_g_xor_in2 (nc)",
+  "g_xor.out NC_g_xor_out (nc)",
+  "g_not.in1 NC_g_not_in1 (nc)",
+  "g_not.out NC_g_not_out (nc)",
+  "mcu1.D0 NC_mcu1_D0 (nc)",
+  "mcu1.D1 NC_mcu1_D1 (nc)",
+  "mcu1.D2 NC_mcu1_D2 (nc)",
+  "mcu1.D3 NC_mcu1_D3 (nc)",
+  "mcu1.GND NC_mcu1_GND (nc)",
+  "mcu1.5V NC_mcu1_5V (nc)",
+  "mcu1.A1 NC_mcu1_A1 (nc)",
+  "mcu1.A0 NC_mcu1_A0 (nc)",
+  "h1.GPIO_1 NC_h1_GPIO_1 (nc)",
+  "h1.GPIO_3 NC_h1_GPIO_3 (nc)",
+  "h1.GPIO_33 NC_h1_GPIO_33 (nc)",
+  "h1.GPIO_36 NC_h1_GPIO_36 (nc)",
+  "h1.GPIO_37 NC_h1_GPIO_37 (nc)",
+  "h1.GPIO_41 NC_h1_GPIO_41 (nc)",
+  "h1.3V3 NC_h1_3V3 (nc)",
+  "h1.GND NC_h1_GND (nc)",
+]
+`;
+
+exports[`the cards every part writes > transient, as a carried slice 1`] = `
+"Circuit Simulation
+R_jp1 NC_jp1_a NC_jp1_b 0.001
+R_r1 N1 N2 4.7k
+R_r2 N4 N6 2k
+C_c1 N6 NC_c1_out 10uF
+L_l1 N2 0 1mH IC=1.000000e-2
+L_pri_t1 NC_t1_p1 NC_t1_p2 10m IC=2.000000e-3
+L_sec_t1 NC_t1_s1 NC_t1_s2 2.5m IC=-4.000000e-3
+K_t1 L_pri_t1 L_sec_t1 0.95
+V_v1 N1 0 DC 9V
+V_ac1 NC_ac1_pos NC_ac1_neg SINE(0 12 50)
+V_sg_sine NC_sg_sine_out NC_sg_sine_gnd SINE(0 2 1000)
+V_sg_sq NC_sg_sq_out NC_sg_sq_gnd PULSE(0 5 0 0.000001 0.000001 0.0025 0.01)
+V_sg_dc NC_sg_dc_out NC_sg_dc_gnd DC 3
+I_i1 NC_i1_pos NC_i1_neg DC 20mA
+R_ammeter_led1 NC_led1_anode int_led_led1 1
+D_led1 int_led_led1 NC_led1_cathode LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.7500000000000002)
+R_ammeter_led2 NC_led2_anode int_led_led2 1
+D_led2 int_led_led2 NC_led2_cathode LED_MODEL_led2
+.model LED_MODEL_led2 D(IS=1e-22 RS=5 N=1.6666666666666667)
+I_photo_led2 NC_led2_cathode int_led_led2 DC 8.000000e-6
+D_d1 NC_d1_anode NC_d1_cathode DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=0.8571428571428572)
+D_z1 NC_z1_anode NC_z1_cathode ZENER_MODEL_z1
+.model ZENER_MODEL_z1 D(IS=1e-11 BV=3.3 IBV=1e-3)
+R_sw_open NC_sw_open_in NC_sw_open_out 1e12
+R_sw_closed NC_sw_closed_in NC_sw_closed_out 0.01
+R_mm_v NC_mm_v_pos NC_mm_v_neg 1G
+V_ammeter_mm_i NC_mm_i_pos NC_mm_i_neg DC 0
+R_scope_ch1_scope1 NC_scope1_ch1 NC_scope1_gnd 1G
+R_scope_ch2_scope1 NC_scope1_ch2 NC_scope1_gnd 1G
+R_pot1_top NC_pot1_in NC_pot1_wiper 9990
+R_pot1_bot NC_pot1_wiper NC_pot1_out 10
+R_seg1_a NC_seg1_a NC_seg1_common 1G
+R_seg1_b NC_seg1_b NC_seg1_common 1G
+R_seg1_c NC_seg1_c NC_seg1_common 1G
+R_seg1_d NC_seg1_d NC_seg1_common 1G
+R_seg1_e NC_seg1_e NC_seg1_common 1G
+R_seg1_f NC_seg1_f NC_seg1_common 1G
+R_seg1_g NC_seg1_g NC_seg1_common 1G
+V_mic_dc NC_mic_dc_out NC_mic_dc_gnd DC 0
+R_ldr_fixed NC_ldr_fixed_in NC_ldr_fixed_out 100050.00
+V_light_ldr_pwl light_node_ldr_pwl 0 PWL(
++ 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
++ )
+B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / (100 + (100000 - 100) * (1 - V(light_node_ldr_pwl)))
+Q_q1 NC_q1_c NC_q1_b NC_q1_e NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 NC_q2_c NC_q2_b NC_q2_e PNP_MODEL_q2
+.model PNP_MODEL_q2 PNP(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+M_m1 NC_m1_d NC_m1_g NC_m1_s NC_m1_s NMOS_MODEL_m1
+.model NMOS_MODEL_m1 NMOS(LEVEL=1 VTO=2 KP=0.05 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+M_m2 NC_m2_d NC_m2_g NC_m2_s NC_m2_s PMOS_MODEL_m2
+.model PMOS_MODEL_m2 PMOS(LEVEL=1 VTO=-2 KP=0.02 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+X_u1 NC_u1_in_non NC_u1_in_inv NC_u1_vcc NC_u1_vee NC_u1_out OPAMP_MODEL_u1
+X_u2 NC_u2_1 NC_u2_2 NC_u2_3 NC_u2_4 NC_u2_5 NC_u2_6 NC_u2_7 NC_u2_8 NE555
+X_u3 NC_u3_d NC_u3_clk NC_u3_q NC_u3_qbar DFF
+B_gate_g_and NC_g_and_out 0 V = V(NC_g_and_in1) > 2.5 ? (V(NC_g_and_in2) > 2.5 ? 5 : 0) : 0
+B_gate_g_or NC_g_or_out 0 V = V(NC_g_or_in1) > 2.5 ? 5 : (V(NC_g_or_in2) > 2.5 ? 5 : 0)
+B_gate_g_nand NC_g_nand_out 0 V = V(NC_g_nand_in1) > 2.5 ? (V(NC_g_nand_in2) > 2.5 ? 0 : 5) : 5
+B_gate_g_nor NC_g_nor_out 0 V = V(NC_g_nor_in1) > 2.5 ? 0 : (V(NC_g_nor_in2) > 2.5 ? 0 : 5)
+B_gate_g_xor NC_g_xor_out 0 V = V(NC_g_xor_in1) > 2.5 ? (V(NC_g_xor_in2) > 2.5 ? 0 : 5) : (V(NC_g_xor_in2) > 2.5 ? 5 : 0)
+B_gate_g_not NC_g_not_out 0 V = V(NC_g_not_in1) > 2.5 ? 0 : 5
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND NC_mcu1_GND 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 NC_mcu1_A0 0 100MEG
+V_heltec_h1_GPIO_1 NC_h1_GPIO_1 0 DC 1.2340
+R_heltec_h1_GPIO_3 NC_h1_GPIO_3 0 100k
+V_heltec_h1_GPIO_33 NC_h1_GPIO_33 0 DC 3.3000
+V_heltec_h1_GPIO_36 NC_h1_GPIO_36 0 DC 0.0000
+V_heltec_h1_GPIO_37 NC_h1_GPIO_37 0 DC 0.0000
+V_heltec_h1_GPIO_41 NC_h1_GPIO_41 0 DC 0.0000
+V_heltec_h1_3V3 NC_h1_3V3 0 DC 3.3
+R_heltec_h1_GND NC_h1_GND 0 1m
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for u1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_u1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_u1
+
+* Idealized NE555 Timer Macro Model
+* Node order: GND TRIG OUT RST CTRL THR DIS VCC
+.SUBCKT NE555 1 2 3 4 5 6 7 8
+* Voltage divider
+R1 8 5 5k
+R2 5 61 5k
+R3 61 1 5k
+
+* Smooth SR Latch Integrator
+* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+S_SET 8 state 61 2 SMOD_ON
+S_RST state 1 6 5 SMOD_ON
+C1 state 1 100p
+* Add parallel resistor to guarantee DC convergence
+R4 state 1 10G
+
+* Output buffer
+E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+
+* Discharge
+S_DIS 7 1 8 state SMOD_DIS
+
+.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
+.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.ENDS NE555
+
+* Idealized Master-Slave D Flip-Flop
+* Node order: D CLK Q QBAR
+.SUBCKT DFF D CLK Q QBAR
+B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+
+* Master Latch: closed when clk_bar > 2.5
+S_M D state_m clk_bar 0 SMOD_DFF
+C_M state_m 0 10n
+R_M state_m 0 1G
+
+* Buffer master to slave to prevent charge sharing between C_M and C_S
+B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+
+* Slave Latch: closed when CLK > 2.5
+S_S state_m_buf state_s CLK 0 SMOD_DFF
+C_S state_s 0 10n
+R_S state_s 0 1G
+
+* Output Drivers
+B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
+B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+
+.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.ENDS DFF
+V_rail_N4 N4 0 DC 5
+R_shunt_NC_jp1_a NC_jp1_a 0 1G
+R_shunt_NC_jp1_b NC_jp1_b 0 1G
+R_shunt_NC_c1_out NC_c1_out 0 1G
+R_shunt_NC_t1_p1 NC_t1_p1 0 1G
+R_shunt_NC_t1_p2 NC_t1_p2 0 1G
+R_shunt_NC_t1_s1 NC_t1_s1 0 1G
+R_shunt_NC_t1_s2 NC_t1_s2 0 1G
+R_shunt_NC_ac1_pos NC_ac1_pos 0 1G
+R_shunt_NC_ac1_neg NC_ac1_neg 0 1G
+R_shunt_NC_sg_sine_out NC_sg_sine_out 0 1G
+R_shunt_NC_sg_sine_gnd NC_sg_sine_gnd 0 1G
+R_shunt_NC_sg_sq_out NC_sg_sq_out 0 1G
+R_shunt_NC_sg_sq_gnd NC_sg_sq_gnd 0 1G
+R_shunt_NC_sg_dc_out NC_sg_dc_out 0 1G
+R_shunt_NC_sg_dc_gnd NC_sg_dc_gnd 0 1G
+R_shunt_NC_i1_pos NC_i1_pos 0 1G
+R_shunt_NC_i1_neg NC_i1_neg 0 1G
+R_shunt_NC_led1_anode NC_led1_anode 0 1G
+R_shunt_NC_led1_cathode NC_led1_cathode 0 1G
+R_shunt_NC_led2_anode NC_led2_anode 0 1G
+R_shunt_NC_led2_cathode NC_led2_cathode 0 1G
+R_shunt_NC_d1_anode NC_d1_anode 0 1G
+R_shunt_NC_d1_cathode NC_d1_cathode 0 1G
+R_shunt_NC_z1_anode NC_z1_anode 0 1G
+R_shunt_NC_z1_cathode NC_z1_cathode 0 1G
+R_shunt_NC_sw_open_in NC_sw_open_in 0 1G
+R_shunt_NC_sw_open_out NC_sw_open_out 0 1G
+R_shunt_NC_sw_closed_in NC_sw_closed_in 0 1G
+R_shunt_NC_sw_closed_out NC_sw_closed_out 0 1G
+R_shunt_NC_mm_v_pos NC_mm_v_pos 0 1G
+R_shunt_NC_mm_v_neg NC_mm_v_neg 0 1G
+R_shunt_NC_mm_i_pos NC_mm_i_pos 0 1G
+R_shunt_NC_mm_i_neg NC_mm_i_neg 0 1G
+R_shunt_NC_scope1_ch1 NC_scope1_ch1 0 1G
+R_shunt_NC_scope1_ch2 NC_scope1_ch2 0 1G
+R_shunt_NC_scope1_gnd NC_scope1_gnd 0 1G
+R_shunt_NC_pot1_in NC_pot1_in 0 1G
+R_shunt_NC_pot1_out NC_pot1_out 0 1G
+R_shunt_NC_pot1_wiper NC_pot1_wiper 0 1G
+R_shunt_NC_seg1_common NC_seg1_common 0 1G
+R_shunt_NC_seg1_a NC_seg1_a 0 1G
+R_shunt_NC_seg1_b NC_seg1_b 0 1G
+R_shunt_NC_seg1_c NC_seg1_c 0 1G
+R_shunt_NC_seg1_d NC_seg1_d 0 1G
+R_shunt_NC_seg1_e NC_seg1_e 0 1G
+R_shunt_NC_seg1_f NC_seg1_f 0 1G
+R_shunt_NC_seg1_g NC_seg1_g 0 1G
+R_shunt_NC_mic_dc_out NC_mic_dc_out 0 1G
+R_shunt_NC_mic_dc_gnd NC_mic_dc_gnd 0 1G
+R_shunt_NC_ldr_fixed_in NC_ldr_fixed_in 0 1G
+R_shunt_NC_ldr_fixed_out NC_ldr_fixed_out 0 1G
+R_shunt_NC_ldr_pwl_in NC_ldr_pwl_in 0 1G
+R_shunt_NC_ldr_pwl_out NC_ldr_pwl_out 0 1G
+R_shunt_NC_q1_c NC_q1_c 0 1G
+R_shunt_NC_q1_b NC_q1_b 0 1G
+R_shunt_NC_q1_e NC_q1_e 0 1G
+R_shunt_NC_q2_c NC_q2_c 0 1G
+R_shunt_NC_q2_b NC_q2_b 0 1G
+R_shunt_NC_q2_e NC_q2_e 0 1G
+R_shunt_NC_m1_d NC_m1_d 0 1G
+R_shunt_NC_m1_g NC_m1_g 0 1G
+R_shunt_NC_m1_s NC_m1_s 0 1G
+R_shunt_NC_m2_d NC_m2_d 0 1G
+R_shunt_NC_m2_g NC_m2_g 0 1G
+R_shunt_NC_m2_s NC_m2_s 0 1G
+R_shunt_NC_u1_in_non NC_u1_in_non 0 1G
+R_shunt_NC_u1_in_inv NC_u1_in_inv 0 1G
+R_shunt_NC_u1_vcc NC_u1_vcc 0 1G
+R_shunt_NC_u1_vee NC_u1_vee 0 1G
+R_shunt_NC_u1_out NC_u1_out 0 1G
+R_shunt_NC_u2_1 NC_u2_1 0 1G
+R_shunt_NC_u2_2 NC_u2_2 0 1G
+R_shunt_NC_u2_3 NC_u2_3 0 1G
+R_shunt_NC_u2_4 NC_u2_4 0 1G
+R_shunt_NC_u2_5 NC_u2_5 0 1G
+R_shunt_NC_u2_6 NC_u2_6 0 1G
+R_shunt_NC_u2_7 NC_u2_7 0 1G
+R_shunt_NC_u2_8 NC_u2_8 0 1G
+R_shunt_NC_u3_d NC_u3_d 0 1G
+R_shunt_NC_u3_clk NC_u3_clk 0 1G
+R_shunt_NC_u3_q NC_u3_q 0 1G
+R_shunt_NC_u3_qbar NC_u3_qbar 0 1G
+R_shunt_NC_g_and_in1 NC_g_and_in1 0 1G
+R_shunt_NC_g_and_in2 NC_g_and_in2 0 1G
+R_shunt_NC_g_and_out NC_g_and_out 0 1G
+R_shunt_NC_g_or_in1 NC_g_or_in1 0 1G
+R_shunt_NC_g_or_in2 NC_g_or_in2 0 1G
+R_shunt_NC_g_or_out NC_g_or_out 0 1G
+R_shunt_NC_g_nand_in1 NC_g_nand_in1 0 1G
+R_shunt_NC_g_nand_in2 NC_g_nand_in2 0 1G
+R_shunt_NC_g_nand_out NC_g_nand_out 0 1G
+R_shunt_NC_g_nor_in1 NC_g_nor_in1 0 1G
+R_shunt_NC_g_nor_in2 NC_g_nor_in2 0 1G
+R_shunt_NC_g_nor_out NC_g_nor_out 0 1G
+R_shunt_NC_g_xor_in1 NC_g_xor_in1 0 1G
+R_shunt_NC_g_xor_in2 NC_g_xor_in2 0 1G
+R_shunt_NC_g_xor_out NC_g_xor_out 0 1G
+R_shunt_NC_g_not_in1 NC_g_not_in1 0 1G
+R_shunt_NC_g_not_out NC_g_not_out 0 1G
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_GND NC_mcu1_GND 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+R_shunt_NC_mcu1_A0 NC_mcu1_A0 0 1G
+R_shunt_NC_h1_GPIO_1 NC_h1_GPIO_1 0 1G
+R_shunt_NC_h1_GPIO_3 NC_h1_GPIO_3 0 1G
+R_shunt_NC_h1_GPIO_33 NC_h1_GPIO_33 0 1G
+R_shunt_NC_h1_GPIO_36 NC_h1_GPIO_36 0 1G
+R_shunt_NC_h1_GPIO_37 NC_h1_GPIO_37 0 1G
+R_shunt_NC_h1_GPIO_41 NC_h1_GPIO_41 0 1G
+R_shunt_NC_h1_3V3 NC_h1_3V3 0 1G
+R_shunt_NC_h1_GND NC_h1_GND 0 1G
+.save all
+.ic V(n1)=1.500000
+.tran 0.2m 0.04s 0 0.2m uic
+.end
+"
+`;
+
+exports[`the cards every part writes > transient, from rest 1`] = `
+"Circuit Simulation
+R_jp1 NC_jp1_a NC_jp1_b 0.001
+R_r1 N1 N2 4.7k
+R_r2 N4 N6 2k
+C_c1 N6 NC_c1_out 10uF
+L_l1 N2 0 1mH
+L_pri_t1 NC_t1_p1 NC_t1_p2 10m
+L_sec_t1 NC_t1_s1 NC_t1_s2 2.5m
+K_t1 L_pri_t1 L_sec_t1 0.95
+V_v1 N1 0 DC 9V
+V_ac1 NC_ac1_pos NC_ac1_neg SINE(0 12 50)
+V_sg_sine NC_sg_sine_out NC_sg_sine_gnd SINE(0 2 1000)
+V_sg_sq NC_sg_sq_out NC_sg_sq_gnd PULSE(0 5 0 0.000001 0.000001 0.0025 0.01)
+V_sg_dc NC_sg_dc_out NC_sg_dc_gnd DC 3
+I_i1 NC_i1_pos NC_i1_neg DC 20mA
+R_ammeter_led1 NC_led1_anode int_led_led1 1
+D_led1 int_led_led1 NC_led1_cathode LED_MODEL_led1
+.model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.7500000000000002)
+R_ammeter_led2 NC_led2_anode int_led_led2 1
+D_led2 int_led_led2 NC_led2_cathode LED_MODEL_led2
+.model LED_MODEL_led2 D(IS=1e-22 RS=5 N=1.6666666666666667)
+I_photo_led2 NC_led2_cathode int_led_led2 DC 8.000000e-6
+D_d1 NC_d1_anode NC_d1_cathode DIODE_MODEL_d1
+.model DIODE_MODEL_d1 D(IS=1e-14 RS=0.1 N=0.8571428571428572)
+D_z1 NC_z1_anode NC_z1_cathode ZENER_MODEL_z1
+.model ZENER_MODEL_z1 D(IS=1e-11 BV=3.3 IBV=1e-3)
+R_sw_open NC_sw_open_in NC_sw_open_out 1e12
+R_sw_closed NC_sw_closed_in NC_sw_closed_out 0.01
+R_mm_v NC_mm_v_pos NC_mm_v_neg 1G
+V_ammeter_mm_i NC_mm_i_pos NC_mm_i_neg DC 0
+R_scope_ch1_scope1 NC_scope1_ch1 NC_scope1_gnd 1G
+R_scope_ch2_scope1 NC_scope1_ch2 NC_scope1_gnd 1G
+R_pot1_top NC_pot1_in NC_pot1_wiper 9990
+R_pot1_bot NC_pot1_wiper NC_pot1_out 10
+R_seg1_a NC_seg1_a NC_seg1_common 1G
+R_seg1_b NC_seg1_b NC_seg1_common 1G
+R_seg1_c NC_seg1_c NC_seg1_common 1G
+R_seg1_d NC_seg1_d NC_seg1_common 1G
+R_seg1_e NC_seg1_e NC_seg1_common 1G
+R_seg1_f NC_seg1_f NC_seg1_common 1G
+R_seg1_g NC_seg1_g NC_seg1_common 1G
+R_spk1 NC_spk1_in NC_spk1_gnd 8
+V_mic_pwl NC_mic_pwl_out NC_mic_pwl_gnd PWL(
++ 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
++ )
+V_mic_dc NC_mic_dc_out NC_mic_dc_gnd DC 0
+R_ldr_fixed NC_ldr_fixed_in NC_ldr_fixed_out 100050.00
+V_light_ldr_pwl light_node_ldr_pwl 0 PWL(
++ 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
++ )
+B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / (100 + (100000 - 100) * (1 - V(light_node_ldr_pwl)))
+Q_q1 NC_q1_c NC_q1_b NC_q1_e NPN_MODEL_q1
+.model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+Q_q2 NC_q2_c NC_q2_b NC_q2_e PNP_MODEL_q2
+.model PNP_MODEL_q2 PNP(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
+M_m1 NC_m1_d NC_m1_g NC_m1_s NC_m1_s NMOS_MODEL_m1
+.model NMOS_MODEL_m1 NMOS(LEVEL=1 VTO=2 KP=0.05 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+M_m2 NC_m2_d NC_m2_g NC_m2_s NC_m2_s PMOS_MODEL_m2
+.model PMOS_MODEL_m2 PMOS(LEVEL=1 VTO=-2 KP=0.02 GAMMA=0.5 PHI=0.6 LAMBDA=0.01 RD=0 RS=0)
+X_u1 NC_u1_in_non NC_u1_in_inv NC_u1_vcc NC_u1_vee NC_u1_out OPAMP_MODEL_u1
+X_u2 NC_u2_1 NC_u2_2 NC_u2_3 NC_u2_4 NC_u2_5 NC_u2_6 NC_u2_7 NC_u2_8 NE555
+X_u3 NC_u3_d NC_u3_clk NC_u3_q NC_u3_qbar DFF
+B_gate_g_and NC_g_and_out 0 V = V(NC_g_and_in1) > 2.5 ? (V(NC_g_and_in2) > 2.5 ? 5 : 0) : 0
+B_gate_g_or NC_g_or_out 0 V = V(NC_g_or_in1) > 2.5 ? 5 : (V(NC_g_or_in2) > 2.5 ? 5 : 0)
+B_gate_g_nand NC_g_nand_out 0 V = V(NC_g_nand_in1) > 2.5 ? (V(NC_g_nand_in2) > 2.5 ? 0 : 5) : 5
+B_gate_g_nor NC_g_nor_out 0 V = V(NC_g_nor_in1) > 2.5 ? 0 : (V(NC_g_nor_in2) > 2.5 ? 0 : 5)
+B_gate_g_xor NC_g_xor_out 0 V = V(NC_g_xor_in1) > 2.5 ? (V(NC_g_xor_in2) > 2.5 ? 0 : 5) : (V(NC_g_xor_in2) > 2.5 ? 5 : 0)
+B_gate_g_not NC_g_not_out 0 V = V(NC_g_not_in1) > 2.5 ? 0 : 5
+R_mcu1_D0 NC_mcu1_D0 0 100MEG
+R_mcu1_D1 NC_mcu1_D1 0 100MEG
+R_mcu1_D2 NC_mcu1_D2 0 100MEG
+R_mcu1_D3 NC_mcu1_D3 0 100MEG
+R_mcu1_GND NC_mcu1_GND 0 1m
+V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
+R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
+R_mcu1_A1 NC_mcu1_A1 0 100MEG
+R_mcu1_A0 NC_mcu1_A0 0 100MEG
+V_heltec_h1_GPIO_1 NC_h1_GPIO_1 0 DC 1.2340
+R_heltec_h1_GPIO_3 NC_h1_GPIO_3 0 100k
+V_heltec_h1_GPIO_33 NC_h1_GPIO_33 0 DC 3.3000
+V_heltec_h1_GPIO_36 NC_h1_GPIO_36 0 DC 0.0000
+V_heltec_h1_GPIO_37 NC_h1_GPIO_37 0 DC 0.0000
+V_heltec_h1_GPIO_41 NC_h1_GPIO_41 0 DC 0.0000
+V_heltec_h1_3V3 NC_h1_3V3 0 DC 3.3
+R_heltec_h1_GND NC_h1_GND 0 1m
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for u1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_u1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_u1
+
+* Idealized NE555 Timer Macro Model
+* Node order: GND TRIG OUT RST CTRL THR DIS VCC
+.SUBCKT NE555 1 2 3 4 5 6 7 8
+* Voltage divider
+R1 8 5 5k
+R2 5 61 5k
+R3 61 1 5k
+
+* Smooth SR Latch Integrator
+* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+S_SET 8 state 61 2 SMOD_ON
+S_RST state 1 6 5 SMOD_ON
+C1 state 1 100p
+* Add parallel resistor to guarantee DC convergence
+R4 state 1 10G
+
+* Output buffer
+E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+
+* Discharge
+S_DIS 7 1 8 state SMOD_DIS
+
+.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
+.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.ENDS NE555
+
+* Idealized Master-Slave D Flip-Flop
+* Node order: D CLK Q QBAR
+.SUBCKT DFF D CLK Q QBAR
+B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+
+* Master Latch: closed when clk_bar > 2.5
+S_M D state_m clk_bar 0 SMOD_DFF
+C_M state_m 0 10n
+R_M state_m 0 1G
+
+* Buffer master to slave to prevent charge sharing between C_M and C_S
+B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+
+* Slave Latch: closed when CLK > 2.5
+S_S state_m_buf state_s CLK 0 SMOD_DFF
+C_S state_s 0 10n
+R_S state_s 0 1G
+
+* Output Drivers
+B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
+B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+
+.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.ENDS DFF
+V_rail_N4 N4 0 DC 5
+R_shunt_NC_jp1_a NC_jp1_a 0 1G
+R_shunt_NC_jp1_b NC_jp1_b 0 1G
+R_shunt_NC_c1_out NC_c1_out 0 1G
+R_shunt_NC_t1_p1 NC_t1_p1 0 1G
+R_shunt_NC_t1_p2 NC_t1_p2 0 1G
+R_shunt_NC_t1_s1 NC_t1_s1 0 1G
+R_shunt_NC_t1_s2 NC_t1_s2 0 1G
+R_shunt_NC_ac1_pos NC_ac1_pos 0 1G
+R_shunt_NC_ac1_neg NC_ac1_neg 0 1G
+R_shunt_NC_sg_sine_out NC_sg_sine_out 0 1G
+R_shunt_NC_sg_sine_gnd NC_sg_sine_gnd 0 1G
+R_shunt_NC_sg_sq_out NC_sg_sq_out 0 1G
+R_shunt_NC_sg_sq_gnd NC_sg_sq_gnd 0 1G
+R_shunt_NC_sg_dc_out NC_sg_dc_out 0 1G
+R_shunt_NC_sg_dc_gnd NC_sg_dc_gnd 0 1G
+R_shunt_NC_i1_pos NC_i1_pos 0 1G
+R_shunt_NC_i1_neg NC_i1_neg 0 1G
+R_shunt_NC_led1_anode NC_led1_anode 0 1G
+R_shunt_NC_led1_cathode NC_led1_cathode 0 1G
+R_shunt_NC_led2_anode NC_led2_anode 0 1G
+R_shunt_NC_led2_cathode NC_led2_cathode 0 1G
+R_shunt_NC_d1_anode NC_d1_anode 0 1G
+R_shunt_NC_d1_cathode NC_d1_cathode 0 1G
+R_shunt_NC_z1_anode NC_z1_anode 0 1G
+R_shunt_NC_z1_cathode NC_z1_cathode 0 1G
+R_shunt_NC_sw_open_in NC_sw_open_in 0 1G
+R_shunt_NC_sw_open_out NC_sw_open_out 0 1G
+R_shunt_NC_sw_closed_in NC_sw_closed_in 0 1G
+R_shunt_NC_sw_closed_out NC_sw_closed_out 0 1G
+R_shunt_NC_mm_v_pos NC_mm_v_pos 0 1G
+R_shunt_NC_mm_v_neg NC_mm_v_neg 0 1G
+R_shunt_NC_mm_i_pos NC_mm_i_pos 0 1G
+R_shunt_NC_mm_i_neg NC_mm_i_neg 0 1G
+R_shunt_NC_scope1_ch1 NC_scope1_ch1 0 1G
+R_shunt_NC_scope1_ch2 NC_scope1_ch2 0 1G
+R_shunt_NC_scope1_gnd NC_scope1_gnd 0 1G
+R_shunt_NC_pot1_in NC_pot1_in 0 1G
+R_shunt_NC_pot1_out NC_pot1_out 0 1G
+R_shunt_NC_pot1_wiper NC_pot1_wiper 0 1G
+R_shunt_NC_seg1_common NC_seg1_common 0 1G
+R_shunt_NC_seg1_a NC_seg1_a 0 1G
+R_shunt_NC_seg1_b NC_seg1_b 0 1G
+R_shunt_NC_seg1_c NC_seg1_c 0 1G
+R_shunt_NC_seg1_d NC_seg1_d 0 1G
+R_shunt_NC_seg1_e NC_seg1_e 0 1G
+R_shunt_NC_seg1_f NC_seg1_f 0 1G
+R_shunt_NC_seg1_g NC_seg1_g 0 1G
+R_shunt_NC_spk1_in NC_spk1_in 0 1G
+R_shunt_NC_spk1_gnd NC_spk1_gnd 0 1G
+R_shunt_NC_mic_pwl_out NC_mic_pwl_out 0 1G
+R_shunt_NC_mic_pwl_gnd NC_mic_pwl_gnd 0 1G
+R_shunt_NC_mic_dc_out NC_mic_dc_out 0 1G
+R_shunt_NC_mic_dc_gnd NC_mic_dc_gnd 0 1G
+R_shunt_NC_ldr_fixed_in NC_ldr_fixed_in 0 1G
+R_shunt_NC_ldr_fixed_out NC_ldr_fixed_out 0 1G
+R_shunt_NC_ldr_pwl_in NC_ldr_pwl_in 0 1G
+R_shunt_NC_ldr_pwl_out NC_ldr_pwl_out 0 1G
+R_shunt_NC_q1_c NC_q1_c 0 1G
+R_shunt_NC_q1_b NC_q1_b 0 1G
+R_shunt_NC_q1_e NC_q1_e 0 1G
+R_shunt_NC_q2_c NC_q2_c 0 1G
+R_shunt_NC_q2_b NC_q2_b 0 1G
+R_shunt_NC_q2_e NC_q2_e 0 1G
+R_shunt_NC_m1_d NC_m1_d 0 1G
+R_shunt_NC_m1_g NC_m1_g 0 1G
+R_shunt_NC_m1_s NC_m1_s 0 1G
+R_shunt_NC_m2_d NC_m2_d 0 1G
+R_shunt_NC_m2_g NC_m2_g 0 1G
+R_shunt_NC_m2_s NC_m2_s 0 1G
+R_shunt_NC_u1_in_non NC_u1_in_non 0 1G
+R_shunt_NC_u1_in_inv NC_u1_in_inv 0 1G
+R_shunt_NC_u1_vcc NC_u1_vcc 0 1G
+R_shunt_NC_u1_vee NC_u1_vee 0 1G
+R_shunt_NC_u1_out NC_u1_out 0 1G
+R_shunt_NC_u2_1 NC_u2_1 0 1G
+R_shunt_NC_u2_2 NC_u2_2 0 1G
+R_shunt_NC_u2_3 NC_u2_3 0 1G
+R_shunt_NC_u2_4 NC_u2_4 0 1G
+R_shunt_NC_u2_5 NC_u2_5 0 1G
+R_shunt_NC_u2_6 NC_u2_6 0 1G
+R_shunt_NC_u2_7 NC_u2_7 0 1G
+R_shunt_NC_u2_8 NC_u2_8 0 1G
+R_shunt_NC_u3_d NC_u3_d 0 1G
+R_shunt_NC_u3_clk NC_u3_clk 0 1G
+R_shunt_NC_u3_q NC_u3_q 0 1G
+R_shunt_NC_u3_qbar NC_u3_qbar 0 1G
+R_shunt_NC_g_and_in1 NC_g_and_in1 0 1G
+R_shunt_NC_g_and_in2 NC_g_and_in2 0 1G
+R_shunt_NC_g_and_out NC_g_and_out 0 1G
+R_shunt_NC_g_or_in1 NC_g_or_in1 0 1G
+R_shunt_NC_g_or_in2 NC_g_or_in2 0 1G
+R_shunt_NC_g_or_out NC_g_or_out 0 1G
+R_shunt_NC_g_nand_in1 NC_g_nand_in1 0 1G
+R_shunt_NC_g_nand_in2 NC_g_nand_in2 0 1G
+R_shunt_NC_g_nand_out NC_g_nand_out 0 1G
+R_shunt_NC_g_nor_in1 NC_g_nor_in1 0 1G
+R_shunt_NC_g_nor_in2 NC_g_nor_in2 0 1G
+R_shunt_NC_g_nor_out NC_g_nor_out 0 1G
+R_shunt_NC_g_xor_in1 NC_g_xor_in1 0 1G
+R_shunt_NC_g_xor_in2 NC_g_xor_in2 0 1G
+R_shunt_NC_g_xor_out NC_g_xor_out 0 1G
+R_shunt_NC_g_not_in1 NC_g_not_in1 0 1G
+R_shunt_NC_g_not_out NC_g_not_out 0 1G
+R_shunt_NC_mcu1_D0 NC_mcu1_D0 0 1G
+R_shunt_NC_mcu1_D1 NC_mcu1_D1 0 1G
+R_shunt_NC_mcu1_D2 NC_mcu1_D2 0 1G
+R_shunt_NC_mcu1_D3 NC_mcu1_D3 0 1G
+R_shunt_NC_mcu1_GND NC_mcu1_GND 0 1G
+R_shunt_NC_mcu1_5V NC_mcu1_5V 0 1G
+R_shunt_NC_mcu1_A1 NC_mcu1_A1 0 1G
+R_shunt_NC_mcu1_A0 NC_mcu1_A0 0 1G
+R_shunt_NC_h1_GPIO_1 NC_h1_GPIO_1 0 1G
+R_shunt_NC_h1_GPIO_3 NC_h1_GPIO_3 0 1G
+R_shunt_NC_h1_GPIO_33 NC_h1_GPIO_33 0 1G
+R_shunt_NC_h1_GPIO_36 NC_h1_GPIO_36 0 1G
+R_shunt_NC_h1_GPIO_37 NC_h1_GPIO_37 0 1G
+R_shunt_NC_h1_GPIO_41 NC_h1_GPIO_41 0 1G
+R_shunt_NC_h1_3V3 NC_h1_3V3 0 1G
+R_shunt_NC_h1_GND NC_h1_GND 0 1G
+.save all
+.tran 0.05m 0.1s 0 0.05m
+.end
+"
+`;
