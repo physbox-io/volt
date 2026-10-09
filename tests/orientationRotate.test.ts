@@ -27,7 +27,7 @@ describe('rotate 90 right', () => {
 
   it('turns a two-lead part so its terminals follow the body clockwise', () => {
     const sides = ORIENTATION_CYCLE.map(o =>
-      getHandlePosition({ type: 'resistor', data: { orientation: o } }, 'in')
+      getHandlePosition({ id: 'r', type: 'resistor', position: { x: 0, y: 0 }, data: { orientation: o } }, 'in')
     );
     expect(sides).toEqual(['left', 'top', 'right', 'bottom']);
   });
@@ -87,7 +87,7 @@ describe('reverse leads', () => {
 
   it('leaves each lead where the other one was, so the wires need not move', () => {
     const at = (o: string, h: string) =>
-      getHandleCoord({ type: 'led', position: { x: 0, y: 0 }, data: { orientation: o }, measured: { width: 32, height: 32 } }, h);
+      getHandleCoord({ id: 'd', type: 'led', position: { x: 0, y: 0 }, data: { orientation: o }, measured: { width: 32, height: 32 } }, h);
     expect(at('left', 'cathode')).toEqual(at('horizontal', 'anode'));
     expect(at('left', 'anode')).toEqual(at('horizontal', 'cathode'));
   });

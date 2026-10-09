@@ -93,8 +93,10 @@ class FakeController implements GrblTransport {
 }
 
 class TestManager extends WebSerialManager {
-  constructor(readonly fake: FakeController) {
+  readonly fake: FakeController;
+  constructor(fake: FakeController) {
     super();
+    this.fake = fake;
   }
   protected createTransport(): GrblTransport {
     return this.fake;

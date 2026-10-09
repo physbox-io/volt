@@ -271,7 +271,7 @@ export function routeOrthogonal({
   targetX: number;
   targetY: number;
   targetPosition: string;
-  obstacles: Obstacle[];
+  obstacles?: Obstacle[];
   gridStep?: number;
   bendPenalty?: number;
   padding?: number;
