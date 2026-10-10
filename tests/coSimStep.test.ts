@@ -125,7 +125,7 @@ describe('a DC motor driving a Mesh joint', () => {
     { inertia: 2e-5, damping: 1e-5, extra: 0 },
     { inertia: 1e-4, damping: 5e-5, extra: -0.03 },
   ]) {
-    it(`reaches Kt·V/(Kt²+R·b) with τ = (Jr+J)·R/(Kt²+R·b), at 5ms and at 2.5ms slices: J=${inertia}, load ${extra}`, async () => {
+    it(`reaches Kt·V/(Kt²+R·b) with τ = (Jr+J)·R/(Kt²+R·b), at 10ms and at 5ms slices: J=${inertia}, load ${extra}`, async () => {
       const { nodes, edges } = circuit();
       const bTotal = motor.b + damping;
       const denom = motor.kt * motor.kt + motor.r * bTotal;
@@ -134,7 +134,7 @@ describe('a DC motor driving a Mesh joint', () => {
       const totalMs = Math.ceil((tau * 5000) / 10) * 10;
 
       const finals: number[] = [];
-      for (const sliceMs of [5, 2.5]) {
+      for (const sliceMs of [10, 5]) {
         const joint = new FakeJoint('shaft', inertia, damping, extra);
         const { state, speeds } = await runFor(nodes, edges, joint, totalMs, sliceMs);
         const w = state.outputs['joint:shaft.vel'];
@@ -176,11 +176,11 @@ describe('a stepper on a step driver driving a Mesh joint', () => {
     ],
   });
 
-  for (const micro of [1, 4]) {
-    it(`turns the joint 1.8°/${micro} a pulse, steadily, at 5ms slices`, async () => {
+  for (const [micro, sliceMs] of [[1, 5], [4, 5], [1, 10], [16, 10]]) {
+    it(`turns the joint 1.8°/${micro} a pulse, steadily, at ${sliceMs}ms slices`, async () => {
       const { nodes, edges } = circuit(micro);
       const joint = new FakeJoint('shaft', 5e-5, 0.005);
-      const { state } = await runFor(nodes, edges, joint, 200, 5);
+      const { state } = await runFor(nodes, edges, joint, 200, sliceMs);
       const stepRad = Math.PI / 2 / micro;
       const theta = state.sim['int_d_th'];
       // Pulses at 100Hz for 200ms: 20 of them, or 19 if the last is still rising.

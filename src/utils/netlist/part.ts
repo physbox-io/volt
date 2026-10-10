@@ -1,6 +1,7 @@
 import type { Node } from '@xyflow/react';
 import type { McuDrive } from '../mcu';
 import type { SimState } from '../simState';
+import type { LogicTrace } from './knownLogic';
 
 /** What a part is handed to write its cards with. */
 export type EmitContext = {
@@ -18,6 +19,18 @@ export type EmitContext = {
    * time emits from here, so a sliced run is one continuous waveform.
    */
   time: number;
+  /** How long the run is, seconds. */
+  length: number;
+  /**
+   * A pin's logic level over the run when it is decided before solving (see
+   * `knownLogic`), else null. Asks for the pin's net as `net` does.
+   */
+  logic: (handle: string) => LogicTrace | null;
+  /**
+   * Whether this run must keep up with real time (a slice of HIL or of a
+   * Mesh-linked run), so a part with a lighter model should use it.
+   */
+  realtime: boolean;
 };
 
 /**

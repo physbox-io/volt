@@ -112,7 +112,7 @@ export async function runSlice(state: SliceState, input: SliceInput, { solve, me
   }
 
   const { netlist, portToNet } = generateSpiceNetlist(nodes, edges, {
-    simLength: sliceMs / 1000, mcuDrives: sketches.drives, initialConditions: state.sim, hilMaxStepMs: maxStepMs,
+    simLength: sliceMs / 1000, mcuDrives: sketches.drives, initialConditions: state.sim, hilMaxStepMs: maxStepMs, realtime: true,
   });
   const result = await solve(netlist);
   const resultIndex = buildNetlistResultIndex(result);

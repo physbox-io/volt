@@ -7,8 +7,13 @@ import { explainSpiceFailure, messagesFromError } from '../utils/simDiagnostics'
 import type { SpiceResult } from '../types/simulation';
 import type { Advisory } from '../types/advisories';
 
-/** Lock-step slice: short beside a motor's mechanical time constant, long beside a postMessage. */
-const SLICE_MS = 5;
+/**
+ * Lock-step slice: short beside a motor's mechanical time constant, long
+ * enough that a solve's fixed cost does not swamp it. Mesh integrating the
+ * mechanics is what makes 10ms stable; at 5ms a linked stepper spent more of
+ * each slice starting the solver than solving.
+ */
+const SLICE_MS = 10;
 /** How often the canvas is redrawn during a linked run, in simulated ms. */
 const DRAW_EVERY_MS = 50;
 /** No slice of a linked run may take longer than this to solve. */
@@ -50,7 +55,7 @@ function readouts(nodes: Node[], state: CoSimState): Map<string, Record<string, 
  *
  * `open` (from a click) opens Mesh and handshakes; the catalogue it answers
  * with is what the inspector offers to bind. `start` runs the circuit in
- * 5ms lock-step slices against the scene until `stop`, paced to no faster
+ * 10ms lock-step slices against the scene until `stop`, paced to no faster
  * than real time, drawing the canvas every 50ms of it.
  */
 export function useMeshLink({ nodesRef, edgesRef, setNodes, setRunAdvisories, solve, onRunEnded }: UseMeshLinkArgs) {

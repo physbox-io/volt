@@ -106,7 +106,7 @@ R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * (V(int_drv1_th) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
 B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
@@ -485,7 +485,7 @@ R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * (V(int_drv1_th) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
 B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
@@ -864,7 +864,7 @@ R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * (V(int_drv1_th) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
 B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
@@ -1243,7 +1243,7 @@ R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * (V(int_drv1_th) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
 B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
@@ -1784,7 +1784,7 @@ R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * (V(int_drv1_th) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
 B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
@@ -2160,7 +2160,7 @@ R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * (V(int_drv1_th) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
 B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))

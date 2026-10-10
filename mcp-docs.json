@@ -541,7 +541,7 @@
       },
       "linkingToMesh": {
         "what": "Volt can drive a Mesh scene in lock step. The 'Link Mesh' toolbar button opens Mesh (it needs a user click, so it is not an MCP action) and handshakes; the scene's channels then appear in the inspector.",
-        "motors": "Set a dcmotor's or stepper's data.shaftJoint to a Mesh hinge or slide joint name. Run then solves 5ms slices. Volt does only the electrics: the joint's angle and speed, held for the slice, give the motor its back-EMF. Mesh does all the mechanics: it is handed the motor's force law at the currents the slice ended on (k(x)·i as constant, cos(w·x) and sin(w·x) terms, evaluated at the joint's live position every Mesh step, sub-stepped when stiff) plus the rotor's inertia and bearing friction as joint armature and damping. Runs until Stop.",
+        "motors": "Set a dcmotor's or stepper's data.shaftJoint to a Mesh hinge or slide joint name. Run then solves 10ms slices. Volt does only the electrics: the joint's angle and speed, held for the slice, give the motor its back-EMF. Mesh does all the mechanics: it is handed the motor's force law at the currents the slice ended on (k(x)·i as constant, cos(w·x) and sin(w·x) terms, evaluated at the joint's live position every Mesh step, sub-stepped when stiff) plus the rotor's inertia and bearing friction as joint armature and damping. Runs until Stop.",
         "channels": "joint:<name>.force, .force.cos(w), .force.sin(w), .armature, .damping (in); joint:<name>.pos/.vel/.inertia/.load (out); actuator:<name> (in); actuator:<name>.force (out); body:<name>.x/.y/.z/.contacts (out)."
       }
       }

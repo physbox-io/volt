@@ -15,15 +15,16 @@ export function sanitizeSpiceValue(val: string): string {
 /**
  * A PWL voltage source, `<head> PWL(` then the points, split over
  * continuation lines so no line exceeds ngspice's ~1024-character buffer.
- * Times are in seconds.
+ * Times are in seconds; `digits` is the precision of each number, which a
+ * value carried from slice to slice wants more of, so rounding cannot build up.
  */
-export function pwlSource(head: string, points: { t: number; v: number }[]): string {
+export function pwlSource(head: string, points: { t: number; v: number }[], digits = 6): string {
   const POINTS_PER_LINE = 8;
   let card = `${head} PWL(\n`;
   for (let i = 0; i < points.length; i++) {
     const p = points[i];
     if (i % POINTS_PER_LINE === 0) card += '+ ';
-    card += `${p.t.toExponential(6)} ${p.v.toExponential(6)} `;
+    card += `${p.t.toExponential(digits)} ${p.v.toExponential(digits)} `;
     if ((i + 1) % POINTS_PER_LINE === 0 || i === points.length - 1) card += '\n';
   }
   return card + '+ )\n';

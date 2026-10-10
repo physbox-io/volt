@@ -173,7 +173,7 @@ explain a circuit ("probe pin 3 of U1").
                          threshold (unset = analog), hysteresis (0), high (5), low (0) }
 
 Linking to Mesh: the "Link Mesh" toolbar button opens Mesh and links to its scene. Set a dcmotor's or stepper's
-data.shaftJoint to a Mesh hinge/slide joint name and Run drives that joint in 5ms lock-step slices. Volt does
+data.shaftJoint to a Mesh hinge/slide joint name and Run drives that joint in 10ms lock-step slices. Volt does
 the electrics (back-EMF from the joint's speed); Mesh does the mechanics (the motor's torque law, its rotor
 inertia and friction, the scene's load). Runs until Stop.
 

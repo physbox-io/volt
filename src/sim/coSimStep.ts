@@ -174,6 +174,7 @@ export async function coSimStep(state: CoSimState, input: CoSimInput, { solve, e
     mcuDrives: sketches.drives,
     initialConditions: sim,
     hilMaxStepMs: input.stepMs ?? sliceMs / 50,
+    realtime: true,
   });
   const result = await solve(netlist);
   const end = readEndState(result, sim);

@@ -3,6 +3,7 @@ import type { Node, Edge } from '@xyflow/react';
 import { Simulation } from 'eecircuit-engine';
 import { generateSpiceNetlist } from '../src/utils/spice';
 import { readEndState, type SimState } from '../src/utils/simState';
+import { runSketches } from '../src/utils/mcu';
 import type { SpiceResult } from '../src/types/simulation';
 
 /**
@@ -327,5 +328,80 @@ describe('a fuse', () => {
       iEnd = last(current(r, 1));
     }
     expect(iEnd).toBeLessThan(1e-3);
+  });
+});
+
+describe('the light step driver', () => {
+  // Low for 2ms, high for 2ms: rising edges at 2, 6, 10ms… from a sketch, which a light driver is told about.
+  const sketch = "pinMode('D0', 'OUTPUT');\nwhile(true) {\n  digitalWrite('D0', 0);\n  sleep(2);\n  digitalWrite('D0', 1);\n  sleep(2);\n}";
+  const circuit = (model: 'light' | 'detailed', micro: number, dirHigh: boolean, viaGate = false) => ({
+    nodes: [
+      node('VM', 'voltage', { voltage: 12 }), node('VD', 'voltage', { voltage: dirHigh ? 3.3 : 0 }), node('G', 'ground'),
+      node('U', 'mcu', { code: sketch }), node('N1', 'not'), node('N2', 'not'),
+      node('D', 'stepdriver', { microsteps: micro, currentLimit: 1, driverModel: model }),
+      node('S', 'stepper', { detentTorque: 0, friction: 0.01 }),
+    ],
+    edges: [
+      wire('VM', 'pos', 'D', 'vm'), wire('VM', 'neg', 'G', 'in'), wire('D', 'gnd', 'G', 'in'), wire('U', 'GND', 'G', 'in'),
+      ...(viaGate ? [wire('U', 'D0', 'N1', 'in1'), wire('N1', 'out', 'N2', 'in1'), wire('N2', 'out', 'D', 'step')] : [wire('U', 'D0', 'D', 'step')]),
+      wire('VD', 'pos', 'D', 'dir'), wire('VD', 'neg', 'G', 'in'), wire('D', 'en', 'G', 'in'),
+      wire('D', 'a1', 'S', 'a1'), wire('D', 'a2', 'S', 'a2'), wire('D', 'b1', 'S', 'b1'), wire('D', 'b2', 'S', 'b2'),
+    ],
+  });
+  const runSketched = async (nodes: Node[], edges: Edge[], lengthMs: number, state: SimState, realtime = false) => {
+    const { drives } = runSketches(nodes, lengthMs / 1000);
+    const { netlist, portToNet } = generateSpiceNetlist(nodes, edges, { simLength: lengthMs / 1000, initialConditions: state, hilMaxStepMs: 0.02, mcuDrives: drives, realtime });
+    engine.setNetList(netlist);
+    const result = (await engine.runSim()) as SpiceResult;
+    const v = (name: string) => result.data[result.variableNames.findIndex(n => n.toLowerCase() === name)].values as number[];
+    return { netlist, result, portToNet, v };
+  };
+
+  for (const micro of [1, 4, 16]) for (const dirHigh of [true, false]) {
+    it(`agrees with the detailed driver: 1/${micro} steps, ${dirHigh ? 'forward' : 'back'}`, async () => {
+      const finals: Record<string, { th: number; x: number; ia: number; ib: number }> = {};
+      for (const model of ['light', 'detailed'] as const) {
+        const { nodes, edges } = circuit(model, micro, dirHigh);
+        const r = await runSketched(nodes, edges, 41, { 'i(l_s_p1)': 0, 'i(l_s_p2)': 0 });
+        if (model === 'light') expect(r.netlist).not.toMatch(/^B_D_ms /m);
+        finals[model] = { th: last(r.v('v(int_d_th)')), x: last(r.v('v(int_s_x)')), ia: last(r.v('i(v_d_sa)')), ib: last(r.v('i(v_d_sb)')) };
+      }
+      const stepRad = Math.PI / 2 / micro;
+      const sign = dirHigh ? 1 : -1;
+      // Rising edges at 2, 6 … 38ms: ten. Both count them: the light driver is
+      // told them, and the detailed one counts to a thousandth of a step.
+      expect(finals.light.th).toBeCloseTo(sign * 10 * stepRad, 9);
+      expect(Math.abs(finals.detailed.th - sign * 10 * stepRad) / stepRad).toBeLessThan(0.001);
+      // The rotor ends in the same place, to a fifth of a step.
+      expect(Math.abs(finals.light.x - finals.detailed.x) * 50 / stepRad).toBeLessThan(0.2);
+      // And each holds both phases on the sine table at its own angle: the
+      // light one exactly, the detailed one to its regulator's 1%.
+      for (const [m, tol] of [['light', 1e-3], ['detailed', 0.012]] as const) {
+        const a = finals[m].th + Math.PI / 4;
+        expect(Math.abs(finals[m].ia - Math.cos(a)), m).toBeLessThan(tol);
+        expect(Math.abs(finals[m].ib - Math.sin(a)), m).toBeLessThan(tol);
+      }
+    });
+  }
+
+  it('keeps counting exactly across slices', async () => {
+    const { nodes, edges } = circuit('light', 8, true);
+    let state: SimState = { 'i(l_s_p1)': 0, 'i(l_s_p2)': 0 };
+    for (let k = 0; k < 9; k++) state = readEndState((await runSketched(nodes, edges, 5, state)).result, state);
+    // 45ms: rising edges at 2, 6 … 42ms, eleven of them.
+    expect(state['int_d_th']).toBeCloseTo(11 * (Math.PI / 2 / 8), 6);
+  });
+
+  it('falls back to the detailed driver when it cannot know its STEP edges', async () => {
+    const { nodes, edges } = circuit('light', 4, true, true);
+    const r = await runSketched(nodes, edges, 1, {}, true);
+    expect(r.netlist).toMatch(/^B_D_ms /m);
+  });
+
+  it('is what a real-time run gets, and only when its inputs are known', async () => {
+    const auto = circuit('light', 4, true).nodes.map(n => (n.id === 'D' ? { ...n, data: { ...n.data, driverModel: undefined } } : n));
+    const { edges } = circuit('light', 4, true);
+    expect((await runSketched(auto, edges, 1, {}, true)).netlist).not.toMatch(/^B_D_ms /m);
+    expect((await runSketched(auto, edges, 1, {}, false)).netlist).toMatch(/^B_D_ms /m);
   });
 });

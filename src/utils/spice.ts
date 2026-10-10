@@ -3,6 +3,7 @@ import type { McuDrive } from './mcu';
 import { nodeNetName, railVoltage, virtualNetPort } from './netNaming';
 import { nodeVoltages, simTime, type SimState } from './simState';
 import { partEmitters } from './netlist/partEmitters';
+import { knownLogic } from './netlist/knownLogic';
 
 export { sanitizeSpiceValue } from './netlist/values';
 
@@ -73,6 +74,8 @@ export type NetlistOptions = {
   initialConditions?: SimState;
   /** HIL's step override: the report and maximum internal step, in ms. */
   hilMaxStepMs?: number;
+  /** A slice of a run that must keep up with real time; see EmitContext.realtime. */
+  realtime?: boolean;
   analysis?: SpiceAnalysis;
 };
 
@@ -92,6 +95,7 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], options: Netl
     mcuDrives = {},
     initialConditions,
     hilMaxStepMs,
+    realtime = false,
     analysis = { kind: 'tran' },
   } = options;
   let netlist = "Circuit Simulation\n";
@@ -212,6 +216,8 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], options: Netl
 
   // A carried state resumes the run's clock; see SimState.
   const startTime = analysis.kind === 'tran' ? simTime(initialConditions) : 0;
+  const length = analysis.kind === 'tran' ? simLength : 0;
+  const logicOf = knownLogic(nodes, portToNet, mcuDrives, length, startTime);
 
   // 2. Each part's cards, then each library its parts instance, once
   const partsByType = new Map<string, Node[]>();
@@ -227,6 +233,9 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], options: Netl
       initialConditions,
       mcuDrive: mcuDrives[node.id],
       time: startTime,
+      length,
+      logic: handle => logicOf(getNet(node.id, handle)),
+      realtime,
     });
     const same = partsByType.get(node.type!) ?? [];
     same.push(node);
