@@ -105,7 +105,7 @@ export function ElectromechProperties({ node, updateData }: NodePropertiesProps)
           value={typeof data.shaftJoint === 'string' ? data.shaftJoint : ''}
           options={joints}
           onChange={v => updateData('shaftJoint', v)}
-          hint={`${linkHint} Bound, the joint's inertia and load act on the motor, and its torque turns the joint.`}
+          hint={`${linkHint} Bound, the motor turns the joint: Mesh does the mechanics, the circuit the electrics.`}
         />
       )}
       {node.type === 'meshsignal' && (

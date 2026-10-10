@@ -141,10 +141,15 @@ V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
 R_mot2_p1 NC_mot2_a int_mot2_p1r 2
 L_mot2_p1 int_mot2_p1r int_mot2_p1l 0.0005
 B_mot2_e1 int_mot2_p1l NC_mot2_b V = (0.01) * V(int_mot2_w)
-B_mot2_tq int_mot2_tq 0 V = (0.01) * I(L_mot2_p1) + -(0.000001) * V(int_mot2_w)
-C_mot2_j int_mot2_w 0 0.000105
-R_mot2_b int_mot2_w 0 1000000
-B_mot2_t 0 int_mot2_w I = (0.01) * I(L_mot2_p1) + -0.01
+V_mot2_w int_mot2_w 0 DC 40
+R_stp2_p1 NC_stp2_a1 int_stp2_p1r 1.5
+L_stp2_p1 int_stp2_p1r int_stp2_p1l 0.0028
+B_stp2_e1 int_stp2_p1l NC_stp2_a2 V = (-0.23529411764705885 * sin(50 * V(int_stp2_x))) * V(int_stp2_w)
+R_stp2_p2 NC_stp2_b1 int_stp2_p2r 1.5
+L_stp2_p2 int_stp2_p2r int_stp2_p2l 0.0028
+B_stp2_e2 int_stp2_p2l NC_stp2_b2 V = (0.23529411764705885 * cos(50 * V(int_stp2_x))) * V(int_stp2_w)
+V_stp2_w int_stp2_w 0 DC -3
+B_stp2_x int_stp2_x 0 V = 0.01 + -3 * time
 
 * Idealized Op-Amp Macro Model (Legacy compatibility)
 * Node order: IN+ IN- VCC VEE OUT
@@ -364,6 +369,10 @@ R_shunt_NC_ms2_out NC_ms2_out 0 1G
 R_shunt_NC_ms2_gnd NC_ms2_gnd 0 1G
 R_shunt_NC_mot2_a NC_mot2_a 0 1G
 R_shunt_NC_mot2_b NC_mot2_b 0 1G
+R_shunt_NC_stp2_a1 NC_stp2_a1 0 1G
+R_shunt_NC_stp2_a2 NC_stp2_a2 0 1G
+R_shunt_NC_stp2_b1 NC_stp2_b1 0 1G
+R_shunt_NC_stp2_b2 NC_stp2_b2 0 1G
 .save all
 .ac dec 10 1 1000000
 .end
@@ -511,10 +520,15 @@ V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
 R_mot2_p1 NC_mot2_a int_mot2_p1r 2
 L_mot2_p1 int_mot2_p1r int_mot2_p1l 0.0005
 B_mot2_e1 int_mot2_p1l NC_mot2_b V = (0.01) * V(int_mot2_w)
-B_mot2_tq int_mot2_tq 0 V = (0.01) * I(L_mot2_p1) + -(0.000001) * V(int_mot2_w)
-C_mot2_j int_mot2_w 0 0.000105
-R_mot2_b int_mot2_w 0 1000000
-B_mot2_t 0 int_mot2_w I = (0.01) * I(L_mot2_p1) + -0.01
+V_mot2_w int_mot2_w 0 DC 40
+R_stp2_p1 NC_stp2_a1 int_stp2_p1r 1.5
+L_stp2_p1 int_stp2_p1r int_stp2_p1l 0.0028
+B_stp2_e1 int_stp2_p1l NC_stp2_a2 V = (-0.23529411764705885 * sin(50 * V(int_stp2_x))) * V(int_stp2_w)
+R_stp2_p2 NC_stp2_b1 int_stp2_p2r 1.5
+L_stp2_p2 int_stp2_p2r int_stp2_p2l 0.0028
+B_stp2_e2 int_stp2_p2l NC_stp2_b2 V = (0.23529411764705885 * cos(50 * V(int_stp2_x))) * V(int_stp2_w)
+V_stp2_w int_stp2_w 0 DC -3
+B_stp2_x int_stp2_x 0 V = 0.01 + -3 * time
 
 * Idealized Op-Amp Macro Model (Legacy compatibility)
 * Node order: IN+ IN- VCC VEE OUT
@@ -734,6 +748,10 @@ R_shunt_NC_ms2_out NC_ms2_out 0 1G
 R_shunt_NC_ms2_gnd NC_ms2_gnd 0 1G
 R_shunt_NC_mot2_a NC_mot2_a 0 1G
 R_shunt_NC_mot2_b NC_mot2_b 0 1G
+R_shunt_NC_stp2_a1 NC_stp2_a1 0 1G
+R_shunt_NC_stp2_a2 NC_stp2_a2 0 1G
+R_shunt_NC_stp2_b1 NC_stp2_b1 0 1G
+R_shunt_NC_stp2_b2 NC_stp2_b2 0 1G
 .save all
 .ac dec 10 1 1000000
 .end
@@ -881,10 +899,15 @@ V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
 R_mot2_p1 NC_mot2_a int_mot2_p1r 2
 L_mot2_p1 int_mot2_p1r int_mot2_p1l 0.0005
 B_mot2_e1 int_mot2_p1l NC_mot2_b V = (0.01) * V(int_mot2_w)
-B_mot2_tq int_mot2_tq 0 V = (0.01) * I(L_mot2_p1) + -(0.000001) * V(int_mot2_w)
-C_mot2_j int_mot2_w 0 0.000105
-R_mot2_b int_mot2_w 0 1000000
-B_mot2_t 0 int_mot2_w I = (0.01) * I(L_mot2_p1) + -0.01
+V_mot2_w int_mot2_w 0 DC 40
+R_stp2_p1 NC_stp2_a1 int_stp2_p1r 1.5
+L_stp2_p1 int_stp2_p1r int_stp2_p1l 0.0028
+B_stp2_e1 int_stp2_p1l NC_stp2_a2 V = (-0.23529411764705885 * sin(50 * V(int_stp2_x))) * V(int_stp2_w)
+R_stp2_p2 NC_stp2_b1 int_stp2_p2r 1.5
+L_stp2_p2 int_stp2_p2r int_stp2_p2l 0.0028
+B_stp2_e2 int_stp2_p2l NC_stp2_b2 V = (0.23529411764705885 * cos(50 * V(int_stp2_x))) * V(int_stp2_w)
+V_stp2_w int_stp2_w 0 DC -3
+B_stp2_x int_stp2_x 0 V = 0.01 + -3 * time
 
 * Idealized Op-Amp Macro Model (Legacy compatibility)
 * Node order: IN+ IN- VCC VEE OUT
@@ -1104,6 +1127,10 @@ R_shunt_NC_ms2_out NC_ms2_out 0 1G
 R_shunt_NC_ms2_gnd NC_ms2_gnd 0 1G
 R_shunt_NC_mot2_a NC_mot2_a 0 1G
 R_shunt_NC_mot2_b NC_mot2_b 0 1G
+R_shunt_NC_stp2_a1 NC_stp2_a1 0 1G
+R_shunt_NC_stp2_a2 NC_stp2_a2 0 1G
+R_shunt_NC_stp2_b1 NC_stp2_b1 0 1G
+R_shunt_NC_stp2_b2 NC_stp2_b2 0 1G
 .save all
 .ac dec 10 1 1000000
 .end
@@ -1251,10 +1278,15 @@ V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
 R_mot2_p1 NC_mot2_a int_mot2_p1r 2
 L_mot2_p1 int_mot2_p1r int_mot2_p1l 0.0005
 B_mot2_e1 int_mot2_p1l NC_mot2_b V = (0.01) * V(int_mot2_w)
-B_mot2_tq int_mot2_tq 0 V = (0.01) * I(L_mot2_p1) + -(0.000001) * V(int_mot2_w)
-C_mot2_j int_mot2_w 0 0.000105
-R_mot2_b int_mot2_w 0 1000000
-B_mot2_t 0 int_mot2_w I = (0.01) * I(L_mot2_p1) + -0.01
+V_mot2_w int_mot2_w 0 DC 40
+R_stp2_p1 NC_stp2_a1 int_stp2_p1r 1.5
+L_stp2_p1 int_stp2_p1r int_stp2_p1l 0.0028
+B_stp2_e1 int_stp2_p1l NC_stp2_a2 V = (-0.23529411764705885 * sin(50 * V(int_stp2_x))) * V(int_stp2_w)
+R_stp2_p2 NC_stp2_b1 int_stp2_p2r 1.5
+L_stp2_p2 int_stp2_p2r int_stp2_p2l 0.0028
+B_stp2_e2 int_stp2_p2l NC_stp2_b2 V = (0.23529411764705885 * cos(50 * V(int_stp2_x))) * V(int_stp2_w)
+V_stp2_w int_stp2_w 0 DC -3
+B_stp2_x int_stp2_x 0 V = 0.01 + -3 * time
 
 * Idealized Op-Amp Macro Model (Legacy compatibility)
 * Node order: IN+ IN- VCC VEE OUT
@@ -1474,6 +1506,10 @@ R_shunt_NC_ms2_out NC_ms2_out 0 1G
 R_shunt_NC_ms2_gnd NC_ms2_gnd 0 1G
 R_shunt_NC_mot2_a NC_mot2_a 0 1G
 R_shunt_NC_mot2_b NC_mot2_b 0 1G
+R_shunt_NC_stp2_a1 NC_stp2_a1 0 1G
+R_shunt_NC_stp2_a2 NC_stp2_a2 0 1G
+R_shunt_NC_stp2_b1 NC_stp2_b1 0 1G
+R_shunt_NC_stp2_b2 NC_stp2_b2 0 1G
 .save all
 .op
 .end
@@ -1639,6 +1675,10 @@ exports[`the cards every part writes > pins, in the order the generator met them
   "ms2.gnd NC_ms2_gnd (nc)",
   "mot2.a NC_mot2_a (nc)",
   "mot2.b NC_mot2_b (nc)",
+  "stp2.a1 NC_stp2_a1 (nc)",
+  "stp2.a2 NC_stp2_a2 (nc)",
+  "stp2.b1 NC_stp2_b1 (nc)",
+  "stp2.b2 NC_stp2_b2 (nc)",
 ]
 `;
 
@@ -1779,10 +1819,15 @@ V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
 R_mot2_p1 NC_mot2_a int_mot2_p1r 2
 L_mot2_p1 int_mot2_p1r int_mot2_p1l 0.0005
 B_mot2_e1 int_mot2_p1l NC_mot2_b V = (0.01) * V(int_mot2_w)
-B_mot2_tq int_mot2_tq 0 V = (0.01) * I(L_mot2_p1) + -(0.000001) * V(int_mot2_w)
-C_mot2_j int_mot2_w 0 0.000105
-R_mot2_b int_mot2_w 0 1000000
-B_mot2_t 0 int_mot2_w I = (0.01) * I(L_mot2_p1) + -0.01
+V_mot2_w int_mot2_w 0 DC 40
+R_stp2_p1 NC_stp2_a1 int_stp2_p1r 1.5
+L_stp2_p1 int_stp2_p1r int_stp2_p1l 0.0028
+B_stp2_e1 int_stp2_p1l NC_stp2_a2 V = (-0.23529411764705885 * sin(50 * V(int_stp2_x))) * V(int_stp2_w)
+R_stp2_p2 NC_stp2_b1 int_stp2_p2r 1.5
+L_stp2_p2 int_stp2_p2r int_stp2_p2l 0.0028
+B_stp2_e2 int_stp2_p2l NC_stp2_b2 V = (0.23529411764705885 * cos(50 * V(int_stp2_x))) * V(int_stp2_w)
+V_stp2_w int_stp2_w 0 DC -3
+B_stp2_x int_stp2_x 0 V = 0.01 + -3 * time
 
 * Idealized Op-Amp Macro Model (Legacy compatibility)
 * Node order: IN+ IN- VCC VEE OUT
@@ -1998,6 +2043,10 @@ R_shunt_NC_ms2_out NC_ms2_out 0 1G
 R_shunt_NC_ms2_gnd NC_ms2_gnd 0 1G
 R_shunt_NC_mot2_a NC_mot2_a 0 1G
 R_shunt_NC_mot2_b NC_mot2_b 0 1G
+R_shunt_NC_stp2_a1 NC_stp2_a1 0 1G
+R_shunt_NC_stp2_a2 NC_stp2_a2 0 1G
+R_shunt_NC_stp2_b1 NC_stp2_b1 0 1G
+R_shunt_NC_stp2_b2 NC_stp2_b2 0 1G
 .save all
 .ic V(n1)=1.500000
 .tran 0.2m 0.04s 0 0.2m uic
@@ -2146,10 +2195,15 @@ V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
 R_mot2_p1 NC_mot2_a int_mot2_p1r 2
 L_mot2_p1 int_mot2_p1r int_mot2_p1l 0.0005
 B_mot2_e1 int_mot2_p1l NC_mot2_b V = (0.01) * V(int_mot2_w)
-B_mot2_tq int_mot2_tq 0 V = (0.01) * I(L_mot2_p1) + -(0.000001) * V(int_mot2_w)
-C_mot2_j int_mot2_w 0 0.000105
-R_mot2_b int_mot2_w 0 1000000
-B_mot2_t 0 int_mot2_w I = (0.01) * I(L_mot2_p1) + -0.01
+V_mot2_w int_mot2_w 0 DC 40
+R_stp2_p1 NC_stp2_a1 int_stp2_p1r 1.5
+L_stp2_p1 int_stp2_p1r int_stp2_p1l 0.0028
+B_stp2_e1 int_stp2_p1l NC_stp2_a2 V = (-0.23529411764705885 * sin(50 * V(int_stp2_x))) * V(int_stp2_w)
+R_stp2_p2 NC_stp2_b1 int_stp2_p2r 1.5
+L_stp2_p2 int_stp2_p2r int_stp2_p2l 0.0028
+B_stp2_e2 int_stp2_p2l NC_stp2_b2 V = (0.23529411764705885 * cos(50 * V(int_stp2_x))) * V(int_stp2_w)
+V_stp2_w int_stp2_w 0 DC -3
+B_stp2_x int_stp2_x 0 V = 0.01 + -3 * time
 
 * Idealized Op-Amp Macro Model (Legacy compatibility)
 * Node order: IN+ IN- VCC VEE OUT
@@ -2369,6 +2423,10 @@ R_shunt_NC_ms2_out NC_ms2_out 0 1G
 R_shunt_NC_ms2_gnd NC_ms2_gnd 0 1G
 R_shunt_NC_mot2_a NC_mot2_a 0 1G
 R_shunt_NC_mot2_b NC_mot2_b 0 1G
+R_shunt_NC_stp2_a1 NC_stp2_a1 0 1G
+R_shunt_NC_stp2_a2 NC_stp2_a2 0 1G
+R_shunt_NC_stp2_b1 NC_stp2_b1 0 1G
+R_shunt_NC_stp2_b2 NC_stp2_b2 0 1G
 .save all
 .tran 0.05m 0.1s 0 0.05m
 .end

@@ -498,7 +498,7 @@
           "kt": "torque constant N·m/A (= back-EMF V·s/rad), default 0.01",
           "inertia": "kg·m², default 5u",
           "friction": "viscous, N·m·s/rad, default 1u",
-          "loadTorque": "constant torque against forward rotation, N·m, default 0 (ignored while its shaft drives a Mesh joint)", "shaftJoint": "a Mesh joint name: while linked, Run drives that joint (see linkingToMesh)",
+          "loadTorque": "constant torque against forward rotation, N·m, default 0 (ignored while its shaft drives a Mesh joint: the scene supplies the load)", "shaftJoint": "a Mesh joint name: while linked, Run drives that joint (see linkingToMesh)",
           "behaviour": "Free speed Kt·V/(Kt²+R·b); stall current V/R; mechanical time constant J·R/Kt². After a Run, data.rpm and data.angleDeg hold the final speed and shaft angle."
         },
         "stepper": {
@@ -541,8 +541,8 @@
       },
       "linkingToMesh": {
         "what": "Volt can drive a Mesh scene in lock step. The 'Link Mesh' toolbar button opens Mesh (it needs a user click, so it is not an MCP action) and handshakes; the scene's channels then appear in the inspector.",
-        "motors": "Set a dcmotor's or stepper's data.shaftJoint to a Mesh hinge or slide joint name. Run then solves 5ms slices: the shaft starts each slice at the joint's angle and speed, the joint's inertia is added to the rotor's and the scene's load (gravity, contacts, damping) acts on it; Mesh is handed the torque the shaft transmits. Runs until Stop, no faster than real time.",
-        "channels": "joint:<name>.force (in), joint:<name>.pos/.vel/.inertia/.load (out), actuator:<name> (in), actuator:<name>.force (out), body:<name>.x/.y/.z/.contacts (out)."
+        "motors": "Set a dcmotor's or stepper's data.shaftJoint to a Mesh hinge or slide joint name. Run then solves 5ms slices. Volt does only the electrics: the joint's angle and speed, held for the slice, give the motor its back-EMF. Mesh does all the mechanics: it is handed the motor's force law at the currents the slice ended on (k(x)·i as constant, cos(w·x) and sin(w·x) terms, evaluated at the joint's live position every Mesh step, sub-stepped when stiff) plus the rotor's inertia and bearing friction as joint armature and damping. Runs until Stop.",
+        "channels": "joint:<name>.force, .force.cos(w), .force.sin(w), .armature, .damping (in); joint:<name>.pos/.vel/.inertia/.load (out); actuator:<name> (in); actuator:<name>.force (out); body:<name>.x/.y/.z/.contacts (out)."
       }
       }
     },

@@ -5,48 +5,52 @@ import { inductorIc, type SimState } from './simState';
  * phases on one shaft.
  *
  * Each phase is R + L + a back-EMF source between two pins. A coupling
- * function k_p(x) of the shaft position sets both the back-EMF,
- * e_p = k_p(x)·ẋ, and the torque the phase makes, k_p(x)·i_p — so electrical
- * power in, Σ e_p·i_p, is exactly mechanical power out, ẋ·Σ k_p·i_p, and no
- * device built on this can make or lose energy in the coupling.
+ * k_p(x) of the shaft position sets both the back-EMF, e_p = k_p(x)·ẋ, and the
+ * torque the phase makes, k_p(x)·i_p — so electrical power in, Σ e_p·i_p, is
+ * exactly mechanical power out, ẋ·Σ k_p·i_p, and no device built on this can
+ * make or lose energy in the coupling.
  *
- * A DC motor is one phase with k = Kt; a two-phase hybrid stepper is two
- * phases with k = −Kt·sin(N·x) and Kt·cos(N·x). A linear device (solenoid,
- * voice coil) is the same with x a displacement, J a mass and torques forces.
+ * Couplings are data, not expressions: a constant plus cosines and sines of
+ * the position. A DC motor is one phase with k = Kt; a two-phase hybrid
+ * stepper two, with k = −Kt·sin(N·x) and Kt·cos(N·x). The same description
+ * writes the back-EMF into the netlist and, when the shaft is a Mesh joint,
+ * the force law Mesh applies — so the two cannot disagree.
  *
- * The shaft is internal: an electrical analog in which a node's voltage is ẋ
- * (rad/s) across a capacitor of J, friction is a conductance of b, and the
- * net torque is the current into it. A second node integrates ẋ into x when
- * any phase's coupling depends on it. Both are node voltages, so a sliced run
- * carries the shaft's speed and position the way it carries the circuit's.
+ * Unlinked, the shaft is simulated here: an electrical analog in which a
+ * node's voltage is ẋ (rad/s) across a capacitor of J, friction is a
+ * conductance of b, and the net torque is the current into it, with a second
+ * node integrating ẋ into x when a coupling depends on it. Linked, the shaft
+ * is Mesh's: its speed and angle are given, and nothing mechanical is
+ * computed here at all.
  */
 
-/** A SPICE expression of the shaft position, given the name of the node holding x. */
-export type Coupling = (x: string) => string;
+/** Σ cos·cos(w·x) + sin·sin(w·x); with w = 0, `cos` is a constant. */
+export type Harmonic = { w: number; cos: number; sin: number };
 
 export type TransducerPhase = {
-  /** The pins the phase's coil sits between. */
+  /** The handles of the pins the phase's coil sits between. */
   a: string;
   b: string;
   /** Winding resistance, Ω, and inductance, H. */
   r: number;
   l: number;
   /** k_p(x), in N·m/A (or N/A for a linear device). */
-  k: Coupling;
+  k: Harmonic[];
 };
 
 export type ShaftModel = {
-  /** Moment of inertia, kg·m² (or mass, kg). */
+  /** Rotor inertia, kg·m² (or moving mass, kg). */
   j: number;
-  /** Viscous friction, N·m·s/rad. */
+  /** Bearing friction, N·m·s/rad. */
   b: number;
-  /** A constant torque against forward rotation, N·m: a hanging weight. */
+  /** A constant torque against forward rotation, N·m: a hanging weight. Unlinked only. */
   load?: number;
-  /** Torque toward x = 0 per radian, N·m/rad: a return spring. */
-  spring?: number;
-  /** A position-dependent torque not from the coils, e.g. a stepper's detent, as an expression of x. */
-  detent?: Coupling;
+  /** A torque pulling toward fixed positions with no current at all, e.g. a stepper's detent. Subtracted. */
+  detent?: Harmonic[];
 };
+
+/** A whole device: what a part type is, independent of where it sits. */
+export type TransducerSpec = { phases: TransducerPhase[]; shaft: ShaftModel };
 
 /** The internal nodes of a transducer, for reading its shaft off a result. */
 export const shaftNodes = (id: string) => ({
@@ -54,85 +58,98 @@ export const shaftNodes = (id: string) => ({
   speed: `int_${id}_w`,
   /** Voltage = x, rad. Present only when something depends on x. */
   position: `int_${id}_x`,
-  /** Linked only: voltage = the torque the shaft makes, N·m, to hand to Mesh. */
-  torque: `int_${id}_tq`,
 });
 
-/**
- * A shaft coupled to a Mesh joint for one slice.
- *
- * The shaft's dynamics stay here, where the solver can resolve them however
- * stiff they are (a stepper's rotor rings at a few hundred hertz), with the
- * joint's inertia added to the rotor's and the scene's load on the joint as a
- * constant torque. The slice starts from the joint's speed and angle (carried
- * as initial conditions on the shaft nodes), and Mesh is handed the torque the
- * shaft transmits, so both ends integrate the same motion.
- */
-export type LinkedShaft = {
-  /** The joint's own inertia, kg·m² (its mass-matrix diagonal). */
-  inertia: number;
-  /** The torque the rest of the scene puts on the joint, N·m. */
-  load: number;
-};
+/** A shaft that is a Mesh joint, for one slice: where it is and how fast it turns. */
+export type LinkedShaft = { x: number; w: number };
 
 /** The element whose branch current is phase `index`'s current (1-based): its coil. */
 export const phaseSense = (id: string, index: number) => `L_${id}_p${index}`;
 
 const num = (v: number) => (Number.isFinite(v) ? String(v) : '0');
 
+/** A coupling as a SPICE expression of the node holding x. */
+export function harmonicExpr(terms: Harmonic[], x: string): string {
+  const parts: string[] = [];
+  for (const t of terms) {
+    if (t.w === 0) {
+      if (t.cos !== 0) parts.push(num(t.cos));
+      continue;
+    }
+    if (t.cos !== 0) parts.push(`${num(t.cos)} * cos(${num(t.w)} * V(${x}))`);
+    if (t.sin !== 0) parts.push(`${num(t.sin)} * sin(${num(t.w)} * V(${x}))`);
+  }
+  return parts.length > 0 ? parts.join(' + ') : '0';
+}
+
+const dependsOnPosition = (terms: Harmonic[] | undefined) => (terms ?? []).some(t => t.w !== 0);
+
+/** Whether anything in the device depends on the shaft's position. */
+export const usesPosition = (spec: TransducerSpec) =>
+  spec.phases.some(p => dependsOnPosition(p.k)) || dependsOnPosition(spec.shaft.detent);
+
 /**
- * The cards for one transducer with internal mechanics.
+ * The torque the device puts on its shaft for phase currents `currents`, as
+ * a function of position: Σ i_p·k_p(x) less the detent, gathered by
+ * wavenumber. What a linked Mesh joint is driven by.
+ */
+export function forceLaw(spec: TransducerSpec, currents: number[]): Harmonic[] {
+  const byW = new Map<number, Harmonic>();
+  const add = (t: Harmonic, scale: number) => {
+    const h = byW.get(t.w) ?? { w: t.w, cos: 0, sin: 0 };
+    h.cos += scale * t.cos;
+    h.sin += scale * t.sin;
+    byW.set(t.w, h);
+  };
+  spec.phases.forEach((p, i) => p.k.forEach(t => add(t, currents[i] ?? 0)));
+  (spec.shaft.detent ?? []).forEach(t => add(t, -1));
+  return [...byW.values()];
+}
+
+/**
+ * The cards for one transducer. `net` names a pin's net by handle.
  *
- * `usesPosition` says whether anything reads x: without it the position
- * integrator is left out, since at a DC operating point with the shaft
- * turning it would sit at speed × its leak resistance.
+ * Unlinked, the shaft's integrator is left out when nothing reads x: at a DC
+ * operating point with the shaft turning it would sit at speed × its leak.
  */
 export function emitTransducer(
   id: string,
-  phases: TransducerPhase[],
-  shaft: ShaftModel,
+  spec: TransducerSpec,
+  net: (handle: string) => string,
   initialConditions: SimState | undefined,
-  usesPosition: boolean,
   linked?: LinkedShaft,
 ): string {
   const { speed: w, position: x } = shaftNodes(id);
+  const { phases, shaft } = spec;
   let cards = '';
   const torques: string[] = [];
   phases.forEach((p, i) => {
     const n = i + 1;
     const r = `int_${id}_p${n}r`;
     const l = `int_${id}_p${n}l`;
-    const k = `(${p.k(x)})`;
-    cards += `R_${id}_p${n} ${p.a} ${r} ${num(Math.max(p.r, 1e-6))}\n`;
+    const k = `(${harmonicExpr(p.k, x)})`;
+    cards += `R_${id}_p${n} ${net(p.a)} ${r} ${num(Math.max(p.r, 1e-6))}\n`;
     // The coil's own branch current is the phase current the torque reads.
     cards += `L_${id}_p${n} ${r} ${l} ${num(Math.max(p.l, 1e-9))}${inductorIc(initialConditions, `L_${id}_p${n}`)}\n`;
-    cards += `B_${id}_e${n} ${l} ${p.b} V = ${k} * V(${w})\n`;
+    cards += `B_${id}_e${n} ${l} ${net(p.b)} V = ${k} * V(${w})\n`;
     torques.push(`${k} * I(${phaseSense(id, n)})`);
   });
 
-  const springAndDetent: string[] = [];
-  if (shaft.spring) springAndDetent.push(`-(${num(shaft.spring)}) * V(${x})`);
-  if (shaft.detent) springAndDetent.push(`-(${shaft.detent(x)})`);
-
-
   if (linked) {
-    // What the motor itself makes, less its bearing friction: the torque it
-    // puts into the shaft, read back to work out what reaches the joint.
-    const friction = shaft.b > 0 ? [`-(${num(shaft.b)}) * V(${w})`] : [];
-    cards += `B_${id}_tq ${shaftNodes(id).torque} 0 V = ${[...torques, ...springAndDetent, ...friction].join(' + ')}\n`;
-    // The scene's load replaces the part's own.
-    torques.push(`${num(linked.load)}`);
-  } else if (shaft.load) {
-    torques.push(`-(${num(shaft.load)})`);
+    // Mesh's joint: speed held for the slice, angle running on at it.
+    cards += `V_${id}_w ${w} 0 DC ${num(linked.w)}\n`;
+    if (usesPosition(spec)) cards += `B_${id}_x ${x} 0 V = ${num(linked.x)} + ${num(linked.w)} * time\n`;
+    return cards;
   }
-  torques.push(...springAndDetent);
 
-  const j = shaft.j + (linked ? Math.max(linked.inertia, 0) : 0);
-  cards += `C_${id}_j ${w} 0 ${num(Math.max(j, 1e-12))}\n`;
+  if (shaft.load) torques.push(`-(${num(shaft.load)})`);
+  if (dependsOnPosition(shaft.detent)) torques.push(`-(${harmonicExpr(shaft.detent!, x)})`);
+
+  cards += `C_${id}_j ${w} 0 ${num(Math.max(shaft.j, 1e-12))}\n`;
   // Friction, and with none a leak too slow to matter, so the node has a DC path.
   cards += `R_${id}_b ${w} 0 ${num(shaft.b > 0 ? 1 / shaft.b : 1e12)}\n`;
   cards += `B_${id}_t 0 ${w} I = ${torques.join(' + ')}\n`;
-  if (usesPosition || shaft.spring || shaft.detent) {
+  if (usesPosition(spec)) {
     cards += `C_${id}_x ${x} 0 1\n`;
     cards += `R_${id}_xl ${x} 0 1e12\n`;
     cards += `B_${id}_x 0 ${x} I = V(${w})\n`;

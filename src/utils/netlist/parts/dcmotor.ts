@@ -1,6 +1,6 @@
 import type { PartEmitter } from '../part';
 import { numParam } from '../params';
-import { emitTransducer, type LinkedShaft } from '../../transducer';
+import { emitTransducer, type LinkedShaft, type TransducerSpec } from '../../transducer';
 
 /** A small brushed DC motor, unloaded: about 6000rpm at 6V. */
 export const DC_MOTOR_DEFAULTS = {
@@ -16,18 +16,15 @@ export const DC_MOTOR_DEFAULTS = {
  * A permanent-magnet DC motor: one phase whose coupling is the torque
  * constant. In SI units the back-EMF constant is the same number.
  */
+export function dcMotorSpec(data: Record<string, unknown>): TransducerSpec {
+  const p = (key: keyof typeof DC_MOTOR_DEFAULTS) => numParam(data, key, DC_MOTOR_DEFAULTS[key]);
+  return {
+    phases: [{ a: 'a', b: 'b', r: p('windingR'), l: p('windingL'), k: [{ w: 0, cos: p('kt'), sin: 0 }] }],
+    shaft: { j: p('inertia'), b: p('friction'), load: p('loadTorque') },
+  };
+}
+
 export const dcmotor: PartEmitter = {
-  emit: (node, { net, initialConditions }) => {
-    const d = node.data;
-    const p = (key: keyof typeof DC_MOTOR_DEFAULTS) => numParam(d, key, DC_MOTOR_DEFAULTS[key]);
-    const kt = p('kt');
-    return emitTransducer(
-      node.id,
-      [{ a: net('a'), b: net('b'), r: p('windingR'), l: p('windingL'), k: () => String(kt) }],
-      { j: p('inertia'), b: p('friction'), load: p('loadTorque') },
-      initialConditions,
-      false,
-      node.data.linkedShaft as LinkedShaft | undefined,
-    );
-  },
+  emit: (node, { net, initialConditions }) =>
+    emitTransducer(node.id, dcMotorSpec(node.data), net, initialConditions, node.data.linkedShaft as LinkedShaft | undefined),
 };

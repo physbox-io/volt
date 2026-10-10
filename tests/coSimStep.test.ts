@@ -8,10 +8,10 @@ import { generateSpiceNetlist } from '../src/utils/spice';
 import type { SpiceResult } from '../src/types/simulation';
 
 /**
- * A circuit driving a scene in lock step, with Mesh stood in for by one rigid
- * joint integrated finely in JS. The motor must do linked what it does on its
- * own — the same speed, the same time constant — the joint must follow the
- * shaft, and halving the slice must barely move the answer.
+ * A circuit driving a scene in lock step, with Mesh stood in for by one joint
+ * stepped the way Mesh steps it. Volt computes no mechanics: the motor must
+ * still do linked what it does on its own — the same speed, the same time
+ * constant, the same steps — and halving the slice must barely move it.
  */
 
 const node = (id: string, type: string, data: Record<string, unknown> = {}): Node => ({
@@ -22,7 +22,14 @@ const wire = (source: string, sourceHandle: string, target: string, targetHandle
   source, sourceHandle, target, targetHandle,
 });
 
-/** One hinge: inertia, viscous damping and a constant torque from the rest of the scene. */
+/**
+ * One hinge, stepped the way Mesh steps a linked joint: the slice in equal
+ * steps no longer than its timestep, finer where a position-dependent force
+ * is stiff; each step the force law at the joint's position now, plus its own
+ * damping and a constant torque from the rest of the scene; the motor's rotor
+ * added as armature and its bearings as damping. Semi-implicit Euler, as
+ * MuJoCo integrates.
+ */
 class FakeJoint implements CoSimEndpoint {
   pos = 0;
   vel = 0;
@@ -32,30 +39,46 @@ class FakeJoint implements CoSimEndpoint {
   readonly inertia: number;
   readonly damping: number;
   readonly extra: number;
-  readonly h: number;
-  constructor(name: string, inertia: number, damping: number, extra = 0, h = 1e-5) {
+  readonly timestep: number;
+  constructor(name: string, inertia: number, damping: number, extra = 0, timestep = 0.002) {
     this.name = name;
     this.inertia = inertia;
     this.damping = damping;
     this.extra = extra;
-    this.h = h;
+    this.timestep = timestep;
   }
   async stepFor(dtMs: number, inputs: Record<string, number>, outputs: string[]): Promise<Stepped> {
     this.calls++;
-    const f = inputs[`joint:${this.name}.force`] ?? 0;
-    const n = dtMs > 0 ? Math.max(1, Math.round(dtMs / 1000 / this.h)) : 0;
-    for (let i = 0; i < n; i++) {
-      const acc = (f - this.damping * this.vel + this.extra) / this.inertia;
-      this.vel += acc * this.h;
-      this.pos += this.vel * this.h;
-      this.t += this.h;
+    const prefix = `joint:${this.name}.`;
+    let constant = 0;
+    let armature = 0;
+    let damping = 0;
+    const laws: { fn: 'cos' | 'sin'; w: number; a: number }[] = [];
+    for (const [key, v] of Object.entries(inputs)) {
+      if (!key.startsWith(prefix)) throw new Error(`unexpected input ${key}`);
+      const field = key.slice(prefix.length);
+      const m = /^force\.(cos|sin)\(([-+0-9.eE]+)\)$/.exec(field);
+      if (field === 'force') constant += v;
+      else if (field === 'armature') armature += v;
+      else if (field === 'damping') damping += v;
+      else if (m) laws.push({ fn: m[1] as 'cos' | 'sin', w: Number(m[2]), a: v });
+      else throw new Error(`unexpected input ${key}`);
     }
-    const all: Record<string, number> = {
-      [`joint:${this.name}.pos`]: this.pos,
-      [`joint:${this.name}.vel`]: this.vel,
-      [`joint:${this.name}.inertia`]: this.inertia,
-      [`joint:${this.name}.load`]: -this.damping * this.vel + this.extra,
-    };
+    const inertia = this.inertia + armature;
+    const d = this.damping + damping;
+    const base = dtMs > 0 ? Math.max(1, Math.ceil(dtMs / 1000 / this.timestep - 1e-9)) : 0;
+    const k = laws.reduce((s, l) => s + Math.abs(l.a * l.w), 0);
+    const sub = k > 0 ? Math.min(64, Math.ceil(this.timestep / ((2 * Math.PI) / Math.sqrt(k / inertia) / 20))) : 1;
+    const n = base * sub;
+    const h = n > 0 ? dtMs / 1000 / n : 0;
+    for (let i = 0; i < n; i++) {
+      let f = constant + this.extra - d * this.vel;
+      for (const l of laws) f += l.a * (l.fn === 'cos' ? Math.cos(l.w * this.pos) : Math.sin(l.w * this.pos));
+      this.vel += (f / inertia) * h;
+      this.pos += this.vel * h;
+      this.t += h;
+    }
+    const all: Record<string, number> = { [`${prefix}pos`]: this.pos, [`${prefix}vel`]: this.vel };
     const out: Record<string, number> = {};
     const unknown: string[] = [];
     for (const name of outputs) {
@@ -117,14 +140,21 @@ describe('a DC motor driving a Mesh joint', () => {
         const w = state.outputs['joint:shaft.vel'];
         // The joint ends at the motor's steady speed (5τ: within 0.7% of it).
         expect(Math.abs(w - wSteady * (1 - Math.exp(-totalMs / 1000 / tau))) / wSteady).toBeLessThan(0.01);
-        // The circuit's shaft and the joint agree.
-        expect(Math.abs((state.sim['int_m_w'] ?? 0) - w) / wSteady).toBeLessThan(0.01);
         // 63% of the way after one time constant.
         const k = speeds.findIndex(s => s.w >= 0.632 * wSteady);
         expect(Math.abs(speeds[k].t / 1000 - tau) / tau).toBeLessThan(0.05);
         finals.push(w);
       }
       expect(Math.abs(finals[0] - finals[1]) / wSteady).toBeLessThan(0.01);
+    });
+
+    it(`simulates no mechanics in the circuit while linked: J=${inertia}`, () => {
+      const { nodes, edges } = circuit();
+      const linked = nodes.map(n => (n.id === 'M' ? { ...n, data: { ...n.data, linkedShaft: { x: 0.3, w: 12 } } } : n));
+      const { netlist } = generateSpiceNetlist(linked, edges, { simLength: 0.005 });
+      // No rotor inertia, no friction, no torque balance: speed is Mesh's, held.
+      expect(netlist).not.toMatch(/^(C_M_j|R_M_b|B_M_t) /m);
+      expect(netlist).toMatch(/^V_M_w int_M_w 0 DC 12$/m);
     });
   }
 });

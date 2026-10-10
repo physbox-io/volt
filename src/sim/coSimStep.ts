@@ -1,13 +1,10 @@
 import type { Node, Edge } from '@xyflow/react';
 import { generateSpiceNetlist } from '../utils/spice';
 import { readEndState, type SimState } from '../utils/simState';
-import { findNetGraph } from '../utils/netlistResult';
 import { runSketches, type PWLPoint } from '../utils/mcu';
 import { getEffectiveMcuConfig } from '../utils/mcuConfig';
-import { shaftNodes, type LinkedShaft } from '../utils/transducer';
-import { numParam } from '../utils/netlist/params';
-import { DC_MOTOR_DEFAULTS } from '../utils/netlist/parts/dcmotor';
-import { STEPPER_DEFAULTS } from '../utils/netlist/parts/stepper';
+import { forceLaw, phaseSense, shaftNodes, type LinkedShaft, type TransducerSpec } from '../utils/transducer';
+import { transducerSpec } from '../utils/netlist/transducers';
 import { meshSignalLevel } from '../utils/netlist/parts/meshsignal';
 import { jointChannels, type CoSimEndpoint } from '../utils/coSimLink';
 import type { SpiceResult } from '../types/simulation';
@@ -15,19 +12,21 @@ import type { SpiceResult } from '../types/simulation';
 /**
  * One lock-step slice of a circuit driving a Mesh scene.
  *
- * Volt owns time. Each slice:
- *  1. every bound motor's shaft starts at its joint's angle and speed, with
- *     the joint's inertia added to the rotor's and the scene's load on it;
+ * Volt owns time and does the electrics; Mesh does every bit of mechanics.
+ * Each slice:
+ *  1. every bound motor's shaft is its joint: the joint's angle and speed,
+ *     held for the slice, give the motor its back-EMF;
  *  2. every Mesh signal outputs its channel's latest reading;
- *  3. the circuit is solved for the slice, shafts and all;
- *  4. Mesh steps the same slice with each joint driven by the torque its
- *     shaft transmitted, and reports the channels the circuit reads.
+ *  3. the circuit is solved for the slice;
+ *  4. Mesh steps the same slice with each joint driven by its motor's force
+ *     law at the currents the slice ended on — k(x)·i as constants, cosines
+ *     and sines of the joint's position, which Mesh evaluates at the joint's
+ *     own position every one of its steps — plus the rotor's inertia and its
+ *     bearing friction as joint parameters; and reports what the circuit reads.
  *
- * Keeping the shaft's dynamics in the circuit is what makes this stable at
- * slices longer than a stepper's rotor period: the stiff part is solved
- * implicitly, and only the slowly varying load crosses the link. The torque
- * sent is the motor's less what it spent accelerating its own rotor, so the
- * joint, with only its own inertia, follows the same motion.
+ * The stiff part of a stepper, its magnetic spring, is therefore integrated by
+ * Mesh at Mesh's rate (sub-stepped when it needs to be), and only the currents,
+ * which a driver holds steady between steps, cross the link once a slice.
  *
  * Pure apart from the solver and the endpoint, which are handed in.
  */
@@ -45,15 +44,10 @@ export type CoSimState = {
 
 export const initialCoSimState = (): CoSimState => ({ sim: {}, outputs: {}, latches: {}, portToNet: {} });
 
-type ShaftBinding = { nodeId: string; joint: string; rotorInertia: number; usesPosition: boolean };
+type ShaftBinding = { nodeId: string; joint: string; spec: TransducerSpec };
 type SignalBinding = { nodeId: string; channel: string };
 
 export type CoSimBindings = { shafts: ShaftBinding[]; signals: SignalBinding[]; outputs: string[] };
-
-const ROTORS: Record<string, { inertia: number; usesPosition: boolean }> = {
-  dcmotor: { inertia: DC_MOTOR_DEFAULTS.inertia, usesPosition: false },
-  stepper: { inertia: STEPPER_DEFAULTS.inertia, usesPosition: true },
-};
 
 const bound = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
@@ -63,12 +57,13 @@ export function coSimBindings(nodes: Node[]): CoSimBindings {
   const signals: SignalBinding[] = [];
   const outputs = new Set<string>();
   for (const n of nodes) {
-    const rotor = ROTORS[n.type ?? ''];
+    const spec = transducerSpec(n);
     const joint = bound(n.data.shaftJoint);
-    if (rotor && joint) {
-      shafts.push({ nodeId: n.id, joint, rotorInertia: numParam(n.data, 'inertia', rotor.inertia), usesPosition: rotor.usesPosition });
+    if (spec && joint) {
+      shafts.push({ nodeId: n.id, joint, spec });
       const c = jointChannels(joint);
-      for (const name of [c.pos, c.vel, `joint:${joint}.inertia`, `joint:${joint}.load`]) outputs.add(name);
+      outputs.add(c.pos);
+      outputs.add(c.vel);
     }
     const channel = bound(n.data.channel);
     if (n.type === 'meshsignal' && channel) {
@@ -77,6 +72,28 @@ export function coSimBindings(nodes: Node[]): CoSimBindings {
     }
   }
   return { shafts, signals, outputs: [...outputs] };
+}
+
+/**
+ * The inputs that drive a joint: the force law as `force`, `force.cos(w)` and
+ * `force.sin(w)` channels, and the rotor as `armature` and `damping`. Several
+ * motors on one joint add.
+ */
+export function shaftInputs(joint: string, spec: TransducerSpec, currents: number[], into: Record<string, number> = {}): Record<string, number> {
+  const add = (key: string, v: number) => {
+    if (v !== 0) into[key] = (into[key] ?? 0) + v;
+  };
+  const c = jointChannels(joint);
+  for (const h of forceLaw(spec, currents)) {
+    if (h.w === 0) add(c.force, h.cos);
+    else {
+      add(`${c.force}.cos(${h.w})`, h.cos);
+      add(`${c.force}.sin(${h.w})`, h.sin);
+    }
+  }
+  add(`joint:${joint}.armature`, spec.shaft.j);
+  add(`joint:${joint}.damping`, spec.shaft.b);
+  return into;
 }
 
 export type CoSimInput = {
@@ -98,21 +115,12 @@ export type CoSimOutcome = {
   nodes: Node[];
   result: SpiceResult;
   portToNet: Record<string, string>;
-  /** The torque each bound shaft handed its joint, N·m, by node id. */
-  torques: Record<string, number>;
+  /** What each joint was driven with this slice, by channel. */
+  inputs: Record<string, number>;
   /** Names Mesh had no channel for. */
   unknown: string[];
   logs: Record<string, string[]>;
 };
-
-/** The mean of a trace over its own time span. */
-function mean(t: number[], v: number[]): number {
-  if (v.length === 0) return 0;
-  if (v.length === 1 || t[t.length - 1] <= t[0]) return v[v.length - 1];
-  let s = 0;
-  for (let i = 1; i < t.length; i++) s += 0.5 * (v[i] + v[i - 1]) * (t[i] - t[i - 1]);
-  return s / (t[t.length - 1] - t[0]);
-}
 
 export async function coSimStep(state: CoSimState, input: CoSimInput, { solve, endpoint }: CoSimDeps): Promise<CoSimOutcome> {
   const { edges, sliceMs } = input;
@@ -134,13 +142,11 @@ export async function coSimStep(state: CoSimState, input: CoSimInput, { solve, e
     const shaft = shaftById.get(n.id);
     if (shaft) {
       const c = jointChannels(shaft.joint);
+      const linkedShaft: LinkedShaft = { x: outputs[c.pos] ?? 0, w: outputs[c.vel] ?? 0 };
+      // The shaft's nodes are sources while linked: Mesh says where they are.
       const { speed, position } = shaftNodes(n.id);
-      sim[speed.toLowerCase()] = outputs[c.vel] ?? 0;
-      if (shaft.usesPosition) sim[position.toLowerCase()] = outputs[c.pos] ?? 0;
-      const linkedShaft: LinkedShaft = {
-        inertia: outputs[`joint:${shaft.joint}.inertia`] ?? 0,
-        load: outputs[`joint:${shaft.joint}.load`] ?? 0,
-      };
+      delete sim[speed.toLowerCase()];
+      delete sim[position.toLowerCase()];
       return { ...n, data: { ...n.data, linkedShaft } };
     }
     const signal = signalById.get(n.id);
@@ -172,18 +178,11 @@ export async function coSimStep(state: CoSimState, input: CoSimInput, { solve, e
   const result = await solve(netlist);
   const end = readEndState(result, sim);
 
-  const torques: Record<string, number> = {};
+  // The currents the slice ended on drive the joint through the next one.
   const inputs: Record<string, number> = {};
   for (const shaft of bindings.shafts) {
-    const { speed, torque } = shaftNodes(shaft.nodeId);
-    const tq = findNetGraph(result, torque);
-    const made = tq ? mean(tq.timestamps_ms, tq.voltage_levels) : 0;
-    const w0 = sim[speed.toLowerCase()] ?? 0;
-    const w1 = end[speed.toLowerCase()] ?? w0;
-    const transmitted = made - shaft.rotorInertia * (w1 - w0) / (sliceMs / 1000);
-    torques[shaft.nodeId] = transmitted;
-    const key = jointChannels(shaft.joint).force;
-    inputs[key] = (inputs[key] ?? 0) + transmitted;
+    const currents = shaft.spec.phases.map((_, i) => end[`i(${phaseSense(shaft.nodeId, i + 1)})`.toLowerCase()] ?? 0);
+    shaftInputs(shaft.joint, shaft.spec, currents, inputs);
   }
 
   const stepped = await endpoint.stepFor(sliceMs, inputs, bindings.outputs);
@@ -201,7 +200,7 @@ export async function coSimStep(state: CoSimState, input: CoSimInput, { solve, e
     nodes,
     result,
     portToNet,
-    torques,
+    inputs,
     unknown: [...unknown],
     logs: sketches.logs,
   };
