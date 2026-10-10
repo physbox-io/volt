@@ -83,21 +83,9 @@ echo "build: Applying patches..."
 echo "build: Branch name is $(git branch --show-current)"
 
 
-#https://www.cyberciti.biz/faq/how-to-use-sed-to-find-and-replace-text-in-files-in-linux-unix-shell/
-#https://sourceforge.net/p/ngspice/patches/99/
-sed -i 's/-Wno-unused-but-set-variable/-Wno-unused-const-variable/g' ./configure.ac
-sed -i 's/AC_CHECK_FUNCS(\[time getrusage\])/AC_CHECK_FUNCS(\[time\])/g' ./configure.ac
-sed -i 's@#include "ngspice/ngspice.h"@#include <emscripten.h>\n\nEM_ASYNC_JS(void, eesim_sleep_hack, (), {\n    if (Module["handleThings"]) {\n        await Module["handleThings"]();\n    }\n});\n\n#include "ngspice/ngspice.h"@g' ./src/frontend/control.c
-sed -i 's|freewl = wlist = getcommand(string);|eesim_sleep_hack();\n\n\t\tfreewl = wlist = getcommand(string);|g' ./src/frontend/control.c
-
-# Patch dctran.c (Transient Analysis)
-sed -i 's|#include "ngspice/ngspice.h"|#include <emscripten.h>\nextern void eesim_sleep_hack(void);\n#include "ngspice/ngspice.h"|g' ./src/spicelib/analysis/dctran.c
-sed -i 's|ckt->CKTtime += ckt->CKTdelta;|eesim_sleep_hack();\n\t\tckt->CKTtime += ckt->CKTdelta;|g' ./src/spicelib/analysis/dctran.c
-
-# Patch cktop.c (Operating Point)
-sed -i 's|#include "ngspice/ngspice.h"|#include <emscripten.h>\nextern void eesim_sleep_hack(void);\n#include "ngspice/ngspice.h"|g' ./src/spicelib/analysis/cktop.c
-sed -i 's|while (converged != 0) {|while (converged != 0) {\n\t\teesim_sleep_hack();|g' ./src/spicelib/analysis/cktop.c
-
+# Source patches (code models, no clock, static libngspice, ...) are applied
+# by build-wasm.sh; the asyncify yield hooks older builds sed'ed in here are
+# gone - the engine now calls ngspice's shared-library API synchronously.
 
 ############################################
 
@@ -106,7 +94,7 @@ echo "build: Building ngspice..."
 
 # Configure, build the XSPICE code models and link them statically into
 # spice.wasm (see build-wasm.sh and static-cm/cmstatic.c).
-bash /mnt/build-wasm.sh . /mnt/build /mnt/pre.js || { echo "build: Make failed, stopping execution"; exit 1; }
+bash /mnt/build-wasm.sh . /mnt/build || { echo "build: Make failed, stopping execution"; exit 1; }
 
 echo "build: Build artifacts are copied to /mnt/build"
 

@@ -25,7 +25,7 @@ rm -rf "$WORK/ngspice"
 mkdir -p "$WORK"
 cp -a "$HERE/../ngspice-ngspice" "$WORK/ngspice"
 
-bash "$HERE/Docker/build-wasm.sh" "$WORK/ngspice" "$WORK/out" "$HERE/Docker/pre.js"
+bash "$HERE/Docker/build-wasm.sh" "$WORK/ngspice" "$WORK/out"
 
 cp "$WORK/out/spice.js" "$HERE/src/spice.js"
 cp "$WORK/out/spice.wasm" "$HERE/src/spice.wasm"

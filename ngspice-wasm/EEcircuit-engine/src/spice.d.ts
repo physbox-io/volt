@@ -1,30 +1,24 @@
 /**
- *
+ * The emscripten module built by Docker/build-wasm.sh: ngspice's shared-library
+ * API with eesim_init / eesim_command exported (Docker/eesim/eesim.c).
  */
 
 type ModuleType = {
-  argumnets?: string;
-  noInitialRun: boolean;
-  preRun: [() => void];
-  FS?: FSType;
-  Asyncify?: AsyncifyType;
-  setHandleThings: (handleThings: () => void) => void;
-  setGetInput: (getInput: () => void) => void;
-  runThings: () => void;
-  print: (e?: any) => void;
-  printErr: (e?: any) => void;
+  FS: FSType;
+  cwrap: (name: string, returnType: string | null, argTypes: string[]) => (...args: unknown[]) => unknown;
+  print?: (e?: string) => void;
+  printErr?: (e?: string) => void;
+  /** ngspice's console output, one line per call, `isErr` for its stderr. */
+  eesimPrint?: (line: string, isErr: number) => void;
 };
 
 /**
  * File System
  */
 type FSType = {
-  writeFile: (path: string, data: string) => void;
+  writeFile: (path: string, data: string | Uint8Array) => void;
   readFile: (path: string) => Uint8Array;
+  mkdir: (path: string) => void;
 };
 
-type AsyncifyType = {
-  handleAsync: (handle: () => void) => void;
-};
-
-export default function Module(m: ModuleType): Promise<ModuleType>;
+export default function Module(m: Partial<ModuleType> & Record<string, unknown>): Promise<ModuleType>;
