@@ -1,6 +1,11 @@
 import { models } from './models';
 /**
  * SPICE simulation
+ *
+ * ngspice is built as its shared-library API and driven synchronously:
+ * eesim_init() once, then one eesim_command() per command of a run. Each call
+ * returns when ngspice has finished, so there is no interactive command loop
+ * to pause between runs and no asyncify (see Docker/eesim/eesim.c).
  */
 
 import { strModelCMOS90 } from "./circuits.ts";
@@ -20,14 +25,10 @@ export class Simulation {
     return this.spiceModule;
   }
 
-  private pass = false;
-  // private commandList = [" ", "source test.cir", "run", "set filetype=ascii", "write out.raw"];
-  private commandList = [" ", "source test.cir", "destroy all", "run", "write out.raw"];
+  private commandList = ["source test.cir", "destroy all", "run", "write out.raw"];
   private isNoiseMode = false;
-  private cmd = 0;
   private dataRaw: Uint8Array = new Uint8Array();
   private results: ResultType = {} as ResultType;
-  private output = "";
   private info = "";
   private initInfo = "";
   private error: string[] = [];
@@ -36,71 +37,49 @@ export class Simulation {
   // Keep the wasm Module alive for the lifetime of this Simulation instance.
   // This prevents per-run re-instantiation/reload when the parent app reuses the object.
   private spiceModule: Awaited<ReturnType<typeof Module>> | null = null;
+  private command: ((cmd: string) => number) | null = null;
 
   // Ensure start() is idempotent and does not create multiple wasm instances.
   private startPromise: Promise<void> | null = null;
 
+  // Runs are serialised: a second runSim() waits for the one before it.
+  private runQueue: Promise<unknown> = Promise.resolve();
+
   private netList = "";
-  private hasStartedCommands = false;
 
-  // Promise resolvers for initialization and simulation run.
-  private initPromiseResolve: (() => void) | null = null;
-  private runPromiseResolve: ((result: ResultType) => void) | null = null;
+  private print = (e: string = "") => {
+    this.log_debug(e);
+    this.info = (this.info + e + "\n").slice(-Simulation.MAX_INFO_CHARS);
+  };
 
-  // Promise resolver used to resume the internal simulation loop between runs.
-  private continuePromiseResolve: (() => void) | null = null;
-
-  private getInput = (): string => {
-    this.hasStartedCommands = true;
-    let strCmd = " ";
-    if (this.cmd < this.commandList.length) {
-      strCmd = this.commandList[this.cmd];
-      this.cmd++;
+  private printErr = (e: string = "") => {
+    this.info = (this.info + e + "\n\n").slice(-Simulation.MAX_INFO_CHARS);
+    if (
+      e !== "Warning: can't find the initialization file spinit." &&
+      e !== "Using SPARSE 1.3 as Direct Linear Solver" &&
+      !e.includes("code models") &&
+      !e.includes("Any of the following steps may fail") &&
+      !e.includes("OSDI")
+    ) {
+      this.error.push(e);
     } else {
-      this.cmd = 0;
+      this.log_debug(e);
     }
-    this.log_debug(`cmd -> ${strCmd}`);
-    return strCmd;
   };
 
   /**
-   * Internal startup method that sets up the Module and simulation loop.
+   * Internal startup method that sets up the Module and initialises ngspice.
    */
   private async startInternal() {
-    type ModuleOptions = Parameters<typeof Module>[0] & {
+    type ModuleOptions = Record<string, unknown> & {
       locateFile?: (path: string, prefix?: string) => string;
       wasmBinary?: Uint8Array;
     };
 
     const moduleOptions: ModuleOptions = {
-      noInitialRun: true,
-      print: (e: string = "") => {
-        this.log_debug(e);
-        this.info = (this.info + e + "\n").slice(-Simulation.MAX_INFO_CHARS);
-      },
-      printErr: (e: string = "") => {
-        this.info = (this.info + e + "\n\n").slice(-Simulation.MAX_INFO_CHARS);
-        if (
-          e !== "Warning: can't find the initialization file spinit." &&
-          e !== "Using SPARSE 1.3 as Direct Linear Solver" &&
-          !e.includes("code models") &&
-          !e.includes("Any of the following steps may fail") &&
-          !e.includes("OSDI")
-        ) {
-          // console.error(e);
-          this.error.push(e);
-        } else {
-          this.log_debug(e);
-        }
-      },
-      preRun: [() => this.log_debug("from prerun")],
-      setGetInput: this.getInput,
-      setHandleThings: () => {
-        /* No-op */
-      },
-      runThings: () => {
-        /* No-op */
-      },
+      print: this.print,
+      printErr: this.printErr,
+      eesimPrint: (line: string, isErr: number) => (isErr ? this.printErr(line) : this.print(line)),
     };
 
     if (typeof process !== "undefined" && process.versions?.node) {
@@ -131,11 +110,9 @@ export class Simulation {
       }
     }
 
-    // If startInternal is ever called twice, reuse the already created module.
-    // (start() is also guarded, but this keeps things extra safe.)
     let module = this.spiceModule;
     if (!module) {
-      module = await Module(moduleOptions);
+      module = await Module(moduleOptions as never);
       this.spiceModule = module;
     }
 
@@ -182,46 +159,17 @@ export class Simulation {
     (module.FS as any)?.writeFile("/modelcard.GF180.sf", gf180 + "\n.lib sm141064.ngspice sf\n");
     (module.FS as any)?.writeFile("/modelcard.GF180.statistical", gf180 + "\n.lib sm141064.ngspice statistical\n");
 
-    // Set the handler to process simulation events.
-    module.setHandleThings(async () => { 
-      this.log_debug(`handleThings: cmd=${this.cmd} init=${this.initialized} start=${this.hasStartedCommands}`);
-      if (this.cmd === 0 && this.initialized && this.hasStartedCommands) {
-        if (this.runPromiseResolve) {
-          try {
-            this.dataRaw = (module.FS as any)?.readFile("out.raw") ?? new Uint8Array();
-            this.results = readOutput(this.dataRaw);
-            this.outputEvent(this.output);
-            this.runPromiseResolve(this.results);
-            this.runPromiseResolve = null;
-            this.hasStartedCommands = false;
-          } catch (e) {
-            this.log_debug(e);
-          }
-          
-          await this.waitForNextRun();
-          (module.FS as any)?.writeFile("/test.cir", this.netList);
-          return;
-        }
-      }
+    const m = module as unknown as {
+      cwrap: (name: string, ret: string, args: string[]) => (...a: unknown[]) => number;
+    };
+    const init = m.cwrap("eesim_init", "number", []);
+    this.command = m.cwrap("eesim_command", "number", ["string"]) as (cmd: string) => number;
 
-      if (!this.initialized) {
-        this.initialized = true;
-        if (this.initPromiseResolve) {
-          this.initPromiseResolve();
-          this.initPromiseResolve = null;
-        }
-        await this.waitForNextRun();
-        (module.FS as any)?.writeFile("/test.cir", this.netList);
-        return;
-      }
-
-      this.pass = false;
-    });
-
-    module.setGetInput(() => {
-      return this.getInput();
-    });
-    module.runThings();
+    init();
+    this.initInfo = this.info;
+    this.info = "";
+    this.error = [];
+    this.initialized = true;
   }
 
   /**
@@ -232,20 +180,14 @@ export class Simulation {
     if (this.initialized) {
       return Promise.resolve();
     }
-    if (this.startPromise) {
-      return this.startPromise;
+    if (!this.startPromise) {
+      this.startPromise = this.startInternal();
     }
-
-    this.startPromise = new Promise<void>((resolve) => {
-      this.initPromiseResolve = resolve;
-    });
-
-    void this.startInternal();
     return this.startPromise;
   };
 
   /**
-   * Triggers a simulation run and returns a promise that resolves with the results.
+   * Runs the netlist last given to setNetList and resolves with its results.
    */
   public runSim = (): Promise<ResultType> => {
     const run = async (): Promise<ResultType> => {
@@ -257,44 +199,25 @@ export class Simulation {
       this.error = [];
       this.results = {} as ResultType;
 
-      const resultPromise = new Promise<ResultType>((resolve) => {
-        this.runPromiseResolve = resolve;
-      });
+      const FS = (this.spiceModule as unknown as { FS: { writeFile: (p: string, d: string) => void; readFile: (p: string) => Uint8Array } }).FS;
+      FS.writeFile("/test.cir", this.netList);
+      for (const cmd of this.commandList) {
+        this.log_debug(`cmd -> ${cmd}`);
+        this.command!(cmd);
+      }
 
-      this.log_debug("Triggering simulation run...");
-      // Continue the simulation loop if it is waiting.
-      this.continueRun();
-
-      return await resultPromise;
+      try {
+        this.dataRaw = FS.readFile("out.raw") ?? new Uint8Array();
+        this.results = readOutput(this.dataRaw);
+      } catch (e) {
+        this.log_debug(e);
+      }
+      return this.results;
     };
 
-    return run();
-  };
-
-  /**
-   * Waits for a new simulation trigger.
-   */
-  private waitForNextRun = (): Promise<void> => {
-    return new Promise<void>((resolve) => {
-      this.continuePromiseResolve = resolve;
-    });
-  };
-
-  /**
-   * Resolves the waiting promise to continue the simulation loop.
-   */
-  private continueRun = (): void => {
-    // If there's a waiting promise from waitForNextRun, resolve it.
-    if (this.continuePromiseResolve) {
-      const resolve = this.continuePromiseResolve;
-      this.continuePromiseResolve = null;
-      resolve();
-    }
-  };
-
-  private outputEvent = (out: string) => {
-    // Callback for external handling of output
-    void out;
+    const next = this.runQueue.then(run, run);
+    this.runQueue = next.catch(() => undefined);
+    return next;
   };
 
   public setNetList = (input: string): void => {
@@ -302,23 +225,16 @@ export class Simulation {
 
     const hasNoiseAnalysis = /^\s*\.noise\b/im.test(input);
     if (hasNoiseAnalysis) {
-      this.commandList = [" ", "source test.cir", "destroy all", "run", "setplot noise1", "write out.raw"];
-      if (!this.isNoiseMode) {
-        this.isNoiseMode = true;
-        // console.info(
-        //   "[EEcircuit-engine] .noise analysis detected; activating noise export mode (setplot noise1 -> write out.raw)."
-        // );
-      }
+      // For noise analysis, export the integrated noise plot (noise1) instead of the
+      // spectral density plot (noise2), which tends to cause confusing output for users.
+      this.commandList = ["source test.cir", "destroy all", "run", "setplot noise1", "write out.raw"];
+      this.isNoiseMode = true;
       return;
     }
 
     // Reset to default command list when not running a .noise analysis.
     this.isNoiseMode = false;
-    this.commandList = [" ", "source test.cir", "destroy all", "run", "write out.raw"];
-  };
-
-  private setOutputEvent = (outputEvent: (out: string) => void): void => {
-    this.outputEvent = outputEvent;
+    this.commandList = ["source test.cir", "destroy all", "run", "write out.raw"];
   };
 
   public getInfo = (): string => {

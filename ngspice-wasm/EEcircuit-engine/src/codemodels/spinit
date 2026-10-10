@@ -13,6 +13,11 @@ set x11lineararcs
 ** default (if compiled with --enable-openmp) is: 2
 set num_threads=8
 
+* Do not estimate output memory against /proc/meminfo: it is re-read through
+* the emscripten FS on every output point (~25% of a transient), and the
+* browser decides the memory limit anyway.
+set no_mem_check
+
 * comment out if central osdi management is set up
 unset osdi_enabled
 
