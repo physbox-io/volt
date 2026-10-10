@@ -1,36 +1,18 @@
-# Skill: Debugging and Maintaining Ngspice-WASM Simulation Engines
+# Working with EEcircuit-engine
 
-This document provides a set of patterns and troubleshooting techniques for AI agents working with the `EEcircuit-engine` and its underlying Ngspice-WASM bridge.
+Patterns and traps for agents working on the engine or on code that drives it. How it works and how to build it is in [GUIDE.md](GUIDE.md); read that first.
 
-## 1. Identifying the "Hanging Bridge" Pattern
+## 1. A run that never returns, or returns nothing
 
-### Symptom
-The simulation starts, the CPU spikes, but no results are returned. In the console, you see repeated logs like `C code called handleThings!` but the simulation never progresses.
+`runSim()` issues ngspice commands synchronously (`eesim_command`), so it cannot hang waiting on a yield the way the old asyncify build could.
 
-### Root Cause: Unresolved Promises
-The engine uses `EM_ASYNC_JS` to pause C execution and yield to the JavaScript event loop. If the JS callback (`handleThings`) is called within a Promise that doesn't resolve, the C stack remains suspended forever.
+- **Empty result (`{}`)**: ngspice wrote no `out.raw`. The reason is in `getError()` — usually a netlist it refused ("unknown model type", a singular matrix, a missing node). Fix the netlist, not the engine.
+- **A run that takes forever**: it is ngspice still solving (a stiff circuit, a timestep that keeps shrinking). It cannot be interrupted mid-transient; Volt's worker discards the engine on its timeout and starts a fresh one.
+- **Results from a previous run**: check the plot name, not just whether data came back — Volt's worker does (`EXPECTED_PLOT` in `simDiagnostics.ts`).
 
-### Fix
-Ensure that every path through the `EM_ASYNC_JS` bridge correctly `resolve()`s. In this repo, the bridge was fixed by `await`ing the `handleThings` function in the glue code:
-```javascript
-// Inside spice.js / Docker/run.sh bridge injection
-await Module.handleThings();
-```
+## 2. Options persist between runs
 
-## 2. Managing the Simulation Lifecycle
-
-### Initialization vs. Run Phase
-The C engine yields frequently. It is critical to distinguish between:
-1. **Startup Yields**: Occur during `source` command processing or internal initialization.
-2. **Simulation Yields**: Occur during the actual transient analysis run.
-
-### The `hasStartedCommands` Pattern
-Use a state flag to gate result processing. Do not attempt to read `out.raw` or resolve the simulation promise until the engine has moved past the initial command queue:
-```typescript
-if (this.cmd === 0 && this.initialized && this.hasStartedCommands) {
-    // Read results only now
-}
-```
+One `Simulation` is one ngspice instance, and `.options` stick. A netlist that sets `interp`, `method=gear` or a tolerance changes every netlist run after it on the same engine. Don't put `.options` in a netlist unless every later run should have them; in a benchmark, give each variant its own engine (in its own worker thread — the emscripten glue is a process-wide global).
 
 ## 3. Debugging Linked Frontend Dependencies
 
@@ -45,14 +27,14 @@ When modifying the engine (`EEcircuit-engine`) and testing in the `frontend` via
 ## 4. UI/UX for Looping Animations
 
 ### Persistent Simulation State
-For circuits with time-series data (Scope, LED animations), the UI should remain in "Simulation Mode" even after the mathematical simulation has finished. 
+For circuits with time-series data (Scope, LED animations), the UI should remain in "Simulation Mode" even after the mathematical simulation has finished.
 
 ### Implementation
 - **DO NOT** call `setIsSimulating(false)` immediately after `runSim()` returns if the components rely on that state to loop through animation frames.
 - **DO** rely on a manual `Stop` button to clear simulation data and reset `isSimulating`.
 
-## 5. C-to-JS Bridge Injection
+## 5. Performance
 
-The WASM bridge is often injected during the build process via `sed` or `patch`. 
-- **Location**: `Docker/build-wasm.sh`, which both `build-ngspice-local.sh` and `Docker/run.sh` call (see GUIDE.md, *Building the Engine*).
-- **Pattern**: Look for `EM_ASYNC_JS` macros and ensure they align with the expected signature of the JS handler in `simulationLink.ts`.
+- Measure warm (after ~100 runs) and interleaved; single cold timings drift by 50%.
+- Don't add a per-timestep call into JS from C: an intermediate build that did was 1.7× slower than the old engine. Per-point cost now is real solver work.
+- The build's flags and patches live in `Docker/build-wasm.sh`; GUIDE.md says what each one buys.

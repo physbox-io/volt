@@ -63,7 +63,7 @@ npm run test:hang
 
 ## 📘 Documentation
 
-- **[GUIDE.md](ngspice-wasm/EEcircuit-engine/GUIDE.md)**: Building the WASM engine (XSPICE linked statically), the Asyncify bridge, and the simulation lifecycle.
+- **[GUIDE.md](ngspice-wasm/EEcircuit-engine/GUIDE.md)**: How a run is driven (ngspice's shared-library API, no asyncify), what each solver point costs and why, and building the WASM engine with XSPICE linked statically.
 - **[SKILL.md](ngspice-wasm/EEcircuit-engine/SKILL.md)**: Debugging patterns and maintenance tips for working with the simulation engine.
 
 ## ⌨️ Canvas shortcuts
