@@ -19,7 +19,8 @@ const FIELDS: Record<string, Field[]> = {
     f('kt', 'Torque constant', 'N·m/A', DC_MOTOR_DEFAULTS.kt),
     f('inertia', 'Rotor inertia', 'kg·m²', DC_MOTOR_DEFAULTS.inertia),
     f('friction', 'Friction', 'N·m·s/rad', DC_MOTOR_DEFAULTS.friction),
-    f('loadTorque', 'Load torque', 'N·m', DC_MOTOR_DEFAULTS.loadTorque),
+    f('loadTorque', 'Load torque (at the output)', 'N·m', DC_MOTOR_DEFAULTS.loadTorque),
+    f('gearRatio', 'Gear ratio (motor turns per output turn)', '', DC_MOTOR_DEFAULTS.gearRatio),
   ],
   stepper: [
     f('holdingTorque', 'Holding torque', 'N·m', STEPPER_DEFAULTS.holdingTorque),

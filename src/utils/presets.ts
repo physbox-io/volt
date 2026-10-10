@@ -1063,6 +1063,97 @@ export const sallenKeyFilter: CircuitPreset = {
 };
 
 
+/*
+ * Electromechanical presets. A gearmotor: an N20-style 6V motor behind a
+ * 100:1 gearbox, ~115rpm free and 0.6N·m stalled, behind a fuse sized to
+ * carry it running and to blow on a stall or on reversing it at speed.
+ */
+const GEARMOTOR = { windingR: 5, windingL: '0.5m', kt: 0.005, inertia: '0.1u', friction: '0.1u', gearRatio: 100 };
+const GEARMOTOR_FUSE = { rating: 0.5, i2t: 0.02 };
+
+export const gearmotorTrip: CircuitPreset = {
+  name: 'Gearmotor Overcurrent Trip',
+  recommendedSimLength: 1.0,
+  nodes: [
+    { id: 'v1', type: 'voltage', position: { x: 40, y: 96 }, data: { label: '6V', voltage: 6 } },
+    { id: 'g1', type: 'ground', position: { x: 48, y: 240 }, data: { label: 'GND' } },
+    { id: 'f1', type: 'fuse', position: { x: 160, y: 72 }, data: { label: 'Fuse', ...GEARMOTOR_FUSE } },
+    { id: 'h1', type: 'hbridge', position: { x: 304, y: 72 }, data: { label: 'H-Bridge' } },
+    { id: 'm1', type: 'dcmotor', position: { x: 488, y: 72 }, data: { label: 'Gearmotor', ...GEARMOTOR } },
+    { id: 'g2', type: 'ground', position: { x: 240, y: 240 }, data: { label: 'GND' } },
+    { id: 'mcu1', type: 'mcu', position: { x: 40, y: 320 }, data: { label: 'Microcontroller', code: "pinMode('D0', 'OUTPUT');\npinMode('D1', 'OUTPUT');\n\n// Forward for 0.4s…\ndigitalWrite('D0', 1);\ndigitalWrite('D1', 0);\nsleep(400);\n\n// …then straight into reverse at full speed. The motor's back-EMF now\n// adds to the supply instead of opposing it, and the fuse goes.\n// Brake first (both inputs high) and it survives:\n//   digitalWrite('D1', 1); sleep(200);\ndigitalWrite('D0', 0);\ndigitalWrite('D1', 1);\n\nwhile (true) sleep(100);" } },
+    { id: 'g3', type: 'ground', position: { x: 144, y: 520 }, data: { label: 'GND' } },
+  ],
+  edges: [
+    { id: 'e-v1-f1', source: 'v1', target: 'f1', sourceHandle: 'pos', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-f1-h1', source: 'f1', target: 'h1', sourceHandle: 'out', targetHandle: 'vm', type: 'smoothstep' },
+    { id: 'e-v1-g1', source: 'v1', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-h1-g2', source: 'h1', target: 'g2', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-mcu-in1', source: 'mcu1', target: 'h1', sourceHandle: 'D0', targetHandle: 'in1', type: 'smoothstep' },
+    { id: 'e-mcu-in2', source: 'mcu1', target: 'h1', sourceHandle: 'D1', targetHandle: 'in2', type: 'smoothstep' },
+    { id: 'e-mcu-g3', source: 'mcu1', target: 'g3', sourceHandle: 'GND', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-h1-m1a', source: 'h1', target: 'm1', sourceHandle: 'out1', targetHandle: 'a', type: 'smoothstep' },
+    { id: 'e-h1-m1b', source: 'h1', target: 'm1', sourceHandle: 'out2', targetHandle: 'b', type: 'smoothstep' },
+  ],
+};
+
+export const nema17Stepper: CircuitPreset = {
+  name: 'NEMA 17 Stepper',
+  recommendedSimLength: 1.0,
+  nodes: [
+    { id: 'v1', type: 'voltage', position: { x: 40, y: 96 }, data: { label: '12V', voltage: 12 } },
+    { id: 'g1', type: 'ground', position: { x: 48, y: 240 }, data: { label: 'GND' } },
+    { id: 'mcu1', type: 'mcu', position: { x: 40, y: 320 }, data: { label: 'Microcontroller', code: "pinMode('D0', 'OUTPUT'); // STEP\npinMode('D1', 'OUTPUT'); // DIR\n\n// 200 steps a second at 1/4 stepping: 90° a second.\n// 100 steps (45°) one way, then back. STEP goes low before\n// each rise, so the first step counts even from power-up.\nwhile (true) {\n  digitalWrite('D1', 1);\n  for (let i = 0; i < 100; i++) {\n    digitalWrite('D0', 0); sleep(2.5);\n    digitalWrite('D0', 1); sleep(2.5);\n  }\n  digitalWrite('D1', 0);\n  for (let i = 0; i < 100; i++) {\n    digitalWrite('D0', 0); sleep(2.5);\n    digitalWrite('D0', 1); sleep(2.5);\n  }\n}" } },
+    { id: 'g2', type: 'ground', position: { x: 144, y: 520 }, data: { label: 'GND' } },
+    { id: 'd1', type: 'stepdriver', position: { x: 304, y: 72 }, data: { label: 'Step Driver', microsteps: 4, currentLimit: 1 } },
+    { id: 'g3', type: 'ground', position: { x: 240, y: 240 }, data: { label: 'GND' } },
+    { id: 's1', type: 'stepper', position: { x: 504, y: 72 }, data: { label: 'NEMA 17', shaftJoint: 'stepper_shaft' } },
+  ],
+  edges: [
+    { id: 'e-v1-d1', source: 'v1', target: 'd1', sourceHandle: 'pos', targetHandle: 'vm', type: 'smoothstep' },
+    { id: 'e-v1-g1', source: 'v1', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-d1-g3', source: 'd1', target: 'g3', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-d1-en', source: 'd1', target: 'g3', sourceHandle: 'en', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-mcu-step', source: 'mcu1', target: 'd1', sourceHandle: 'D0', targetHandle: 'step', type: 'smoothstep' },
+    { id: 'e-mcu-dir', source: 'mcu1', target: 'd1', sourceHandle: 'D1', targetHandle: 'dir', type: 'smoothstep' },
+    { id: 'e-mcu-g2', source: 'mcu1', target: 'g2', sourceHandle: 'GND', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-d1-a1', source: 'd1', target: 's1', sourceHandle: 'a1', targetHandle: 'a1', type: 'smoothstep' },
+    { id: 'e-d1-a2', source: 'd1', target: 's1', sourceHandle: 'a2', targetHandle: 'a2', type: 'smoothstep' },
+    { id: 'e-d1-b1', source: 'd1', target: 's1', sourceHandle: 'b1', targetHandle: 'b1', type: 'smoothstep' },
+    { id: 'e-d1-b2', source: 'd1', target: 's1', sourceHandle: 'b2', targetHandle: 'b2', type: 'smoothstep' },
+  ],
+};
+
+export const gripperLimitSwitch: CircuitPreset = {
+  name: 'Gripper with Limit Switch',
+  recommendedSimLength: 1.0,
+  nodes: [
+    { id: 'v1', type: 'voltage', position: { x: 40, y: 96 }, data: { label: '6V', voltage: 6 } },
+    { id: 'g1', type: 'ground', position: { x: 48, y: 240 }, data: { label: 'GND' } },
+    { id: 'f1', type: 'fuse', position: { x: 160, y: 72 }, data: { label: 'Fuse', ...GEARMOTOR_FUSE } },
+    { id: 'h1', type: 'hbridge', position: { x: 304, y: 72 }, data: { label: 'H-Bridge' } },
+    { id: 'm1', type: 'dcmotor', position: { x: 488, y: 72 }, data: { label: 'Jaw Gearmotor', ...GEARMOTOR, shaftJoint: 'jaw_hinge' } },
+    { id: 'g2', type: 'ground', position: { x: 240, y: 240 }, data: { label: 'GND' } },
+    { id: 'mcu1', type: 'mcu', position: { x: 40, y: 320 }, data: { label: 'Microcontroller', code: "pinMode('D0', 'OUTPUT');\npinMode('D1', 'OUTPUT');\npinMode('D2', 'INPUT'); // the limit switch\n\n// Close the jaw until the switch says it is shut, then brake.\ndigitalWrite('D0', 1);\ndigitalWrite('D1', 0);\nwhile (digitalRead('D2') === 0) sleep(1);\ndigitalWrite('D1', 1);\nSerial.println(`jaw shut at ${millis().toFixed(0)}ms`);\n\nwhile (true) sleep(100);" } },
+    { id: 'g3', type: 'ground', position: { x: 144, y: 520 }, data: { label: 'GND' } },
+    { id: 'sw1', type: 'meshsignal', position: { x: 304, y: 336 }, data: { label: 'Limit Switch', channel: 'joint:jaw_hinge.pos', threshold: 1.15, hysteresis: 0.05, high: 5, low: 0 } },
+    { id: 'g4', type: 'ground', position: { x: 432, y: 432 }, data: { label: 'GND' } },
+  ],
+  edges: [
+    { id: 'e-v1-f1', source: 'v1', target: 'f1', sourceHandle: 'pos', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-f1-h1', source: 'f1', target: 'h1', sourceHandle: 'out', targetHandle: 'vm', type: 'smoothstep' },
+    { id: 'e-v1-g1', source: 'v1', target: 'g1', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-h1-g2', source: 'h1', target: 'g2', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-mcu-in1', source: 'mcu1', target: 'h1', sourceHandle: 'D0', targetHandle: 'in1', type: 'smoothstep' },
+    { id: 'e-mcu-in2', source: 'mcu1', target: 'h1', sourceHandle: 'D1', targetHandle: 'in2', type: 'smoothstep' },
+    { id: 'e-mcu-g3', source: 'mcu1', target: 'g3', sourceHandle: 'GND', targetHandle: 'in', type: 'smoothstep' },
+    { id: 'e-h1-m1a', source: 'h1', target: 'm1', sourceHandle: 'out1', targetHandle: 'a', type: 'smoothstep' },
+    { id: 'e-h1-m1b', source: 'h1', target: 'm1', sourceHandle: 'out2', targetHandle: 'b', type: 'smoothstep' },
+    { id: 'e-sw1-mcu', source: 'sw1', target: 'mcu1', sourceHandle: 'out', targetHandle: 'D2', type: 'smoothstep' },
+    { id: 'e-sw1-g4', source: 'sw1', target: 'g4', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
+  ],
+};
+
 export const presets: Record<string, CircuitPreset> = {
   empty: {
     ...empty,
@@ -1320,6 +1411,17 @@ Serial.println("CC1101 Initialized ready for RF TX/RX");
       },
     ],
     noteCard: `# Heltec V4 + CC1101 RF Transceiver 📻\n\nConnects the **Heltec WiFi LoRa 32 V4** development board to an external **CC1101 Sub-1GHz RF Transceiver module** via an 8-pin (2x4) Dupont connector.\n\n### Connections:\n- **VCC (3.3V)**: Powered from Heltec 3V3 rail.\n- **GND**: Shared system ground.\n- **MOSI (SI)**: Heltec GPIO 3.\n- **MISO (SO)**: Heltec GPIO 1 (ADC/IO).\n- **SCLK**: Heltec GPIO 33.\n- **CSN**: Heltec GPIO 36 (Chip Select Active Low).\n- **GDO0**: Heltec GPIO 37 (Packet TX/RX Interrupt).\n\n### PCB Milling & CAM Routing:\nClick **Export PCB / G-Code** to see the full dual-layer board layout, $2.54\\text{ mm}$ Dupont matrix footprint for CC1101, and CNC milling isolation toolpaths routed directly to all pins!`
+  },
+  gearmotorTrip: {
+    ...gearmotorTrip,
+    noteCard: `# Gearmotor Overcurrent Trip ⚡\n\nA 6V gearmotor (100:1, ~115rpm) driven forward, then thrown straight into reverse.\n\n### What happens\n- **Running**, it draws ~25mA. The **0.5A fuse** carries that indefinitely.\n- **Reversed at speed**, the motor's back-EMF stops opposing the supply and adds to it: ~2A for a moment. That is past the fuse's **I²t**, so it blows at ~0.41s — its card turns **BLOWN** and the motor coasts to a stop.\n\n### Try this\n- In the sketch, **brake before reversing** (uncomment the two lines): both bridge inputs high for 200ms stops the motor, and the reversal then peaks near 1A — the fuse survives.\n- Raise **Load torque** on the motor past ~0.6N·m and it stalls instead: 1.2A, and the fuse goes in ~17ms.\n- **Reset** fits a new fuse.`,
+  },
+  nema17Stepper: {
+    ...nema17Stepper,
+    noteCard: `# NEMA 17 Stepper 🔩\n\nAn MCU sketch steps a NEMA 17 through an A4988-style driver: 200 steps a second at 1/4 stepping, 45° one way and back.\n\n### What to look at\n- The **stepper's card** shows the shaft angle after a run; the **driver** regulates each coil to its 1A limit on the sine table.\n- Change **Microstepping** on the driver: at full step the same 100 pulses turn 180°.\n\n### Linked to Mesh\nThe shaft is bound to a Mesh joint called **stepper_shaft**. Open Mesh's **Volt Stepper Dial** scene, press **Link Mesh** here and **Run**: the dial turns step for step, in real time. Mesh does the mechanics; Volt the electrics.`,
+  },
+  gripperLimitSwitch: {
+    ...gripperLimitSwitch,
+    noteCard: `# Gripper with Limit Switch 🦾\n\nA gearmotor closes a jaw until a limit switch says it is shut. Made to run against Mesh.\n\n### Run it linked\n1. Open Mesh's **Volt Gripper** scene, then press **Link Mesh** here.\n2. **Run.** The jaw swings shut; the **Limit Switch** (a Mesh Signal on the jaw's hinge angle) goes high at 1.15 rad and the sketch brakes the motor.\n\n### Wedge it\nDrag the block into the jaw's path in Mesh and run again. The jaw stalls on it before the switch can close, the motor draws its stall current (1.2A), and the **fuse** blows within a few tens of milliseconds.\n\nUnlinked, the switch reads 0 and the motor just runs.`,
   }
 };
-

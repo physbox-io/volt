@@ -41,7 +41,10 @@ export const fuse: PartEmitter = {
       + `B_${id} ${a} ${b} I = ${i}\n`
       + `C_${id}_h ${h} 0 1\n`
       + `R_${id}_h ${h} 0 1e12\n`
-      + `B_${id}_h 0 ${h} I = (V(${h}) <= 0 && ${i} * ${i} < ${in2}) ? 0 : `
-      + `(1 - V(${melted})) * (${i} * ${i} - ${in2}) + V(${melted}) * ${i2t * 1000}\n`;
+      // Heat builds only with time passing: an operating point has none, and
+      // integrating there would settle the heat at leak × excess — a fuse
+      // blown before the run began, by a motor that is stalled only at t=0.
+      + `B_${id}_h 0 ${h} I = time <= 0 ? 0 : ((V(${h}) <= 0 && ${i} * ${i} < ${in2}) ? 0 : `
+      + `(1 - V(${melted})) * (${i} * ${i} - ${in2}) + V(${melted}) * ${i2t * 1000})\n`;
   },
 };

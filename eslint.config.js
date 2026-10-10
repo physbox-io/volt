@@ -6,7 +6,9 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'ngspice-wasm/**']),
+  // .claude/ holds agent worktrees: whole copies of the repo whose second
+  // tsconfig would leave every file here with two candidate roots.
+  globalIgnores(['dist', 'ngspice-wasm/**', '.claude/**']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

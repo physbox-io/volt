@@ -379,8 +379,10 @@ export type ElectromechNodeData = BaseNodeData & {
   /** Winding resistance, Ω, and inductance, H. */
   windingR?: number | string;
   windingL?: number | string;
-  /** DC motor torque constant, N·m/A. */
+  /** DC motor torque constant, N·m/A, of the bare motor. */
   kt?: number | string;
+  /** DC motor gearbox: motor turns per output turn. */
+  gearRatio?: number | string;
   /** Stepper: torque at rated current, N·m, and that current, A. */
   holdingTorque?: number | string;
   ratedCurrent?: number | string;

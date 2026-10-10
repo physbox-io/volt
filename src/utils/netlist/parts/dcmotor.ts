@@ -10,17 +10,27 @@ export const DC_MOTOR_DEFAULTS = {
   inertia: 5e-6,
   friction: 1e-6,
   loadTorque: 0,
+  /** Motor turns per output turn: 1 is a bare motor, 100 a typical small gearmotor. */
+  gearRatio: 1,
 };
 
 /**
  * A permanent-magnet DC motor: one phase whose coupling is the torque
  * constant. In SI units the back-EMF constant is the same number.
+ *
+ * With a gearbox of ratio N the shaft this describes is the gearbox's output:
+ * an ideal gearbox multiplies the coupling by N (N times the torque, and N
+ * times the motor's speed for a given output speed), and reflects the rotor's
+ * inertia and friction to the output as N². Kt, inertia and friction are
+ * always the bare motor's, as its datasheet gives them; the load torque is
+ * at the output.
  */
 export function dcMotorSpec(data: Record<string, unknown>): TransducerSpec {
   const p = (key: keyof typeof DC_MOTOR_DEFAULTS) => numParam(data, key, DC_MOTOR_DEFAULTS[key]);
+  const n = Math.max(p('gearRatio'), 1e-6);
   return {
-    phases: [{ a: 'a', b: 'b', r: p('windingR'), l: p('windingL'), k: [{ w: 0, cos: p('kt'), sin: 0 }] }],
-    shaft: { j: p('inertia'), b: p('friction'), load: p('loadTorque') },
+    phases: [{ a: 'a', b: 'b', r: p('windingR'), l: p('windingL'), k: [{ w: 0, cos: p('kt') * n, sin: 0 }] }],
+    shaft: { j: p('inertia') * n * n, b: p('friction') * n * n, load: p('loadTorque') },
   };
 }
 

@@ -156,8 +156,13 @@ export const stepdriver: PartEmitter = {
 
     const th = stepAngleNode(id);
     const master = `int_${id}_ms`;
-    const slaveOpen = logicHigh(step, gnd);
-    const masterOpen = `(1 - ${slaveOpen})`;
+    // Each stage is shut outright once its switch is essentially off. The
+    // logistic alone leaks ~1e-7 with STEP at rest, which outweighs the
+    // hold resistor and leaves the operating point with no solution — θ
+    // chasing its own next step — so a Run from rest started miscounted.
+    const s = `int_${id}_sw`;
+    const slaveOpen = `(V(${s}) > 1e-6 ? V(${s}) : 0)`;
+    const masterOpen = `(V(${s}) < 0.999999 ? 1 - V(${s}) : 0)`;
     /*
      * The master aims at θ snapped toward the nearest whole step, plus one.
      * For the instant of an edge both halves are live and chase each other
@@ -195,7 +200,8 @@ export const stepdriver: PartEmitter = {
         + `B_${id}_${name}2 ${p2} ${gnd} V = (${vs} - V(${u})) / 2\n`;
     };
 
-    return `C_${id}_ms ${master} 0 1\n`
+    return `B_${id}_sw ${s} 0 V = ${logicHigh(step, gnd)}\n`
+      + `C_${id}_ms ${master} 0 1\n`
       + `R_${id}_ms ${master} 0 1e12\n`
       + `B_${id}_ms 0 ${master} I = ${follow} * (${nearest} + ${delta} * ${fwd} - V(${master})) * ${masterOpen}\n`
       + `C_${id}_th ${th} 0 1\n`

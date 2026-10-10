@@ -856,7 +856,7 @@ export default function App() {
    */
   const NETLIST_FIELDS = [
     'amplification', 'amplitude', 'bf', 'capacitance', 'code', 'coldR', 'currentLimit',
-    'detentTorque', 'dutyCycle', 'frequency', 'friction', 'holdingTorque', 'i2t',
+    'detentTorque', 'driverModel', 'dutyCycle', 'frequency', 'friction', 'gearRatio', 'holdingTorque', 'i2t',
     'inductance', 'inertia', 'isOpen', 'k', 'kp', 'kt', 'l_pri', 'l_pri_label', 'l_sec',
     'l_sec_label', 'label', 'lightLevel', 'lightSensitivity', 'loadTorque', 'mcuConfig',
     'microsteps', 'mode', 'photodiodeMode', 'pins', 'position', 'pwlData', 'r_dark',

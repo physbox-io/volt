@@ -104,12 +104,13 @@ B_stp1_t 0 int_stp1_w I = (-0.23529411764705885 * sin(50 * V(int_stp1_x))) * I(L
 C_stp1_x int_stp1_x 0 1
 R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
+B_drv1_sw int_drv1_sw 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sw) < 0.999999 ? 1 - V(int_drv1_sw) : 0)
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
-B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
+B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_sw) > 1e-6 ? V(int_drv1_sw) : 0)
 B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
 B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
 B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
@@ -135,7 +136,7 @@ B_fu1_g int_fu1_g 0 V = 20 * (1 - V(int_fu1_m)) + 1e-9
 B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
 R_fu1_h int_fu1_h 0 1e12
-B_fu1_h 0 int_fu1_h I = (V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500
+B_fu1_h 0 int_fu1_h I = time <= 0 ? 0 : ((V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500)
 V_ms1 NC_ms1_out NC_ms1_gnd DC 0.8
 V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
 R_mot2_p1 NC_mot2_a int_mot2_p1r 2
@@ -483,12 +484,13 @@ B_stp1_t 0 int_stp1_w I = (-0.23529411764705885 * sin(50 * V(int_stp1_x))) * I(L
 C_stp1_x int_stp1_x 0 1
 R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
+B_drv1_sw int_drv1_sw 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sw) < 0.999999 ? 1 - V(int_drv1_sw) : 0)
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
-B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
+B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_sw) > 1e-6 ? V(int_drv1_sw) : 0)
 B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
 B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
 B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
@@ -514,7 +516,7 @@ B_fu1_g int_fu1_g 0 V = 20 * (1 - V(int_fu1_m)) + 1e-9
 B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
 R_fu1_h int_fu1_h 0 1e12
-B_fu1_h 0 int_fu1_h I = (V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500
+B_fu1_h 0 int_fu1_h I = time <= 0 ? 0 : ((V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500)
 V_ms1 NC_ms1_out NC_ms1_gnd DC 0.8
 V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
 R_mot2_p1 NC_mot2_a int_mot2_p1r 2
@@ -862,12 +864,13 @@ B_stp1_t 0 int_stp1_w I = (-0.23529411764705885 * sin(50 * V(int_stp1_x))) * I(L
 C_stp1_x int_stp1_x 0 1
 R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
+B_drv1_sw int_drv1_sw 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sw) < 0.999999 ? 1 - V(int_drv1_sw) : 0)
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
-B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
+B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_sw) > 1e-6 ? V(int_drv1_sw) : 0)
 B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
 B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
 B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
@@ -893,7 +896,7 @@ B_fu1_g int_fu1_g 0 V = 20 * (1 - V(int_fu1_m)) + 1e-9
 B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
 R_fu1_h int_fu1_h 0 1e12
-B_fu1_h 0 int_fu1_h I = (V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500
+B_fu1_h 0 int_fu1_h I = time <= 0 ? 0 : ((V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500)
 V_ms1 NC_ms1_out NC_ms1_gnd DC 0.8
 V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
 R_mot2_p1 NC_mot2_a int_mot2_p1r 2
@@ -1241,12 +1244,13 @@ B_stp1_t 0 int_stp1_w I = (-0.23529411764705885 * sin(50 * V(int_stp1_x))) * I(L
 C_stp1_x int_stp1_x 0 1
 R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
+B_drv1_sw int_drv1_sw 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sw) < 0.999999 ? 1 - V(int_drv1_sw) : 0)
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
-B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
+B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_sw) > 1e-6 ? V(int_drv1_sw) : 0)
 B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
 B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
 B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
@@ -1272,7 +1276,7 @@ B_fu1_g int_fu1_g 0 V = 20 * (1 - V(int_fu1_m)) + 1e-9
 B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
 R_fu1_h int_fu1_h 0 1e12
-B_fu1_h 0 int_fu1_h I = (V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500
+B_fu1_h 0 int_fu1_h I = time <= 0 ? 0 : ((V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500)
 V_ms1 NC_ms1_out NC_ms1_gnd DC 0.8
 V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
 R_mot2_p1 NC_mot2_a int_mot2_p1r 2
@@ -1782,12 +1786,13 @@ B_stp1_t 0 int_stp1_w I = (-0.23529411764705885 * sin(50 * V(int_stp1_x))) * I(L
 C_stp1_x int_stp1_x 0 1
 R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
+B_drv1_sw int_drv1_sw 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sw) < 0.999999 ? 1 - V(int_drv1_sw) : 0)
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
-B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
+B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_sw) > 1e-6 ? V(int_drv1_sw) : 0)
 B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
 B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
 B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
@@ -1813,7 +1818,7 @@ B_fu1_g int_fu1_g 0 V = 20 * (1 - V(int_fu1_m)) + 1e-9
 B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
 R_fu1_h int_fu1_h 0 1e12
-B_fu1_h 0 int_fu1_h I = (V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500
+B_fu1_h 0 int_fu1_h I = time <= 0 ? 0 : ((V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500)
 V_ms1 NC_ms1_out NC_ms1_gnd DC 0.8
 V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
 R_mot2_p1 NC_mot2_a int_mot2_p1r 2
@@ -2158,12 +2163,13 @@ B_stp1_t 0 int_stp1_w I = (-0.23529411764705885 * sin(50 * V(int_stp1_x))) * I(L
 C_stp1_x int_stp1_x 0 1
 R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
+B_drv1_sw int_drv1_sw 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05))))
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sw) < 0.999999 ? 1 - V(int_drv1_sw) : 0)
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
-B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
+B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_sw) > 1e-6 ? V(int_drv1_sw) : 0)
 B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
 B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
 B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
@@ -2189,7 +2195,7 @@ B_fu1_g int_fu1_g 0 V = 20 * (1 - V(int_fu1_m)) + 1e-9
 B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
 R_fu1_h int_fu1_h 0 1e12
-B_fu1_h 0 int_fu1_h I = (V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500
+B_fu1_h 0 int_fu1_h I = time <= 0 ? 0 : ((V(int_fu1_h) <= 0 && (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) < 4) ? 0 : (1 - V(int_fu1_m)) * ((V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) * (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g)) - 4) + V(int_fu1_m) * 500)
 V_ms1 NC_ms1_out NC_ms1_gnd DC 0.8
 V_ms2 NC_ms2_out NC_ms2_gnd DC 3.3
 R_mot2_p1 NC_mot2_a int_mot2_p1r 2

@@ -498,7 +498,7 @@
           "kt": "torque constant N·m/A (= back-EMF V·s/rad), default 0.01",
           "inertia": "kg·m², default 5u",
           "friction": "viscous, N·m·s/rad, default 1u",
-          "loadTorque": "constant torque against forward rotation, N·m, default 0 (ignored while its shaft drives a Mesh joint: the scene supplies the load)", "shaftJoint": "a Mesh joint name: while linked, Run drives that joint (see linkingToMesh)",
+          "loadTorque": "constant torque against forward rotation, N·m, default 0 (ignored while its shaft drives a Mesh joint: the scene supplies the load)", "gearRatio": "motor turns per output turn, default 1. An ideal gearbox: the shaft is the output; Kt, inertia and friction stay the bare motor's (×N, ×N², ×N² at the output)", "shaftJoint": "a Mesh joint name: while linked, Run drives that joint (see linkingToMesh)",
           "behaviour": "Free speed Kt·V/(Kt²+R·b); stall current V/R; mechanical time constant J·R/Kt². After a Run, data.rpm and data.angleDeg hold the final speed and shaft angle."
         },
         "stepper": {
