@@ -146,14 +146,9 @@ export class Simulation {
     (module.FS as any)?.mkdir("/usr/local/lib");
     (module.FS as any)?.mkdir("/usr/local/lib/ngspice");
 
-    // Write code models
-    (module.FS as any)?.writeFile("/usr/local/lib/ngspice/analog.cm", Uint8Array.from(atob(models.analog_cm), (c: any) => c.charCodeAt(0)));
-    (module.FS as any)?.writeFile("/usr/local/lib/ngspice/digital.cm", Uint8Array.from(atob(models.digital_cm), (c: any) => c.charCodeAt(0)));
-    (module.FS as any)?.writeFile("/usr/local/lib/ngspice/spice2poly.cm", Uint8Array.from(atob(models.spice2poly_cm), (c: any) => c.charCodeAt(0)));
-    (module.FS as any)?.writeFile("/usr/local/lib/ngspice/table.cm", Uint8Array.from(atob(models.table_cm), (c: any) => c.charCodeAt(0)));
-    (module.FS as any)?.writeFile("/usr/local/lib/ngspice/tlines.cm", Uint8Array.from(atob(models.tlines_cm), (c: any) => c.charCodeAt(0)));
-    (module.FS as any)?.writeFile("/usr/local/lib/ngspice/xtradev.cm", Uint8Array.from(atob(models.xtradev_cm), (c: any) => c.charCodeAt(0)));
-    (module.FS as any)?.writeFile("/usr/local/lib/ngspice/xtraevt.cm", Uint8Array.from(atob(models.xtraevt_cm), (c: any) => c.charCodeAt(0)));
+    // The XSPICE code models (digital, analog, ...) are linked into spice.wasm;
+    // spinit's "codemodel /usr/local/lib/ngspice/<lib>.cm" registers them
+    // without reading any file (see Docker/static-cm/cmstatic.c).
 
     // Write spinit
 
