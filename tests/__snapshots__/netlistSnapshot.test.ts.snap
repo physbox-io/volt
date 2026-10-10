@@ -2518,6 +2518,203 @@ B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
 "
 `;
 
+exports[`the netlist each preset writes > portedSpeaker: AC sweep 1`] = `
+"Circuit Simulation
+V_vpos N1 0 DC 12 AC 1
+V_vneg 0 N4 DC 12
+V_sg1 N5 0 SINE(0 1 100)
+X_oa1 N5 N8 N1 N4 N7 OPAMP_MODEL_oa1
+R_rf N7 N8 20k
+R_rg N8 0 10k
+R_spk1_p1 N7 int_spk1_p1r 7.2
+L_spk1_p1 int_spk1_p1r int_spk1_p1l 0.0001
+B_spk1_e1 int_spk1_p1l 0 V = (4) * V(int_spk1_w)
+C_spk1_j int_spk1_w 0 0.003
+R_spk1_b int_spk1_w 0 2
+B_spk1_t 0 int_spk1_w I = (4) * I(L_spk1_p1)
+L_spk1_k int_spk1_w 0 0.001
+B_spk1_q 0 int_spk1_pb I = 0.0033 * V(int_spk1_w)
+B_spk1_f int_spk1_w 0 I = 0.0033 * V(int_spk1_pb)
+C_spk1_ab int_spk1_pb 0 7.119996867201379e-9
+L_spk1_ap int_spk1_pb 0 251.6557960169049
+R_spk1_al int_spk1_pb 0 1316017.3271697976
+B_spk1_u int_spk1_u 0 V = I(L_spk1_ap) -0.0033 * V(int_spk1_w)
+V_spk1_du int_spk1_u int_spk1_ud DC 0
+C_spk1_du int_spk1_ud 0 1
+B_spk1_spl int_spk1_spl 0 V = 9390.141642421824 * I(V_spk1_du)
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for oa1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_oa1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_oa1
+.save all
+.ac dec 20 10 100000
+.end
+"
+`;
+
+exports[`the netlist each preset writes > portedSpeaker: operating point 1`] = `
+"Circuit Simulation
+V_vpos N1 0 DC 12
+V_vneg 0 N4 DC 12
+V_sg1 N5 0 SINE(0 1 100)
+X_oa1 N5 N8 N1 N4 N7 OPAMP_MODEL_oa1
+R_rf N7 N8 20k
+R_rg N8 0 10k
+R_spk1_p1 N7 int_spk1_p1r 7.2
+L_spk1_p1 int_spk1_p1r int_spk1_p1l 0.0001
+B_spk1_e1 int_spk1_p1l 0 V = (4) * V(int_spk1_w)
+C_spk1_j int_spk1_w 0 0.003
+R_spk1_b int_spk1_w 0 2
+B_spk1_t 0 int_spk1_w I = (4) * I(L_spk1_p1)
+L_spk1_k int_spk1_w 0 0.001
+B_spk1_q 0 int_spk1_pb I = 0.0033 * V(int_spk1_w)
+B_spk1_f int_spk1_w 0 I = 0.0033 * V(int_spk1_pb)
+C_spk1_ab int_spk1_pb 0 7.119996867201379e-9
+L_spk1_ap int_spk1_pb 0 251.6557960169049
+R_spk1_al int_spk1_pb 0 1316017.3271697976
+B_spk1_u int_spk1_u 0 V = I(L_spk1_ap) -0.0033 * V(int_spk1_w)
+V_spk1_du int_spk1_u int_spk1_ud DC 0
+C_spk1_du int_spk1_ud 0 1
+B_spk1_spl int_spk1_spl 0 V = 9390.141642421824 * I(V_spk1_du)
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for oa1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_oa1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_oa1
+.save all
+.op
+.end
+"
+`;
+
+exports[`the netlist each preset writes > portedSpeaker: transient 1`] = `
+"Circuit Simulation
+V_vpos N1 0 DC 12
+V_vneg 0 N4 DC 12
+V_sg1 N5 0 SINE(0 1 100)
+X_oa1 N5 N8 N1 N4 N7 OPAMP_MODEL_oa1
+R_rf N7 N8 20k
+R_rg N8 0 10k
+R_spk1_p1 N7 int_spk1_p1r 7.2
+L_spk1_p1 int_spk1_p1r int_spk1_p1l 0.0001
+B_spk1_e1 int_spk1_p1l 0 V = (4) * V(int_spk1_w)
+C_spk1_j int_spk1_w 0 0.003
+R_spk1_b int_spk1_w 0 2
+B_spk1_t 0 int_spk1_w I = (4) * I(L_spk1_p1)
+L_spk1_k int_spk1_w 0 0.001
+B_spk1_q 0 int_spk1_pb I = 0.0033 * V(int_spk1_w)
+B_spk1_f int_spk1_w 0 I = 0.0033 * V(int_spk1_pb)
+C_spk1_ab int_spk1_pb 0 7.119996867201379e-9
+L_spk1_ap int_spk1_pb 0 251.6557960169049
+R_spk1_al int_spk1_pb 0 1316017.3271697976
+B_spk1_u int_spk1_u 0 V = I(L_spk1_ap) -0.0033 * V(int_spk1_w)
+V_spk1_du int_spk1_u int_spk1_ud DC 0
+C_spk1_du int_spk1_ud 0 1
+B_spk1_spl int_spk1_spl 0 V = 9390.141642421824 * I(V_spk1_du)
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for oa1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_oa1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_oa1
+.save all
+.tran 0.05m 0.2s 0 0.05m
+.end
+"
+`;
+
+exports[`the netlist each preset writes > portedSpeaker: transient, as an HIL slice 1`] = `
+"Circuit Simulation
+V_vpos N1 0 DC 12
+V_vneg 0 N4 DC 12
+V_sg1 N5 0 SINE(0 1 100)
+X_oa1 N5 N8 N1 N4 N7 OPAMP_MODEL_oa1
+R_rf N7 N8 20k
+R_rg N8 0 10k
+R_spk1_p1 N7 int_spk1_p1r 7.2
+L_spk1_p1 int_spk1_p1r int_spk1_p1l 0.0001
+B_spk1_e1 int_spk1_p1l 0 V = (4) * V(int_spk1_w)
+C_spk1_j int_spk1_w 0 0.003
+R_spk1_b int_spk1_w 0 2
+B_spk1_t 0 int_spk1_w I = (4) * I(L_spk1_p1)
+L_spk1_k int_spk1_w 0 0.001
+B_spk1_q 0 int_spk1_pb I = 0.0033 * V(int_spk1_w)
+B_spk1_f int_spk1_w 0 I = 0.0033 * V(int_spk1_pb)
+C_spk1_ab int_spk1_pb 0 7.119996867201379e-9
+L_spk1_ap int_spk1_pb 0 251.6557960169049
+R_spk1_al int_spk1_pb 0 1316017.3271697976
+B_spk1_u int_spk1_u 0 V = I(L_spk1_ap) -0.0033 * V(int_spk1_w)
+V_spk1_du int_spk1_u int_spk1_ud DC 0
+C_spk1_du int_spk1_ud 0 1
+B_spk1_spl int_spk1_spl 0 V = 9390.141642421824 * I(V_spk1_du)
+
+* Idealized Op-Amp Macro Model (Legacy compatibility)
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT IDEAL_OPAMP 1 2 3 4 5
+* High input impedance
+Rin 1 2 100MEG
+* Voltage controlled voltage source for gain (Gain = 100k)
+E1 6 0 1 2 100k
+* Output clipping to power rails
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS IDEAL_OPAMP
+
+* Parameterized Op-Amp Subcircuit for oa1
+* Node order: IN+ IN- VCC VEE OUT
+.SUBCKT OPAMP_MODEL_oa1 1 2 3 4 5
+Rin 1 2 100MEG
+E1 6 0 1 2 100000
+B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
+.ENDS OPAMP_MODEL_oa1
+.save all
+.ic V(n1)=1.250000
+.tran 0.05m 0.04s 0 0.05m uic
+.end
+"
+`;
+
 exports[`the netlist each preset writes > potDimmer: AC sweep 1`] = `
 "Circuit Simulation
 V_v1 N1 0 DC 5V AC 1

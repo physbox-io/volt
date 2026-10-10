@@ -47,6 +47,13 @@ export type ShaftModel = {
   load?: number;
   /** A torque pulling toward fixed positions with no current at all, e.g. a stepper's detent. Subtracted. */
   detent?: Harmonic[];
+  /**
+   * A linear spring back to x = 0, N·m/rad (or N/m): a loudspeaker's
+   * suspension. Unlinked only. In the analog it is an inductor of 1/k from
+   * the speed node to ground, whose current, ∫ẋ dt / (1/k) = k·x, is the
+   * spring's force, so it needs no position node of its own.
+   */
+  stiffness?: number;
 };
 
 /** A whole device: what a part type is, independent of where it sits. */
@@ -149,6 +156,9 @@ export function emitTransducer(
   // Friction, and with none a leak too slow to matter, so the node has a DC path.
   cards += `R_${id}_b ${w} 0 ${num(shaft.b > 0 ? 1 / shaft.b : 1e12)}\n`;
   cards += `B_${id}_t 0 ${w} I = ${torques.join(' + ')}\n`;
+  if (shaft.stiffness && shaft.stiffness > 0) {
+    cards += `L_${id}_k ${w} 0 ${num(1 / shaft.stiffness)}${inductorIc(initialConditions, `L_${id}_k`)}\n`;
+  }
   if (usesPosition(spec)) {
     cards += `C_${id}_x ${x} 0 1\n`;
     cards += `R_${id}_xl ${x} 0 1e12\n`;

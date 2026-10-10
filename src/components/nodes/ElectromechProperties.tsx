@@ -53,7 +53,7 @@ const FIELDS: Record<string, Field[]> = {
   ],
 };
 
-const INPUT =
+export const INPUT =
   'w-full text-sm border border-gray-300 rounded px-2 py-1 bg-white dark:bg-slate-900 ' +
   'text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none';
 
@@ -66,7 +66,7 @@ const INPUT =
  * the list when the scene has no such channel (or nothing is linked), so a
  * binding saved with the circuit is not lost by opening it unlinked.
  */
-function ChannelPicker({ label, value, options, onChange, hint }: {
+export function ChannelPicker({ label, value, options, onChange, hint }: {
   label: string; value: string; options: { value: string; label: string }[]; onChange: (v: string | undefined) => void; hint: string;
 }) {
   const known = options.some(o => o.value === value);

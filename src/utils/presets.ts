@@ -1320,6 +1320,47 @@ Serial.println("CC1101 Initialized ready for RF TX/RX");
       },
     ],
     noteCard: `# Heltec V4 + CC1101 RF Transceiver 📻\n\nConnects the **Heltec WiFi LoRa 32 V4** development board to an external **CC1101 Sub-1GHz RF Transceiver module** via an 8-pin (2x4) Dupont connector.\n\n### Connections:\n- **VCC (3.3V)**: Powered from Heltec 3V3 rail.\n- **GND**: Shared system ground.\n- **MOSI (SI)**: Heltec GPIO 3.\n- **MISO (SO)**: Heltec GPIO 1 (ADC/IO).\n- **SCLK**: Heltec GPIO 33.\n- **CSN**: Heltec GPIO 36 (Chip Select Active Low).\n- **GDO0**: Heltec GPIO 37 (Packet TX/RX Interrupt).\n\n### PCB Milling & CAM Routing:\nClick **Export PCB / G-Code** to see the full dual-layer board layout, $2.54\\text{ mm}$ Dupont matrix footprint for CC1101, and CNC milling isolation toolpaths routed directly to all pins!`
+  },
+  /*
+   * The Thiele-Small speaker in the ported box its defaults describe, driven
+   * from a tone through a ×3 op-amp on ±12V rails. Direct-coupled: a coupling
+   * capacitor into 7Ω would cut the very bass the box is there to make.
+   */
+  portedSpeaker: {
+    name: 'Ported 3" Speaker',
+    recommendedSimLength: 0.2,
+    nodes: [
+      { id: 'vpos', type: 'voltage', position: { x: 100, y: 50 }, data: { label: '+12V', voltage: 12 } },
+      { id: 'g_vpos', type: 'ground', position: { x: 100, y: 120 }, data: { label: 'GND' } },
+      { id: 'vneg', type: 'voltage', position: { x: 600, y: 360 }, data: { label: '-12V', voltage: 12 } },
+      { id: 'g_vneg', type: 'ground', position: { x: 600, y: 440 }, data: { label: 'GND' } },
+      { id: 'sg1', type: 'signalgen', position: { x: 160, y: 176 }, data: { label: 'Tone', waveform: 'sine', frequency: 100, amplitude: 1 } },
+      { id: 'g_sg', type: 'ground', position: { x: 180, y: 280 }, data: { label: 'GND' } },
+      { id: 'oa1', type: 'opamp', position: { x: 452, y: 152 }, data: { label: 'Amp ×3' } },
+      { id: 'rf', type: 'resistor', position: { x: 462, y: 50 }, data: { orientation: 'left', label: '20k' } },
+      { id: 'rg', type: 'resistor', position: { x: 352, y: 232 }, data: { label: '10k', orientation: 'vertical' } },
+      { id: 'g_rg', type: 'ground', position: { x: 352, y: 312 }, data: { label: 'GND' } },
+      {
+        id: 'spk1', type: 'speaker', position: { x: 720, y: 168 },
+        data: { label: 'Speaker', acCouple: true, normalize: true, driverModel: 'thiele-small', enclosure: 'ported' },
+      },
+      { id: 'g_spk', type: 'ground', position: { x: 732, y: 270 }, data: { label: 'GND' } },
+    ],
+    edges: [
+      { id: 'e-vpos-oa', source: 'vpos', target: 'oa1', sourceHandle: 'pos', targetHandle: 'vcc', type: 'smoothstep' },
+      { id: 'e-vpos-gnd', source: 'vpos', target: 'g_vpos', sourceHandle: 'neg', targetHandle: 'in', type: 'smoothstep' },
+      { id: 'e-vneg-gnd', source: 'vneg', target: 'g_vneg', sourceHandle: 'pos', targetHandle: 'in', type: 'smoothstep' },
+      { id: 'e-vneg-oa', source: 'vneg', target: 'oa1', sourceHandle: 'neg', targetHandle: 'vee', type: 'smoothstep' },
+      { id: 'e-sg-oa', source: 'sg1', target: 'oa1', sourceHandle: 'out', targetHandle: 'in_non', type: 'smoothstep' },
+      { id: 'e-sg-gnd', source: 'sg1', target: 'g_sg', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
+      { id: 'e-oaout-rf', source: 'oa1', target: 'rf', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+      { id: 'e-rf-oainv', source: 'rf', target: 'oa1', sourceHandle: 'out', targetHandle: 'in_inv', type: 'smoothstep' },
+      { id: 'e-rg-oainv', source: 'rg', target: 'oa1', sourceHandle: 'in', targetHandle: 'in_inv', type: 'smoothstep' },
+      { id: 'e-rg-gnd', source: 'rg', target: 'g_rg', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+      { id: 'e-oaout-spk', source: 'oa1', target: 'spk1', sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep' },
+      { id: 'e-spk-gnd', source: 'spk1', target: 'g_spk', sourceHandle: 'gnd', targetHandle: 'in', type: 'smoothstep' },
+    ],
+    noteCard: `# Ported 3" Speaker 🔊\n\nA tone through a ×3 op-amp into a **Thiele-Small speaker**: a 3" driver (fs ≈ 92Hz) in a 1L box with a 5cm port of 1cm radius, tuned to fb ≈ 119Hz.\n\n### Try:\n- **AC sweep** from *Tone*, 20Hz–2kHz. The current out of the amp shows the two impedance peaks of a ported box with the dip at fb between them, and the node **int_spk1_spl** in dB is the SPL at 1m (for the 3V the amp makes from 1V).\n- Change the **Enclosure** in the speaker's inspector to *Sealed* or *None* and sweep again.\n- **Link Mesh**, measure a body's cavity there, and bind the box volume and port to it.\n\nSwitch **Driver model** back to *8Ω resistor* for the plain load every other circuit uses.`
   }
 };
 

@@ -119,6 +119,12 @@ explain a circuit ("probe pin 3 of U1").
 'speaker'        Speaker output.
                  Handles: "in" (signal, left), "gnd" (ground, right)
                  data: { label: "Speaker", acCouple: boolean (default true), normalize: boolean (default true) }
+                 Electrically an 8Ω resistor unless data.driverModel = "thiele-small": then a moving-coil driver with
+                 re (7.2Ω), le (0.1mH), bl (4T·m), mms (3g), cms (1mm/N), rms (0.5N·s/m), sd (33cm² = 3.3m m²),
+                 enclosure "none"|"sealed"|"ported", boxVolume (m³, 1m = 1L), portLength (0.05m), portRadius (0.01m),
+                 boxLeakQ (7). In an AC sweep, node int_<id>_spl in dB is SPL at 1m (half-space) for the drive.
+                 boxVolumeChannel/portLengthChannel/portRadiusChannel bind those to a linked Mesh body's measured cavity
+                 ("body:<name>.cavityVolume", ".portLength", ".portRadius").
 
 'multimeter'     Multimeter probe (inspects final state).
                  Handles: "pos" (positive probe, top), "neg" (negative probe, bottom)
