@@ -54,5 +54,5 @@ For circuits with time-series data (Scope, LED animations), the UI should remain
 ## 5. C-to-JS Bridge Injection
 
 The WASM bridge is often injected during the build process via `sed` or `patch`. 
-- **Location**: `Docker/run.sh` or similar build scripts.
+- **Location**: `Docker/build-wasm.sh`, which both `build-ngspice-local.sh` and `Docker/run.sh` call (see GUIDE.md, *Building the Engine*).
 - **Pattern**: Look for `EM_ASYNC_JS` macros and ensure they align with the expected signature of the JS handler in `simulationLink.ts`.

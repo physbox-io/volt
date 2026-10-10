@@ -37,21 +37,37 @@ The original code purposefully did **not** return the Promise back to `EM_ASYNC_
 
 ## Building the Engine
 
-To reliably build the custom ngspice engine, use the following sequence inside the `ngspice-wasm` directory. Make sure you have activated the conda build environment and sourced the Emscripten SDK first.
+You rarely need to. `src/spice.js` and `src/spice.wasm` are the compiled engine and are committed; CI, the Docker image and a fresh checkout all just run `npm ci && npm run build` here, which bundles them into `dist/` (gitignored). Rebuild the wasm only when the ngspice C source, `Docker/static-cm/cmstatic.c`, `Docker/pre.js` or the build flags change, and commit the two outputs.
+
+Both routes run the same script, `Docker/build-wasm.sh`, which configures ngspice as a cross build for `wasm32-unknown-emscripten` with XSPICE and builds it:
 
 ```bash
-cd ngspice-ngspice/release
-emmake make -j4
+# Without Docker, from the committed tree (ngspice-wasm/ngspice-ngspice), on a copy of it.
+# Needs emscripten (built with 5.0.7), python >= 3.10 for emcc (set EMSDK_PYTHON if
+# python3 is older), and gcc, autoconf, automake, libtool, bison and flex on PATH.
+./build-ngspice-local.sh <emsdk-dir> [work-dir]   # copies spice.js/spice.wasm into src/
+npm run build                                     # then rebundle dist/
 
-cd ../../EEcircuit-engine
-# Copy the compiled WASM artifacts over
-cp ../ngspice-ngspice/release/src/spice.mjs src/spice.js
-cp ../ngspice-ngspice/release/src/spice.wasm src/spice.wasm
-
-# Install dependencies and build the TypeScript wrapper
-npm install
-npm run build
+# With Docker, from a fresh clone of ngspice (github.com/danchitnis/ngspice-sf-mirror)
+# under `emsdk install latest`: Docker/run.sh. (Untested since build-wasm.sh replaced its
+# inline build — the Docker daemon needs sudo on the dev machine.)
 ```
+
+A clean build takes 6–8 minutes.
+
+### XSPICE code models are linked in statically
+
+Native ngspice `dlopen()`s each code-model library (`digital.cm`, `analog.cm`, `xtradev.cm`, `xtraevt.cm`, `table.cm`, `tlines.cm`, `spice2poly.cm`) when spinit runs `codemodel …`. A plain emscripten module cannot `dlopen`, and the `.cm` files this package used to write into the FS were native x86-64 ELF libraries, so every XSPICE model (`adc_bridge`, `dac_bridge`, `d_tff`, `d_and`, …) failed with *"Unknown model type"*. Now `build-wasm.sh` compiles the code models to wasm, archives them as `libcmstatic.a` with `Docker/static-cm/cmstatic.c` (which stands in for each library's `dlmain.c` and registers its device tables), links that into `spice.wasm`, and patches `load_opus` to ask `cmstatic_load` before `dlopen`. spinit's `codemodel` lines therefore keep working with no `.cm` file present. `tests/xspiceDigital.test.ts` in Volt proves it: flip-flop counters, `ic=` start states, and a count carried across two runs.
+
+### What build-wasm.sh patches, and why
+
+- **The per-timestep yield hook** in `src/frontend/control.c` must be the plain `await Module["handleThings"]()`. The committed tree once carried a variant that also awaited `setTimeout(resolve, 0)` — a ≥1ms timer on every timestep in node, which made transients ~12× slower. The script normalises it and fails if `setTimeout` remains.
+- **cmpp in a cross build**: `cmpp` is built natively (`CC_FOR_BUILD=gcc`), but the icm makefile ran the wasm `cmpp` for `cmpp -p`, which then lists no models; it is pointed at `$(CMPP)`.
+- **`src/xspice/verilog` and `vhdl`** are skipped: they are co-simulation shared libraries libtool will not build for wasm, and nothing uses them.
+- **hicum2** removal and the `configure.ac` edits, as `run.sh` always did.
+- The link line still uses `-s ASYNCIFY=1` with `ASYNCIFY_IGNORE_INDIRECT=0`, because `simulationLink.ts` drives ngspice's interactive command loop and pauses it between runs (see below). That instruments the whole binary and is the prime suspect for the per-point solve cost; the shared-library API (`ngSpice_Command`, synchronous) would remove the need for it.
+
+Eight source files the build needs (`src/frontend/parse-bison.y`, `src/spicelib/parser/inpptree-parser.y`, and six under `src/xspice/icm/table/`) are matched by ngspice's own `.gitignore` and are force-added in this repo.
 
 > [!IMPORTANT]
 > The `EEcircuit-engine` TypeScript build (`npm run build`) strictly checks types. If you modify `simulationLink.ts` to access undocumented Emscripten FS bindings (like `module.FS.mkdir`), you must use TypeScript overrides (e.g., `(module.FS as any)`) to prevent the build from silently failing and leaving you with an outdated output bundle.

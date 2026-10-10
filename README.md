@@ -39,6 +39,8 @@ A high-fidelity, interactive electronics playground built with React and powered
    npm install
    ```
 
+The engine's compiled `spice.js`/`spice.wasm` are committed, so step 1 is all a checkout, CI or the Docker image needs. To rebuild the WebAssembly itself from the ngspice C source (with XSPICE's code models linked in), see *Building the Engine* in [GUIDE.md](ngspice-wasm/EEcircuit-engine/GUIDE.md): `ngspice-wasm/EEcircuit-engine/build-ngspice-local.sh <emsdk-dir>`, then `npm run build` there.
+
 ### Running the Application
 
 Start the development server from the repo root:
@@ -61,7 +63,7 @@ npm run test:hang
 
 ## 📘 Documentation
 
-- **[GUIDE.md](ngspice-wasm/EEcircuit-engine/GUIDE.md)**: Technical details on the WASM compilation, Asyncify fixes, and simulation lifecycle.
+- **[GUIDE.md](ngspice-wasm/EEcircuit-engine/GUIDE.md)**: Building the WASM engine (XSPICE linked statically), the Asyncify bridge, and the simulation lifecycle.
 - **[SKILL.md](ngspice-wasm/EEcircuit-engine/SKILL.md)**: Debugging patterns and maintenance tips for working with the simulation engine.
 
 ## ⌨️ Canvas shortcuts

@@ -62,18 +62,61 @@ async function getEngine(): Promise<Simulation> {
  * transient run, requests are chained rather than raced.
  */
 let queue: Promise<void> = Promise.resolve();
+/** Requests waiting to run, so a warm-up gives way to them. */
+let pending = 0;
 
 self.onmessage = (evt: MessageEvent<SimRequest>) => {
+  if (evt.data.type === 'RUN') pending++;
   queue = queue.then(() => handle(evt.data)).catch(err => {
     console.error('[SimulationWorker] unhandled:', err);
+  }).finally(() => {
+    if (evt.data.type === 'RUN') pending--;
   });
 };
+
+/*
+ * A fresh engine runs its first ~100 solves at about two and a half times the
+ * cost of later ones while the wasm is compiled up to speed — the first
+ * seconds of every HIL or Mesh-linked run, which are exactly the ones that
+ * must keep up. So after starting it is run on a small circuit with a bit of
+ * everything in it (a source edge, RLC, a diode, a BJT, a B-source), which
+ * measured: bjtAmp's first ten 40ms slices 31.6ms each cold, 12.9ms after. It
+ * stops the moment a real request arrives.
+ */
+const WARM_UP_RUNS = 60;
+const WARM_UP_NETLIST = `warm-up
+V1 in 0 PULSE(0 5 0 1u 1u 0.25m 0.5m)
+R1 in a 1k
+C1 a 0 100n
+L1 a b 1m
+R2 b 0 100
+D1 a c DMOD
+R3 c 0 1k
+.model DMOD D(IS=1e-14)
+Q1 col a 0 QMOD
+R4 vcc col 1k
+V2 vcc 0 DC 5
+.model QMOD NPN(BF=100 CJC=2p CJE=4p)
+B1 d 0 V = 1 / (1 + exp(-(V(a) - 1.5) / 0.05)) * sin(3 * V(b))
+R5 d 0 1k
+.tran 0.02m 2m 0 0.02m
+.end
+`;
+
+async function warmUp(sim: Simulation) {
+  for (let i = 0; i < WARM_UP_RUNS && pending === 0; i++) {
+    sim.setNetList(WARM_UP_NETLIST);
+    await sim.runSim();
+    // Let a request that arrived during that solve in before the next one.
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+}
 
 const handle = async (req: SimRequest) => {
 
   if (req.type === 'INIT') {
     try {
-      await getEngine();
+      await warmUp(await getEngine());
     } catch (err) {
       console.error("[SimulationWorker] error preloading simulation engine:", err);
     }

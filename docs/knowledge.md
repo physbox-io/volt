@@ -5,7 +5,7 @@ This document is the source of truth for the **PhysBox: Volt** electronics playg
 ## 🚀 Project Overview
 - **Core Identity**: An experimental electronics playground for discovery and learning.
 - **Domain**: `volt.physbox.io`
-- **Tech Stack**: React, React Flow (Canvas), `@tscircuit/ngspice-spice-engine` (WASM-based ngspice), Vite, Vanilla CSS.
+- **Tech Stack**: React, React Flow (Canvas), `eecircuit-engine` — ngspice with XSPICE compiled to WebAssembly, a local package in `ngspice-wasm/EEcircuit-engine` (see its GUIDE.md for rebuilding), Vite, Vanilla CSS.
 - **Font**: Outfit (Google Fonts).
 
 ---
