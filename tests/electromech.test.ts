@@ -212,8 +212,10 @@ describe('a step driver turning a stepper', () => {
       // No edge yet: θ is the 45° home.
       const r = await run(nodes, edges, 40, 0.02, FROM_REST);
       const angle = Math.PI / 4;
-      expect(last(r.v('i(v_d_sa)'))).toBeCloseTo(ilim * Math.cos(angle), 2);
-      expect(last(r.v('i(v_d_sb)'))).toBeCloseTo(ilim * Math.sin(angle), 2);
+      // Within 1%: the regulator is proportional, and settles R/(G+R) — 0.5%
+      // here — short. A real A4988 holds its current to about ±5%.
+      expect(Math.abs(last(r.v('i(v_d_sa)')) / (ilim * Math.cos(angle)) - 1)).toBeLessThan(0.01);
+      expect(Math.abs(last(r.v('i(v_d_sb)')) / (ilim * Math.sin(angle)) - 1)).toBeLessThan(0.01);
       // At standstill all of it is copper loss: VM·I_supply = (Ia² + Ib²)·R.
       const supply = -last(r.v('i(v_vm)'));
       expect(supply * 12).toBeCloseTo(ilim * ilim * 1.5, 1);

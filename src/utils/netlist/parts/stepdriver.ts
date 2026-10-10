@@ -2,6 +2,9 @@ import type { PartEmitter } from '../part';
 import { numParam } from '../params';
 import { logicHigh } from '../logic';
 
+/** Volts of bridge drive per amp of current error. */
+const REGULATOR_GAIN = 300;
+
 export const STEP_DRIVER_DEFAULTS = {
   /** Microsteps per full step: 1, 2, 4, 8 or 16. */
   microsteps: 16,
@@ -60,8 +63,17 @@ export const stepdriver: PartEmitter = {
       const sense = `V_${id}_s${name}`;
       const u = `int_${id}_u${name}`;
       const drv = `int_${id}_d${name}`;
-      const err = `1000 * (${target} - I(${sense}))`;
-      return `B_${id}_u${name} ${u} 0 V = ${err} > ${vs} ? ${vs} : (${err} < -${vs} ? -${vs} : ${err})\n`
+      const want = `int_${id}_t${name}`;
+      /*
+       * Proportional, clamped to the supply. The gain is a trade: the current
+       * settles R/(G+R) short of the target (0.5% for a 1.5Ω phase), and a
+       * stiffer loop costs solve time — at 1000 a 5ms slice took half as long
+       * again as at 300. The target sits on a node of its own so the clamp,
+       * which reads it three times, does not evaluate it three times.
+       */
+      const err = `${REGULATOR_GAIN} * (V(${want}) - I(${sense}))`;
+      return `B_${id}_t${name} ${want} 0 V = ${target}\n`
+        + `B_${id}_u${name} ${u} 0 V = ${err} > ${vs} ? ${vs} : (${err} < -${vs} ? -${vs} : ${err})\n`
         + `B_${id}_${name}1 ${drv} ${gnd} V = (${vs} + V(${u})) / 2\n`
         + `${sense} ${drv} ${p1} DC 0\n`
         + `B_${id}_${name}2 ${p2} ${gnd} V = (${vs} - V(${u})) / 2\n`;

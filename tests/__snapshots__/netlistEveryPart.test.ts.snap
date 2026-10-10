@@ -110,11 +110,13 @@ B_drv1_ms 0 int_drv1_ms I = 1000000 * (V(int_drv1_th) + 0.19634954084936207 * (2
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
 B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
-B_drv1_ua int_drv1_ua 0 V = 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)))
+B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
+B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
 B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
 V_drv1_sa int_drv1_da NC_drv1_a1 DC 0
 B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ua)) / 2
-B_drv1_ub int_drv1_ub 0 V = 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)))
+B_drv1_tb int_drv1_tb 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483))
+B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
 B_drv1_b1 int_drv1_db NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ub)) / 2
 V_drv1_sb int_drv1_db NC_drv1_b1 DC 0
 B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ub)) / 2
@@ -478,11 +480,13 @@ B_drv1_ms 0 int_drv1_ms I = 1000000 * (V(int_drv1_th) + 0.19634954084936207 * (2
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
 B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
-B_drv1_ua int_drv1_ua 0 V = 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)))
+B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
+B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
 B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
 V_drv1_sa int_drv1_da NC_drv1_a1 DC 0
 B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ua)) / 2
-B_drv1_ub int_drv1_ub 0 V = 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)))
+B_drv1_tb int_drv1_tb 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483))
+B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
 B_drv1_b1 int_drv1_db NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ub)) / 2
 V_drv1_sb int_drv1_db NC_drv1_b1 DC 0
 B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ub)) / 2
@@ -846,11 +850,13 @@ B_drv1_ms 0 int_drv1_ms I = 1000000 * (V(int_drv1_th) + 0.19634954084936207 * (2
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
 B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
-B_drv1_ua int_drv1_ua 0 V = 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)))
+B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
+B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
 B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
 V_drv1_sa int_drv1_da NC_drv1_a1 DC 0
 B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ua)) / 2
-B_drv1_ub int_drv1_ub 0 V = 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)))
+B_drv1_tb int_drv1_tb 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483))
+B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
 B_drv1_b1 int_drv1_db NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ub)) / 2
 V_drv1_sb int_drv1_db NC_drv1_b1 DC 0
 B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ub)) / 2
@@ -1214,11 +1220,13 @@ B_drv1_ms 0 int_drv1_ms I = 1000000 * (V(int_drv1_th) + 0.19634954084936207 * (2
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
 B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
-B_drv1_ua int_drv1_ua 0 V = 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)))
+B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
+B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
 B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
 V_drv1_sa int_drv1_da NC_drv1_a1 DC 0
 B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ua)) / 2
-B_drv1_ub int_drv1_ub 0 V = 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)))
+B_drv1_tb int_drv1_tb 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483))
+B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
 B_drv1_b1 int_drv1_db NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ub)) / 2
 V_drv1_sb int_drv1_db NC_drv1_b1 DC 0
 B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ub)) / 2
@@ -1740,11 +1748,13 @@ B_drv1_ms 0 int_drv1_ms I = 1000000 * (V(int_drv1_th) + 0.19634954084936207 * (2
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
 B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
-B_drv1_ua int_drv1_ua 0 V = 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)))
+B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
+B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
 B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
 V_drv1_sa int_drv1_da NC_drv1_a1 DC 0
 B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ua)) / 2
-B_drv1_ub int_drv1_ub 0 V = 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)))
+B_drv1_tb int_drv1_tb 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483))
+B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
 B_drv1_b1 int_drv1_db NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ub)) / 2
 V_drv1_sb int_drv1_db NC_drv1_b1 DC 0
 B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ub)) / 2
@@ -2105,11 +2115,13 @@ B_drv1_ms 0 int_drv1_ms I = 1000000 * (V(int_drv1_th) + 0.19634954084936207 * (2
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
 B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
-B_drv1_ua int_drv1_ua 0 V = 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sa)))
+B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
+B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
 B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
 V_drv1_sa int_drv1_da NC_drv1_a1 DC 0
 B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ua)) / 2
-B_drv1_ub int_drv1_ub 0 V = 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 1000 * (1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483)) - I(V_drv1_sb)))
+B_drv1_tb int_drv1_tb 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483))
+B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
 B_drv1_b1 int_drv1_db NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ub)) / 2
 V_drv1_sb int_drv1_db NC_drv1_b1 DC 0
 B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ub)) / 2
