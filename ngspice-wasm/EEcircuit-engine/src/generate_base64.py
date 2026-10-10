@@ -1,7 +1,9 @@
 import base64
 import os
 
-files = ['analog.cm', 'digital.cm', 'spice2poly.cm', 'table.cm', 'tlines.cm', 'xtradev.cm', 'xtraevt.cm', 'spinit']
+# The XSPICE code models are linked into spice.wasm (Docker/static-cm), so only
+# spinit is shipped as a file.
+files = ['spinit']
 out = "export const models = {\n"
 
 for f in files:

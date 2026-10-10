@@ -104,32 +104,9 @@ sed -i 's|while (converged != 0) {|while (converged != 0) {\n\t\teesim_sleep_hac
 echo -e "\n"
 echo "build: Building ngspice..."
 
-./autogen.sh
-mkdir release
-cd release
-
-emconfigure ../configure --disable-debug --disable-openmp --enable-xspice --disable-shared --disable-osdi --without-x -with-readline=no
-wait
-
-# ngspice$(EXEEXT)
-sed -i 's|$(ngspice_LDADD) $(LIBS)|$(ngspice_LDADD) $(LIBS) -O2 -s ASYNCIFY=1 -s ASYNCIFY_ADVISE=0 -s ASYNCIFY_IGNORE_INDIRECT=0 -s ENVIRONMENT="web,worker" -s ALLOW_MEMORY_GROWTH=1 -s MODULARIZE=1 -s EXPORT_ES6=1 -s EXPORTED_RUNTIME_METHODS=["FS","Asyncify","callMain"] --pre-js /mnt/pre.js -o spice.mjs|g' ./src/Makefile
-
-
-
-emmake make -j || { echo "build: Make failed, stopping execution"; exit 1; }
-#emmake make 2>&1 | tee make.log
-
-wait
-
-############################################
-
-echo -e "\n"
-echo "build: Copying the build artifacts..."
-
-cd src
-mv spice.mjs spice.js
-mkdir -p /mnt/build
-\cp spice.js spice.wasm /mnt/build
+# Configure, build the XSPICE code models and link them statically into
+# spice.wasm (see build-wasm.sh and static-cm/cmstatic.c).
+bash /mnt/build-wasm.sh . /mnt/build /mnt/pre.js || { echo "build: Make failed, stopping execution"; exit 1; }
 
 echo "build: Build artifacts are copied to /mnt/build"
 
