@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 import { MeshLink, jointChannels, type CoSimChannel, type LinkStatus } from '../utils/coSimLink';
 import { coSimBindings, coSimStep, initialCoSimState, type CoSimState } from '../sim/coSimStep';
@@ -81,6 +81,8 @@ export function useMeshLink({ nodesRef, edgesRef, setNodes, setRunAdvisories, so
 
   const open = (): boolean => link.open();
   const close = () => link.close();
+  /** Output channels where the scene stands: a step of no time, which Mesh answers without moving. */
+  const read = useCallback(async (names: string[]) => (await link.stepFor(0, {}, names)).outputs, [link]);
 
   /** Whether a run would drive Mesh: linked, and something bound to the scene. */
   const wouldDrive = (nodes: Node[]) => {
@@ -150,5 +152,5 @@ export function useMeshLink({ nodesRef, edgesRef, setNodes, setRunAdvisories, so
     runningRef.current = false;
   };
 
-  return { status, channels, scene, open, close, start, stop, runningRef, wouldDrive };
+  return { status, channels, scene, open, close, read, start, stop, runningRef, wouldDrive };
 }

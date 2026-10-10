@@ -279,6 +279,18 @@ export type SpeakerNodeData = BaseNodeData & {
   normalize?: boolean;
   /** Written by the run. `t` is in milliseconds here, not seconds. */
   voltageData?: PwlPoint[];
+  /**
+   * Unset: the 8Ω resistor. 'thiele-small': a voice coil, cone and box built
+   * on the transducer, with its parameters (re, le, bl, mms, cms, rms, sd,
+   * boxVolume, portLength, portRadius, boxLeakQ) read like a motor's, SI text
+   * or numbers. See netlist/parts/speaker.ts.
+   */
+  driverModel?: 'thiele-small';
+  enclosure?: 'none' | 'sealed' | 'ported';
+  /** Mesh output channels the enclosure's settings take their values from. */
+  boxVolumeChannel?: string;
+  portLengthChannel?: string;
+  portRadiusChannel?: string;
 };
 
 /* ── Programmable parts ───────────────────────────────────────────────── */

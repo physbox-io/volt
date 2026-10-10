@@ -69,6 +69,7 @@ import { ProbeTooltip } from './components/ProbeTooltip';
 import { useHil } from './hooks/useHil';
 import { useMeshLink } from './hooks/useMeshLink';
 import { MeshLinkContext } from './components/meshLinkContext';
+import { captureCavityFragment } from './utils/meshCavity';
 import { readElectromech } from './utils/electromechReadouts';
 import { CanvasStateProvider } from './components/canvasState';
 import type { SpiceComplexResult, SpiceResult } from './types/simulation';
@@ -314,8 +315,8 @@ export default function App() {
     },
   });
   const meshLinkInfo = useMemo(
-    () => ({ status: meshLink.status, channels: meshLink.channels, scene: meshLink.scene }),
-    [meshLink.status, meshLink.channels, meshLink.scene],
+    () => ({ status: meshLink.status, channels: meshLink.channels, scene: meshLink.scene, read: meshLink.read }),
+    [meshLink.status, meshLink.channels, meshLink.scene, meshLink.read],
   );
 
   const stopSimulation = () => {
@@ -863,6 +864,8 @@ export default function App() {
     'rating', 'ratedCurrent', 'rdsOn', 'resistance', 'rotorTeeth', 'v_drop', 'voltage',
     'vto', 'waveform', 'windingL', 'windingR', 'shaftJoint', 'channel', 'gain', 'offset',
     'threshold', 'hysteresis', 'high', 'low',
+    'driverModel', 'enclosure', 're', 'le', 'bl', 'mms', 'cms', 'rms', 'sd',
+    'boxVolume', 'portLength', 'portRadius', 'boxLeakQ',
   ] as const;
 
   const netlistSignature = useMemo(() => {
@@ -1423,6 +1426,9 @@ export default function App() {
     // Once, on mount: opening the circuit takes the fragment out of the URL.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // A cavity Mesh measured, handed over unlinked: kept for the speaker inspector to apply.
+  useEffect(() => { captureCavityFragment(); }, []);
 
   useMCPBridge({
     nodes, edges, isSimulating, selectedPreset, probeMode,

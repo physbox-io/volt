@@ -8,11 +8,14 @@ import { NumberInput } from '@physbox-io/ui';
 import type { SpeakerNodeData } from '../../types/nodes';
 import { SchematicLabel } from './schematic';
 import { useDesignator } from './designatorContext';
+import { SpeakerDriverProperties } from './SpeakerDriverProperties';
 
 
-export function SpeakerProperties({ node, updateData }: NodePropertiesProps) {
+export function SpeakerProperties(props: NodePropertiesProps) {
+  const { node, updateData } = props;
   return (
     <>
+      <SpeakerDriverProperties {...props} />
       <div className="mb-3">
         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Output Target</label>
         <select 

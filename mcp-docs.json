@@ -529,6 +529,24 @@
           "coldR": "Ω intact, default 0.05",
           "behaviour": "Blows after i2t/(I² − rating²) seconds and stays blown across slices and continued runs until Reset. After a Run, data.blown says whether it went."
         },
+        "speaker": {
+          "driverModel": "unset (default): an 8Ω resistor, exactly as before. 'thiele-small': a moving-coil driver built on the same transducer primitive (one phase, coupling Bl, the cone as a linear shaft with a suspension spring) plus an acoustic box",
+          "re": "voice-coil resistance Ω, default 7.2",
+          "le": "voice-coil inductance H, default 0.1m",
+          "bl": "force factor T·m, default 4",
+          "mms": "moving mass kg (air load included), default 3m",
+          "cms": "suspension compliance m/N, default 1m",
+          "rms": "mechanical resistance N·s/m, default 0.5",
+          "sd": "effective cone area m², default 3.3m (a 3\" driver: fs ≈ 92Hz, Vas ≈ 1.5L, Qts ≈ 0.64)",
+          "enclosure": "'none' (default, free air), 'sealed' or 'ported'",
+          "boxVolume": "internal volume Vb, m³, default 1m (1L). Box compliance Cab = Vb/(ρc²), ρ = 1.18kg/m³, c = 345m/s",
+          "portLength": "m, default 0.05 (ported only)",
+          "portRadius": "m, default 0.01 (ported only). Port mass Map = ρ(Lp + 1.7·rp)/(π·rp²); box tuning fb = 1/(2π√(Map·Cab))",
+          "boxLeakQ": "ported box leakage as a Q at fb, default 7",
+          "boxVolumeChannel": "a linked Mesh output, e.g. 'body:<name>.cavityVolume'; while linked, boxVolume takes its value. Likewise portLengthChannel ('.portLength') and portRadiusChannel ('.portRadius')",
+          "nodes": "int_<id>_w: cone velocity m/s. int_<id>_pb: box pressure Pa. int_<id>_spl: on-axis pressure at 1m in a half-space (infinite baffle) over 20µPa, so in an AC sweep its magnitude in dB is the SPL for the sweep's drive amplitude (AC 1 = 1V; add 9dB for 2.83V). i(l_<id>_ap): port volume velocity m³/s",
+          "behaviour": "Free air: |Z| peaks at fs = 1/(2π√(Mms·Cms)). Sealed: at fc = fs·√(1 + Vas/Vb), Vas = ρc²·Sd²·Cms. Ported: two peaks with a minimum near fb. Radiation impedance beyond Mms is not modelled."
+        },
       "meshsignal": {
         "channel": "the linked Mesh channel it reads, e.g. 'joint:arm.pos' (rad or m), 'joint:arm.vel', 'body:jaw.contacts' (count), 'body:cart.x' (m)",
         "gain": "default 1",
@@ -542,7 +560,8 @@
       "linkingToMesh": {
         "what": "Volt can drive a Mesh scene in lock step. The 'Link Mesh' toolbar button opens Mesh (it needs a user click, so it is not an MCP action) and handshakes; the scene's channels then appear in the inspector.",
         "motors": "Set a dcmotor's or stepper's data.shaftJoint to a Mesh hinge or slide joint name. Run then solves 10ms slices. Volt does only the electrics: the joint's angle and speed, held for the slice, give the motor its back-EMF. Mesh does all the mechanics: it is handed the motor's force law at the currents the slice ended on (k(x)·i as constant, cos(w·x) and sin(w·x) terms, evaluated at the joint's live position every Mesh step, sub-stepped when stiff) plus the rotor's inertia and bearing friction as joint armature and damping. Runs until Stop.",
-        "channels": "joint:<name>.force, .force.cos(w), .force.sin(w), .armature, .damping (in); joint:<name>.pos/.vel/.inertia/.load (out); actuator:<name> (in); actuator:<name>.force (out); body:<name>.x/.y/.z/.contacts (out)."
+        "channels": "joint:<name>.force, .force.cos(w), .force.sin(w), .armature, .damping (in); joint:<name>.pos/.vel/.inertia/.load (out); actuator:<name> (in); actuator:<name>.force (out); body:<name>.x/.y/.z/.contacts (out); body:<name>.cavityVolume (m³), .portLength, .portRadius (m) (out, once the body's cavity is measured in Mesh).",
+        "speakers": "Bind a Thiele-Small speaker's boxVolume, portLength and portRadius to a body's measured cavity channels in the inspector; they are read when bound and whenever Mesh links. Unlinked, Mesh's 'Measure cavity' can open Volt with the measurement in the URL fragment (#v=1&cavity=<m³>&body=<name>&portLength=&portRadius=), which the speaker inspector offers to apply."
       }
       }
     },
