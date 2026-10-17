@@ -344,9 +344,10 @@ describe('a bit change invalidates the Z datum', () => {
 
   it('demands one at the second tool change, where the length really changed', async () => {
     await runToToolChange(['T1 M6', 'G1 X1', 'T2 M6', 'G1 X2'].join('\n'));
+    // Resolves once the stream restarts, not when it next stops.
     await machine.resumeJob();
+    await vi.waitFor(() => expect(machine.getState().status).toBe('PAUSED_TOOL'));
 
-    expect(machine.getState().status).toBe('PAUSED_TOOL');
     expect(machine.getState().needsZeroBeforeResume).toBe(true);
     // Resuming here would cut with a work Z0 that describes the previous bit —
     // a gouge as deep as the two differ in length.
@@ -361,6 +362,7 @@ describe('a bit change invalidates the Z datum', () => {
   it('lets the job go on once Z has actually been re-zeroed, even after jogging', async () => {
     await runToToolChange(['T1 M6', 'G1 X1', 'T2 M6', 'G1 X2'].join('\n'));
     await machine.resumeJob();
+    await vi.waitFor(() => expect(machine.getState().status).toBe('PAUSED_TOOL'));
 
     const rezero = machine.zeroZOnSurface(0);
     await completeZeroZ(fake, -5.2);
