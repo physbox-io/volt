@@ -943,10 +943,11 @@ export class WebSerialManager extends GrblMachine<MachineState> {
   public async eStop(): Promise<void> {
     if (!this.transport) return;
     await super.eStop();
-    // Written straight to the transport rather than queued: the soft reset has
-    // just cleared GRBL's buffer, and this has to reach a controller that is
-    // still coming back up.
-    await this.transport.writeLine('M5');
+    // Queued like any line, so its `ok` is booked to it: written straight to
+    // the transport, that reply went unclaimed and answered whatever was sent
+    // next. The reset above has already waited for the controller to come
+    // back up, so this reaches one that is listening.
+    await this.sendLine('M5').catch(() => {});
   }
 
   // -------------------------------------------------------------------------
