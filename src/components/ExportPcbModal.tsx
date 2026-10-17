@@ -238,14 +238,19 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   /*
    * Pick the machine back up when this panel opens.
    *
-   * Only for a Tekno Box, and only one attempt — a cloud link reconnects with
-   * nobody present, where USB needs a port prompt that must never be raised
-   * unprompted. Silent on failure: the box may simply be asleep.
+   * Only one attempt. A cloud link reconnects with nobody present; USB only to
+   * the port this origin was granted last time (`autoConnect`), since a port
+   * prompt must never be raised unprompted. Silent on failure: the box may
+   * simply be asleep.
    */
   useEffect(() => {
     const savedMode = localStorage.getItem('grblTransport');
     const savedDevice = localStorage.getItem('grblCloudDeviceId');
-    if (savedMode !== 'wifi' || !savedDevice) return;
+    if (savedMode !== 'wifi') {
+      void webSerialManager.autoConnect().catch(() => {});
+      return;
+    }
+    if (!savedDevice) return;
     if (webSerialManager.getState().connected) return;
     webSerialManager.setTransport('wifi', savedDevice);
     void webSerialManager.connect().catch(() => {});
