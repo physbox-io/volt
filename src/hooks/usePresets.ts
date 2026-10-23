@@ -6,6 +6,8 @@ import {
   loadUserPresets,
   addUserPreset,
   removeUserPreset,
+  renameUserPreset,
+  duplicateUserPreset,
   nameToKey,
   loadMachiningSettings,
   saveMachiningSettings,
@@ -16,6 +18,8 @@ import {
 import { applyCamSetup, loadCamSetup } from '../utils/pcbTooling';
 import { PRESETS_UPDATED_EVENT } from '../utils/cloudSync';
 import { cloudAutosave } from '../utils/cloudDocuments';
+import { recordRecent } from '../utils/recentCircuits';
+import { captureCircuitThumb } from '../utils/canvasCapture';
 
 interface UsePresetsArgs {
   nodes: Node[];
@@ -89,11 +93,8 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     if (!preset) return;
     applyPreset(preset);
     setSelectedPreset(key);
+    recordRecent(key);
   }, [allPresets, applyPreset]);
-
-  const handlePresetChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    loadPreset(e.target.value);
-  }, [loadPreset]);
 
   /**
    * The circuit as it stands, in the shape a preset is stored in.
@@ -125,31 +126,37 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     noteCard: loadUserPresets()[nameToKey(name.replace(/^User:\s*/, ''))]?.noteCard,
   }), [nodes, edges]);
 
-  const savePreset = useCallback(() => {
-    const trimmed = saveDialogName.trim();
-    if (!trimmed) return;
+  /**
+   * Saves the circuit on the canvas under `name`, with a picture of it for the
+   * circuit browser. The picture is taken before the write, so the save lands
+   * a moment after the click rather than twice.
+   */
+  const saveCurrentAs = useCallback(async (trimmed: string) => {
     const key = nameToKey(trimmed);
     const preset = currentCircuit(`User: ${trimmed}`);
-    const updated = addUserPreset(key, preset);
+    const thumbnail = await captureCircuitThumb(nodes);
+    const updated = addUserPreset(key, thumbnail ? { ...preset, thumbnail } : preset);
     setUserPresets(updated);
     // A deliberate save is also a named revision of the cloud document, which the
     // pruner never discards — unlike the automatic checkpoints.
     void cloudAutosave.saveExplicit(trimmed, preset, `Saved as “${trimmed}”`);
     setSelectedPreset(key);
+    recordRecent(key);
+  }, [currentCircuit, nodes]);
+
+  const savePreset = useCallback(() => {
+    const trimmed = saveDialogName.trim();
+    if (!trimmed) return;
+    void saveCurrentAs(trimmed);
     setIsSaveDialogOpen(false);
     setSaveDialogName('');
-  }, [saveDialogName, currentCircuit]);
+  }, [saveDialogName, saveCurrentAs]);
 
   const savePresetByName = useCallback((name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const key = nameToKey(trimmed);
-    const preset = currentCircuit(`User: ${trimmed}`);
-    const updated = addUserPreset(key, preset);
-    setUserPresets(updated);
-    void cloudAutosave.saveExplicit(trimmed, preset, `Saved as “${trimmed}”`);
-    setSelectedPreset(key);
-  }, [currentCircuit]);
+    void saveCurrentAs(trimmed);
+  }, [saveCurrentAs]);
 
   const deleteUserPreset = useCallback((key: string) => {
     const updated = removeUserPreset(key);
@@ -159,6 +166,22 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     }
   }, [selectedPreset, loadPreset]);
 
+  /** Renames a saved circuit, following it with the selection when it is the one open. */
+  const renamePreset = useCallback((key: string, to: string) => {
+    const result = renameUserPreset(key, to);
+    if (result.ok) {
+      setUserPresets(loadUserPresets());
+      if (selectedPreset === key) setSelectedPreset(result.key);
+    }
+    return result;
+  }, [selectedPreset]);
+
+  const duplicatePreset = useCallback((key: string) => {
+    const result = duplicateUserPreset(key);
+    if (result.ok) setUserPresets(loadUserPresets());
+    return result;
+  }, []);
+
   return {
     selectedPreset,
     userPresets,
@@ -166,7 +189,6 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     loadPreset,
     applyPreset,
     currentCircuit,
-    handlePresetChange,
     isSaveDialogOpen,
     setIsSaveDialogOpen,
     saveDialogName,
@@ -174,5 +196,7 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     savePreset,
     savePresetByName,
     deleteUserPreset,
+    renamePreset,
+    duplicatePreset,
   };
 }

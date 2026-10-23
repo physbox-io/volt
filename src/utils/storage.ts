@@ -2,6 +2,8 @@ import type { PcbLayoutSnapshot, PcbOptions } from './pcbExporter';
 import type { CamSetup } from './pcbTooling';
 import { type Node, type Edge } from '@xyflow/react';
 import { saveCloudPreset, removeCloudPreset, PRESETS_UPDATED_EVENT } from './cloudSync';
+import { copyName } from './circuitCatalog';
+import { forgetRecent, renameRecent } from './recentCircuits';
 
 export interface CircuitPreset {
   name: string;
@@ -18,6 +20,13 @@ export interface CircuitPreset {
    * changes whenever anything touches the record.
    */
   savedAt?: number;
+  /**
+   * A small JPEG of the schematic at the last save, as a data URL, for the
+   * circuit browser. Kept with the preset so it travels to the account with
+   * it; loading reads only the circuit's own fields, so it never reaches the
+   * canvas, a JSON export or a share link.
+   */
+  thumbnail?: string;
   /**
    * The CAM settings the board was set up with — trace width, clearances,
    * feeds, depths, tabs.
@@ -122,11 +131,16 @@ export function saveUserPresets(presets: Record<string, CircuitPreset>): void {
  * upload must never be able to lose it, and `cloudSync` no-ops when signed out.
  */
 
-export function addUserPreset(key: string, preset: CircuitPreset): Record<string, CircuitPreset> {
+export function addUserPreset(
+  key: string,
+  preset: CircuitPreset,
+  { keepDate = false }: { keepDate?: boolean } = {},
+): Record<string, CircuitPreset> {
   const existing = loadUserPresets();
   // Stamped here rather than at each call site so every save is dated, whether
-  // it came from the dialog, the toolbar button or the MCP bridge.
-  const stamped: CircuitPreset = { ...preset, savedAt: Date.now() };
+  // it came from the dialog, the toolbar button or the MCP bridge. A rename
+  // keeps the date it had.
+  const stamped: CircuitPreset = keepDate && typeof preset.savedAt === 'number' ? preset : { ...preset, savedAt: Date.now() };
   const updated = { ...existing, [key]: stamped };
   saveUserPresets(updated);
   // Callers that hold the preset list in React state get it back from the
@@ -146,7 +160,56 @@ export function removeUserPreset(key: string): Record<string, CircuitPreset> {
   saveUserPresets(updated);
   window.dispatchEvent(new Event(PRESETS_UPDATED_EVENT));
   void removeCloudPreset(key);
+  forgetRecent(key);
   return updated;
+}
+
+/** A saved circuit's name as the person typed it, without the `User:` it is stored under. */
+export function userPresetName(preset: CircuitPreset): string {
+  return preset.name.replace(/^User:\s*/, '');
+}
+
+export type PresetFileResult = { ok: true; key: string; name: string } | { ok: false; message: string };
+
+/**
+ * Renames a saved circuit: a save under the new name, then the old one
+ * deleted. The key follows the name, so it is a new preset as far as storage
+ * and the account are concerned, carrying the old one's date and picture.
+ */
+export function renameUserPreset(fromKey: string, to: string): PresetFileResult {
+  const name = to.trim();
+  const presets = loadUserPresets();
+  const from = presets[fromKey];
+  if (!from) return { ok: false, message: 'That circuit is no longer saved.' };
+  if (!name) return { ok: false, message: 'A circuit needs a name.' };
+  const key = nameToKey(name);
+  if (key === fromKey) {
+    if (name !== userPresetName(from)) addUserPreset(key, { ...from, name: `User: ${name}` }, { keepDate: true });
+    return { ok: true, key, name };
+  }
+  if (presets[key]) return { ok: false, message: `There is already a circuit called “${userPresetName(presets[key])}”.` };
+  addUserPreset(key, { ...from, name: `User: ${name}` }, { keepDate: true });
+  // Moved before the delete, which would otherwise forget it.
+  renameRecent(fromKey, key);
+  removeUserPreset(fromKey);
+  return { ok: true, key, name };
+}
+
+/** Saves a copy of a circuit as "<name> copy", dated now. */
+export function duplicateUserPreset(fromKey: string): PresetFileResult {
+  const presets = loadUserPresets();
+  const from = presets[fromKey];
+  if (!from) return { ok: false, message: 'That circuit is no longer saved.' };
+  const taken = Object.values(presets).map(userPresetName);
+  let name = copyName(userPresetName(from), taken);
+  // Names that differ only in punctuation share a key; step past those too.
+  while (presets[nameToKey(name)]) {
+    taken.push(name);
+    name = copyName(name, taken);
+  }
+  const key = nameToKey(name);
+  addUserPreset(key, { ...from, name: `User: ${name}` });
+  return { ok: true, key, name };
 }
 
 /**

@@ -42,7 +42,9 @@ import {
 } from './utils/shareLink';
 import { revokeShare, isProRequired } from './utils/apiClient';
 import { SIGN_IN_REQUESTED_EVENT, SIGNED_IN_EVENT } from './components/UserProfileButton';
-import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight, Wrench, Share2, Copy, Check, Gauge, Waves, Cable } from 'lucide-react';
+import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight, Wrench, Share2, Copy, Check, Gauge, Waves, Cable, FolderOpen, ChevronDown } from 'lucide-react';
+import { CircuitBrowser } from './components/CircuitBrowser';
+import { firstBrowserTab, type CircuitBrowserTab } from './utils/recentCircuits';
 import AICopilotPanel from './components/AICopilotPanel';
 import { ExportPcbModal } from './components/ExportPcbModal';
 import { webSerialManager, type MachineState } from './utils/webSerialManager';
@@ -212,6 +214,8 @@ export default function App() {
   const [simResolution, setSimResolution] = useState<'normal' | 'high'>(savedSettings.simResolution ?? 'normal');
   const [isDocsOpen, setIsDocsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  /** The circuit browser (open, examples), and the tab it is on. */
+  const [browserTab, setBrowserTab] = useState<CircuitBrowserTab | null>(null);
   const [showAICopilot, setShowAICopilot] = useState(false);
   const [isPcbModalOpen, setIsPcbModalOpen] = useState(false);
   /**
@@ -352,7 +356,6 @@ export default function App() {
     selectedPreset,
     userPresets,
     loadPreset,
-    handlePresetChange,
     isSaveDialogOpen,
     setIsSaveDialogOpen,
     saveDialogName,
@@ -360,6 +363,8 @@ export default function App() {
     savePreset,
     savePresetByName,
     deleteUserPreset,
+    renamePreset,
+    duplicatePreset,
     allPresets,
     applyPreset,
     currentCircuit,
@@ -368,6 +373,10 @@ export default function App() {
   useEffect(() => {
     selectedPresetRef.current = selectedPreset;
   }, [selectedPreset]);
+  // For Ctrl+O, which picks the browser's first tab from them.
+  const userPresetsRef = useRef(userPresets);
+  useEffect(() => { userPresetsRef.current = userPresets; }, [userPresets]);
+  const closeBrowser = useCallback(() => setBrowserTab(null), []);
 
   const { noteCards, editingCardId, toggleEdit, toggleMinimize, updateMarkdown, closeCard, moveCard, addCard } = useNoteCards({ selectedPreset, userPresets });
 
@@ -1178,6 +1187,13 @@ export default function App() {
         return;
       }
 
+      // The browser's own Ctrl+O would open a file as a page and leave the app.
+      if (isModifier && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'o') {
+        e.preventDefault();
+        setBrowserTab(firstBrowserTab(userPresetsRef.current));
+        return;
+      }
+
       if (isModifier && e.key.toLowerCase() === 'y') {
         e.preventDefault();
         if (canRedo) redo();
@@ -1492,24 +1508,23 @@ export default function App() {
           
           {/* Preset Selector */}
           <div className="flex items-center min-w-0 max-lg:flex-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
-            <select
-              value={selectedPreset}
-              onChange={handlePresetChange}
-              className="bg-transparent text-slate-700 dark:text-slate-100 text-xs rounded-md block px-2 py-1 outline-none font-medium cursor-pointer border-none max-lg:flex-1 max-lg:min-w-0"
+            {/* The open circuit's name, and the way to every other one. A button
+                rather than the <select> it replaced: that listed forty-odd
+                examples and every saved circuit in one column, with no search. */}
+            <button
+              onClick={() => setBrowserTab(firstBrowserTab(userPresets))}
+              className="flex items-center gap-1.5 min-w-0 lg:w-[16rem] max-lg:flex-1 px-2 py-1 rounded-md text-xs font-medium text-slate-700 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+              title="Open a circuit or an example (Ctrl+O)"
+              aria-label="Open circuit"
             >
-              <optgroup label="⬜ Built-in Presets" className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300">
-                {Object.keys(presets).map(key => (
-                  <option key={key} value={key} className="bg-white dark:bg-slate-900 text-slate-750 dark:text-slate-350">{presets[key].name}</option>
-                ))}
-              </optgroup>
-              {Object.keys(userPresets).length > 0 && (
-                <optgroup label="📁 Saved Presets" className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300">
-                  {Object.keys(userPresets).map(key => (
-                    <option key={key} value={key} className="bg-white dark:bg-slate-900 text-slate-750 dark:text-slate-350">💾 {userPresets[key].name}</option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
+              <FolderOpen className="w-3.5 h-3.5 shrink-0 text-slate-500 dark:text-slate-400" />
+              <span className="truncate flex-1 text-left">
+                {userPresets[selectedPreset]
+                  ? `💾 ${userPresets[selectedPreset].name.replace(/^User:\s*/, '')}`
+                  : presets[selectedPreset]?.name ?? 'Open a circuit…'}
+              </span>
+              <ChevronDown className="w-3 h-3 shrink-0 text-slate-400" />
+            </button>
             {selectedPreset && userPresets[selectedPreset] && (
               <>
                 <button
@@ -1582,7 +1597,7 @@ export default function App() {
           <div className="flex items-center shrink-0 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
             <button 
               onClick={() => {
-                // Always "Save As": the preset dropdown's disk icon is the one that
+                // Always "Save As": the disk icon beside the circuit's name is the one that
                 // overwrites the selected preset in place.
                 setSaveDialogName(
                   selectedPreset && userPresets[selectedPreset]
@@ -2042,6 +2057,19 @@ export default function App() {
             setShowAura={setShowAura}
           />
         )}
+
+        <CircuitBrowser
+          tab={browserTab}
+          onTab={setBrowserTab}
+          onClose={closeBrowser}
+          userPresets={userPresets}
+          selectedPreset={selectedPreset}
+          onLoad={loadPreset}
+          onRename={renamePreset}
+          onDuplicate={duplicatePreset}
+          onDelete={deleteUserPreset}
+          onImportJson={importJson}
+        />
 
         {/* Save Circuit Dialog */}
         {isSaveDialogOpen && (
