@@ -1,5 +1,6 @@
 import {
   GrblMachine,
+  TelemetryThrottle,
   getGridStats,
   gridFromPoints,
   gridOffPlaneMm,
@@ -17,6 +18,7 @@ import {
   type Vec3,
 } from '@physbox-io/machining';
 import { machineSocketUrl, postMachineTelemetry, submitMachineJob,
+  type MachiningTelemetry,
   type RemoteCommand,
 } from './apiClient';
 import { cloudAutosave } from './cloudDocuments';
@@ -288,10 +290,12 @@ export class WebSerialManager extends GrblMachine<MachineState> {
   /** What the running job is, as the archive should remember it. */
   private jobContext: JobContext = {};
 
-  private lastTelemetryAt = 0;
-  private lastTelemetryStatus: MachineStatus | null = null;
-  /** Set while a telemetry post is outstanding — see reportTelemetry. */
-  private telemetryInFlight = false;
+  /** Telemetry pacing — see `onStateNotified`. */
+  private telemetry = new TelemetryThrottle<MachiningTelemetry>({
+    intervalMs: TELEMETRY_INTERVAL_MS,
+    post: (frame) =>
+      postMachineTelemetry('circuit', frame).then((commands) => this.applyRemoteCommands(commands)),
+  });
 
   constructor() {
     super({ endpoints: { machineSocketUrl, submitMachineJob } });
@@ -974,49 +978,47 @@ export class WebSerialManager extends GrblMachine<MachineState> {
 
   /**
    * Streams machine state to the PhysBox API so a job can be watched from
-   * another device. `postMachineTelemetry` is a no-op unless the user is signed
-   * in, so this costs nothing for a local-only user.
+   * another device, and so the run archive has it. `postMachineTelemetry` is a
+   * no-op unless the user is signed in, so this costs nothing for a local-only
+   * user.
    *
-   * The status poll runs at 4Hz and every reply notifies, so posting from there
-   * unthrottled would be a request per poll for the whole length of a job.
-   * Position is sampled at 1Hz instead, while a change of status goes out
-   * immediately — that is the part someone watching remotely actually needs
-   * promptly.
+   * Paced by the shared `TelemetryThrottle`: position at most once a second, a
+   * change of status at once — that is the part someone watching remotely
+   * actually needs promptly — and a final frame when the controller drops off
+   * mid-job, so the run closes as the crash it was rather than reading
+   * "running" until the server times it out.
    */
   protected onStateNotified(state: MachineState): void {
-    if (!state.connected) return;
+    if (!state.connected) {
+      const reason = state.lastError ? ` (${state.lastError})` : '';
+      this.telemetry.connectionLost((last) => ({
+        ...last,
+        status: 'error',
+        lastError: `Lost the connection to the controller at line ${last.currentLine}${reason}.`,
+      }));
+      return;
+    }
 
-    const now = Date.now();
-    const statusChanged = state.status !== this.lastTelemetryStatus;
-    if (!statusChanged && now - this.lastTelemetryAt < TELEMETRY_INTERVAL_MS) return;
-
-    this.lastTelemetryAt = now;
-    this.lastTelemetryStatus = state.status;
-    // One at a time: a stalled network would otherwise queue a backlog of stale
-    // positions that all land at once when it recovers.
-    if (this.telemetryInFlight) return;
-    this.telemetryInFlight = true;
-
-    void postMachineTelemetry('circuit', {
-      status: this.telemetryStatus(state.status),
-      jobName: this.jobContext.name,
-      // What the board was cut from and with. Without it an archived run says
-      // how long it took and nothing about what it produced.
-      settings: this.jobContext.settings ?? null,
-      progressPercent: state.progressPercent,
-      currentLine: state.currentLine,
-      totalLines: state.totalLines,
-      xyz: { ...state.wpos },
-      lastError: state.lastError ?? null,
-      // Which cloud document this browser is working on, so an archived run
-      // points back at the circuit that produced it.
-      documentId: cloudAutosave.getStatus().documentId,
-      documentRevision: cloudAutosave.getStatus().revision,
-    })
-      .then((commands) => this.applyRemoteCommands(commands))
-      .finally(() => {
-        this.telemetryInFlight = false;
-      });
+    this.telemetry.offer(
+      {
+        status: this.telemetryStatus(state.status),
+        jobName: this.jobContext.name,
+        // What the board was cut from and with. Without it an archived run says
+        // how long it took and nothing about what it produced.
+        settings: this.jobContext.settings ?? null,
+        progressPercent: state.progressPercent,
+        currentLine: state.currentLine,
+        totalLines: state.totalLines,
+        xyz: { ...state.wpos },
+        lastError: state.lastError ?? null,
+        // Which cloud document this browser is working on, so an archived run
+        // points back at the circuit that produced it.
+        documentId: cloudAutosave.getStatus().documentId,
+        documentRevision: cloudAutosave.getStatus().revision,
+      },
+      state.status,
+      this.isJobRunning
+    );
   }
 
   /**
