@@ -16,7 +16,10 @@
  * back to the caller.
  */
 
-import { fetchCloudPresets, syncCloudPreset, deleteCloudPreset } from './apiClient';
+import { CNC_BED_PARAMETER, TOOL_RACK_PARAMETER } from '@physbox-io/machining';
+import { machineBedStore } from './machineBed';
+import { fetchCloudPresets, syncCloudPreset, deleteCloudPreset, fetchCloudParameters } from './apiClient';
+import { settleToolRack } from './pcbTooling';
 import type { CircuitPreset } from './storage';
 
 /**
@@ -107,4 +110,28 @@ export async function pullCloudPresets(): Promise<Record<string, CircuitPreset>>
     pulled[preset.name] = preset.data as CircuitPreset;
   }
   return pulled;
+}
+
+/**
+ * Settles the shared tool rack against the account's, as Etch does on its
+ * sign-in pull.
+ *
+ * The rack lives under the app-agnostic `global` scope, which is where Etch and
+ * Mesh write it, so an edit made in either is the rack this app offers next.
+ * Whichever copy was edited last wins, and an older account copy is answered
+ * with ours. Signed out, there is nothing to settle against and nothing is
+ * touched — `fetchCloudParameters` returns empty, and an empty answer is not
+ * the account saying it has no rack.
+ */
+export async function pullToolRack(): Promise<boolean> {
+  let params: Record<string, unknown>;
+  try {
+    params = await fetchCloudParameters('global');
+  } catch {
+    return false;
+  }
+  if (!params || Object.keys(params).length === 0) return false;
+  // The machine's envelope is shared with Etch and Mesh, like the rack.
+  machineBedStore.adoptRemote(params[CNC_BED_PARAMETER]);
+  return settleToolRack(params[TOOL_RACK_PARAMETER]);
 }

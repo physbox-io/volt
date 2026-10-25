@@ -36,16 +36,20 @@ import { isProAccount } from '../utils/apiClient';
 import { cloudAutosave } from '../utils/cloudDocuments';
 import { pcbJobName, pcbRunSettings } from '../utils/pcbRunSettings';
 import {
-  PCB_TOOL_PRESETS,
   PCB_MATERIAL_PRESETS,
   calculatePcbFeeds,
-  loadCustomTools,
   addCustomTool,
-  deleteCustomTool,
+  retireRackTool,
+  readToolRack,
+  toolRackStore,
+  toolChoices,
+  canonicalToolId,
+  findToolIn,
   suggestedChiploadMm,
   feedFromChipload,
   minIsolationChannelMm,
   autoIsolationDepthMm,
+  bottomIsolationDepthMm,
   isolationFlatnessAllowanceMm,
   loadSelectedMaterialId,
   saveSelectedMaterialId,
@@ -67,7 +71,7 @@ import {
 import { openSvgInEtch } from '../utils/etchHandoff';
 import { usePcbLayout } from '../hooks/usePcbLayout';
 import { webSerialManager } from '../utils/webSerialManager';
-import { NumberInput } from '@physbox-io/ui';
+import { NumberInput, ToolChangeDialog, type ZeroResult } from '@physbox-io/ui';
 import {
   getGridStats,
   findUnwarpableCommands,
@@ -76,6 +80,7 @@ import {
   type ProbeGrid,
 } from '../utils/meshLeveler';
 import { setActiveHeightmap } from '../utils/machineMcp';
+import { heightmapCoversBoard } from '../utils/boardLevelling';
 import { PcbToolpathPreview } from './PcbToolpathPreview';
 import { InfoTip } from './InfoTip';
 import { JobPauseModal } from './JobPauseModal';
@@ -83,6 +88,8 @@ import { PanZoomContainer } from './PanZoomContainer';
 import { MachineConnectModal } from './MachineConnectModal';
 import { JobOverrides } from './JobOverrides';
 import { BoardMapPanel } from './BoardMapPanel';
+import { RunFromPanel } from './RunFromPanel';
+import { runFromView } from '../utils/runFrom';
 
 /** Stable empty inputs for machine-only mode — see the layout call. */
 const EMPTY_NODES: Node[] = [];
@@ -129,33 +136,10 @@ const SHIM_HINT =
   'reliable on. Thin dark film is awkward to buy in ones; a single layer of black filament is ' +
   'the same thing, and you already have it.';
 
-
-/**
- * How far above safe Z the framing lap flies, in mm.
- *
- * Not a choice any more. The reason there were three buttons was that the
- * clearance is in *work* coordinates, so "safe Z + 20" is only 20mm up when Z0
- * belongs to the blank clamped down right now — with a zero left over from a
- * thicker board it could sit below the tool, and picking a bigger offset was
- * the operator's way of buying headroom against that. The generator now refuses
- * to descend at all (see `generateAirCutPerimeterGcode`: it takes the greater
- * of the requested height and the tool's live Z, and lifts relatively when the
- * live Z is unknown), so the number only has to be a comfortable lap height.
- * 20mm is that, and there is nothing left for the buttons to protect against.
- */
-const FRAME_Z_OFFSET_MM = 20;
-
 /** Search distance for a mesh probe point, measured down from the retract. */
 const DEFAULT_PROBE_DEPTH_MM = 3;
 /** Thickness of the touch plate used to set work Z0. */
 const DEFAULT_TOUCH_PLATE_MM = 12;
-/**
- * How far the board may extend past the probed mesh before the map counts as
- * no longer describing it. Inside this margin the leveller's clamped
- * interpolation carries the edge samples outward, which is a fair reading over
- * a strip this narrow.
- */
-const HEIGHTMAP_EDGE_MARGIN_MM = 1;
 
 /**
  * Reads a persisted machine setting. These are bench measurements — plate
@@ -336,7 +320,13 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    */
   const [selectedToolId, setSelectedToolId] = useState<string>(() => loadSelectedToolIds().isolation);
   const [profileToolId, setProfileToolId] = useState<string>(() => loadSelectedToolIds().profile);
-  const [customTools, setCustomTools] = useState<PcbToolPreset[]>(() => loadCustomTools());
+  /*
+   * The shared rack the pickers offer from. Subscribed rather than read once:
+   * the Tools dialog edits it from over this panel, and a bit added there
+   * should be on the picker when it closes.
+   */
+  const [rack, setRack] = useState(() => readToolRack());
+  useEffect(() => toolRackStore.subscribe(setRack), []);
   const [showToolEditor, setShowToolEditor] = useState(false);
   const [toolDraft, setToolDraft] = useState<CustomToolInput>({
     name: '',
@@ -406,11 +396,19 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSafeClose]);
 
-  const availableTools = useMemo(
-    () => [...PCB_TOOL_PRESETS, ...customTools],
-    [customTools]
-  );
-  const selectedTool = availableTools.find(t => t.id === selectedToolId);
+  /*
+   * The ids the pickers show. A selection stored before the rack — or the
+   * default, or one a saved circuit brought — names a catalogue bit; when the
+   * rack holds that bit it is the rack's entry that is shown and planned with.
+   */
+  const isolationToolId = canonicalToolId(rack, 'isolation', selectedToolId);
+  const outlineToolId = canonicalToolId(rack, 'profile', profileToolId);
+  const isolationChoices = useMemo(() => toolChoices(rack, 'isolation', isolationToolId), [rack, isolationToolId]);
+  const profileChoices = useMemo(() => toolChoices(rack, 'profile', outlineToolId), [rack, outlineToolId]);
+  // Memoised: a rack tool is mapped afresh on every lookup, and these feed the
+  // options object the layout worker is keyed on — a new object per render
+  // would re-plan the board on every render.
+  const selectedTool = useMemo(() => findToolIn(rack, isolationToolId), [rack, isolationToolId]);
 
   /**
    * Flatness taken from the last probe, whether or not it still matches this
@@ -448,13 +446,42 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * spreads this object, so switching Auto off simply leaves the depth where
    * Auto had it — which is where a hand edit wants to start from.
    */
-  const options: PcbOptions = useMemo(
-    () =>
+  const profileTool = useMemo(() => findToolIn(rack, outlineToolId), [rack, outlineToolId]);
+  const spindleMaxRpm = serialState.connected ? webSerialManager.getGrblSetting(30) : undefined;
+  const spindleMinRpm = serialState.connected ? webSerialManager.getGrblSetting(31) : undefined;
+  const options: PcbOptions = useMemo(() => {
+    const depthed =
       autoIsolationDepth && autoDepthZ !== null
         ? { ...rawOptions, isolationDepthZ: autoDepthZ }
-        : rawOptions,
-    [rawOptions, autoIsolationDepth, autoDepthZ]
-  );
+        : rawOptions;
+    const material = PCB_MATERIAL_PRESETS.find(m => m.id === selectedMaterialId);
+    return {
+      ...depthed,
+      // A map levels the top face only; the bottom of a double-sided board is
+      // cut unlevelled, so it must not inherit a depth the map shaved down.
+      bottomIsolationDepthZ:
+        depthed.layers === 2 && probedSpanZ !== undefined && selectedTool && material
+          ? bottomIsolationDepthMm(depthed.isolationDepthZ, selectedTool, material)
+          : undefined,
+      // Each bit at its own speed, capped to what the controller can do — see
+      // toolSpindle in the exporter.
+      profileSpindleRpm: profileTool?.recommendedRpm,
+      spindleLimitsRpm:
+        spindleMaxRpm !== undefined || spindleMinRpm !== undefined
+          ? { maxRpm: spindleMaxRpm, minRpm: spindleMinRpm }
+          : undefined,
+    };
+  }, [
+    rawOptions,
+    autoIsolationDepth,
+    autoDepthZ,
+    probedSpanZ,
+    selectedTool,
+    selectedMaterialId,
+    profileTool,
+    spindleMaxRpm,
+    spindleMinRpm,
+  ]);
 
   /*
    * Routing runs in a worker: a dense board takes seconds, and blocking the
@@ -538,12 +565,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * margin is what the edge samples can be stretched over before the flat
    * extrapolation outside the mesh is a guess rather than a reading.
    */
-  const coversBoard =
-    heightmap !== null &&
-    heightmap.minX <= result.boardOriginMm + HEIGHTMAP_EDGE_MARGIN_MM &&
-    heightmap.minY <= result.boardOriginMm + HEIGHTMAP_EDGE_MARGIN_MM &&
-    heightmap.maxX >= result.boardOriginMm + result.boardWidthMm - HEIGHTMAP_EDGE_MARGIN_MM &&
-    heightmap.maxY >= result.boardOriginMm + result.boardHeightMm - HEIGHTMAP_EDGE_MARGIN_MM;
+  // Shared with the MCP mill verb, which used to skip this check entirely.
+  const coversBoard = heightmapCoversBoard(heightmap, result);
 
   const activeHeightmap = coversBoard ? heightmap : null;
   const heightmapStale = heightmap !== null && activeHeightmap === null;
@@ -619,7 +642,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const handleToolPresetChange = (toolId: string) => {
     setSelectedToolId(toolId);
     saveSelectedToolId('isolation', toolId);
-    const tool = availableTools.find(t => t.id === toolId);
+    const tool = findToolIn(readToolRack(), toolId);
     const material = PCB_MATERIAL_PRESETS.find(m => m.id === selectedMaterialId);
     if (tool && material) {
       const feeds = calculatePcbFeeds(tool, material);
@@ -644,7 +667,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const handleProfileToolChange = (toolId: string) => {
     setProfileToolId(toolId);
     saveSelectedToolId('profile', toolId);
-    const tool = availableTools.find(t => t.id === toolId);
+    const tool = findToolIn(readToolRack(), toolId);
     if (!tool) return;
     setOptions(prev => ({
       ...prev,
@@ -671,9 +694,12 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     }));
   }, [result.drills, options.drillConsolidationMm, options.drillBitOverridesMm]);
 
+  // The drills in the rack, by size. A retired one is not offered for a new
+  // hole, but an override already pointing at its size keeps working: the
+  // override is a diameter, not a tool.
   const drillPresets = useMemo(
-    () => availableTools.filter(t => t.role === 'drill').sort((a, b) => a.tipDiameterMm - b.tipDiameterMm),
-    [availableTools]
+    () => toolChoices(rack, 'drill').sort((a, b) => a.tool.tipDiameterMm - b.tool.tipDiameterMm),
+    [rack]
   );
 
   const setDrillOverride = (requiredMm: number, loadedMm: number) => {
@@ -687,8 +713,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
   const handleSaveCustomTool = () => {
     if (!toolDraft.name.trim() || !(toolDraft.tipDiameterMm > 0)) return;
+    // Into the shared rack, with the next free T number — Etch and Mesh offer it too.
     const next = addCustomTool(toolDraft);
-    setCustomTools(next);
     const created = next[next.length - 1];
     setShowToolEditor(false);
     // Select the new bit into the slot it belongs to; a drill has no slot of
@@ -697,11 +723,13 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     else if (created.role === 'isolation') handleToolPresetChange(created.id);
   };
 
-  const handleDeleteCustomTool = (id: string) => {
-    const next = deleteCustomTool(id);
-    setCustomTools(next);
-    if (selectedToolId === id) handleToolPresetChange('t1_vbit_30');
-    if (profileToolId === id) handleProfileToolChange('t6b_endmill_15');
+  /**
+   * Retires the bit in the rack rather than deleting it, as the shared dialog
+   * does. The selection is left on it — labelled retired — so the numbers on
+   * screen still describe the job about to run until another bit is picked.
+   */
+  const handleRetireTool = (id: string) => {
+    retireRackTool(id);
   };
 
   const handleMaterialPresetChange = (matId: string) => {
@@ -709,7 +737,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     // Remembered for the next board, and read by the MCP mill verb, which has
     // no dialog to ask.
     saveSelectedMaterialId(matId);
-    const tool = availableTools.find(t => t.id === selectedToolId);
+    const tool = selectedTool;
     const material = PCB_MATERIAL_PRESETS.find(m => m.id === matId);
     if (tool && material) {
       const feeds = calculatePcbFeeds(tool, material);
@@ -768,6 +796,28 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const isRunning = serialState.status === 'RUNNING';
   const machineBusy =
     !!busy || isPaused || serialState.status === 'RUNNING' || serialState.status === 'PROBING';
+
+  /*
+   * The line the Run From panel will start at. A new stop offers its own
+   * suggested line, not the one typed for the last — reset during render
+   * rather than in an effect, so no frame shows the old line against the new
+   * stop.
+   */
+  const [runFromLineInput, setRunFromLineInput] = useState<number | null>(null);
+  const [runFromStopAt, setRunFromStopAt] = useState<number | null>(null);
+  const interruption = serialState.interruption ?? null;
+  if (interruption && runFromStopAt !== interruption.at) {
+    setRunFromStopAt(interruption.at);
+    setRunFromLineInput(interruption.suggestedLine);
+  }
+  const runFrom = runFromView({
+    interruption,
+    status: serialState.status,
+    totalLines: serialState.totalLines,
+    line: runFromLineInput,
+    machineBlockedReason: interruption ? webSerialManager.startBlockedReason([]) : null,
+    busy: !!busy,
+  });
 
   /**
    * An M0 / M6 pause: the stream stopped between lines and the machine has
@@ -845,8 +895,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       materialId: selectedMaterialId,
       options,
       result: result.success ? result : undefined,
-      isolationToolId: selectedToolId,
-      profileToolId,
+      isolationToolId,
+      profileToolId: outlineToolId,
       kind,
     }),
   });
@@ -874,18 +924,64 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     // says in so many words what it costs.
     const grid = activeHeightmap;
 
+    // Warped here, once, and this exact string is what streams: the machine
+    // keeps the program `startJob` was handed for Run From, so a stopped job
+    // replays levelled — the same depths it was cutting at — rather than the
+    // flat program the exporter produced.
+    const program = webSerialManager.applyHeightmapToGcode(result.gcode, grid);
+    // Every refusal the start would make, asked before anything changes on
+    // screen, so the answer to "why did nothing happen" is the banner.
+    const refused = webSerialManager.jobBlockedReason(program);
+    if (refused) {
+      setMachineError(refused);
+      return;
+    }
+
     setBusy('milling');
     try {
-      await webSerialManager.startJob(
-        webSerialManager.applyHeightmapToGcode(result.gcode, grid),
-        jobContext()
-      );
+      await webSerialManager.startJob(program, jobContext());
     } catch (e) {
       setMachineError(errorMessage(e) || 'Milling job failed');
     } finally {
       setBusy('');
     }
   };
+
+  /**
+   * Picks the stopped job up from a line. See `RunFromPanel`.
+   *
+   * Awaited like a milling job, because it is one: `runFromLine` streams until
+   * the program ends, and its refusals — the travel of what is left, above
+   * all — arrive as a throw.
+   */
+  const handleRunFrom = async () => {
+    if (runFromLineInput === null || machineBusy) return;
+    clearErrors();
+    const refused = webSerialManager.startBlockedReason([]);
+    if (refused) {
+      setMachineError(refused);
+      return;
+    }
+    setBusy('milling');
+    try {
+      await webSerialManager.runFromLine(runFromLineInput, { isLaser: false });
+    } catch (e) {
+      setMachineError(errorMessage(e) || 'Could not run from that line');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  /*
+   * Said on hover, before the click: the machine's reason a job would be
+   * refused right now. Only once connected — unconnected, the button is also
+   * the way to connect, and "connect first" would talk somebody out of it.
+   */
+  const startRefusal =
+    serialState.connected && !machineBusy ? webSerialManager.startBlockedReason([]) : null;
+  const startMillingHint = startRefusal
+    ? `Will not start yet: ${startRefusal}`
+    : 'Start live isolation milling on the CNC machine over WebSerial.';
 
   const handleFrameBoard = async () => {
     if (!result.success || machineBusy) return;
@@ -909,8 +1005,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       // would rather lift relative than trust one.
       const live = await webSerialManager.refreshPosition();
       const currentZ = live.workOffset ? live.wpos.z : undefined;
-      await webSerialManager.startJob(
-        generateAirCutPerimeterGcode(result, options, FRAME_Z_OFFSET_MM, currentZ),
+      await webSerialManager.startAuxiliaryJob(
+        generateAirCutPerimeterGcode(result, options, currentZ),
         jobContext('frame')
       );
     } catch (e) {
@@ -1059,8 +1155,22 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * Z = <the map's reading here> instead puts Z0 back on the map's own plane,
    * whichever spot the operator happened to stop over.
    */
+  /** Runs a zeroing routine for the tool-change dialog, which reads a result rather than a throw. */
+  const asZeroResult = async (action: () => Promise<void>, done: string): Promise<ZeroResult> => {
+    clearErrors();
+    try {
+      await action();
+      return { success: true, message: done };
+    } catch (e) {
+      return { success: false, message: errorMessage(e) || 'Zeroing Z failed' };
+    }
+  };
+
   const surfaceOffsetHere = () => {
-    if (!activeHeightmap) return 0;
+    // Past the flip the bit is over the other face, which the map does not
+    // describe; offsetting this zero by the top face's reading at this XY
+    // would shift the whole bottom side by the top's warp.
+    if (!activeHeightmap || webSerialManager.isPastBoardFlip()) return 0;
     const { x, y } = serialState.wpos;
     return interpolateGridZ(activeHeightmap, x, y);
   };
@@ -1227,6 +1337,12 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       setBusy('');
     }
   };
+
+  // The speed the program will spin up to next — the bit going in, not the
+  // isolation V-bit whose figure sits in the options. Read off the queue like
+  // the layer below.
+  const resumeSpindleRpm =
+    (isRunning || isPaused ? webSerialManager.nextSpindleRpm() : null) ?? options.spindleRpm;
 
   // Read during render rather than mirrored into state: it is derived purely
   // from the queue position, which only changes alongside a status update the
@@ -1473,7 +1589,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                   options={options}
                   heightmap={activeHeightmap}
                   isAirCut={busy === 'framing'}
-                  airCutZOffset={FRAME_Z_OFFSET_MM}
                   liveProgress={liveProgress}
                   liveLayerLabel={liveLayer?.label ?? null}
                   onRestartLayer={isRunning || isPaused ? handleRestartLayer : undefined}
@@ -1484,6 +1599,18 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                 <div className="mt-3">
                   <JobOverrides serialState={serialState} />
                 </div>
+                {runFrom && (
+                  <div className="mt-3">
+                    <RunFromPanel
+                      view={runFrom}
+                      jobName={webSerialManager.lastJobName()}
+                      line={runFromLineInput}
+                      onLineChange={setRunFromLineInput}
+                      onRun={() => void handleRunFrom()}
+                      running={busy === 'milling'}
+                    />
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center min-h-[360px]">
@@ -2151,25 +2278,26 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                           )}
                         </div>
                         <select
-                          value={selectedToolId}
+                          value={isolationToolId}
                           onChange={e => handleToolPresetChange(e.target.value)}
                           className="mt-0.5 w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] text-slate-800 dark:text-slate-200 font-sans"
                         >
-                          {availableTools.filter(t => t.role === 'isolation').map(tool => (
+                          {isolationChoices.map(({ tool, label }) => (
                             <option key={tool.id} value={tool.id}>
-                              {tool.name}{tool.isCustom ? ' (mine)' : ''}
+                              {label}
                             </option>
                           ))}
                         </select>
                         {selectedTool && (
                           <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
                             {selectedTool.description}
-                            {selectedTool.isCustom && (
+                            {selectedTool.rackUid && !selectedTool.retired && (
                               <button
-                                onClick={() => handleDeleteCustomTool(selectedTool.id)}
+                                onClick={() => handleRetireTool(selectedTool.id)}
                                 className="ml-1 text-red-500 hover:underline"
+                                title="Take this bit out of your rack. It is no longer offered here, in Etch or in Mesh; Tools in the machine dialog brings it back."
                               >
-                                Delete
+                                Retire
                               </button>
                             )}
                           </p>
@@ -2199,10 +2327,10 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                           >
                             <option value={bit.requiredMm}>Exact &mdash; {bit.requiredMm}mm</option>
                             {drillPresets
-                              .filter(t => t.tipDiameterMm > bit.requiredMm)
-                              .map(tool => (
+                              .filter(({ tool }) => tool.tipDiameterMm > bit.requiredMm)
+                              .map(({ tool, label }) => (
                                 <option key={tool.id} value={tool.tipDiameterMm}>
-                                  {tool.name}{tool.isCustom ? ' (mine)' : ''}
+                                  {label}
                                 </option>
                               ))}
                           </select>
@@ -2236,13 +2364,13 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                           </span>
                         </div>
                         <select
-                          value={profileToolId}
+                          value={outlineToolId}
                           onChange={e => handleProfileToolChange(e.target.value)}
                           className="mt-0.5 w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] text-slate-800 dark:text-slate-200 font-sans"
                         >
-                          {availableTools.filter(t => t.role === 'profile').map(tool => (
+                          {profileChoices.map(({ tool, label }) => (
                             <option key={tool.id} value={tool.id}>
-                              {tool.name}{tool.isCustom ? ' (mine)' : ''}
+                              {label}
                             </option>
                           ))}
                         </select>
@@ -2295,8 +2423,9 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     <div className="p-2.5 rounded border border-emerald-500/40 bg-emerald-500/5 space-y-2">
                       <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-snug">
                         Describe the bit and the feeds are derived from its chipload
-                        (bite per tooth &times; teeth &times; RPM). Override any of them
-                        afterwards in the fields below.
+                        (bite per tooth &times; teeth &times; RPM). It goes into your tool
+                        rack, so Etch and Mesh offer it too. Override any feed afterwards in
+                        the fields below.
                       </p>
 
                       <input
@@ -2363,25 +2492,12 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       integer
                     />
                         </label>
-
-                        <label className="block">
-                          <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Chipload (mm/tooth)</span>
-                          <NumberInput
-                            allowEmpty
-                            step={0.005}
-                            min={0.001}
-                            value={toolDraft.chiploadMm ?? null}
-                            placeholder={String(suggestedChiploadMm(toolDraft.type, toolDraft.tipDiameterMm))}
-                            onChange={v => setToolDraft({ ...toolDraft, chiploadMm: v ?? undefined })}
-                            className="w-full px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono"
-                          />
-                        </label>
                       </div>
 
                       <p className="text-[10px] font-mono text-emerald-700 dark:text-emerald-300">
                         Derived cut feed:{' '}
                         {feedFromChipload(
-                          toolDraft.chiploadMm ?? suggestedChiploadMm(toolDraft.type, toolDraft.tipDiameterMm),
+                          suggestedChiploadMm(toolDraft.type, toolDraft.tipDiameterMm),
                           toolDraft.fluteCount ?? 1,
                           toolDraft.recommendedRpm ?? 12000
                         )}{' '}
@@ -2602,7 +2718,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                   onFocus={() => setHoveredFooterHint('Trace the board outline live with the spindle off, to check the blank before cutting.')}
                   onBlur={() => setHoveredFooterHint(null)}
                   className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm whitespace-nowrap"
-                  title={`Trace the board outline live, ${FRAME_Z_OFFSET_MM}mm above safe Z or higher — never below where the bit is now — with no spindle and no plunges. Checks the blank is where the job thinks it is.`}
+                  title={`Trace the outline of the whole job live — board edge and registration holes — at the job's own highest Z (Z${Math.max(options.safeZ, options.toolChangeZ)}), never below where the bit is now, with no spindle and no plunges. Checks the blank is where the job thinks it is.`}
                 >
                   <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
                   Frame
@@ -2676,9 +2792,9 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                 <button
                   onClick={handleMillBoard}
                   disabled={!result.success || machineBusy}
-                  onMouseEnter={() => setHoveredFooterHint('Start live isolation milling on the CNC machine over WebSerial.')}
+                  onMouseEnter={() => setHoveredFooterHint(startMillingHint)}
                   onMouseLeave={() => setHoveredFooterHint(null)}
-                  onFocus={() => setHoveredFooterHint('Start live isolation milling on the CNC machine over WebSerial.')}
+                  onFocus={() => setHoveredFooterHint(startMillingHint)}
                   onBlur={() => setHoveredFooterHint(null)}
                   className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm whitespace-nowrap"
                   title="Start live isolation milling on CNC machine via Web Serial"
@@ -2694,12 +2810,67 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
       {machineDialog}
 
-      {isPaused && (
+      {serialState.status === 'PAUSED_TOOL' && (
+        <ToolChangeDialog
+          machine="cnc"
+          message={serialState.pauseMessage || 'Fit the next bit.'}
+          progress={{ line: serialState.currentLine, total: serialState.totalLines }}
+          position={serialState.wpos}
+          connected={serialState.connected}
+          onJog={(delta, feed) => webSerialManager.jog(delta, feed)}
+          onJogStop={() => webSerialManager.jogCancel()}
+          zero={{
+            zeroed: !serialState.needsZeroBeforeResume,
+            surface: {
+              label: 'On the copper',
+              hint: 'Continuity clip on the board. The zero the surface map was taken from.',
+              onProbe: () =>
+                asZeroResult(() => webSerialManager.zeroZOnSurface(surfaceOffsetHere()), 'Z zeroed on the copper.'),
+            },
+            plate: {
+              mm: touchPlateMm,
+              onMmChange: (v) => {
+                setTouchPlateMm(v);
+                localStorage.setItem('grblTouchPlateMm', String(v));
+              },
+              onProbe: (mm) =>
+                asZeroResult(() => webSerialManager.zeroZ(mm, surfaceOffsetHere()), 'Z zeroed on the touch plate.'),
+            },
+            probeCircuit: { active: !!serialState.probePinActive, seen: !!serialState.probeCircuitSeen },
+            note:
+              serialState.zeroZScatterMm !== undefined ? (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Last zero: the two stabs agreed to{' '}
+                  <span className="font-mono font-semibold">{serialState.zeroZScatterMm.toFixed(3)} mm</span>.
+                </p>
+              ) : undefined,
+          }}
+          resumeBlockedReason={
+            serialState.needsZeroBeforeResume ? 'Re-zero Z on the new bit before resuming.' : null
+          }
+          onResume={handleResume}
+          onStop={handleCancel}
+        >
+          {/* The bit going in is what this speed has to suit, and the number is
+              otherwise in a tab behind this dialog. */}
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-slate-700 dark:text-slate-200">
+            <span className="text-[11px] font-semibold">Spindle speed on resume</span>
+            <span className="font-mono text-sm font-bold tabular-nums">
+              {resumeSpindleRpm.toLocaleString()} <span className="text-[10px] opacity-70">RPM</span>
+            </span>
+          </div>
+          {machineError && (
+            <p className="text-[11px] leading-snug text-red-600 dark:text-red-400">{machineError}</p>
+          )}
+        </ToolChangeDialog>
+      )}
+
+      {isPaused && serialState.status !== 'PAUSED_TOOL' && (
         <JobPauseModal
           message={serialState.pauseMessage || 'Job paused'}
           isStreamPaused={isStreamPaused}
           touchPlateMm={touchPlateMm}
-          spindleRpm={options.spindleRpm}
+          spindleRpm={resumeSpindleRpm}
           zeroScatterMm={serialState.zeroZScatterMm}
           probeCircuit={{ active: serialState.probePinActive, seen: serialState.probeCircuitSeen }}
           busy={busy}

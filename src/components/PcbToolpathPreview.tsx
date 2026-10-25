@@ -8,7 +8,6 @@ export interface PcbToolpathPreviewProps {
   options: PcbOptions;
   heightmap?: ProbeGrid | null;
   isAirCut?: boolean;
-  airCutZOffset?: number;
   /**
    * Fraction of the job the machine has actually streamed, 0..1, or null when
    * no job is running. While it is set the preview follows the machine instead
@@ -31,7 +30,6 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
   options,
   heightmap,
   isAirCut = false,
-  airCutZOffset = 20,
   liveProgress = null,
   liveLayerLabel = null,
   onRestartLayer,
@@ -301,7 +299,7 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
         {isAirCut && (
           <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-amber-500/20 border border-amber-500/40 rounded text-amber-300 font-mono text-[10px] flex items-center gap-1">
             <ShieldCheck className="w-3 h-3 text-amber-400" />
-            AIR CUT DRY RUN (+{airCutZOffset}mm Z-Offset Active)
+            AIR CUT DRY RUN (outline at Z{Math.max(options.safeZ, options.toolChangeZ)})
           </div>
         )}
 

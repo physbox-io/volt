@@ -25,7 +25,8 @@ import {
 } from './pcbFootprints';
 import { extractNets, isPhysical, resolveHandleToPin, type PcbNet } from './pcbNets';
 import { assignDesignators } from './nodeNaming';
-import { minPadGapMm } from './pcbTooling';
+import { minPadGapMm, PCB_TOOL_PRESETS } from './pcbTooling';
+import { BOARD_FLIP_NOTE } from './boardLevelling';
 import {
   circlePoly,
   differencePolys,
@@ -96,9 +97,24 @@ export interface PcbOptions {
   travelFeedrate: number;      // Rapid feedrate (mm/min)
   plungeFeedrate: number;      // Z plunge rate (mm/min)
   drillFeedrate: number;       // Z drilling feedrate (mm/min)
-  spindleRpm: number;          // Spindle RPM
+  spindleRpm: number;          // Isolation bit's spindle RPM
+  /**
+   * The profile end mill's own RPM. Absent, the catalogue end mill nearest
+   * `profileToolDiaMm` supplies it. Drills always take the catalogue drill
+   * nearest their size — see {@link toolSpindle}.
+   */
+  profileSpindleRpm?: number;
+  /** The controller's spindle range (`$31`/`$30`), when it is known. */
+  spindleLimitsRpm?: SpindleLimits;
   safeZ: number;               // Safe retract Z height in mm
   isolationDepthZ: number;     // Depth for isolation milling in mm (negative)
+  /**
+   * Isolation depth for the bottom face of a double-sided board, when it
+   * differs from the top's. A height map is probed on the top face and is not
+   * applied after the flip, so a top depth shaved down on the strength of that
+   * map is too shallow for the unlevelled bottom — see bottomIsolationDepthMm.
+   */
+  bottomIsolationDepthZ?: number;
   drillDepthZ: number;         // Depth for drilling through-holes in mm
   profileDepthZ: number;       // Depth for board edge profiling in mm
   /**
@@ -321,14 +337,112 @@ export interface PlacementOverride {
 
 export type PlacementOverrides = Record<string, PlacementOverride>;
 
+/** A controller's spindle range, from GRBL's `$31` (min) and `$30` (max). */
+export interface SpindleLimits {
+  minRpm?: number;
+  maxRpm?: number;
+}
+
+/**
+ * The lowest `$30` read as a spindle's top speed in RPM rather than as a PWM
+ * scale. The same line Etch draws (`MIN_RPM_CEILING_FROM_30` in its feeds), so
+ * one controller gets one reading whichever app it is driven from.
+ *
+ * GRBL scales `S` linearly between `$31` and `$30`, so on a spindle whose `$30`
+ * is set to its real top speed, `S` *is* RPM and nothing above `$30` exists. But
+ * a controller left at the factory 1000 — or set to 255 or 100 because it was
+ * built for a diode — is saying "full PWM is S1000", not "this spindle turns at
+ * 1000 RPM". Clamping an 11000 RPM request to that would slow the feed
+ * elevenfold to hold a chip load the spindle was never actually reduced to. No
+ * spindle that mills a board tops out below a few thousand RPM, and no PWM
+ * scale anyone ships is that high, so the line between the two readings sits
+ * here rather than at 1000: a `$30=2000` is a scale too, not a crawling spindle.
+ */
+export const MIN_RPM_CEILING_FROM_30 = 3000;
+
+/**
+ * The catalogue RPM for a tool of `role` and diameter — the nearest entry by
+ * size. Used for the bits the exporter picks itself (each drill size), where
+ * the dialog has no per-bit selection to pass.
+ */
+export function catalogueRpm(role: 'drill' | 'profile', diaMm: number): number | undefined {
+  let best: { rpm: number; d: number } | undefined;
+  for (const t of PCB_TOOL_PRESETS) {
+    if (t.role !== role) continue;
+    const d = Math.abs(t.tipDiameterMm - diaMm);
+    if (!best || d < best.d) best = { rpm: t.recommendedRpm, d };
+  }
+  return best?.rpm;
+}
+
+/**
+ * The speed a tool actually runs at, and how much its feeds must scale to
+ * keep the bite per tooth the catalogue chose.
+ *
+ * Every bit used to run at the isolation V-bit's speed — a 3.175 mm end mill
+ * at 15000 RPM, a 0.5 mm drill at 10000 — at its own fixed catalogue feed, so
+ * the chip load was whatever the mismatch made it. And a request past the
+ * controller's `$30` is silently capped by GRBL, which keeps the feed and
+ * raises the bite by the same ratio: snapped drills. The cap is applied here
+ * instead, where the feed can come down with it.
+ */
+export function toolSpindle(
+  catalogue: number,
+  limits: SpindleLimits | undefined
+): { rpm: number; feedScale: number } {
+  let rpm = catalogue;
+  const max = limits?.maxRpm;
+  // A PWM-scale `$30` puts `$31` on the same scale, so neither is an RPM.
+  if (max === undefined || max >= MIN_RPM_CEILING_FROM_30) {
+    if (max !== undefined && rpm > max) rpm = max;
+    const min = limits?.minRpm;
+    if (min !== undefined && min > 0 && rpm < min) rpm = Math.min(min, max ?? min);
+  }
+  rpm = Math.round(rpm);
+  return { rpm, feedScale: catalogue > 0 ? rpm / catalogue : 1 };
+}
+
 /**
  * Extra stock left on every side of a double-sided board, so the two
  * registration pin holes have material to sit in outside the profile cut.
  */
 export const REGISTRATION_MARGIN_MM = 6.0;
 
-/** How far outside the finished board edge the registration pins are drilled. */
+/**
+ * The least distance outside the finished board edge the registration pins
+ * are drilled. A floor, not the answer — see {@link registrationPinOffsetMm}.
+ */
 export const REGISTRATION_PIN_OFFSET_MM = 3.0;
+
+/**
+ * Air left between the profile cutter's outer edge and a registration pin
+ * hole, and between a pin hole and the edge of the blank, in mm.
+ */
+const REGISTRATION_CLEARANCE_MM = 1.0;
+
+/** Diameter of the registration pin holes, in mm. */
+export function registrationPinDiaMm(opts: Pick<PcbOptions, 'viaDrillMm'>): number {
+  return opts.viaDrillMm ?? 0.8;
+}
+
+/**
+ * How far outside the finished board edge the registration pins go, in mm.
+ *
+ * The profile runs last, with the pins still in the spoilboard, and its tool
+ * centre runs a radius outside the edge — so the cutter reaches a whole
+ * diameter out. A fixed 3 mm was fine for the 1.5 mm end mill it was set
+ * against and put a 3.175 mm cutter straight through both pin holes (and into
+ * the steel pins sitting in them). Derived from the profile tool instead, with
+ * the pin's own radius and a millimetre of air on top.
+ */
+export function registrationPinOffsetMm(
+  opts: Pick<PcbOptions, 'profileToolDiaMm' | 'viaDrillMm'>
+): number {
+  return Math.max(
+    REGISTRATION_PIN_OFFSET_MM,
+    opts.profileToolDiaMm + registrationPinDiaMm(opts) / 2 + REGISTRATION_CLEARANCE_MM
+  );
+}
 
 export const DEFAULT_PCB_OPTIONS: PcbOptions = {
   // A floor, not a target: with auto-size on the board shrinks to the parts, so
@@ -1127,10 +1241,14 @@ function translateLayout(
  */
 export function boardOriginOffsetMm(opts: PcbOptions): number {
   const base = opts.profileToolDiaMm / 2;
+  if (opts.layers !== 2) return base;
   // A double-sided board also drills two registration pin holes into the
-  // margin stock, 3mm outside the finished edge. Without room for them the
-  // holes land off the blank, so the inset grows to keep them in material.
-  return opts.layers === 2 ? base + REGISTRATION_MARGIN_MM : base;
+  // margin stock outside the finished edge. Without room for them the holes
+  // land off the blank, so the inset grows to keep them in material — and
+  // further still when a large profile cutter has pushed the pins out.
+  const pinReach =
+    registrationPinOffsetMm(opts) + registrationPinDiaMm(opts) / 2 + REGISTRATION_CLEARANCE_MM;
+  return Math.max(base + REGISTRATION_MARGIN_MM, pinReach);
 }
 
 function cropBoardToContent(
@@ -2625,13 +2743,19 @@ function finishLayout(
       }
     }
 
+    // Symmetric about the board's X centreline, so a left-to-right flip seats
+    // the holes back on the same pins. Both pins used to sit on the Y
+    // centreline as well, which made them symmetric about *that* too: a
+    // front-to-back flip seated just as snugly, and the bottom copper came out
+    // mirrored in Y with nothing to say so. Off the centreline by a quarter of
+    // the board, the wrong flip puts the holes half a board away from the pins.
     const xMid = boardOriginMm + boardWidthMm / 2;
-    const yMid = boardOriginMm + boardHeightMm / 2;
-    const xSpan = boardWidthMm / 2 + REGISTRATION_PIN_OFFSET_MM;
-    const regDrillMm = options.viaDrillMm ?? 0.8;
+    const pinY = boardOriginMm + boardHeightMm * 0.75;
+    const xSpan = boardWidthMm / 2 + registrationPinOffsetMm(options);
+    const regDrillMm = registrationPinDiaMm(options);
     drills.push(
-      { x: xMid - xSpan, y: yMid, diameter: regDrillMm, componentId: 'align_pin_1', pinNumber: '1', isRegistration: true },
-      { x: xMid + xSpan, y: yMid, diameter: regDrillMm, componentId: 'align_pin_2', pinNumber: '2', isRegistration: true }
+      { x: xMid - xSpan, y: pinY, diameter: regDrillMm, componentId: 'align_pin_1', pinNumber: '1', isRegistration: true },
+      { x: xMid + xSpan, y: pinY, diameter: regDrillMm, componentId: 'align_pin_2', pinNumber: '2', isRegistration: true }
     );
   }
 
@@ -2795,6 +2919,9 @@ export const GCODE_ONLY_OPTIONS = [
   'plungeFeedrate',
   'drillFeedrate',
   'spindleRpm',
+  'profileSpindleRpm',
+  'spindleLimitsRpm',
+  'bottomIsolationDepthZ',
   'safeZ',
   'toolChangeZ',
   'drillDepthZ',
@@ -3549,14 +3676,24 @@ const f3 = (n: number) => n.toFixed(3);
  * so there is no bit to change and no reason to spin the spindle up either.
  */
 /**
- * A dry run of the board's outline, lifted clear of the stock.
+ * A dry run of the job's outline, at the job's own highest Z.
  *
  * What an air cut is actually for is registration: is the blank where the job
  * thinks it is, do the clamps foul the travel, does the machine reach all four
  * corners. Replaying every isolation move to answer that takes as long as the
- * real job and proves nothing extra — every cut in the program lies inside this
- * rectangle, because the profile pass *is* the outermost path in the job, so
- * one lap of it bounds all the rest.
+ * real job and proves nothing extra — one lap of the rectangle that bounds
+ * every cut answers it. That is the profile pass plus, on a double-sided
+ * board, the registration pin holes, which sit outside the profile: a lap of
+ * the profile alone left them out, so "every cut lies inside" was not true of
+ * the holes most likely to land off the blank.
+ *
+ * Flown at the tool-change park height, the highest the program ever goes. It
+ * used to fly at safe Z + 20 mm, higher than anything the job does — which
+ * proves nothing about clamps at the height the job actually travels, and can
+ * run into the top of Z travel on a machine where the job itself fits. Never
+ * below where the tool already is, though: the height is in *work*
+ * coordinates, and with a Z0 left over from a thicker blank the park height
+ * can sit below the tool.
  *
  * Deliberately no spindle, no tool change and no plunges: nothing here should
  * be able to cut, and a program with no `M3` in it cannot start a spindle by
@@ -3565,27 +3702,38 @@ const f3 = (n: number) => n.toFixed(3);
 export function generateAirCutPerimeterGcode(
   result: PcbLayoutResult,
   options: PcbOptions,
-  zOffsetMm = 20,
   currentZMm?: number
 ): string {
   const { corners } = profileToolpath(result, options);
-  const lift = Math.abs(zOffsetMm);
-  const requestedZ = options.safeZ + lift;
+  let minX = Math.min(...corners.map(c => c.x));
+  let maxX = Math.max(...corners.map(c => c.x));
+  let minY = Math.min(...corners.map(c => c.y));
+  let maxY = Math.max(...corners.map(c => c.y));
+  for (const d of result.drills ?? []) {
+    if (!d.isRegistration) continue;
+    const r = d.diameter / 2;
+    minX = Math.min(minX, d.x - r);
+    maxX = Math.max(maxX, d.x + r);
+    minY = Math.min(minY, d.y - r);
+    maxY = Math.max(maxY, d.y + r);
+  }
+  const lap = [
+    { x: minX, y: minY },
+    { x: maxX, y: minY },
+    { x: maxX, y: maxY },
+    { x: minX, y: maxY },
+    { x: minX, y: minY },
+  ];
 
-  // The clearance height is in *work* coordinates, so `safeZ + offset` is only
-  // "20mm up" when Z0 belongs to the stock that is clamped down right now. With
-  // a zero left over from an earlier job — a thicker blank, a longer bit — that
-  // same number can sit below the tool, and the first move of a check that is
-  // supposed to prove nothing can crash drives the bit down into the work and
-  // then drags it across. An air cut must only ever move Z away from the stock.
+  const jobTopZ = Math.max(options.safeZ, options.toolChangeZ);
   const knownZ =
     typeof currentZMm === 'number' && Number.isFinite(currentZMm) ? currentZMm : undefined;
-  const targetZ = knownZ !== undefined ? Math.max(requestedZ, knownZ) : undefined;
-  const z = f3(targetZ ?? requestedZ);
+  const targetZ = knownZ !== undefined ? Math.max(jobTopZ, knownZ) : undefined;
+  const z = f3(targetZ ?? jobTopZ);
   const g: string[] = [];
 
-  g.push(`; --- AIR CUT: board outline only, ${f3(lift)}mm above safe Z ---`);
-  g.push(`; Bounds the whole job: every cut lies inside this rectangle.`);
+  g.push(`; --- AIR CUT: job outline at the job's highest Z (Z${f3(jobTopZ)}) ---`);
+  g.push(`; Bounds the whole job: every cut, registration holes included, lies inside this rectangle.`);
   g.push(`; No spindle and no tool changes — this program cannot cut.`);
   g.push(`G90 G21`);
   g.push(`G17`);
@@ -3594,20 +3742,20 @@ export function generateAirCutPerimeterGcode(
     // be proven safe. A relative lift can only go up, and the laps then run from
     // wherever that leaves the tool — higher than asked for, never lower.
     g.push(`; Current Z unknown — lifting relative, so this can only move away from the stock.`);
-    g.push(`G91 G0 Z${f3(lift)}`);
+    g.push(`G91 G0 Z${f3(jobTopZ)}`);
     g.push(`G90`);
   } else {
-    if (targetZ > requestedZ) {
-      g.push(`; Tool is already above the requested clearance — holding Z${z} rather than dropping.`);
+    if (targetZ > jobTopZ) {
+      g.push(`; Tool is already above the job's highest Z — holding Z${z} rather than dropping.`);
     }
     g.push(`G0 Z${z}`);
   }
 
-  for (let lap = 1; lap <= 2; lap++) {
-    g.push(`; --- lap ${lap} of 2 ---`);
-    g.push(`G0 X${f3(corners[0].x)} Y${f3(corners[0].y)}`);
-    for (let i = 1; i < corners.length; i++) {
-      g.push(`G1 X${f3(corners[i].x)} Y${f3(corners[i].y)} F${options.travelFeedrate}`);
+  for (let n = 1; n <= 2; n++) {
+    g.push(`; --- lap ${n} of 2 ---`);
+    g.push(`G0 X${f3(lap[0].x)} Y${f3(lap[0].y)}`);
+    for (let i = 1; i < lap.length; i++) {
+      g.push(`G1 X${f3(lap[i].x)} Y${f3(lap[i].y)} F${options.travelFeedrate}`);
     }
   }
 
@@ -4032,10 +4180,37 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   g.push(`G90 G21 ; Absolute positioning, millimetres`);
   g.push(`G17 ; XY plane`);
   g.push(`G0 Z${f3(options.safeZ)}`);
+
+  /*
+   * Feeds scale with the spindle speed of the bit in the collet — see
+   * toolSpindle. `feedScale` follows that bit: set at each change, and left
+   * alone when an operation reuses the bit already loaded.
+   */
+  let feedScale = 1;
+  const fd = (feed: number) => Math.max(1, Math.round(feed * feedScale));
+  const spinUp = (catalogue: number, what: string) => {
+    const spindle = toolSpindle(catalogue, options.spindleLimitsRpm);
+    feedScale = spindle.feedScale;
+    if (spindle.rpm !== catalogue) {
+      g.push(
+        `; ${what}: ${catalogue} RPM is outside the controller's spindle range; ` +
+        `run at ${spindle.rpm} RPM with feeds scaled x${spindle.feedScale.toFixed(3)} to hold the chip load`
+      );
+    }
+    return spindle.rpm;
+  };
+  const isolationRpm = options.spindleRpm;
+  const profileRpm =
+    options.profileSpindleRpm ?? catalogueRpm('profile', options.profileToolDiaMm) ?? options.spindleRpm;
+  const drillRpm = (bitMm: number) => catalogueRpm('drill', bitMm) ?? options.spindleRpm;
+
+  // Without tool changes there is one bit for the whole program, and its
+  // speed is the one this header sets.
+  const headerRpm = options.pauseOnToolChange ? 0 : spinUp(isolationRpm, 'Spindle');
   if (!options.pauseOnToolChange) {
     // Nothing below will stop for a bit change, so the spindle is started here
     // and left running for the whole program.
-    g.push(`M3 S${options.spindleRpm} ; Spindle on`);
+    g.push(`M3 S${headerRpm} ; Spindle on`);
     g.push(`G4 P2 ; Dwell for spin-up`);
   }
 
@@ -4048,12 +4223,13 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
    * to travel height — the operation that follows opens with an XY rapid, and
    * at the parking height that rapid is over the board, not through it.
    */
-  const toolChange = (line: string) => {
+  const toolChange = (line: string, catalogue: number) => {
     if (!options.pauseOnToolChange) return;
     g.push(`G0 Z${f3(options.toolChangeZ)} ; Park clear for the bit change`);
     g.push(`M5 ; Spindle off before hands go near the collet`);
     g.push(line);
-    g.push(`M3 S${options.spindleRpm} ; Spindle back on`);
+    // This bit's own speed, not the isolation bit's: see toolSpindle.
+    g.push(`M3 S${spinUp(catalogue, line.replace(/\s*;.*$/, ''))} ; Spindle back on`);
     g.push(`G4 P2 ; Dwell for spin-up`);
     g.push(`G0 Z${f3(options.safeZ)} ; Back down to travel height`);
   };
@@ -4094,15 +4270,15 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
         const t = rampLen / segLen;
         const rx = p0.x + (p1.x - p0.x) * t;
         const ry = p0.y + (p1.y - p0.y) * t;
-        g.push(`G1 X${f3(mx(rx))} Y${f3(ry)} Z${f3(depthZ)} F${options.plungeFeedrate}`);
-        g.push(`G1 X${f3(mx(p1.x))} Y${f3(p1.y)} Z${f3(depthZ)} F${options.cutFeedrate}`);
+        g.push(`G1 X${f3(mx(rx))} Y${f3(ry)} Z${f3(depthZ)} F${fd(options.plungeFeedrate)}`);
+        g.push(`G1 X${f3(mx(p1.x))} Y${f3(p1.y)} Z${f3(depthZ)} F${fd(options.cutFeedrate)}`);
         for (let i = 2; i < path.points.length; i++) {
-          g.push(`G1 X${f3(mx(path.points[i].x))} Y${f3(path.points[i].y)} F${options.cutFeedrate}`);
+          g.push(`G1 X${f3(mx(path.points[i].x))} Y${f3(path.points[i].y)} F${fd(options.cutFeedrate)}`);
         }
       } else {
-        g.push(`G1 Z${f3(depthZ)} F${options.plungeFeedrate}`);
+        g.push(`G1 Z${f3(depthZ)} F${fd(options.plungeFeedrate)}`);
         for (let i = 1; i < path.points.length; i++) {
-          g.push(`G1 X${f3(mx(path.points[i].x))} Y${f3(path.points[i].y)} F${options.cutFeedrate}`);
+          g.push(`G1 X${f3(mx(path.points[i].x))} Y${f3(path.points[i].y)} F${fd(options.cutFeedrate)}`);
         }
       }
     }
@@ -4110,15 +4286,21 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   };
 
   /** Pockets the dead copper out of one side with the end mill. */
-  const emitClearing = (op: number, paths: IsolationPath[], side: string, mx: (x: number) => number) => {
+  const emitClearing = (
+    op: number,
+    paths: IsolationPath[],
+    side: string,
+    mx: (x: number) => number,
+    depthZ = options.isolationDepthZ
+  ) => {
     g.push(``);
     g.push(`; ==================================================`);
     g.push(`; OP ${op}/${totalOps}: ${side}Copper clearing (${options.profileToolDiaMm}mm end mill)`);
     g.push(`; Pockets out the foil between nets, leaving traces and pads.`);
     g.push(`; ==================================================`);
-    if (loadedTool !== 'T99') toolChange(`T99 M6 ; Tool 99: ${options.profileToolDiaMm}mm end mill`);
+    if (loadedTool !== 'T99') toolChange(`T99 M6 ; Tool 99: ${options.profileToolDiaMm}mm end mill`, profileRpm);
     loadedTool = 'T99';
-    emitPaths(paths, options.isolationDepthZ, mx, () => null);
+    emitPaths(paths, depthZ, mx, () => null);
   };
 
   // --- Operation 1: isolation ---
@@ -4126,7 +4308,7 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   g.push(`; ==================================================`);
   g.push(`; OP 1/${totalOps}: ${isTwoLayer ? 'Top ' : ''}Isolation routing (${options.vBitAngleDeg}deg V-bit, ${options.vBitTipMm}mm tip)`);
   g.push(`; ==================================================`);
-  toolChange(`T1 M6 ; Tool 1: V-bit`);
+  toolChange(`T1 M6 ; Tool 1: V-bit`, isolationRpm);
   loadedTool = 'T1';
 
   const topPaths = (isTwoLayer && result.topIsolationPaths) ? result.topIsolationPaths : result.isolationPaths;
@@ -4165,7 +4347,7 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
         `${interpolated ? `interpolated with a ${bitMm}mm bit` : `drilled with a ${bitMm}mm bit`} ---`
       );
       if (options.pauseOnToolChange && bitMm !== loadedBitMm) {
-        toolChange(`T${toolNum} M6 ; Tool ${toolNum}: ${bitMm}mm drill`);
+        toolChange(`T${toolNum} M6 ; Tool ${toolNum}: ${bitMm}mm drill`, drillRpm(bitMm));
         loadedTool = `T${toolNum}`;
         toolNum++;
       }
@@ -4183,11 +4365,11 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
           const path = helicalHoleToolpath(holeMm, bitMm, holeDepth, options.zStepdown);
           g.push(`; ${hole.componentId} pin ${hole.pinNumber}${hole.isRegistration ? ' [Registration Pin]' : ''}`);
           g.push(`G0 X${f3(hole.x + path[0].x)} Y${f3(hole.y + path[0].y)}`);
-          g.push(`G1 Z0 F${options.plungeFeedrate}`);
+          g.push(`G1 Z0 F${fd(options.plungeFeedrate)}`);
           for (const pt of path) {
             g.push(
               `G1 X${f3(hole.x + pt.x)} Y${f3(hole.y + pt.y)} Z${f3(pt.z)} ` +
-              `F${options.cutFeedrate}`
+              `F${fd(options.cutFeedrate)}`
             );
           }
           g.push(`G0 Z${f3(options.safeZ)}`);
@@ -4209,7 +4391,7 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
         while (z > holeDepth) {
           if (z < 0) g.push(`G0 Z${f3(z + PECK_REENTRY_MM)}`);
           z = Math.max(holeDepth, z - peck);
-          g.push(`G1 Z${f3(z)} F${options.drillFeedrate}`);
+          g.push(`G1 Z${f3(z)} F${fd(options.drillFeedrate)}`);
           g.push(`G0 Z${f3(options.safeZ)}`);
         }
       }
@@ -4226,16 +4408,19 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
     g.push(`; OP ${3 + topClearOps}/${totalOps}: Flip Board & Register with Alignment Pins`);
     g.push(`; 1. Spindle stopped. Clear clamps.`);
     g.push(`; 2. Insert two alignment pins into spoilboard holes.`);
-    g.push(`; 3. Flip board horizontally (left-to-right) onto pins.`);
+    g.push(`; 3. Flip board horizontally (left-to-right) onto pins. The pins are`);
+    g.push(`;    off-centre in Y on purpose: a front-to-back flip will not seat.`);
     g.push(`; 4. Re-clamp board securely; re-zero Z on top copper surface.`);
     g.push(`; 5. Press Cycle Start / Resume.`);
     g.push(`; ==================================================`);
     g.push(`G0 Z${f3(options.toolChangeZ)} ; Safe park height clear of clamps`);
     g.push(`M5 ; Spindle off before touching board`);
     g.push(`G0 X0 Y0 ; Move machine clear for operator access`);
-    g.push(`M0 ; PAUSE: Flip board horizontally onto registration pins`);
+    // The levelling reads this line to know where the probed face ends — see
+    // splitAtBoardFlip — so its wording comes from the one constant.
+    g.push(`M0 ; ${BOARD_FLIP_NOTE}`);
     if (!options.pauseOnToolChange) {
-      g.push(`M3 S${options.spindleRpm} ; Spindle back on`);
+      g.push(`M3 S${headerRpm} ; Spindle back on`);
       g.push(`G4 P2 ; Dwell for spin-up`);
     }
 
@@ -4244,15 +4429,21 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
     g.push(`; ==================================================`);
     g.push(`; OP ${4 + topClearOps}/${totalOps}: Bottom Isolation routing (${options.vBitAngleDeg}deg V-bit, mirrored horizontally)`);
     g.push(`; ==================================================`);
-    toolChange(`T1 M6 ; Tool 1: V-bit`);
+    toolChange(`T1 M6 ; Tool 1: V-bit`, isolationRpm);
     loadedTool = 'T1';
 
     const xMid = result.boardOriginMm + result.boardWidthMm / 2;
     const mx = (x: number) => 2 * xMid - x;
 
-    emitPaths(result.bottomIsolationPaths || [], options.isolationDepthZ, mx, netId => `; --- net ${netId} (bottom) ---`);
+    // The bottom face is never levelled (a map of the top describes a surface
+    // that is now face down), so it takes its own, unlevelled depth.
+    const bottomDepthZ = options.bottomIsolationDepthZ ?? options.isolationDepthZ;
+    if (bottomDepthZ !== options.isolationDepthZ) {
+      g.push(`; Bottom face cut unlevelled at Z${bottomDepthZ}: the height map describes the top face.`);
+    }
+    emitPaths(result.bottomIsolationPaths || [], bottomDepthZ, mx, netId => `; --- net ${netId} (bottom) ---`);
 
-    if (bottomClearOps) emitClearing(5 + topClearOps, bottomClearing, 'Bottom ', mx);
+    if (bottomClearOps) emitClearing(5 + topClearOps, bottomClearing, 'Bottom ', mx, bottomDepthZ);
   }
 
   // --- Profile operation ---
@@ -4262,7 +4453,7 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   g.push(`; Tool centre runs ${(options.profileToolDiaMm / 2).toFixed(3)}mm outside the`);
   g.push(`; finished edge. ${options.tabCount} holding tab(s) keep the board captive.`);
   g.push(`; ==================================================`);
-  if (loadedTool !== 'T99') toolChange(`T99 M6 ; Tool 99: ${options.profileToolDiaMm}mm end mill`);
+  if (loadedTool !== 'T99') toolChange(`T99 M6 ; Tool 99: ${options.profileToolDiaMm}mm end mill`, profileRpm);
 
   // A double-sided board is cut from its flipped side, so an internal cutout
   // that was at X is now mirrored across the board centreline. The outside
@@ -4294,9 +4485,9 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
     let cz = 0;
     while (cz > options.profileDepthZ) {
       cz = Math.max(options.profileDepthZ, cz - stepDown);
-      g.push(`G1 Z${f3(cz)} F${options.plungeFeedrate}`);
+      g.push(`G1 Z${f3(cz)} F${fd(options.plungeFeedrate)}`);
       for (let i = 1; i < path.length; i++) {
-        g.push(`G1 X${f3(mx(path[i].x))} Y${f3(path[i].y)} F${options.cutFeedrate}`);
+        g.push(`G1 X${f3(mx(path[i].x))} Y${f3(path[i].y)} F${fd(options.cutFeedrate)}`);
       }
     }
     g.push(`G0 Z${f3(options.safeZ)}`);
@@ -4323,7 +4514,7 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
     const useTabs = options.tabCount > 0 && currentZ < tabZ;
 
     g.push(`; --- profile pass Z${f3(currentZ)}${useTabs ? ' (with holding tabs)' : ''} ---`);
-    g.push(`G1 Z${f3(currentZ)} F${options.plungeFeedrate}`);
+    g.push(`G1 Z${f3(currentZ)} F${fd(options.plungeFeedrate)}`);
 
     let travelled = 0;
     for (let i = 0; i + 1 < corners.length; i++) {
@@ -4332,7 +4523,7 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
       const segLen = Math.hypot(b.x - a.x, b.y - a.y);
 
       if (!useTabs) {
-        g.push(`G1 X${f3(b.x)} Y${f3(b.y)} F${options.cutFeedrate}`);
+        g.push(`G1 X${f3(b.x)} Y${f3(b.y)} F${fd(options.cutFeedrate)}`);
         travelled += segLen;
         continue;
       }
@@ -4346,12 +4537,12 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
         const py = a.y + (b.y - a.y) * t;
         const needLift = inTab(travelled + segLen * t);
         if (needLift !== lifted) {
-          g.push(`G1 Z${f3(needLift ? tabZ : currentZ)} F${options.plungeFeedrate}`);
+          g.push(`G1 Z${f3(needLift ? tabZ : currentZ)} F${fd(options.plungeFeedrate)}`);
           lifted = needLift;
         }
-        g.push(`G1 X${f3(px)} Y${f3(py)} F${options.cutFeedrate}`);
+        g.push(`G1 X${f3(px)} Y${f3(py)} F${fd(options.cutFeedrate)}`);
       }
-      if (lifted) g.push(`G1 Z${f3(currentZ)} F${options.plungeFeedrate}`);
+      if (lifted) g.push(`G1 Z${f3(currentZ)} F${fd(options.plungeFeedrate)}`);
       travelled += segLen;
     }
   }

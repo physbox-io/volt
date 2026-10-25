@@ -9,7 +9,7 @@ import { JobHistoryModal } from './JobHistoryModal';
 import { CloudSaveStatus } from './CloudSaveStatus';
 import { GuestListModal } from './GuestListModal';
 import { restoreLlmSettingsFromCloud } from '../utils/llmSettings';
-import { pullCloudPresets } from '../utils/cloudSync';
+import { pullCloudPresets, pullToolRack } from '../utils/cloudSync';
 import { mergePulledPresets } from '../utils/storage';
 
 /**
@@ -46,12 +46,18 @@ function syncPresetsFromCloud(force = false): Promise<void> {
     return Promise.resolve();
   }
 
-  const run = pullCloudPresets()
-    .then((pulled) => {
+  const run = Promise.all([
+    pullCloudPresets().then((pulled) => {
       // Additive: anything already saved in this browser is left alone, and the
       // preset list is only told to re-read when something was actually new.
       mergePulledPresets(pulled);
-    })
+    }),
+    // The tool rack rides the same pull, for the same reason: a bit added or
+    // retired in Etch on another machine should be what the pickers here offer
+    // without signing out and back in.
+    pullToolRack(),
+  ])
+    .then(() => undefined)
     .catch(() => {
       // Offline, signed out or refused — keep what is local and try again on the
       // next focus. A failed pull must never be able to disturb local presets.

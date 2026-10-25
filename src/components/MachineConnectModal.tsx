@@ -14,9 +14,13 @@ import {
   RefreshCw,
   Home,
   Unlock,
+  Wrench,
 } from 'lucide-react';
 import { NumberInput } from '@physbox-io/ui';
 import { TeknoBoxPicker } from './TeknoBoxPicker';
+import { ToolRackDialog } from './ToolRackDialog';
+import { MachineBedFields } from '@physbox-io/ui';
+import { machineBedStore } from '../utils/machineBed';
 import type { MachineState } from '../utils/webSerialManager';
 
 /**
@@ -135,7 +139,17 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
    * the datum, and the datum is what everything downstream needs.
    */
   const xyZeroed = !!serialState.zeroXYSet || !!serialState.zeroRestored;
-  const zZeroed = !!serialState.zeroZSet || !!serialState.zeroRestored;
+  // A restored origin is XY only as far as trust goes: the remembered Z was
+  // taken with whatever bit was in the collet then, so Z still needs a fresh
+  // touch-off and the panel must not call it done.
+  const zZeroed = !!serialState.zeroZSet;
+  /*
+   * The rack is equipment, like everything else here: it belongs to the bench
+   * rather than to a board, so it opens from the machine dialog, not from the
+   * CAM tab's pickers that read it.
+   */
+  const [toolsOpen, setToolsOpen] = React.useState(false);
+  const [bed, setBed] = React.useState(() => machineBedStore.get());
 
   return (
     <div
@@ -170,13 +184,23 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-            title="Close"
-          >
-            <X className="w-4.5 h-4.5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setToolsOpen(true)}
+              className="px-2.5 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg font-semibold text-[11px] flex items-center gap-1.5 cursor-pointer"
+              title="The bits you own — shared with Etch and Mesh through your account"
+            >
+              <Wrench className="w-3.5 h-3.5" />
+              Tools
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              title="Close"
+            >
+              <X className="w-4.5 h-4.5" />
+            </button>
+          </div>
         </div>
 
         <div className="p-4 text-xs overflow-y-auto">
@@ -198,6 +222,16 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
                 </button>
               </div>
             )}
+
+            {/* --- Machine bed: the travel check's fallback, shared ----------- */}
+            <div className={`${panel} space-y-2`}>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">Machine bed</span>
+              <MachineBedFields
+                bed={bed}
+                onChange={(next) => setBed(machineBedStore.set(next))}
+                note="How far each axis can travel. Used to check a job fits when the controller has not reported its own travel, and shared with Etch and Mesh through your account."
+              />
+            </div>
 
             {/* --- Connection ------------------------------------------------ */}
             <div className={`${panel} space-y-2.5`}>
@@ -517,7 +551,7 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
                 {serialState.savedZero && (
                   <div className="text-[10px] text-slate-500 dark:text-slate-400">
                     Remembered from last session
-                    {serialState.zeroRestored ? ' — restored onto the machine' : ''}{' '}
+                    {serialState.zeroRestored ? ' — restored onto the machine; touch off Z again' : ''}{' '}
                     ({(['x', 'y', 'z'] as const)
                       .filter(a => serialState.savedZero![a] !== undefined)
                       .map(a => `${a.toUpperCase()} ${serialState.savedZero![a]!.toFixed(2)}`)
@@ -566,6 +600,7 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
           </div>
         </div>
       </div>
+      {toolsOpen && <ToolRackDialog onClose={() => setToolsOpen(false)} />}
     </div>
   );
 };

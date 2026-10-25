@@ -54,6 +54,7 @@ import { EdgePathProvider } from './components/AuraEdge';
 import { SettingsModal } from './components/SettingsModal';
 import { UserProfileButton } from './components/UserProfileButton';
 import { AgentMachineBanner } from './components/AgentMachineBanner';
+import { JobCompleteNotice } from './components/JobCompleteNotice';
 import { loadSettings, saveSettings, loadMachiningSettings, loadLayoutSnapshot, type CircuitPreset } from './utils/storage';
 import { cloudAutosave } from './utils/cloudDocuments';
 import { useMCPBridge } from './hooks/useMCPBridge';
@@ -2298,6 +2299,8 @@ export default function App() {
           </div>
         </div>
       </footer>
+      {/* A job that ran to its last line, wherever it was started from. */}
+      <JobCompleteNotice />
     </div>
     </CanvasStateProvider>
     </MeshLinkContext.Provider>

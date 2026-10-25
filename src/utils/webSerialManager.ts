@@ -1,12 +1,16 @@
 import {
   GrblMachine,
+  RT_HOLD,
   TelemetryThrottle,
+  classifyPauseLine,
   getGridStats,
   gridFromPoints,
   gridOffPlaneMm,
   normalizeGrid,
+  parseJobProgram,
   retractProgram,
   round3,
+  stripGcodeComment,
   warpGcode,
   type JobPauseKind,
   type MachineState as BaseMachineState,
@@ -22,6 +26,8 @@ import { machineSocketUrl, postMachineTelemetry, submitMachineJob,
   type RemoteCommand,
 } from './apiClient';
 import { cloudAutosave } from './cloudDocuments';
+import { machineBedStore } from './machineBed';
+import { isBoardFlipLine, splitAtBoardFlip } from './boardLevelling';
 
 // ---------------------------------------------------------------------------
 // Volt's machine
@@ -54,6 +60,14 @@ export type { ProbeGrid, ProbePoint };
  * revisits its settings, so this has to be in place before the first line goes
  * out — which is why `startJob` takes it rather than a setter somewhere.
  */
+/** What a job that ran to the end took. */
+export interface CompletedJob {
+  finishedAt: number;
+  elapsedSeconds: number;
+  totalLines: number;
+  jobName?: string;
+}
+
 export interface JobContext {
   name?: string;
   settings?: Record<string, unknown> | null;
@@ -111,6 +125,12 @@ export interface MachineState extends BaseMachineState {
    * bit — which is a gouge as deep as the two bits differ in length.
    */
   needsZeroBeforeResume?: boolean;
+  /**
+   * The last job that ran to its final line, for the "Job complete" notice.
+   * Set only by `onJobFinished`, at the final acknowledged line, so a cancel,
+   * an alarm or a dropped link never raise it; cleared when the next job starts.
+   */
+  lastCompletedJob?: CompletedJob | null;
   /**
    * How far the two stabs of the last Z zeroing probe disagreed, in mm. The
    * machine's own repeatability at the one place it matters most — everything
@@ -252,6 +272,52 @@ function driftsFrom(saved: SavedWorkOrigin | undefined, offset: Vec3): boolean {
 }
 
 /**
+ * How long a layer restart waits for the feed hold to bring the machine to a
+ * standstill before it gives up and leaves it in hold. A rapid at default
+ * acceleration can take over two seconds to stop; this is generous on purpose,
+ * since the alternative to waiting is a reset in motion.
+ */
+const RESTART_HOLD_TIMEOUT_MS = 10_000;
+
+/** How far machine position may move across a restart's soft reset. */
+const RESTART_POSITION_TOLERANCE_MM = 0.05;
+
+/**
+ * The spindle line a restarted operation needs replayed on resume, or null if
+ * the operation brings the spindle up itself.
+ *
+ * An operation that changes bit (or stops the spindle for the flip) before it
+ * cuts restarts the spindle itself afterwards, so a replay would only spin the
+ * old bit up before the park and M5.
+ * Otherwise the speed is the last one the program set before the operation —
+ * the bit already in the collet is the one that asked for it.
+ */
+export function layerSpindleRestart(program: string[], startIndex: number): string | null {
+  for (let i = startIndex; i < program.length; i++) {
+    const code = stripGcodeComment(program[i]).toUpperCase();
+    // A bit change, or a stop for the operator (the flip), with the spindle
+    // brought down first: the program spins it back up itself afterwards.
+    if (classifyPauseLine(program[i]) === 'tool' || /\bM0*5\b/.test(code)) return null;
+    if (/\bG0*[123]\b/.test(code)) break;
+  }
+  for (let i = startIndex - 1; i >= 0; i--) {
+    const code = stripGcodeComment(program[i]).toUpperCase();
+    if (/\bM0*5\b/.test(code)) return null;
+    if (/\bM0*[34]\b/.test(code)) return stripGcodeComment(program[i]);
+  }
+  return null;
+}
+
+/**
+ * Whether a G54 offset reads as the blank one a controller comes up with after
+ * a firmware reset or an EEPROM wipe. A real zero is never exactly on machine
+ * zero on all three axes — that corner is the homing switch, not a board.
+ */
+function offsetLost(offset: Vec3): boolean {
+  return (['x', 'y', 'z'] as const).every(a => Math.abs(offset[a]) <= ZERO_MATCH_TOLERANCE_MM);
+}
+
+/**
  * Exported for the policy tests, which drive it against a fake controller.
  * Application code uses the `webSerialManager` singleton below — there is one
  * machine, and two managers fighting over one serial port is not a state worth
@@ -289,6 +355,10 @@ export class WebSerialManager extends GrblMachine<MachineState> {
 
   /** What the running job is, as the archive should remember it. */
   private jobContext: JobContext = {};
+  /** What the last real job (not a frame) was called. See `lastJobName`. */
+  private runFromJobName: string | undefined;
+  /** When the job on the wire started streaming, for the run time it finishes with. */
+  private jobStartedAt: number | null = null;
 
   /** Telemetry pacing — see `onStateNotified`. */
   private telemetry = new TelemetryThrottle<MachiningTelemetry>({
@@ -338,6 +408,9 @@ export class WebSerialManager extends GrblMachine<MachineState> {
   ): Partial<MachineState> | void {
     const { wpos, wco: workOffset, framesKnown } = frames;
     const patch: Partial<MachineState> = {};
+    // `grblState` keeps only the word; whether a hold has finished
+    // decelerating lives in the sub-state, which a layer restart waits on.
+    this.lastSubState = report.subState;
 
     // GRBL lists the asserted pins only while one is asserted, so a report
     // with no `Pn` field means the probe is open.
@@ -405,10 +478,27 @@ export class WebSerialManager extends GrblMachine<MachineState> {
   }
 
   /**
-   * Puts the remembered origin back onto the controller when the controller no
-   * longer has it — a firmware reset, or a tab reopened onto a machine that was
-   * power-cycled in between. This is the whole point of remembering it: the
-   * zeros stay where they were until the operator sets them again.
+   * Puts the remembered origin back onto the controller when the controller has
+   * evidently *lost* it — a firmware reset or an EEPROM wipe, which leaves G54
+   * at all zeros. This is the whole point of remembering it: the zeros stay
+   * where they were until the operator sets them again.
+   *
+   * Only then. A G54 that is non-zero and merely *different* from the
+   * remembered one is somebody's newer zero — a blank set up from another app
+   * or another browser — and writing the old origin over it moved the job onto
+   * the previous board's position. Nothing here can tell which of two real
+   * zeros is right, so the controller's own wins.
+   *
+   * Only once the machine has homed on this connection, too. G54 is an offset
+   * from machine position, and machine position before homing is wherever the
+   * gantry stood at power-on: restoring against it puts the origin wherever
+   * that offset happens to land today.
+   *
+   * And a restore never counts as a Z datum (`zeroZSet`). The Z offset is
+   * written back so the DRO reads sensibly, but it describes the bit that was
+   * in the collet when it was taken; a different bit, or the same one reseated,
+   * is a different length, and the first plunge would go as deep as the two
+   * differ. Z is always touched off afresh.
    *
    * `G10 L2` writes the offset in machine coordinates directly. `L20`, the one
    * the zeroing buttons use, would instead re-zero on wherever the tool is
@@ -422,12 +512,15 @@ export class WebSerialManager extends GrblMachine<MachineState> {
     if (this.state.status === 'ALARM' || this.isRunning()) return;
 
     const saved = this.state.savedZero;
-    if (!driftsFrom(saved, offset)) {
-      // Either nothing is remembered or the machine already agrees. Either way
-      // there is nothing to restore, now or later on this connection.
+    if (!driftsFrom(saved, offset) || !offsetLost(offset)) {
+      // Nothing remembered, the machine already agrees, or the machine holds a
+      // different real zero that is newer than ours. In every case there is
+      // nothing to restore, now or later on this connection.
       this.zeroRestoreDone = true;
       return;
     }
+    // Lost, but not yet restorable: try again on a later report, once homed.
+    if (!this.state.hasHomed) return;
 
     this.zeroRestoreDone = true;
     const words = (['x', 'y', 'z'] as const)
@@ -439,7 +532,6 @@ export class WebSerialManager extends GrblMachine<MachineState> {
       this.updateState({
         zeroRestored: true,
         zeroXYSet: this.state.zeroXYSet || saved!.x !== undefined || saved!.y !== undefined,
-        zeroZSet: this.state.zeroZSet || saved!.z !== undefined,
       });
     } catch {
       // A controller that refuses the offset leaves the operator to re-zero;
@@ -599,18 +691,19 @@ export class WebSerialManager extends GrblMachine<MachineState> {
    * GRBL keeps G54's Z offset in EEPROM across sessions, tools and boards, so a
    * datum that reads back as perfectly valid may belong to a different setup
    * entirely — connecting leaves it unconfirmed until proven otherwise.
-   * "Proven" means either this session zeroed Z itself (`zeroZSet`, which
-   * survives the jog clear of the copper that follows every probe — see the
-   * flag's own note), or the previously remembered origin was written back
-   * and the controller's own status confirmed it landed (`zeroRestored`) — not
-   * just that a restore was attempted, which `zeroRestoreDone` alone would
-   * allow for a write the controller silently refused.
+   * "Proven" means this session zeroed Z itself (`zeroZSet`, which survives
+   * the jog clear of the copper that follows every probe — see the flag's own
+   * note).
+   *
+   * A restored origin (`zeroRestored`) used to count as well, and it must not:
+   * the remembered Z was taken with whatever bit was in the collet then, and a
+   * restore landing over a fresh bit was a plunge as deep as the two differ.
    */
   protected assertReadyToCut(): void {
-    if (!this.state.zeroZSet && !this.state.zeroRestored) {
+    if (!this.state.zeroZSet) {
       throw new Error(
-        'Z zero has not been set this session. Zero it — or reconnect to let the remembered ' +
-          'origin restore — before running a job: a Z move against an unconfirmed datum can ' +
+        'Z zero has not been set this session. Touch off Z on the copper with the bit you are ' +
+          'about to cut with before running a job: a Z move against an unconfirmed datum can ' +
           'drive the tool into the board.'
       );
     }
@@ -618,6 +711,22 @@ export class WebSerialManager extends GrblMachine<MachineState> {
 
   protected onJobStarted(_parsed: ParsedJob): void {
     this.toolChangesSeen = 0;
+    this.jobStartedAt = Date.now();
+    this.updateState({ lastCompletedJob: null });
+  }
+
+  protected onJobFinished(): Partial<MachineState> {
+    const now = Date.now();
+    const started = this.jobStartedAt;
+    this.jobStartedAt = null;
+    return {
+      lastCompletedJob: {
+        finishedAt: now,
+        elapsedSeconds: started === null ? 0 : (now - started) / 1000,
+        totalLines: this.state.totalLines,
+        jobName: this.jobContext.name,
+      },
+    };
   }
 
   /**
@@ -631,7 +740,40 @@ export class WebSerialManager extends GrblMachine<MachineState> {
    */
   override async startJob(gcode: string, job: JobContext = {}): Promise<void> {
     this.jobContext = job;
+    this.runFromJobName = job.name;
     await super.startJob(gcode);
+  }
+
+  /**
+   * A frame or other check, recorded as what it is, that leaves the board's
+   * program and its Run From offer alone. Framing the blank after a crash is
+   * exactly when that offer is about to be needed.
+   */
+  override async startAuxiliaryJob(gcode: string, job: JobContext = {}): Promise<void> {
+    this.jobContext = job;
+    await super.startAuxiliaryJob(gcode);
+  }
+
+  /**
+   * Why this program could not start right now, or null if it would.
+   *
+   * `startJob` makes every one of these refusals itself, but only once the
+   * panel has already switched to the CAM view and marked itself busy; asked
+   * first, the Start button can say why before anything changes on screen.
+   * The program asked about must be the one that will be streamed — warped by
+   * the height map if it is to be — since its reach is part of the answer.
+   */
+  public jobBlockedReason(gcode: string): string | null {
+    return this.startBlockedReason(parseJobProgram(gcode).lines);
+  }
+
+  /**
+   * What the last job was recorded as — the one a Run From picks up, since a
+   * run from a line streams that job's program again under its own name.
+   */
+  /** The job a Run From would replay — not a frame run since. */
+  public lastJobName(): string | undefined {
+    return this.runFromJobName;
   }
 
   protected describePause(
@@ -696,7 +838,12 @@ export class WebSerialManager extends GrblMachine<MachineState> {
    *
    * Stopping mid-cut means clearing GRBL's planner, and a feed hold alone will
    * not do that: the queued blocks survive it and would run on the next cycle
-   * start. Only a soft reset flushes them, so that is what this does.
+   * start. Only a soft reset flushes them — and a soft reset of a machine that
+   * is still moving is ALARM:3 with position lost. This used to wait a fixed
+   * 600 ms after the hold, which a rapid at default acceleration overruns, and
+   * then offered Resume over a machine that no longer knew where it was. So the
+   * reset waits for the controller itself to say the hold is complete, and the
+   * restart is refused afterwards if the reset cost anything.
    */
   public async restartCurrentLayer(): Promise<void> {
     if (!this.isRunning()) throw new Error('No job is running');
@@ -704,29 +851,138 @@ export class WebSerialManager extends GrblMachine<MachineState> {
     const layer = this.getCurrentLayer();
     if (!layer) throw new Error('This job has no operation markers to restart from');
 
-    await this.writeRealtime(0x21); // feed hold, so the reset lands at a standstill
-    await new Promise<void>(resolve => setTimeout(resolve, 600));
+    // Stop feeding the controller before anything else, so the streamer cannot
+    // push another line at it while it decelerates or resets.
+    this.isPaused = true;
+    this.pauseKind = 'operator';
+    this.queue.hold();
+    this.updateState({ status: 'PAUSED_OPERATOR', pauseMessage: `Restarting "${layer.label}"…` });
+
+    await this.writeRealtime(RT_HOLD);
+    if (!(await this.awaitStandstill(this.restartHoldTimeoutMs))) {
+      // Never reset a machine that may still be moving. It is left exactly as
+      // an operator pause leaves it — in feed hold, planner intact — so Resume
+      // carries on and E-stop is still there.
+      const message =
+        `The machine did not report standing still within ${this.restartHoldTimeoutMs / 1000}s ` +
+        "of the feed hold, so it was not reset — resetting a moving machine loses its " +
+        'position. It is still in feed hold: Resume to carry on, or E-stop.';
+      this.updateState({ pauseMessage: message });
+      throw new Error(message);
+    }
+
+    // Read once the hold has settled, so it is where the tool actually stopped
+    // — the reference for checking that the reset cost nothing.
+    const posBefore = { ...this.state.mpos };
+
+    // eStop empties the queue along with everything else; the program is kept
+    // aside so it can be rewound rather than lost.
+    const program = this.gcodeQueue;
+    const layers = this.jobLayers;
+    this.alarmFaultSeen = false;
     await this.eStop();
-    await new Promise<void>(resolve => setTimeout(resolve, 1200));
+    await this.awaitStatus();
+
+    const refuse = (message: string): never => {
+      this.isJobRunning = false;
+      this.isPaused = false;
+      this.pauseKind = null;
+      this.updateState({ pauseMessage: undefined, lastError: message });
+      throw new Error(message);
+    };
+
+    // With homing required ($22=1) GRBL always boots into a locked Alarm, even
+    // after a reset from a standstill that cost it nothing. That lock is not a
+    // fault, and it is cleared. A *coded* alarm is the opposite — a reset that
+    // landed in motion, a limit trip — where position really is suspect.
+    if (this.alarmFaultSeen) {
+      refuse(
+        'The machine raised an alarm during the restart, so its position can no longer be ' +
+          `trusted. ${this.state.lastError ?? ''} Home it ($H), re-zero, and run the job again.`
+      );
+    }
+    if (this.state.status === 'ALARM') {
+      await this.sendLine('$X').catch(() => {});
+      await this.awaitStatus();
+    }
+
+    // The work offsets survive a reset — they live in EEPROM — but only mean
+    // anything if machine position survived too. Checked, not assumed.
+    const posAfter = this.state.mpos;
+    const drift = Math.max(
+      Math.abs(posAfter.x - posBefore.x),
+      Math.abs(posAfter.y - posBefore.y),
+      Math.abs(posAfter.z - posBefore.z)
+    );
+    if (drift > RESTART_POSITION_TOLERANCE_MM) {
+      refuse(
+        `The machine lost ${drift.toFixed(2)}mm of position during the restart, so the job can ` +
+          'no longer be trusted to cut in the right place. Home it ($H), re-zero, and run the ' +
+          'job again.'
+      );
+    }
+    if (this.state.status === 'ALARM') {
+      refuse(`The controller would not come out of alarm. ${this.state.lastError ?? ''}`.trim());
+    }
+
+    // A reset drops modal state.
+    await this.sendLine('G21');
+    await this.sendLine('G90');
 
     // Rewound to the operation's first line, tool change included.
+    this.gcodeQueue = program;
+    this.jobLayers = layers;
     this.currentQueueIndex = layer.startIndex;
     this.completedLines = layer.startIndex;
     this.isJobRunning = true;
     this.isPaused = true;
     this.pauseKind = 'stream';
-    // The reset stopped the spindle, and the spindle-up line is back in the
-    // program header. It is replayed on resume rather than now, so it is never
-    // turning while a bit is being changed.
-    this.spindleRestartPending = true;
+    // The reset stopped the spindle. An operation that opens with its own bit
+    // change brings the spindle back up itself, after the M6 — spinning it up
+    // on resume would have it turning through that park and M5, with hands
+    // about to go near the collet. Otherwise it is replayed on resume, at the
+    // speed the program last asked for before this operation: the bit in the
+    // collet is the one that set it, not whatever the header started with.
+    const spindle = layerSpindleRestart(program, layer.startIndex);
+    this.spindleRestartPending = spindle !== null;
+    if (spindle) this.jobSpindleLine = spindle;
     this.zeroZOpsAtPause = this.zeroZOps;
     this.updateState({
       status: 'PAUSED_TOOL',
       currentLine: layer.startIndex,
-      progressPercent: Math.round((layer.startIndex / this.gcodeQueue.length) * 100),
+      progressPercent: Math.round((layer.startIndex / program.length) * 100),
       pauseMessage: `Restarting "${layer.label}". Re-zero Z, then click Resume.`,
       needsZeroBeforeResume: true,
     });
+  }
+
+  /** See RESTART_HOLD_TIMEOUT_MS. An instance field so the tests need not wait it out. */
+  protected restartHoldTimeoutMs = RESTART_HOLD_TIMEOUT_MS;
+
+  /** The sub-state of the latest status report — `Hold:0` vs `Hold:1`. */
+  private lastSubState: number | undefined;
+
+  /** Set by a coded `ALARM:n` line; see restartCurrentLayer. */
+  private alarmFaultSeen = false;
+
+  protected onAlarm(): void {
+    this.alarmFaultSeen = true;
+  }
+
+  /**
+   * Polls until the controller reports it has stopped — `Hold:0` (hold
+   * complete; `Hold:1` is still decelerating) or `Idle` — and says whether it
+   * did before the timeout. An alarm is not a standstill worth resetting from.
+   */
+  private async awaitStandstill(timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (this.state.connected) {
+      await this.awaitStatus();
+      const word = this.state.grblState ?? '';
+      if ((word.startsWith('Hold') && this.lastSubState === 0) || word.startsWith('Idle')) return true;
+      if (word.startsWith('Alarm') || Date.now() >= deadline) return false;
+    }
+    return false;
   }
 
   // -------------------------------------------------------------------------
@@ -937,10 +1193,48 @@ export class WebSerialManager extends GrblMachine<MachineState> {
     }
   }
 
-  /** Warps G-code Z coordinates using a probed surface heightmap. */
+  /**
+   * Warps G-code Z coordinates using a probed surface heightmap — up to the
+   * board flip, and not past it.
+   *
+   * The map is a measurement of the face that was up when it was probed.
+   * After the flip the bit is cutting the other face, re-clamped, and the map
+   * describes a surface that is now underneath: applying it there cut the
+   * bottom copper to the top's warp, mirrored wrong and in the wrong places.
+   * The bottom runs unlevelled instead, at the depth the exporter gave it.
+   */
   public applyHeightmapToGcode(gcode: string, grid: ProbeGrid | null): string {
     if (!grid) return gcode;
-    return warpGcode(gcode, grid);
+    const { probedFace, afterFlip } = splitAtBoardFlip(gcode);
+    const warped = warpGcode(probedFace, grid);
+    return afterFlip === null ? warped : `${warped}\n${afterFlip}`;
+  }
+
+  /**
+   * The spindle speed the job on the wire will next ask for, or null if it asks
+   * for none. At a tool change this is the bit going in: every bit carries its
+   * own speed, set on the line after its M6.
+   */
+  public nextSpindleRpm(): number | null {
+    if (!this.isJobRunning) return null;
+    for (let i = this.currentQueueIndex; i < this.gcodeQueue.length; i++) {
+      const code = stripGcodeComment(this.gcodeQueue[i]).toUpperCase();
+      if (!/\bM0*[34]\b/.test(code)) continue;
+      const s = /\bS(\d+(?:\.\d+)?)/.exec(code);
+      if (s) return parseFloat(s[1]);
+    }
+    return null;
+  }
+
+  /**
+   * Whether the job on the wire has reached its board flip. From there on the
+   * bit is over the face the height map does *not* describe, so a re-zero must
+   * not be offset by the map's reading (see `zeroZOnSurface`).
+   */
+  public isPastBoardFlip(): boolean {
+    if (!this.isJobRunning) return false;
+    const at = this.gcodeQueue.findIndex(isBoardFlipLine);
+    return at >= 0 && this.currentQueueIndex > at;
   }
 
   /** Emergency Stop (Ctrl-X soft reset, then spindle off). */
@@ -1096,3 +1390,9 @@ export class WebSerialManager extends GrblMachine<MachineState> {
 }
 
 export const webSerialManager = new WebSerialManager();
+
+// The owner's figure for the working envelope, for the travel check wherever
+// the controller has not reported its own; kept current as it is edited or
+// arrives from the account.
+webSerialManager.setBed(machineBedStore.get());
+machineBedStore.subscribe((bed) => webSerialManager.setBed(bed));

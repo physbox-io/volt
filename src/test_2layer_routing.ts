@@ -7,7 +7,7 @@ import {
   generatePcbLayout,
   boardOriginOffsetMm,
   DEFAULT_PCB_OPTIONS,
-  REGISTRATION_PIN_OFFSET_MM,
+  registrationPinOffsetMm,
   type PcbOptions,
 } from './utils/pcbExporter';
 import {
@@ -358,7 +358,7 @@ function runTests() {
     );
   }
   assert(
-    Math.abs(regHoles[0].x - (origin2 - REGISTRATION_PIN_OFFSET_MM)) < 1e-6,
+    Math.abs(regHoles[0].x - (origin2 - registrationPinOffsetMm(opts2Layer))) < 1e-6,
     'the registration pin sits the documented distance outside the board edge'
   );
 

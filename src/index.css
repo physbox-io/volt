@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 @config "../tailwind.config.js";
+/* The shared machine dialogs ship their own classes, and node_modules is not scanned by default. */
+@source "../node_modules/@physbox-io/ui/dist";
 
 @variant dark (&:where(.dark, .dark *));
 

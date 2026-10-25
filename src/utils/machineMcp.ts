@@ -12,7 +12,14 @@ import type { PcbOptions } from './pcbExporter';
 import { layoutForCircuit } from './pcbLayoutStore';
 import { fetchMachineDevices } from './apiClient';
 import { cloudAutosave } from './cloudDocuments';
-import { loadSelectedMaterialId } from './pcbTooling';
+import {
+  bottomIsolationDepthMm,
+  findMaterial,
+  findTool,
+  loadSelectedMaterialId,
+  loadSelectedToolIds,
+} from './pcbTooling';
+import { boardProbeBounds, heightmapCoversBoard } from './boardLevelling';
 import { loadMachiningSettings } from './storage';
 import { pcbJobName, pcbRunSettings } from './pcbRunSettings';
 
@@ -76,12 +83,10 @@ function boardBounds(): { minX: number; minY: number; maxX: number; maxY: number
   if (nodes.length === 0) return null;
   const result = layoutForCircuit(nodes, edges);
   if (result.error) return null;
-  return {
-    minX: 0,
-    minY: 0,
-    maxX: result.boardWidthMm,
-    maxY: result.boardHeightMm,
-  };
+  // Where the board actually sits: it starts `boardOriginMm` in from work zero,
+  // past the profile cutter's margin and, double-sided, the registration pins.
+  // Probing 0..width instead covered that margin and missed the far edge.
+  return boardProbeBounds(result);
 }
 
 /**
@@ -97,7 +102,19 @@ async function millCurrentBoard(args: Record<string, unknown>): Promise<{ summar
     throw new Error('The canvas is empty — there is no board to mill.');
   }
 
-  const overrides = (args.options ?? {}) as Partial<PcbOptions>;
+  const heightmap = activeHeightmap;
+  const overrides = { ...((args.options ?? {}) as Partial<PcbOptions>) };
+  // A map levels the top face only. The bottom of a double-sided board is cut
+  // unlevelled, so it gets the depth that carries the full flatness allowance
+  // rather than the one the map shaved down — as the export dialog does.
+  {
+    const planned = { ...loadMachiningSettings(), ...overrides };
+    const tool = findTool(loadSelectedToolIds().isolation);
+    const material = findMaterial(loadSelectedMaterialId());
+    if (heightmap && planned.layers === 2 && overrides.bottomIsolationDepthZ === undefined && tool && material) {
+      overrides.bottomIsolationDepthZ = bottomIsolationDepthMm(planned.isolationDepthZ, tool, material);
+    }
+  }
   const result = layoutForCircuit(nodes, edges, overrides);
   // The same merge `layoutForCircuit` makes internally: what the board was
   // actually laid out and cut with, for the archive.
@@ -117,10 +134,16 @@ async function millCurrentBoard(args: Record<string, unknown>): Promise<{ summar
     );
   }
 
-  if (result.violations.length > 0) {
+  // Errors only, as the Mill button refuses only errors: a warning is the
+  // exporter saying what it compromised on, and refusing those made every
+  // board with a note in it unmillable from a conversation. Each violation is
+  // an object, so it is its message that is joined — joining the objects
+  // themselves told the agent "[object Object]" and nothing it could fix.
+  const errors = result.violations.filter(v => v.severity === 'error');
+  if (errors.length > 0) {
     throw new Error(
-      `The board has ${result.violations.length} design rule violation(s): ` +
-        `${result.violations.slice(0, 5).join('; ')}. Fix them before cutting.`
+      `The board has ${errors.length} design rule error(s): ` +
+        `${errors.slice(0, 5).map(v => v.message).join('; ')}. Fix them before cutting.`
     );
   }
 
@@ -133,7 +156,13 @@ async function millCurrentBoard(args: Record<string, unknown>): Promise<{ summar
   // on the strength of a probed map, and the levelling is what buys back the
   // margin — so a job whose depth assumed a map that will not be applied cuts
   // traces too faint to isolate and misses the copper on the high spots.
-  const heightmap = activeHeightmap;
+  if (heightmap && !heightmapCoversBoard(heightmap, result)) {
+    throw new Error(
+      'The probed height map no longer covers this board, so it cannot be applied — but the ' +
+        'isolation depth was calculated assuming it would be. Re-probe the surface ' +
+        '(circuit_machine_probe_surface) before milling.'
+    );
+  }
   if (heightmap) {
     const offPlane = gridOffPlaneMm(heightmap);
     if (offPlane > 0.05) {
@@ -161,7 +190,11 @@ async function millCurrentBoard(args: Record<string, unknown>): Promise<{ summar
     }),
   });
 
-  const levelled = heightmap ? 'levelled against the probed height map' : 'not levelled';
+  const levelled = heightmap
+    ? options.layers === 2
+      ? 'top face levelled against the probed height map, bottom face unlevelled'
+      : 'levelled against the probed height map'
+    : 'not levelled';
   return {
     summary:
       `Milling a ${result.boardWidthMm.toFixed(1)} x ${result.boardHeightMm.toFixed(1)}mm board: ` +

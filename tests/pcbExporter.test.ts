@@ -211,9 +211,10 @@ describe('generateAirCutPerimeterGcode', () => {
     boardOriginMm: 5,
     boardWidthMm: 40,
     boardHeightMm: 30,
-    // Only the board rectangle: profileToolpath reads nothing else off the layout.
+    drills: [],
+    // Only the board rectangle and the holes: the lap reads nothing else.
   } as unknown as PcbLayoutResult;
-  const options = { ...DEFAULT_PCB_OPTIONS, safeZ: 2 };
+  const options = { ...DEFAULT_PCB_OPTIONS, safeZ: 2, toolChangeZ: 15 };
 
   /** Every absolute Z the program commands while G90 is in force. */
   const absoluteZs = (gcode: string): number[] => {
@@ -229,17 +230,43 @@ describe('generateAirCutPerimeterGcode', () => {
     return zs;
   };
 
-  it('flies at safe Z plus the offset when the tool is below it', () => {
-    const zs = absoluteZs(generateAirCutPerimeterGcode(layout, options, 20, 0));
+  /*
+   * Safe Z + 20 flew higher than anything the job does: it said nothing about
+   * clamps at the height the job travels, and could hit the top of Z travel on
+   * a machine the job itself fits.
+   */
+  it("flies at the job's own highest Z — the tool-change park — when the tool is below it", () => {
+    const zs = absoluteZs(generateAirCutPerimeterGcode(layout, options, 0));
     expect(zs.length).toBeGreaterThan(0);
-    expect(new Set(zs)).toEqual(new Set([22]));
+    expect(new Set(zs)).toEqual(new Set([15]));
+  });
+
+  /*
+   * The registration holes sit outside the profile. A lap of the profile alone
+   * left out the very holes most likely to land off the blank.
+   */
+  it('laps a rectangle that takes in the registration holes', () => {
+    const withPins = {
+      ...layout,
+      drills: [
+        { x: -1, y: 20, diameter: 0.8, componentId: 'align_pin_1', pinNumber: '1', isRegistration: true },
+        { x: 51, y: 20, diameter: 0.8, componentId: 'align_pin_2', pinNumber: '2', isRegistration: true },
+      ],
+    } as unknown as PcbLayoutResult;
+    const xs = generateAirCutPerimeterGcode(withPins, options, 0)
+      .split('\n')
+      .map(l => /^G[01] X(-?[\d.]+)/.exec(l))
+      .filter((m): m is RegExpExecArray => !!m)
+      .map(m => parseFloat(m[1]));
+    expect(Math.min(...xs)).toBeCloseTo(-1.4, 3);
+    expect(Math.max(...xs)).toBeCloseTo(51.4, 3);
   });
 
   it('never commands a Z below where the tool already is', () => {
     // A Z0 left over from a thicker blank puts the tool above the clearance
     // height the offset asks for; dropping to it would drive the bit into the
     // work and then drag it around the outline.
-    const gcode = generateAirCutPerimeterGcode(layout, options, 20, 60);
+    const gcode = generateAirCutPerimeterGcode(layout, options, 60);
     for (const z of absoluteZs(gcode)) expect(z).toBeGreaterThanOrEqual(60);
   });
 
@@ -252,8 +279,8 @@ describe('generateAirCutPerimeterGcode', () => {
    * carrying over from a previous setup.
    */
   it('never descends, from any starting height', () => {
-    for (const startZ of [-50, -12, -1, 0, 0.5, 1.9, 2, 2.1, 21.9, 22, 22.1, 60, 500]) {
-      const zs = absoluteZs(generateAirCutPerimeterGcode(layout, options, 20, startZ));
+    for (const startZ of [-50, -12, -1, 0, 0.5, 1.9, 2, 2.1, 14.9, 15, 15.1, 60, 500]) {
+      const zs = absoluteZs(generateAirCutPerimeterGcode(layout, options, startZ));
       expect(zs.length).toBeGreaterThan(0);
       for (const z of zs) {
         expect(z, `starting at Z${startZ}`).toBeGreaterThanOrEqual(startZ);
@@ -267,27 +294,27 @@ describe('generateAirCutPerimeterGcode', () => {
    * the retract between the two laps and the return to the origin.
    */
   it('commands no absolute Z at all when the current Z is unknown', () => {
-    const gcode = generateAirCutPerimeterGcode(layout, options, 20, undefined);
+    const gcode = generateAirCutPerimeterGcode(layout, options, undefined);
     expect(absoluteZs(gcode)).toEqual([]);
-    expect(gcode).toMatch(/G91 G0 Z20\.000/);
+    expect(gcode).toMatch(/G91 G0 Z15\.000/);
   });
 
   it('treats a non-finite current Z as unknown rather than as zero', () => {
     for (const bad of [NaN, Infinity, -Infinity]) {
-      const gcode = generateAirCutPerimeterGcode(layout, options, 20, bad);
+      const gcode = generateAirCutPerimeterGcode(layout, options, bad);
       expect(absoluteZs(gcode), `current Z ${bad}`).toEqual([]);
     }
   });
 
   it('lifts relatively when the current Z is unknown', () => {
-    const gcode = generateAirCutPerimeterGcode(layout, options, 20);
-    expect(gcode).toMatch(/G91 G0 Z20\.000/);
+    const gcode = generateAirCutPerimeterGcode(layout, options);
+    expect(gcode).toMatch(/G91 G0 Z15\.000/);
     expect(absoluteZs(gcode)).toEqual([]);
   });
 
   it('still cannot start the spindle at any height', () => {
     for (const z of [undefined, 0, 60]) {
-      const gcode = generateAirCutPerimeterGcode(layout, options, 20, z);
+      const gcode = generateAirCutPerimeterGcode(layout, options, z);
       for (const line of gcode.split('\n')) {
         const code = line.indexOf(';') !== -1 ? line.slice(0, line.indexOf(';')) : line;
         expect(/\bM[34]\b/.test(code)).toBe(false);
@@ -428,6 +455,9 @@ describe('reusesLayoutAcross — the G-code-only option allowlist', () => {
     plungeFeedrate: base.plungeFeedrate + 53,
     drillFeedrate: base.drillFeedrate + 29,
     spindleRpm: base.spindleRpm + 7000,
+    profileSpindleRpm: 9500,
+    bottomIsolationDepthZ: -0.31,
+    spindleLimitsRpm: { minRpm: 3000, maxRpm: 10000 },
     safeZ: base.safeZ + 6.5,
     toolChangeZ: base.toolChangeZ + 11,
     drillDepthZ: base.drillDepthZ - 1.3,

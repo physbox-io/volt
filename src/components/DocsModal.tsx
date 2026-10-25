@@ -523,7 +523,7 @@ export function DocsModal({ onClose }: DocsModalProps) {
                 <ol className="list-decimal pl-6 mb-4 space-y-1">
                   <li><strong>OP 1 &mdash; Top isolation:</strong> Routes top copper traces and SMD pads.</li>
                   <li><strong>OP 2 &mdash; Drilling:</strong> Drills all through-holes, vias, and two alignment pin holes that plunge 2&nbsp;mm into the spoilboard using the existing via drill bit.</li>
-                  <li><strong>OP 3 &mdash; Flip pause:</strong> Machine parks and spindle stops. Insert two pins (e.g. 0.8&nbsp;mm resistor leg clippings or 0.64&nbsp;mm pin headers) into the spoilboard holes, flip the blank left-to-right onto the pins, re-clamp, re-zero Z on the fresh copper surface, and press Resume.</li>
+                  <li><strong>OP 3 &mdash; Flip pause:</strong> Machine parks and spindle stops. Insert two pins (e.g. 0.8&nbsp;mm resistor leg clippings or 0.64&nbsp;mm pin headers) into the spoilboard holes, flip the blank left-to-right onto the pins, re-clamp, re-zero Z on the fresh copper surface, and press Resume. Both pins sit off-centre in Y on purpose, so a front-to-back flip will not seat. A height map probed on the top side does not describe the bottom, so the bottom side is cut unlevelled.</li>
                   <li><strong>OP 4 &mdash; Bottom isolation:</strong> Routes bottom copper traces, automatically mirrored horizontally.</li>
                   <li><strong>OP 5 &mdash; Profile cutout:</strong> Cuts the board perimeter to free the finished board.</li>
                 </ol>

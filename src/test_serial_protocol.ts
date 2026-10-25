@@ -14,6 +14,12 @@ function check(name: string, cond: boolean, detail = '') {
   console.log(`${cond ? '  ok  ' : '!!FAIL'} ${name}${cond ? '' : `  ${detail}`}`);
 }
 
+/** Waits for a condition the stream reaches on its own, giving up after a few seconds. */
+async function until(cond: () => boolean, ms = 5000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!cond() && Date.now() < deadline) await new Promise(r => setTimeout(r, 10));
+}
+
 /** A thrown value is only an Error by convention, so read the message as one. */
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -44,6 +50,12 @@ interface FakeGrblOptions {
   faultOnReset?: number;
   /** Machine coordinates are lost across a reset by this much, in mm. */
   driftOnReset?: number;
+  /**
+   * The G54 offset the controller boots holding — somebody's zero set from
+   * another app or browser since this one last connected. Unset, it boots at
+   * all zeros, as a controller that lost its offsets does.
+   */
+  initialOffset?: { x: number; y: number; z: number };
 }
 
 class FakeGrbl {
@@ -81,6 +93,11 @@ class FakeGrbl {
 
   constructor(opts: FakeGrblOptions = {}) {
     this.opts = opts;
+    if (opts.initialOffset) {
+      this.offX = opts.initialOffset.x;
+      this.offY = opts.initialOffset.y;
+      this.offZ = opts.initialOffset.z;
+    }
     this.readable = new ReadableStream<Uint8Array>({
       start: c => {
         this.controller = c;
@@ -298,15 +315,28 @@ const store = new Map<string, string>();
 const { webSerialManager } = await import('./utils/webSerialManager');
 const { getGridStats } = await import('./utils/meshLeveler');
 
+/**
+ * The operator touching the bit to the copper once, as every connection now
+ * demands before a probe: one report with the probe pin closed, one open.
+ */
+function proveProbeCircuit() {
+  const parse = (webSerialManager as unknown as { parseLine: (line: string) => void }).parseLine.bind(webSerialManager);
+  const { x, y, z } = webSerialManager.getState().mpos;
+  parse(`<Idle|MPos:${x},${y},${z}|Pn:P>`);
+  parse(`<Idle|MPos:${x},${y},${z}>`);
+}
+
 async function reconnect(opts: FakeGrblOptions = {}) {
   await webSerialManager.disconnect();
   installFake(opts);
   await webSerialManager.connect();
+  proveProbeCircuit();
 }
 
 // --- 1. Streaming a long job never overflows the controller ----------------
 await webSerialManager.connect();
 check('connects', webSerialManager.getState().connected);
+proveProbeCircuit();
 
 // A job start now refuses to run against an unconfirmed Z datum (see
 // assertZTrusted) — zero it first so this block still tests what it says it
@@ -379,13 +409,20 @@ for (const [i, line] of meshSent.entries()) {
   check(`G90 restored after probe ${i}`, restored, meshSent.slice(i, i + 3).join(' | '));
   break;
 }
-const retracts = meshSent.filter(l => /^G0 Z/.test(l));
+// The lift is relative (`G91 G0 Z…`, then `G90`), so the clearance follows
+// the surface from point to point rather than trusting an absolute height.
+const isLift = (l: string) => /(^|\s)G0 Z/.test(l);
+const retracts = meshSent.filter(isLift);
 check('retracts between points', retracts.length >= 16, `${retracts.length}`);
 
-// Every probe must be preceded by a retract, or the bit drags across copper.
+// Every traverse must follow a lift, or the bit drags across copper. The mode
+// switch back to absolute between the two moves nothing.
 let dragged = false;
 for (let i = 1; i < meshSent.length; i++) {
-  if (/^G0 X/.test(meshSent[i]) && !/^G0 Z/.test(meshSent[i - 1])) dragged = true;
+  if (!/^G0 X/.test(meshSent[i])) continue;
+  let j = i - 1;
+  while (j > 0 && /^G9[01]$/.test(meshSent[j])) j--;
+  if (!isLift(meshSent[j])) dragged = true;
 }
 check('never travels without retracting first', !dragged);
 
@@ -526,13 +563,23 @@ check(
 );
 
 // A controller that came back up without its offsets — a power cycle between
-// sessions — is handed them back on connect, without being asked. That is the
-// whole point: the zeros stay where they were until someone sets them again.
+// sessions, which leaves G54 at all zeros — is handed them back. Not on
+// connect, though: G54 is an offset from machine position, and machine
+// position before homing is wherever the gantry stood at power-on, so a
+// restore then would put the origin wherever that offset happens to land.
 const savedBefore = webSerialManager.getState().savedZero!;
 await reconnect();
 await new Promise(r => setTimeout(r, 400));
 check(
-  'a lost work origin is written back on connect',
+  'a lost work origin is not written back before the machine homes',
+  !fake.received.some(l => /^G10 L2 /.test(l)) && webSerialManager.getState().zeroRestored !== true,
+  fake.received.filter(l => l.startsWith('G10')).join(' | ')
+);
+
+await webSerialManager.homeMachine();
+await new Promise(r => setTimeout(r, 400));
+check(
+  'and is written back once it has',
   fake.received.some(l => /^G10 L2 P1 X12\.000 Y7\.000/.test(l)),
   fake.received.filter(l => l.startsWith('G10')).join(' | ')
 );
@@ -547,6 +594,12 @@ check(
   'restoring did not move the origin',
   Math.abs(webSerialManager.getState().savedZero!.x! - savedBefore.x!) < 1e-6
 );
+// The remembered Z was taken with whatever bit was in the collet then; a
+// restore landing over a fresh bit is a plunge as deep as the two differ.
+check(
+  'a restored origin is not a Z datum — Z is touched off afresh',
+  webSerialManager.getState().zeroZSet !== true
+);
 
 // A machine that already agrees is left alone — writing offsets it already has
 // is a chance to get them wrong for nothing.
@@ -556,6 +609,25 @@ check(
   'a machine that already agrees is not written to',
   fake.received.filter(l => /^G10 L2/.test(l)).length === beforeIdle,
   `${beforeIdle} -> ${fake.received.filter(l => /^G10 L2/.test(l)).length}`
+);
+
+// A controller holding a *different* real zero is somebody's newer one — a
+// blank set up from Etch, or from another browser — and the old origin used to
+// be written over it on any difference, moving the job onto the previous
+// board's position. Nothing here can tell which of two real zeros is right,
+// so the controller's own wins, homed or not.
+await reconnect({ initialOffset: { x: 30, y: 20, z: -4 } });
+await webSerialManager.homeMachine();
+await new Promise(r => setTimeout(r, 600));
+check(
+  'a different, non-zero zero on the controller is never overwritten',
+  !fake.received.some(l => /^G10 L2 /.test(l)) && webSerialManager.getState().zeroRestored !== true,
+  fake.received.filter(l => l.startsWith('G10')).join(' | ')
+);
+check(
+  'and the controller keeps working to its own origin',
+  Math.abs(webSerialManager.getState().workOffset!.x - 30) < 1e-6,
+  JSON.stringify(webSerialManager.getState().workOffset)
 );
 
 // Re-zeroing by hand is the operator's answer and is never written over.
@@ -644,6 +716,8 @@ webSerialManager.forgetSavedZero();
 // cancelling the job — and it has to give the pause back when it finishes, or
 // the resume banner disappears with the job still half-streamed.
 await reconnect();
+// Every job now needs Z touched off on this connection; a restored origin no longer counts.
+await webSerialManager.zeroZOnSurface();
 await webSerialManager.startJob(['G90 G21', 'G1 X1.000', 'T1 M6', 'G1 X2.000'].join('\n'));
 check(
   'tool change pauses the job',
@@ -659,6 +733,8 @@ check(
 );
 
 await webSerialManager.resumeJob();
+// A resume returns once the stream is moving again; wait for where it settles.
+await until(() => webSerialManager.getState().status !== 'RUNNING');
 check(
   'job runs to completion after the re-zero',
   webSerialManager.getState().status === 'IDLE',
@@ -673,6 +749,7 @@ check('post-change line was sent', fake.received.includes('G1 X2.000'));
 // re-zero controls before anything is re-cut. That prompt is the point: it is
 // the step that got skipped.
 await reconnect();
+await webSerialManager.zeroZOnSurface();
 const twoLayers = [
   'M3 S12000',
   '; OP 1/2: Isolation routing',
@@ -689,6 +766,8 @@ check('current layer is the one being entered', webSerialManager.getCurrentLayer
 
 // Resume into the first layer, then restart it while it is the live one.
 await webSerialManager.resumeJob();
+// A resume returns once the stream is moving again; wait for where it settles.
+await until(() => webSerialManager.getState().status !== 'RUNNING');
 check('reached the second tool change', webSerialManager.getState().status === 'PAUSED_TOOL', webSerialManager.getState().status);
 check('now cutting the second layer', webSerialManager.getCurrentLayer()?.label === 'Through-hole drilling', `${webSerialManager.getCurrentLayer()?.label}`);
 
@@ -701,6 +780,8 @@ const cutsBefore = fake.received.filter(l => l === 'G1 X1.000').length;
 let refused = '';
 try {
   await webSerialManager.resumeJob();
+// A resume returns once the stream is moving again; wait for where it settles.
+await until(() => webSerialManager.getState().status !== 'RUNNING');
 } catch (e) {
   refused = messageOf(e);
 }
@@ -709,12 +790,17 @@ check('and the job is still sitting at the pause', webSerialManager.getState().s
 
 await webSerialManager.zeroZ(12);
 await webSerialManager.resumeJob();
+// A resume returns once the stream is moving again; wait for where it settles.
+await until(() => webSerialManager.getState().status !== 'RUNNING');
 check('job finished', webSerialManager.getState().status === 'IDLE', webSerialManager.getState().status);
 
 // Now run it again and restart the *live* layer part-way through.
 await reconnect();
+// Every job now needs Z touched off on this connection; a restored origin no longer counts.
+await webSerialManager.zeroZOnSurface();
 await webSerialManager.startJob(twoLayers);
 await webSerialManager.resumeJob(); // past T1, cuts layer 1, stops at T2
+await until(() => webSerialManager.getState().status !== 'RUNNING');
 const beforeRestart = fake.received.filter(l => l === 'G1 X9.000').length;
 await webSerialManager.restartCurrentLayer();
 
@@ -741,6 +827,8 @@ check('progress rewound to the layer start', (webSerialManager.getState().progre
 const spindleBefore = fake.received.filter(l => l === 'M3 S12000').length;
 await webSerialManager.zeroZ(12);
 await webSerialManager.resumeJob();
+// A resume returns once the stream is moving again; wait for where it settles.
+await until(() => webSerialManager.getState().status !== 'RUNNING');
 check('the spindle is restarted on resume', fake.received.filter(l => l === 'M3 S12000').length === spindleBefore + 1, `${spindleBefore}`);
 check('the layer is cut again', fake.received.filter(l => l === 'G1 X9.000').length > beforeRestart);
 check('job completes after a restart', webSerialManager.getState().status === 'IDLE', webSerialManager.getState().status);
@@ -751,6 +839,8 @@ void cutsBefore;
 // reset, including the deliberate one a restart performs. That lock is not a
 // fault and must not cost the operator the whole board.
 await reconnect({ homingLockout: true });
+// Every job now needs Z touched off on this connection; a restored origin no longer counts.
+await webSerialManager.zeroZOnSurface();
 await webSerialManager.startJob(twoLayers);
 await webSerialManager.resumeJob(); // past T1, cut layer 1, stop at T2
 await webSerialManager.restartCurrentLayer();
@@ -766,13 +856,19 @@ check(
 );
 await webSerialManager.zeroZ(12);
 await webSerialManager.resumeJob();
+// A resume returns once the stream is moving again; wait for where it settles.
+await until(() => webSerialManager.getState().status !== 'RUNNING');
 check('job completes after an auto-unlock', webSerialManager.getState().status === 'IDLE', webSerialManager.getState().status);
 
 // A *coded* alarm is the opposite case: a limit trip or a reset mid-motion,
 // where position is genuinely suspect. That must NOT be auto-unlocked.
 await reconnect({ faultOnReset: 1 });
+// Every job now needs Z touched off on this connection; a restored origin no longer counts.
+await webSerialManager.zeroZOnSurface();
 await webSerialManager.startJob(twoLayers);
 await webSerialManager.resumeJob();
+// A resume returns once the stream is moving again; wait for where it settles.
+await until(() => webSerialManager.getState().status !== 'RUNNING');
 let restartErr = '';
 try {
   await webSerialManager.restartCurrentLayer();
@@ -785,8 +881,12 @@ check('and says how to recover', restartErr.includes('$H'), restartErr || '(no e
 
 // Lost position is caught even when the controller never says so.
 await reconnect({ driftOnReset: 5 });
+// Every job now needs Z touched off on this connection; a restored origin no longer counts.
+await webSerialManager.zeroZOnSurface();
 await webSerialManager.startJob(twoLayers);
 await webSerialManager.resumeJob();
+// A resume returns once the stream is moving again; wait for where it settles.
+await until(() => webSerialManager.getState().status !== 'RUNNING');
 let driftErr = '';
 try {
   await webSerialManager.restartCurrentLayer();
@@ -809,6 +909,8 @@ check('machine returns to idle after a failed probe', webSerialManager.getState(
 
 // --- 4. A rejected command aborts the job ---------------------------------
 await reconnect({ errorOn: 'X5.000' });
+// Every job now needs Z touched off on this connection; a restored origin no longer counts.
+await webSerialManager.zeroZOnSurface();
 await webSerialManager.startJob(['G90', 'G1 X1.000', 'G1 X5.000', 'G1 X9.000'].join('\n'));
 check('error: aborts the job', webSerialManager.getState().status === 'ERROR', webSerialManager.getState().status);
 check('error is reported', (webSerialManager.getState().lastError || '').includes('error:1'), webSerialManager.getState().lastError || '');

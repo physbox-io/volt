@@ -47,7 +47,7 @@ vi.mock('../src/utils/cloudDocuments', () => ({
   cloudAutosave: { getStatus: () => ({ documentId: null, revision: null }) },
 }));
 
-const { WebSerialManager } = await import('../src/utils/webSerialManager');
+const { WebSerialManager, layerSpindleRestart } = await import('../src/utils/webSerialManager');
 
 /** A GRBL that answers only when the test says so. */
 class FakeController implements GrblTransport {
@@ -79,8 +79,26 @@ class FakeController implements GrblTransport {
       setTimeout(() => this.say('ok\n'), 0);
     }
   }
+  /** Answers a `?` poll, when set — see the layer-restart tests. */
+  onStatusPoll: (() => string | null) | null = null;
+  /** What a soft reset (Ctrl-X) does besides rebooting. */
+  onSoftReset: (() => void) | null = null;
   async writeRealtime(byte: number) {
     this.realtime.push(byte);
+    if (byte === 0x3f && this.onStatusPoll) {
+      const report = this.onStatusPoll();
+      if (report) setTimeout(() => this.say(report), 0);
+    }
+    if (byte === 0x18) {
+      // A reset controller has dropped its buffer: nothing outstanding will be
+      // answered, and everything after the banner is.
+      this.acked = this.written.length;
+      this.autoAck = true;
+      setTimeout(() => {
+        this.onSoftReset?.();
+        this.say("Grbl 1.1h ['$' for help]\n");
+      }, 0);
+    }
   }
   say(text: string) {
     this.dataCb?.(text);
@@ -103,6 +121,9 @@ class TestManager extends WebSerialManager {
   }
   isSupported(): boolean {
     return true;
+  }
+  shortenHoldTimeout(ms: number) {
+    this.restartHoldTimeoutMs = ms;
   }
 }
 
@@ -399,6 +420,7 @@ describe('the remembered work origin', () => {
     const m = new TestManager(fake);
     await m.connect();
     await tick();
+    await m.homeMachine();
 
     // The controller reports a zero offset — it has lost the origin.
     fake.say('<Idle|MPos:0,0,0|WCO:0,0,0>\n');
@@ -408,6 +430,64 @@ describe('the remembered work origin', () => {
     // buttons use — would re-zero on wherever the tool is parked right now,
     // which is exactly the mistake being avoided.
     expect(fake.written).toContain('G10 L2 P1 X12.000 Y34.000 Z-5.000');
+  });
+
+  /*
+   * The remembered Z was taken with whatever bit was in the collet then. A
+   * restore that counted as a Z zero let a job start on it, and the first
+   * plunge went as deep as the two bits differ.
+   */
+  it('restores XY but never counts as a Z zero', async () => {
+    storage.setItem('grblWorkOrigin', JSON.stringify({ x: 12, y: 34, z: -5, savedAt: Date.now() }));
+    const m = new TestManager(fake);
+    await m.connect();
+    await tick();
+    await m.homeMachine();
+    fake.say('<Idle|MPos:0,0,0|WCO:0,0,0>\n');
+    await vi.waitFor(() => expect(m.getState().zeroRestored).toBe(true));
+
+    expect(m.getState().zeroXYSet).toBe(true);
+    expect(m.getState().zeroZSet).toBeFalsy();
+    await expect(m.startJob('G1 X1 Y1')).rejects.toThrow(/Z zero has not been set/);
+  });
+
+  /*
+   * A non-zero offset that differs from ours is somebody's newer zero — a blank
+   * set up from another app — and writing the old one over it moved the job
+   * onto the previous board.
+   */
+  it('leaves a different, real offset alone', async () => {
+    storage.setItem('grblWorkOrigin', JSON.stringify({ x: 12, y: 34, z: -5, savedAt: Date.now() }));
+    const m = new TestManager(fake);
+    await m.connect();
+    await tick();
+    await m.homeMachine();
+    fake.say('<Idle|MPos:0,0,0|WCO:40,50,-7>\n');
+    await tick();
+    fake.say('<Idle|MPos:0,0,0|WCO:40,50,-7>\n');
+    await tick();
+
+    expect(fake.written.some(l => l.startsWith('G10 L2'))).toBe(false);
+    expect(m.getState().zeroRestored).toBeFalsy();
+  });
+
+  /*
+   * G54 is an offset from machine position, and machine position before
+   * homing is wherever the gantry stood at power-on.
+   */
+  it('waits for the machine to home before restoring', async () => {
+    storage.setItem('grblWorkOrigin', JSON.stringify({ x: 12, y: 34, savedAt: Date.now() }));
+    const m = new TestManager(fake);
+    await m.connect();
+    await tick();
+    fake.say('<Idle|MPos:0,0,0|WCO:0,0,0>\n');
+    await tick();
+    expect(fake.written.some(l => l.startsWith('G10 L2'))).toBe(false);
+
+    await m.homeMachine();
+    fake.say('<Idle|MPos:0,0,0|WCO:0,0,0>\n');
+    await vi.waitFor(() => expect(m.getState().zeroRestored).toBe(true));
+    expect(fake.written).toContain('G10 L2 P1 X12.000 Y34.000');
   });
 
   it('is left alone when the controller already agrees', async () => {
@@ -489,5 +569,203 @@ describe('emergency stop', () => {
     expect(fake.realtime).toContain(0x18);
     // The spindle does not stop on its own when the parser restarts.
     expect(fake.written).toContain('M5');
+  });
+});
+
+describe('restarting the current layer', () => {
+  /*
+   * A restart has to soft-reset the controller to flush its planner, and a
+   * reset that lands while the machine is still moving is ALARM:3 with
+   * position lost. It used to wait a fixed 600 ms after the hold — a rapid at
+   * default acceleration takes longer to stop — and then offered Resume over a
+   * machine that no longer knew where it was.
+   */
+  const program = [
+    '; OP 1/2: Isolation',
+    'T1 M6',
+    'M3 S12000',
+    'G1 X1 F100',
+    // Longer than GRBL's receive buffer, so the stream is still inside this
+    // operation when the restart is asked for.
+    ...Array.from({ length: 60 }, (_, i) => `G1 X${(2 + i * 0.01).toFixed(3)} Y1`),
+    '; OP 2/2: Profile',
+    'T99 M6',
+    'M3 S16000',
+    'G1 X9',
+  ].join('\n');
+
+  let state: string;
+  let mpos: string;
+
+  async function startCutting() {
+    const zeroing = machine.zeroZOnSurface(0);
+    await completeZeroZ(fake);
+    await zeroing;
+    fake.say('<Idle|MPos:0,0,-5|WCO:0,0,-5>\n');
+    await tick();
+    state = 'Run';
+    mpos = '1,0,-5.1';
+    fake.onStatusPoll = () => `<${state}|MPos:${mpos}|WCO:0,0,-5>\n`;
+    await machine.startJob(program);
+    // Past the setup tool change and cutting, with the controller holding
+    // lines it has not answered yet.
+    fake.autoAck = false;
+    void machine.resumeJob();
+    await vi.waitFor(() => expect(fake.written).toContain('G1 X1 F100'));
+    expect(machine.getCurrentLayer()?.label).toBe('Isolation');
+  }
+
+  it('does not reset until the controller reports the hold complete', async () => {
+    await startCutting();
+    let polls = 0;
+    let stopped = false;
+    fake.onStatusPoll = () => {
+      polls++;
+      // Still decelerating until the test says otherwise.
+      return `<${stopped ? 'Hold:0' : 'Hold:1'}|MPos:${mpos}|WCO:0,0,-5>\n`;
+    };
+    const resets = () => fake.realtime.filter(b => b === 0x18).length;
+    const resetsBefore = resets();
+    const restart = machine.restartCurrentLayer();
+    await vi.waitFor(() => expect(polls).toBeGreaterThanOrEqual(3));
+    expect(fake.realtime).toContain(0x21);
+    expect(resets()).toBe(resetsBefore);
+    fake.onSoftReset = () => {
+      fake.onStatusPoll = () => `<Idle|MPos:${mpos}|WCO:0,0,-5>\n`;
+    };
+    stopped = true;
+    await restart;
+
+    expect(resets()).toBe(resetsBefore + 1);
+    expect(machine.getState().status).toBe('PAUSED_TOOL');
+    expect(machine.isRunning()).toBe(true);
+  });
+
+  it('stays in feed hold, unreset, when the machine never reports a standstill', async () => {
+    await startCutting();
+    machine.shortenHoldTimeout(50);
+    fake.onStatusPoll = () => `<Hold:1|MPos:${mpos}|WCO:0,0,-5>\n`;
+    const resetsBefore = fake.realtime.filter(b => b === 0x18).length;
+    await expect(machine.restartCurrentLayer()).rejects.toThrow(/not reset/);
+
+    expect(fake.realtime.filter(b => b === 0x18).length).toBe(resetsBefore);
+    expect(machine.getState().status).toBe('PAUSED_OPERATOR');
+    expect(machine.isJobPaused()).toBe(true);
+  });
+
+  it('refuses to offer the restart after a coded alarm, and does not unlock it', async () => {
+    await startCutting();
+    state = 'Hold:0';
+    fake.onSoftReset = () => {
+      fake.say('ALARM:3\n');
+      state = 'Alarm';
+    };
+    await expect(machine.restartCurrentLayer()).rejects.toThrow(/\$H/);
+
+    expect(fake.written).not.toContain('$X');
+    expect(machine.isRunning()).toBe(false);
+    expect(machine.getState().status).not.toBe('PAUSED_TOOL');
+  });
+
+  it('refuses when machine position moved across the reset', async () => {
+    await startCutting();
+    state = 'Hold:0';
+    fake.onSoftReset = () => {
+      state = 'Idle';
+      mpos = '1.2,0,-5.1';
+    };
+    await expect(machine.restartCurrentLayer()).rejects.toThrow(/lost 0\.20mm/);
+    expect(machine.isRunning()).toBe(false);
+  });
+
+  /*
+   * With homing required ($22=1) GRBL boots locked after every reset, the
+   * deliberate one included. That lock is not a fault.
+   */
+  it('clears the homing lockout and carries on', async () => {
+    await startCutting();
+    state = 'Hold:0';
+    fake.onSoftReset = () => {
+      state = 'Alarm';
+    };
+    const written = fake.writeLine.bind(fake);
+    fake.writeLine = async (line: string) => {
+      if (line === '$X') state = 'Idle';
+      return written(line);
+    };
+    await machine.restartCurrentLayer();
+
+    expect(fake.written).toContain('$X');
+    expect(machine.getState().status).toBe('PAUSED_TOOL');
+    expect(machine.getState().needsZeroBeforeResume).toBe(true);
+  });
+
+  it('rewinds to the layer and stops at its own tool change, not before', async () => {
+    await startCutting();
+    state = 'Hold:0';
+    fake.onSoftReset = () => {
+      state = 'Idle';
+    };
+    await machine.restartCurrentLayer();
+    const rezero = machine.zeroZOnSurface(0);
+    await completeZeroZ(fake);
+    await rezero;
+
+    const before = fake.written.length;
+    await machine.resumeJob();
+    await vi.waitFor(() => expect(machine.getState().status).toBe('PAUSED_TOOL'));
+    // The layer opens with its own M6, which brings the spindle up after the
+    // bit change — so nothing spun it up on the way to that prompt.
+    expect(fake.written.slice(before).some(l => /^M3/.test(l))).toBe(false);
+  });
+});
+
+describe('which spindle line a restarted layer replays', () => {
+  const lines = ['G0 Z5', 'T1 M6', 'M3 S12000', 'G1 X1', 'M5', 'T99 M6', 'M3 S16000 ; end mill', 'G1 X2', 'G1 X3'];
+
+  it('none, when the layer opens with its own bit change', () => {
+    expect(layerSpindleRestart(lines, 1)).toBeNull();
+    expect(layerSpindleRestart(lines, 4)).toBeNull();
+  });
+
+  it('the speed the bit already in the collet was running at', () => {
+    expect(layerSpindleRestart(lines, 8)).toBe('M3 S16000');
+  });
+});
+
+describe('a height map levels only the face it was probed on', () => {
+  /*
+   * After the flip the bit is over the other face, re-clamped. A map of the
+   * top applied there cut the bottom copper to the top's warp.
+   */
+  it('warps up to the flip and leaves the bottom face alone', async () => {
+    const { gridFromPoints } = await import('@physbox-io/machining');
+    const { BOARD_FLIP_NOTE } = await import('../src/utils/boardLevelling');
+    const grid = gridFromPoints([
+      [{ x: 0, y: 0, z: 0.2 }, { x: 10, y: 0, z: 0.2 }],
+      [{ x: 0, y: 10, z: 0.2 }, { x: 10, y: 10, z: 0.2 }],
+    ])!;
+    const bottom = ['G0 X5 Y5', 'G1 Z-0.100 F100', 'G1 X6 Y5 F300'];
+    const program = ['G90', 'G0 X5 Y5', 'G1 Z-0.100 F100', `M0 ; ${BOARD_FLIP_NOTE}`, ...bottom].join('\n');
+    const out = machine.applyHeightmapToGcode(program, grid).split('\n');
+    const flip = out.findIndex(l => l.includes(BOARD_FLIP_NOTE));
+    expect(out.slice(0, flip).join('\n')).toMatch(/Z0\.100/);
+    expect(out.slice(flip + 1)).toEqual(bottom);
+  });
+
+  it('says when the job has reached the flip, and what speed comes next', async () => {
+    const { BOARD_FLIP_NOTE } = await import('../src/utils/boardLevelling');
+    const zeroing = machine.zeroZOnSurface(0);
+    await completeZeroZ(fake);
+    await zeroing;
+    fake.say('<Idle|MPos:0,0,-5|WCO:0,0,-5>\n');
+    await tick();
+    await machine.startJob(
+      ['G1 X1 F100', `M0 ; ${BOARD_FLIP_NOTE}`, 'T1 M6', 'M3 S15000', 'G1 X2', 'T99 M6', 'M3 S11000'].join('\n')
+    );
+    // Stopped at the flip pause: the next cut is on the other face.
+    expect(machine.getState().status).toBe('PAUSED_MATERIAL');
+    expect(machine.isPastBoardFlip()).toBe(true);
+    expect(machine.nextSpindleRpm()).toBe(15000);
   });
 });

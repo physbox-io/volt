@@ -2,6 +2,18 @@
 // PCB Tooling Catalog & Feeds/Speeds Engine
 // ---------------------------------------------------------------------------
 
+import {
+  ToolRackStore,
+  TOOL_RACK_PARAMETER,
+  TOOL_RACK_STORAGE_KEY,
+  availableTools as rackAvailableTools,
+  cuttingDefaults,
+  nextToolNumber,
+  type RackTool,
+  type ToolRack,
+} from '@physbox-io/machining';
+import { syncCloudParameters } from './apiClient';
+
 export type ToolType = 'vbit' | 'drill' | 'endmill' | 'ballnose' | 'engraver';
 
 /**
@@ -29,6 +41,14 @@ export interface PcbToolPreset {
   recommendedRpm: number;
   description: string;
   isCustom?: boolean;
+  /** The shared rack entry this bit was read from, when it came from the rack. */
+  rackUid?: string;
+  /** The T number the rack gives it — what Etch and Mesh call the same bit. */
+  rackToolNumber?: number;
+  /** Taken out of the drawer in the rack: still resolvable, no longer offered. */
+  retired?: boolean;
+  /** The catalogue entry its PCB numbers were taken from, when it matched one. */
+  catalogueId?: string;
 }
 
 export interface PcbMaterialPreset {
@@ -453,19 +473,21 @@ export function loadCamSetup(): CamSetup {
 /**
  * Puts a saved setup back, on whatever machine is opening the circuit.
  *
- * Custom bits are folded into this machine's drawer rather than replacing it:
+ * Custom bits are folded into this machine's rack rather than replacing it:
  * they are equipment, and arriving with a circuit is no reason to take away a
  * tool somebody defined here.
  */
 export function applyCamSetup(setup: CamSetup | undefined): void {
   if (!setup) return;
   if (setup.customTools?.length) {
-    const mine = loadCustomTools();
-    const merged = [...mine];
-    for (const tool of setup.customTools) {
-      if (!merged.some(t => t.id === tool.id)) merged.push(createCustomTool(tool as unknown as CustomToolInput, tool.id));
-    }
-    if (merged.length !== mine.length) saveCustomTools(merged);
+    // Into the shared rack, keeping each bit's id as its uid so the selection
+    // below resolves to it.
+    const rack = readToolRack();
+    const additions = rackAdditionsFor(
+      rack,
+      setup.customTools.map(tool => createCustomTool(tool as unknown as CustomToolInput, tool.id))
+    );
+    if (additions.length) toolRackStore.set([...rack.tools, ...additions]);
   }
   if (setup.materialId && findMaterial(setup.materialId)) saveSelectedMaterialId(setup.materialId);
   if (setup.isolationToolId) writeSetting(ISOLATION_TOOL_STORAGE_KEY, setup.isolationToolId);
@@ -679,12 +701,32 @@ export function autoIsolationDepthMm(
   return -parseFloat(Math.max(recommended, needed).toFixed(3));
 }
 
+/**
+ * The isolation depth for the bottom face of a double-sided board whose top
+ * face is cut levelled against a probed map.
+ *
+ * The map is of the top face. Once the board is flipped the copper being cut
+ * is a different surface — the other side of the laminate, re-clamped — and
+ * nothing measured it, so the bottom runs unlevelled. Its depth has to carry
+ * the full unlevelled flatness allowance, not the thinner one the map bought
+ * the top: the deeper of the top depth and the no-map depth, so a hand-set
+ * depth that is already deeper is left alone.
+ */
+export function bottomIsolationDepthMm(
+  topDepthZ: number,
+  tool: PcbToolPreset,
+  material: PcbMaterialPreset
+): number {
+  return Math.min(topDepthZ, autoIsolationDepthMm(tool, material));
+}
+
 // ---------------------------------------------------------------------------
 // Custom tools
 //
 // The catalogue cannot cover every bit in every drawer, so the CAM tab lets the
-// user define their own. They persist in localStorage — there is no backend,
-// and a tool library that vanishes on refresh is worse than none.
+// user define their own. They used to persist in this browser alone; they now
+// go into the shared rack below, and the old list is only read to move it
+// there once.
 // ---------------------------------------------------------------------------
 
 const CUSTOM_TOOL_STORAGE_KEY = 'circuit.pcb.customTools.v1';
@@ -752,7 +794,11 @@ export function createCustomTool(input: CustomToolInput, id?: string): PcbToolPr
   };
 }
 
-export function loadCustomTools(): PcbToolPreset[] {
+/**
+ * The pre-rack drawer, read as it was stored. Only the one-time move into the
+ * shared rack reads it now — see `absorbLegacyCustomTools`.
+ */
+function readLegacyCustomTools(): PcbToolPreset[] {
   if (typeof localStorage === 'undefined') return [];
   try {
     const raw = localStorage.getItem(CUSTOM_TOOL_STORAGE_KEY);
@@ -769,36 +815,364 @@ export function loadCustomTools(): PcbToolPreset[] {
   }
 }
 
-export function saveCustomTools(tools: PcbToolPreset[]): void {
-  if (typeof localStorage === 'undefined') return;
+function clearLegacyCustomTools(): void {
   try {
-    localStorage.setItem(CUSTOM_TOOL_STORAGE_KEY, JSON.stringify(tools));
+    localStorage.removeItem(CUSTOM_TOOL_STORAGE_KEY);
   } catch {
-    // Quota or private-browsing failure. The tool still works this session.
+    // Left in place, it is only read again and found already moved.
   }
 }
 
+// ---------------------------------------------------------------------------
+// The shared rack
+//
+// The bits someone owns, shared with Etch and Mesh through the account (see
+// `@physbox-io/machining`'s rack). Volt used to keep its own drawer — the
+// catalogue plus custom bits in this browser — so the 30° V-bit that was T4 in
+// Etch was "t1_vbit_30" here, and a bit retired in one app was still offered
+// by the other. The pickers now offer what is in the rack.
+//
+// The rack says what a bit *is*; it does not know PCB numbers — how deep a
+// V-bit isolates 35 µm of foil, how fast a 0.8 mm drill pecks FR4. Those come
+// from the catalogue entry the rack tool matches, and are derived from its
+// geometry, flutes and speed through the same chipload rule custom bits have
+// always used when it matches none.
+// ---------------------------------------------------------------------------
+
+/** Diameter within which a rack tool is the catalogue's bit, mm. */
+const RACK_MATCH_DIA_MM = 0.01;
+/** Included angle within which a rack V-bit is the catalogue's, degrees. */
+const RACK_MATCH_ANGLE_DEG = 0.5;
+/**
+ * A `bestFor` tag putting a flat-bottomed rack tool on the isolation picker —
+ * an engraver is a flat in the rack's terms, and without this it would be
+ * offered for the board outline instead. Free strings by the rack's design: the
+ * other apps keep it without reading it.
+ */
+const ISOLATION_TAG = 'isolation';
+
+type PickerRole = ToolRole;
+
+function rackRoleOf(tool: Pick<RackTool, 'shape' | 'bestFor'>): ToolRole {
+  if (tool.shape === 'drill') return 'drill';
+  if (tool.shape === 'vbit') return 'isolation';
+  if (tool.shape === 'flat' && tool.bestFor?.includes(ISOLATION_TAG)) return 'isolation';
+  return 'profile';
+}
+
+function rackTypeOf(tool: Pick<RackTool, 'shape'>, role: ToolRole): ToolType {
+  switch (tool.shape) {
+    case 'drill':
+      return 'drill';
+    case 'vbit':
+      return 'vbit';
+    case 'ball':
+      return 'ballnose';
+    default:
+      return role === 'isolation' ? 'engraver' : 'endmill';
+  }
+}
+
+/** The catalogue bit a rack tool is, by role, type, diameter and angle. */
+export function catalogueMatchForRackTool(tool: RackTool): PcbToolPreset | undefined {
+  const role = rackRoleOf(tool);
+  const type = rackTypeOf(tool, role);
+  return PCB_TOOL_PRESETS.find(
+    p =>
+      p.role === role &&
+      p.type === type &&
+      Math.abs(p.tipDiameterMm - tool.diameterMm) <= RACK_MATCH_DIA_MM &&
+      (type !== 'vbit' ||
+        (p.angleDeg !== undefined &&
+          tool.tipAngleDeg !== undefined &&
+          Math.abs(p.angleDeg - tool.tipAngleDeg) <= RACK_MATCH_ANGLE_DEG))
+  );
+}
+
+/**
+ * A rack tool as the CAM tab's tool model.
+ *
+ * Its id is the rack uid, so a selection survives the tool being renamed or
+ * renumbered in another app.
+ */
+export function pcbToolFromRack(tool: RackTool): PcbToolPreset {
+  const role = rackRoleOf(tool);
+  const type = rackTypeOf(tool, role);
+  const flutes = Math.max(1, Math.round(tool.flutes ?? cuttingDefaults(tool).flutes));
+  const fromRack = {
+    rackUid: tool.uid,
+    rackToolNumber: tool.toolNumber,
+    retired: !tool.available,
+  };
+  const match = catalogueMatchForRackTool(tool);
+  if (match) {
+    // Chipload is a property of the edge, so a two-flute copy of a one-flute
+    // catalogue bit takes twice the feed for the same bite — the rule
+    // `calculatePcbFeeds` applies to a flute override.
+    const scale = flutes / Math.max(1, match.fluteCount);
+    return {
+      ...match,
+      id: tool.uid,
+      name: tool.name,
+      fluteCount: flutes,
+      recommendedCutFeed: Math.round(match.recommendedCutFeed * scale),
+      recommendedPlungeFeed: Math.round(match.recommendedPlungeFeed * scale),
+      catalogueId: match.id,
+      isCustom: false,
+      ...fromRack,
+    };
+  }
+  const stepdown =
+    tool.maxStepdownMm ??
+    (tool.maxStepdownRatio !== undefined ? tool.maxStepdownRatio * tool.diameterMm : undefined);
+  const derived = createCustomTool(
+    {
+      name: tool.name,
+      type,
+      role,
+      tipDiameterMm: tool.diameterMm,
+      angleDeg: tool.tipAngleDeg,
+      fluteCount: flutes,
+      recommendedRpm: tool.rpm,
+      maxStepdownMm: stepdown,
+      description: tool.guidance ?? tool.notes,
+    },
+    tool.uid
+  );
+  // The owner's own plunge limit, when the rack carries one, beats a ratio of
+  // the cutting feed: plunging is the move that snaps small bits.
+  if (tool.maxPlungeRate !== undefined && tool.maxPlungeRate > 0) {
+    derived.recommendedPlungeFeed = Math.min(derived.recommendedPlungeFeed, Math.round(tool.maxPlungeRate));
+  }
+  return { ...derived, ...fromRack };
+}
+
+/** A Volt tool as a rack entry, for adding a bit defined here to the rack. */
+export function rackToolFromPcbTool(tool: PcbToolPreset, toolNumber: number, uid = tool.id): RackTool {
+  const shape: RackTool['shape'] =
+    tool.type === 'drill' ? 'drill' : tool.type === 'vbit' ? 'vbit' : tool.type === 'ballnose' ? 'ball' : 'flat';
+  return {
+    uid,
+    toolNumber,
+    name: tool.name,
+    shape,
+    diameterMm: tool.tipDiameterMm,
+    tipAngleDeg: shape === 'vbit' ? tool.angleDeg : undefined,
+    flutes: tool.fluteCount,
+    centerCutting: true,
+    maxStepdownMm: tool.maxStepdownMm,
+    rpm: tool.recommendedRpm,
+    available: true,
+    notes: tool.description,
+    bestFor: tool.role === 'isolation' && shape !== 'vbit' ? [ISOLATION_TAG] : undefined,
+  };
+}
+
+/** Rack entries to add for tools the rack does not hold yet, each with a fresh T number. */
+export function rackAdditionsFor(rack: ToolRack, tools: PcbToolPreset[]): RackTool[] {
+  const uids = new Set(rack.tools.map(t => t.uid));
+  let next = nextToolNumber(rack);
+  const added: RackTool[] = [];
+  for (const tool of tools) {
+    if (uids.has(tool.id)) continue;
+    uids.add(tool.id);
+    // One past the highest, never a freed number: a gap may still be the T
+    // number an Etch document calls for.
+    added.push(rackToolFromPcbTool(tool, next++));
+  }
+  return added;
+}
+
+/** A tool by id, from the rack (retired included) or the catalogue. */
+export function findToolIn(rack: ToolRack, id: string): PcbToolPreset | undefined {
+  const fromRack = rack.tools.find(t => t.uid === id);
+  if (fromRack) return pcbToolFromRack(fromRack);
+  return PCB_TOOL_PRESETS.find(t => t.id === id);
+}
+
+/**
+ * The id a stored selection should show as.
+ *
+ * Selections made before the rack — and the defaults, and saved circuits — name
+ * catalogue ids. The same bit in the rack is the one to offer, or the picker
+ * lists it twice: once from the rack, once as a stray.
+ */
+export function canonicalToolId(rack: ToolRack, role: PickerRole, id: string): string {
+  if (rack.tools.some(t => t.uid === id)) return id;
+  const catalogue = PCB_TOOL_PRESETS.find(t => t.id === id);
+  if (!catalogue) return id;
+  const same = rackPickerTools(rack, role).find(t => t.catalogueId === catalogue.id);
+  return same?.id ?? id;
+}
+
+/**
+ * What a picker offers for a role: available rack tools, in T-number order —
+ * V-bits (and flats tagged for isolation) to isolate, flat end mills and ball
+ * noses for the outline, drills for the holes. The ball nose is there because
+ * the catalogue always offered one for the outline, and a bit defined as one
+ * in the CAM tab would otherwise vanish from the picker it was made for.
+ */
+export function rackPickerTools(rack: ToolRack, role: PickerRole): PcbToolPreset[] {
+  return rackAvailableTools(rack)
+    .map(pcbToolFromRack)
+    .filter(t => t.role === role);
+}
+
+export interface ToolChoice {
+  tool: PcbToolPreset;
+  label: string;
+}
+
+function rackLabelFor(tool: PcbToolPreset): string {
+  return tool.rackToolNumber !== undefined ? `T${tool.rackToolNumber} · ${tool.name}` : tool.name;
+}
+
+/**
+ * The options for a picker, with the current selection kept on the list even
+ * when the rack no longer offers it.
+ *
+ * Dropping it would make the select show some other bit while the job is
+ * still planned with this one, and a board milled with a tool nobody can see
+ * is chosen is the worse surprise. So it stays, saying why it is odd.
+ */
+export function toolChoices(rack: ToolRack, role: PickerRole, selectedId?: string): ToolChoice[] {
+  const choices = rackPickerTools(rack, role).map(tool => ({ tool, label: rackLabelFor(tool) }));
+  if (!selectedId) return choices;
+  const id = canonicalToolId(rack, role, selectedId);
+  if (choices.some(c => c.tool.id === id)) return choices;
+  const tool = findToolIn(rack, id);
+  if (!tool) return choices;
+  const suffix = tool.retired ? ' (retired)' : tool.rackUid ? ' (not offered here)' : ' (not in your rack)';
+  return [...choices, { tool, label: `${rackLabelFor(tool)}${suffix}` }];
+}
+
+function rackStorage() {
+  return typeof localStorage === 'undefined' ? null : localStorage;
+}
+
+/**
+ * Volt's handle on the shared rack: this browser's copy, kept in step with the
+ * account under the app-agnostic `global` scope Etch and Mesh read.
+ */
+export const toolRackStore = new ToolRackStore({
+  load: () => {
+    try {
+      return rackStorage()?.getItem(TOOL_RACK_STORAGE_KEY) ?? null;
+    } catch {
+      return null;
+    }
+  },
+  save: text => {
+    try {
+      const storage = rackStorage();
+      if (!storage) return false;
+      storage.setItem(TOOL_RACK_STORAGE_KEY, text);
+      return true;
+    } catch {
+      // Private mode or full storage: the rack holds for this session only,
+      // and the dialog says so.
+      return false;
+    }
+  },
+  push: rack => void syncCloudParameters('global', { [TOOL_RACK_PARAMETER]: rack }),
+});
+
+/**
+ * Moves the pre-rack custom tools into the rack, once.
+ *
+ * Each keeps its old id as its rack uid, so a selection or a saved circuit
+ * naming it still resolves, and gets a fresh T number.
+ *
+ * The care is over *when* the move may stamp the rack. A stamped rack is newer
+ * than the account's, and a browser that has never synced holds only the
+ * starting rack: stamping that on the way through would push the starting rack
+ * plus a few bits over the rack the owner built in Etch. So until the rack is
+ * a real one — edited here, or taken from the account — the tools are added
+ * unstamped and the old list is kept, and the move is finished, stamped and
+ * pushed once the account has been heard from (`settleToolRack`).
+ */
+function absorbLegacyCustomTools(accountSettled: boolean): void {
+  const legacy = readLegacyCustomTools();
+  if (!legacy.length) return;
+  const rack = toolRackStore.get();
+  const additions = rackAdditionsFor(rack, legacy);
+  const tools = [...rack.tools, ...additions];
+  if (rack.savedAt > 0 || accountSettled) {
+    if (additions.length || rack.savedAt === 0) toolRackStore.set(tools);
+    if (toolRackStore.lastSaveSucceeded()) clearLegacyCustomTools();
+    return;
+  }
+  if (!additions.length) return;
+  try {
+    rackStorage()?.setItem(TOOL_RACK_STORAGE_KEY, JSON.stringify({ tools, savedAt: rack.savedAt }));
+  } catch {
+    return;
+  }
+  toolRackStore.reload();
+}
+
+/**
+ * The rack as this browser holds it now.
+ *
+ * Re-read rather than cached: another tab, or Etch in the same origin's
+ * storage, may have written it since.
+ */
+export function readToolRack(): ToolRack {
+  toolRackStore.reload();
+  absorbLegacyCustomTools(false);
+  return toolRackStore.get();
+}
+
+/**
+ * Settles this browser's rack against the account's, on a sign-in pull.
+ * Returns true when the account's copy replaced ours.
+ */
+export function settleToolRack(remote: unknown): boolean {
+  toolRackStore.reload();
+  const adopted = toolRackStore.adoptRemote(remote);
+  // After, not before: the old drawer joins whichever rack won.
+  absorbLegacyCustomTools(true);
+  return adopted;
+}
+
+/** Every rack tool as Volt's tool model, retired ones included. */
+export function loadCustomTools(): PcbToolPreset[] {
+  return readToolRack().tools.map(pcbToolFromRack);
+}
+
+/**
+ * Adds a bit defined in the CAM tab to the rack, where Etch and Mesh will see
+ * it too. Returns the rack's tools with the new one last.
+ */
 export function addCustomTool(input: CustomToolInput): PcbToolPreset[] {
-  const tool = createCustomTool(input);
-  const existing = loadCustomTools().filter(t => t.id !== tool.id);
-  const next = [...existing, tool];
-  saveCustomTools(next);
-  return next;
+  const rack = readToolRack();
+  const built = createCustomTool(input);
+  // The builder's id is a description (`custom_100_vbit_1f`), so a second bit
+  // of the same size would collide with the first; in the rack that would be
+  // two tools sharing one identity.
+  let uid = built.id;
+  for (let n = 2; rack.tools.some(t => t.uid === uid); n++) uid = `${built.id}_${n}`;
+  const entry = rackToolFromPcbTool(built, nextToolNumber(rack), uid);
+  return toolRackStore.set([...rack.tools, entry]).tools.map(pcbToolFromRack);
 }
 
-export function deleteCustomTool(id: string): PcbToolPreset[] {
-  const next = loadCustomTools().filter(t => t.id !== id);
-  saveCustomTools(next);
-  return next;
+/**
+ * Takes a bit out of the drawer. Retired rather than deleted, as the shared
+ * dialog does: a board milled with it last month still names it.
+ */
+export function retireRackTool(id: string): void {
+  const rack = readToolRack();
+  if (!rack.tools.some(t => t.uid === id && t.available)) return;
+  toolRackStore.set(rack.tools.map(t => (t.uid === id ? { ...t, available: false } : t)));
 }
 
-/** Catalogue plus the user's own tools, for populating the CAM tool picker. */
+/** Catalogue plus the rack, for resolving any id a selection may hold. */
 export function allTools(): PcbToolPreset[] {
   return [...PCB_TOOL_PRESETS, ...loadCustomTools()];
 }
 
 export function findTool(id: string): PcbToolPreset | undefined {
-  return allTools().find(t => t.id === id);
+  return PCB_TOOL_PRESETS.find(t => t.id === id) ?? findToolIn(readToolRack(), id);
 }
 
 // ---------------------------------------------------------------------------

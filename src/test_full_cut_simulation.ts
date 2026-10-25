@@ -873,7 +873,7 @@ console.log(`  deepest cut before the job was held: ${worst.toFixed(3)}mm`);
 await freshMachine();
 console.log('\nAir cut…');
 const { generateAirCutPerimeterGcode } = await import('./utils/pcbExporter');
-const airProgram = generateAirCutPerimeterGcode(layout, options, 20);
+const airProgram = generateAirCutPerimeterGcode(layout, options);
 const airState = await runJob(airProgram, false);
 const touched = cnc.samples.filter(s => s.depth > 0);
 check(
@@ -926,7 +926,7 @@ check(
 // The same rehearsal against a Z0 left over from a thicker blank: work Z2 is
 // now 30mm *below* the tool, and an air cut that obeyed it would open with a
 // 30mm plunge and then drag the bit around the outline of the board.
-const staleZeroProgram = generateAirCutPerimeterGcode(layout, options, 20, 30);
+const staleZeroProgram = generateAirCutPerimeterGcode(layout, options, 30);
 const staleZeroDescends = staleZeroProgram
   .split('\n')
   .map(l => /\bZ(-?[\d.]+)/.exec(l.split(';')[0]))
