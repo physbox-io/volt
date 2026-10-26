@@ -20,6 +20,9 @@ type Waypoint = { x: number; y: number };
 const waypointsOf = (data: Edge['data']): Waypoint[] | undefined =>
   data?.waypoints as Waypoint[] | undefined;
 
+/** Marks a clean point whose snapshot has not landed yet. See `markLoaded`. */
+const PENDING_CLEAN = Symbol('pending');
+
 /** Debounced undo/redo history for the circuit graph, capped at 50 snapshots. */
 export function useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, setNodes, setEdges }: UseCircuitHistoryArgs) {
   const historyRef = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
@@ -34,6 +37,20 @@ export function useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, 
    * at exactly the three points that used to bump a re-render trigger.
    */
   const [position, setPosition] = useState({ index: -1, length: 0 });
+
+  /*
+   * The snapshot the circuit was last loaded, saved or imported as, so closing
+   * the tab can ask before throwing work away.
+   *
+   * An edit is read off the stack — a different snapshot on top, or a change
+   * still waiting out the debounce — rather than off `nodes`, which also
+   * changes on every frame of a run without anyone touching anything. (What a
+   * stopped run leaves on the parts does count, as it does for undo.) Starts
+   * pending: the circuit the app opens with is clean.
+   */
+  const cleanRef = useRef<unknown>(PENDING_CLEAN);
+  const gatheringRef = useRef(false);
+  const top = useCallback(() => historyRef.current[historyIndexRef.current] ?? null, []);
 
   const pushHistory = useCallback((newNodes: Node[], newEdges: Edge[]) => {
     const cleanNewNodes = newNodes.map(n => ({
@@ -127,16 +144,47 @@ export function useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, 
   // Track structural updates to push to history
   useEffect(() => {
     if (isSimulating) return;
+    gatheringRef.current = true;
     const timer = setTimeout(() => {
+      gatheringRef.current = false;
       pushHistory(nodes, edges);
+      if (cleanRef.current === PENDING_CLEAN) cleanRef.current = top();
     }, 400);
-    return () => clearTimeout(timer);
-  }, [nodes, edges, isSimulating, pushHistory]);
+    return () => {
+      clearTimeout(timer);
+      gatheringRef.current = false;
+    };
+  }, [nodes, edges, isSimulating, pushHistory, top]);
+
+  /**
+   * A circuit was just put on the canvas. Its own snapshot lands after the
+   * debounce, so until then the circuit counts as the one just loaded.
+   */
+  const markLoaded = useCallback(() => {
+    cleanRef.current = PENDING_CLEAN;
+  }, []);
+
+  /**
+   * The circuit on the canvas was just saved. Nothing on the canvas changes,
+   * so the top of the stack is the saved circuit — unless an edit is still
+   * waiting out the debounce, in which case its snapshot is.
+   */
+  const markSaved = useCallback(() => {
+    cleanRef.current = gatheringRef.current ? PENDING_CLEAN : top();
+  }, [top]);
+
+  const hasUnsavedWork = useCallback((): boolean => {
+    if (cleanRef.current === PENDING_CLEAN) return false;
+    return gatheringRef.current || top() !== cleanRef.current;
+  }, [top]);
 
   return {
     undo,
     redo,
     canUndo: position.index > 0,
     canRedo: position.index < position.length - 1,
+    markLoaded,
+    markSaved,
+    hasUnsavedWork,
   };
 }

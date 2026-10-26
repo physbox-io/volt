@@ -60,6 +60,7 @@ import { cloudAutosave } from './utils/cloudDocuments';
 import { useMCPBridge } from './hooks/useMCPBridge';
 import { usePresets } from './hooks/usePresets';
 import { useCircuitHistory } from './hooks/useCircuitHistory';
+import { useUnsavedWorkPrompt } from './hooks/useUnsavedWorkPrompt';
 import { useNoteCards } from './hooks/useNoteCards';
 import { useCircuitFile } from './hooks/useCircuitFile';
 import { Logo } from './components/Logo';
@@ -353,6 +354,14 @@ export default function App() {
     })));
   };
 
+  /*
+   * Before the presets and the file hooks, which tell it when the circuit was
+   * loaded, saved or imported: its stack is what "unsaved" is measured against.
+   */
+  const { undo, redo, canUndo, canRedo, markLoaded, markSaved, hasUnsavedWork } =
+    useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, setNodes, setEdges });
+  useUnsavedWorkPrompt(hasUnsavedWork);
+
   const {
     selectedPreset,
     userPresets,
@@ -369,7 +378,7 @@ export default function App() {
     allPresets,
     applyPreset,
     currentCircuit,
-  } = usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation });
+  } = usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation, markLoaded, markSaved });
 
   useEffect(() => {
     selectedPresetRef.current = selectedPreset;
@@ -827,8 +836,6 @@ export default function App() {
     }));
   };
 
-  const { undo, redo, canUndo, canRedo } = useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, setNodes, setEdges });
-
   /*
    * Clear initial conditions on structural changes.
    *
@@ -1257,7 +1264,7 @@ export default function App() {
     rotateSelected, copySelected, pasteClipboardNodes, duplicateSelected,
   ]);
 
-  const { exportJson, importJson } = useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulation });
+  const { exportJson, importJson } = useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulation, markLoaded });
 
   /*
    * Sharing the circuit as a link.

@@ -29,10 +29,13 @@ interface UsePresetsArgs {
   setInitialConditions: (ic: Record<string, number>) => void;
   setSimLength: (len: number) => void;
   stopSimulation: () => void;
+  /** Tells the undo history a circuit just arrived, or was just saved. */
+  markLoaded: () => void;
+  markSaved: () => void;
 }
 
 /** Owns preset selection/loading so the "apply preset to state" sequence exists in exactly one place instead of being copy-pasted at every call site. */
-export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation }: UsePresetsArgs) {
+export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation, markLoaded, markSaved }: UsePresetsArgs) {
   const [selectedPreset, setSelectedPreset] = useState(DEFAULT_PRESET_KEY);
   const [userPresets, setUserPresets] = useState<Record<string, CircuitPreset>>(() => loadUserPresets());
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
@@ -86,7 +89,8 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     // slot that describes a circuit nobody has open is just a board's worth of
     // storage held against the presets.
     saveLayoutSnapshot(preset.pcbLayout);
-  }, [stopSimulation, setInitialConditions, setNodes, setEdges, setSimLength]);
+    markLoaded();
+  }, [stopSimulation, setInitialConditions, setNodes, setEdges, setSimLength, markLoaded]);
 
   const loadPreset = useCallback((key: string) => {
     const preset = allPresets[key];
@@ -134,6 +138,8 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
   const saveCurrentAs = useCallback(async (trimmed: string) => {
     const key = nameToKey(trimmed);
     const preset = currentCircuit(`User: ${trimmed}`);
+    // Clean as of what was just serialised, not as of when the picture is done.
+    markSaved();
     const thumbnail = await captureCircuitThumb(nodes);
     const updated = addUserPreset(key, thumbnail ? { ...preset, thumbnail } : preset);
     setUserPresets(updated);
@@ -142,7 +148,7 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     void cloudAutosave.saveExplicit(trimmed, preset, `Saved as “${trimmed}”`);
     setSelectedPreset(key);
     recordRecent(key);
-  }, [currentCircuit, nodes]);
+  }, [currentCircuit, nodes, markSaved]);
 
   const savePreset = useCallback(() => {
     const trimmed = saveDialogName.trim();

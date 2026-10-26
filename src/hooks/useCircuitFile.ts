@@ -9,10 +9,12 @@ interface UseCircuitFileArgs {
   setNodes: (nodes: Node[]) => void;
   setEdges: (edges: Edge[]) => void;
   stopSimulation: () => void;
+  /** Tells the undo history an imported circuit just arrived. */
+  markLoaded: () => void;
 }
 
 /** Export/import the circuit graph as a standalone JSON file. */
-export function useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulation }: UseCircuitFileArgs) {
+export function useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulation, markLoaded }: UseCircuitFileArgs) {
   // Kept outside the tree for the crash page, which saves what Export would.
   useEffect(() => noteOpenCircuit(nodes, edges), [nodes, edges]);
 
@@ -40,6 +42,7 @@ export function useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulatio
             stopSimulation();
             setNodes(upgradeLegacyLabels(parsed.nodes));
             setEdges(parsed.edges);
+            markLoaded();
           } else {
             alert('Invalid circuit JSON format. Must contain "nodes" and "edges" arrays.');
           }
@@ -52,7 +55,7 @@ export function useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulatio
       reader.readAsText(file);
     };
     input.click();
-  }, [stopSimulation, setNodes, setEdges]);
+  }, [stopSimulation, setNodes, setEdges, markLoaded]);
 
   return { exportJson, importJson };
 }
