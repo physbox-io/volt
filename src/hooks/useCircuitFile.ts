@@ -1,6 +1,7 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 import { upgradeLegacyLabels } from '../utils/legacyLabels';
+import { downloadCircuitJson, noteOpenCircuit } from '../utils/circuitFile';
 
 interface UseCircuitFileArgs {
   nodes: Node[];
@@ -12,16 +13,12 @@ interface UseCircuitFileArgs {
 
 /** Export/import the circuit graph as a standalone JSON file. */
 export function useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulation }: UseCircuitFileArgs) {
+  // Kept outside the tree for the crash page, which saves what Export would.
+  useEffect(() => noteOpenCircuit(nodes, edges), [nodes, edges]);
+
   const exportJson = useCallback(() => {
     try {
-      const dataStr = JSON.stringify({ nodes, edges }, null, 2);
-      const blob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'circuit_volt_scene.json';
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadCircuitJson(nodes, edges);
     } catch (e) {
       console.error('Failed to export JSON', e);
       alert('Failed to export JSON');
