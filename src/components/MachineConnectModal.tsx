@@ -1,6 +1,7 @@
 import React from 'react';
 import { ProbeCircuitStatus } from './ProbeCircuitStatus';
 import { JobOverrides } from './JobOverrides';
+import { ControllerSilenceBanner } from './ControllerSilenceBanner';
 import {
   X,
   AlertTriangle,
@@ -305,6 +306,8 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
                 command (error:9) until it is unlocked or homed.
               </div>
             )}
+
+            <ControllerSilenceBanner connected={serialState.connected} silent={serialState.controllerSilent} />
 
             <div className={`${panel} space-y-2`}>
               <div className="font-semibold text-slate-800 dark:text-slate-200 text-[11px]">
