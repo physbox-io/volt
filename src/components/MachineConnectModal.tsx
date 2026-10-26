@@ -13,6 +13,7 @@ import {
   Plug,
   RefreshCw,
   Home,
+  Square,
   Unlock,
   Wrench,
 } from 'lucide-react';
@@ -21,7 +22,7 @@ import { TeknoBoxPicker } from './TeknoBoxPicker';
 import { ToolRackDialog } from './ToolRackDialog';
 import { MachineBedFields } from '@physbox-io/ui';
 import { machineBedStore } from '../utils/machineBed';
-import type { MachineState } from '../utils/webSerialManager';
+import { webSerialManager, type MachineState } from '../utils/webSerialManager';
 
 /**
  * The bench: everything that is true of the machine rather than of a board.
@@ -333,6 +334,19 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
                   {busy === 'homing' ? 'Homing…' : 'Home ($H)'}
                 </button>
               </div>
+              {/* Whenever there is a machine to stop, job or no job: a probe,
+                  a go-to-origin and homing had nothing to stop them, and
+                  jog-cancel does not stop a G0 or a probe. In a job it is the
+                  job's cancel, which keeps the line it reached. */}
+              <button
+                onClick={() => void (webSerialManager.isRunning() || webSerialManager.isJobPaused() ? webSerialManager.cancelJob() : webSerialManager.eStop())}
+                disabled={!serialState.connected}
+                title="Soft reset: stops the machine now. If it was moving, the position is lost and it wants homing."
+                className="w-full py-1.5 rounded text-[11px] font-bold bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Square className="w-3.5 h-3.5" />
+                E-Stop
+              </button>
             </div>
 
             {isRunning && (
