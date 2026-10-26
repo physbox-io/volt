@@ -2753,9 +2753,9 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                 <button
                   onClick={handleStencilToEtch}
                   disabled={!result.success}
-                  onMouseEnter={() => setHoveredFooterHint('Send the stencil to Physbox Etch as vector artwork, to laser cut.')}
+                  onMouseEnter={() => setHoveredFooterHint('Send the stencil to PhysBox: Etch as vector artwork, to laser cut.')}
                   onMouseLeave={() => setHoveredFooterHint(null)}
-                  onFocus={() => setHoveredFooterHint('Send the stencil to Physbox Etch as vector artwork, to laser cut.')}
+                  onFocus={() => setHoveredFooterHint('Send the stencil to PhysBox: Etch as vector artwork, to laser cut.')}
                   onBlur={() => setHoveredFooterHint(null)}
                   className="px-2 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 font-bold rounded flex items-center cursor-pointer text-xs"
                   title={ETCH_HINT}

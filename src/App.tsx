@@ -1494,7 +1494,7 @@ export default function App() {
             <div className="hidden md:block">
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-extrabold tracking-tight text-slate-900 dark:text-white font-sans">
-                  Physbox <span className="text-emerald-600 dark:text-emerald-400 font-normal">Volt</span>
+                  PhysBox: <span className="text-emerald-600 dark:text-emerald-400 font-normal">Volt</span>
                 </h1>
                 <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-cyan-100 dark:bg-cyan-950/80 border border-cyan-200 dark:border-cyan-800/50 text-cyan-700 dark:text-cyan-300">
                   Circuit Studio

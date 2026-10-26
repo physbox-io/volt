@@ -205,7 +205,7 @@ export function SettingsModal({ onClose, showAura, setShowAura }: SettingsModalP
 
           <p className="text-[9px] text-amber-700 dark:text-amber-400 leading-normal">
             Keys are stored in this browser and sent straight to the provider. When you are
-            signed in they also sync to your PhysBox account, so the other Physbox apps can use
+            signed in they also sync to your PhysBox account, so the other PhysBox apps can use
             them — clear them on a shared machine.
           </p>
         </div>
