@@ -94,6 +94,7 @@ import {
 } from './utils/simDiagnostics';
 import { readOperatingPoint } from './utils/analysisResults';
 import { unpackResult } from './utils/simTransfer';
+import { withoutRunReadings } from './utils/runReadings';
 import { AdvisoryPanel } from './components/AdvisoryPanel';
 import { BodePanel } from './components/BodePanel';
 
@@ -818,17 +819,7 @@ export default function App() {
     // drawn, which reset does not change.
     setRunAdvisories([]);
     setRatingAdvisories([]);
-    setNodes(nds => nds.map(n => {
-      const {
-        voltage: _v, voltageData: _vd, voltageData1: _vd1, voltageData2: _vd2,
-        current_array: _ca, time_points: _tp, timePoints: _tps,
-        segmentVoltages: _sv, segmentVoltageArrays: _sva,
-        pinVoltages: _pv, state: _st, logs: _lg, isSimulating: _is,
-        rpm: _rpm, angleDeg: _ang, blown: _bl, signalValue: _sig, latchedHigh: _lat,
-        ...kept
-      } = n.data as Record<string, unknown>;
-      return { ...n, data: kept };
-    }));
+    setNodes(nds => nds.map(n => ({ ...n, data: withoutRunReadings(n.data as Record<string, unknown>) })));
     setEdges(eds => eds.map(e => {
       if (!e.data) return e;
       const { current_array: _ca, time_points: _tp, ...kept } = e.data as Record<string, unknown>;

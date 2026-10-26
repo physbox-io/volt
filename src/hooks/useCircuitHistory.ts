@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Node, Edge } from '@xyflow/react';
+import { editableData } from '../utils/runReadings';
 
 interface UseCircuitHistoryArgs {
   nodes: Node[];
@@ -44,8 +45,8 @@ export function useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, 
    *
    * An edit is read off the stack — a different snapshot on top, or a change
    * still waiting out the debounce — rather than off `nodes`, which also
-   * changes on every frame of a run without anyone touching anything. (What a
-   * stopped run leaves on the parts does count, as it does for undo.) Starts
+   * changes on every frame of a run without anyone touching anything. What a
+   * stopped run leaves on the parts is not an edit either. Starts
    * pending: the circuit the app opens with is clean.
    */
   const cleanRef = useRef<unknown>(PENDING_CLEAN);
@@ -53,15 +54,13 @@ export function useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, 
   const top = useCallback(() => historyRef.current[historyIndexRef.current] ?? null, []);
 
   const pushHistory = useCallback((newNodes: Node[], newEdges: Edge[]) => {
+    // Compared without what a run writes (see runReadings), so a run alone
+    // is no edit.
     const cleanNewNodes = newNodes.map(n => ({
       id: n.id,
       type: n.type,
       position: { x: Math.round(n.position?.x ?? 0), y: Math.round(n.position?.y ?? 0) },
-      data: {
-        ...n.data,
-        isSimulating: undefined,
-        selected: undefined
-      }
+      data: editableData(n.data)
     }));
     const cleanNewEdges = newEdges.map(e => ({
       id: e.id,
@@ -78,11 +77,7 @@ export function useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, 
         id: n.id,
         type: n.type,
         position: { x: Math.round(n.position?.x ?? 0), y: Math.round(n.position?.y ?? 0) },
-        data: {
-          ...n.data,
-          isSimulating: undefined,
-          selected: undefined
-        }
+        data: editableData(n.data)
       }));
       const cleanLastEdges = lastState.edges.map(e => ({
         id: e.id,
