@@ -26,6 +26,7 @@ import { machineSocketUrl, postMachineTelemetry, submitMachineJob,
   type RemoteCommand,
 } from './apiClient';
 import { cloudAutosave } from './cloudDocuments';
+import { setJobWakeLock } from './jobWakeLock';
 import { machineBedStore } from './machineBed';
 import { isBoardFlipLine, splitAtBoardFlip } from './boardLevelling';
 
@@ -359,6 +360,8 @@ export class WebSerialManager extends GrblMachine<MachineState> {
   private runFromJobName: string | undefined;
   /** When the job on the wire started streaming, for the run time it finishes with. */
   private jobStartedAt: number | null = null;
+  /** Whether a multi-point bed surface probe walk is currently active on the machine. */
+  private probingGrid = false;
 
   /** Telemetry pacing — see `onStateNotified`. */
   private telemetry = new TelemetryThrottle<MachiningTelemetry>({
@@ -1021,6 +1024,8 @@ export class WebSerialManager extends GrblMachine<MachineState> {
     const stepY = (opts.maxY - opts.minY) / (rows - 1);
     const total = rows * cols;
 
+    this.probingGrid = true;
+    setJobWakeLock(true);
     this.updateState({ status: 'PROBING', probeProgress: { done: 0, total }, lastError: undefined });
 
     try {
@@ -1186,6 +1191,8 @@ export class WebSerialManager extends GrblMachine<MachineState> {
 
       return grid;
     } finally {
+      this.probingGrid = false;
+      setJobWakeLock(this.isRunning());
       this.updateState({
         probeProgress: undefined,
         status: this.state.status === 'PROBING' ? 'IDLE' : this.state.status,
@@ -1283,6 +1290,7 @@ export class WebSerialManager extends GrblMachine<MachineState> {
    * "running" until the server times it out.
    */
   protected onStateNotified(state: MachineState): void {
+    setJobWakeLock(this.isRunning() || this.probingGrid);
     if (!state.connected) {
       const reason = state.lastError ? ` (${state.lastError})` : '';
       this.telemetry.connectionLost((last) => ({

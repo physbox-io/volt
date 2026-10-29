@@ -14,6 +14,24 @@ import { layoutForCircuit } from '../utils/pcbLayoutStore';
 import type { NoteCard } from './useNoteCards';
 import type { PcbOptions } from '../utils/pcbExporter';
 import { createVoltMachineHandlers, setCurrentCircuit } from '../utils/machineMcp';
+import { generateSpiceNetlist } from '../utils/spice';
+import { runErc } from '../utils/erc';
+import { assignDesignators, getNodeDefaultName } from '../utils/nodeNaming';
+import { buildBodeTrace, cornerFrequencyHz } from '../utils/analysisResults';
+import {
+  buildTransientTrace,
+  defaultSweepConfig,
+  formatSweepValue,
+  generateSweepValues,
+  parseSweepValuesList,
+  type SweepParamKind,
+  type SweepScale,
+  type SweepableTarget,
+} from '../utils/parameterSweep';
+import type { ProbePoint } from '../utils/probePoints';
+import type { Advisory } from '../types/advisories';
+import type { StepOverride, SweepParams } from '../components/BodePanel';
+import type { SpiceComplexResult, SpiceResult } from '../types/simulation';
 import {
   MCU_PACKAGE_STYLES,
   MCU_PIN_SIDES,
@@ -74,6 +92,20 @@ type BridgeCommand = {
   padNumbers?: boolean;
   pxPerMm?: number;
   preset?: string;
+  /** Analysis and parameter sweep fields. */
+  analysis?: string;
+  domain?: string;
+  sourceNodeId?: string;
+  outputNet?: string;
+  fStart?: number;
+  fStop?: number;
+  pointsPerDecade?: number;
+  param?: SweepParamKind;
+  start?: number;
+  stop?: number;
+  steps?: number;
+  scale?: SweepScale;
+  valuesList?: string | number[];
 };
 
 interface BridgeProps {
@@ -82,9 +114,17 @@ interface BridgeProps {
   isSimulating: boolean;
   selectedPreset: string;
   probeMode: boolean;
+  advisories?: Advisory[];
+  designators?: Record<string, string>;
   runSimulation: (nodesOverride?: Node[]) => Promise<unknown>;
   stopSimulation: () => void;
   resetSimulation: () => void;
+  runOperatingPoint?: (overrideStep?: StepOverride) => Promise<unknown>;
+  runAcSweep?: (params: SweepParams) => Promise<SpiceComplexResult>;
+  runTransientStep?: (overrideStep?: StepOverride) => Promise<SpiceResult>;
+  sweepableTargets?: SweepableTarget[];
+  probePoints?: ProbePoint[];
+  sweepSources?: { id: string; label: string }[];
   setProbeMode: (v: boolean) => void;
   setNodes: (nodes: Node[] | ((prev: Node[]) => Node[])) => void;
   setEdges: (edges: Edge[] | ((prev: Edge[]) => Edge[])) => void;
@@ -249,7 +289,11 @@ export function useMCPBridge(props: BridgeProps) {
 
     const handle = async (cmd: string, msg: BridgeCommand): Promise<unknown> => {
       const { nodes, edges, isSimulating, selectedPreset, probeMode,
-              runSimulation, stopSimulation, resetSimulation, setProbeMode, setNodes, setEdges,
+              advisories, designators,
+              runSimulation, stopSimulation, resetSimulation,
+              runOperatingPoint, runAcSweep, runTransientStep,
+              sweepableTargets, probePoints, sweepSources,
+              setProbeMode, setNodes, setEdges,
               loadPreset } = p.current;
 
       // The machine handlers outlive any one render, so they are pointed at the
@@ -270,11 +314,14 @@ export function useMCPBridge(props: BridgeProps) {
 
       switch (cmd) {
         case 'GET_STATE':
-          return { nodes, edges, isSimulating, selectedPreset, probeMode };
+          return { nodes, edges, isSimulating, selectedPreset, probeMode, advisories: advisories ?? [], designators: designators ?? {} };
 
         case 'GET_COMPONENTS':
           return nodes.map(n => ({
-            id: n.id, type: n.type, position: n.position,
+            id: n.id,
+            designator: designators?.[n.id],
+            type: n.type,
+            position: n.position,
             data: { ...n.data, onPositionChange: undefined, onResize: undefined },
           }));
 
@@ -282,8 +329,211 @@ export function useMCPBridge(props: BridgeProps) {
           return edges;
 
         case 'RUN_SIM': {
+          if (msg.analysis === 'op' && runOperatingPoint) {
+            return await runOperatingPoint();
+          }
+          if (msg.analysis === 'ac') {
+            return await handle('RUN_AC_SWEEP', msg);
+          }
+          if (msg.analysis === 'step' || msg.analysis === 'sweep') {
+            return await handle('RUN_PARAMETER_SWEEP', msg);
+          }
           const simRes = await runSimulation();
           return simRes || { ok: true };
+        }
+
+        case 'RUN_OP':
+        case 'GET_OPERATING_POINT': {
+          if (!runOperatingPoint) return { ok: false, error: 'runOperatingPoint is not available' };
+          return await runOperatingPoint();
+        }
+
+        case 'RUN_AC_SWEEP':
+        case 'GET_BODE': {
+          if (!runAcSweep) return { ok: false, error: 'runAcSweep is not available' };
+          const sources = sweepSources ?? [];
+          const probes = probePoints ?? [];
+          const sourceNodeId = String(msg.sourceNodeId || sources[0]?.id || '');
+          if (!sourceNodeId) {
+            return {
+              ok: false,
+              error: 'No AC-capable source (Voltage Source or Signal Generator) found on the circuit.',
+              sources,
+              probePoints: probes,
+            };
+          }
+          const outputNet = String(msg.outputNet || probes[0]?.net || '');
+          if (!outputNet) {
+            return {
+              ok: false,
+              error: 'No probed net found on the circuit. Wire at least one component terminal not tied directly to ground.',
+              sources,
+              probePoints: probes,
+            };
+          }
+          const fStart = Math.max(1e-3, Number(msg.fStart) || 10);
+          const fStop = Math.max(fStart * 1.01, Number(msg.fStop) || 100_000);
+          const pointsPerDecade = Math.max(2, Math.min(200, Math.round(Number(msg.pointsPerDecade) || 20)));
+          try {
+            const raw = await runAcSweep({ sourceNodeId, fStart, fStop, pointsPerDecade });
+            const trace = buildBodeTrace(raw, outputNet);
+            if (!trace) {
+              return {
+                ok: false,
+                error: `Output net '${outputNet}' was not present in the AC sweep result.`,
+                sources,
+                probePoints: probes,
+              };
+            }
+            return {
+              ok: true,
+              sourceNodeId,
+              outputNet,
+              fStart,
+              fStop,
+              pointsPerDecade,
+              freqHz: trace.freqHz,
+              magDb: trace.magDb,
+              phaseDeg: trace.phaseDeg,
+              cornerHz: cornerFrequencyHz(trace),
+              sources,
+              probePoints: probes,
+            };
+          } catch (e) {
+            return { ok: false, error: e instanceof Error ? e.message : String(e) };
+          }
+        }
+
+        case 'RUN_PARAMETER_SWEEP':
+        case 'PARAMETER_SWEEP': {
+          const targets = sweepableTargets ?? [];
+          const targetNodeId = String(msg.nodeId || targets[0]?.nodeId || '');
+          const target = targets.find(t =>
+            t.nodeId === targetNodeId && (!msg.param || t.param === msg.param),
+          ) ?? targets.find(t => t.nodeId === targetNodeId);
+          if (!target) {
+            return {
+              ok: false,
+              error: targetNodeId
+                ? `Component '${targetNodeId}' has no sweepable parameter${msg.param ? ` '${msg.param}'` : ''}.`
+                : 'No sweepable component found on the circuit.',
+              sweepableTargets: targets,
+            };
+          }
+          const defaults = defaultSweepConfig(target);
+          let stepValues: number[];
+          if (Array.isArray(msg.values) && msg.values.length > 0) {
+            stepValues = msg.values.filter(v => Number.isFinite(v));
+          } else if (Array.isArray(msg.valuesList) && msg.valuesList.length > 0) {
+            stepValues = msg.valuesList.map(Number).filter(v => Number.isFinite(v));
+          } else if (typeof msg.valuesList === 'string' && msg.valuesList.trim().length > 0) {
+            stepValues = parseSweepValuesList(msg.valuesList);
+          } else {
+            stepValues = generateSweepValues({
+              start: Number.isFinite(msg.start) ? Number(msg.start) : defaults.start,
+              stop: Number.isFinite(msg.stop) ? Number(msg.stop) : defaults.stop,
+              steps: Number.isFinite(msg.steps) ? Number(msg.steps) : defaults.steps,
+              scale: msg.scale === 'linear' || msg.scale === 'log' ? msg.scale : defaults.scale,
+            });
+          }
+          if (stepValues.length === 0) {
+            return { ok: false, error: 'No valid step values generated for parameter sweep.' };
+          }
+          const cappedValues = stepValues.slice(0, 16);
+          const domain = (msg.domain || msg.analysis || 'ac').toLowerCase();
+          const probes = probePoints ?? [];
+          const outputNet = String(msg.outputNet || probes[0]?.net || '');
+
+          if (domain === 'op') {
+            if (!runOperatingPoint) return { ok: false, error: 'runOperatingPoint is not available' };
+            const runs = [];
+            for (const val of cappedValues) {
+              const opRes = await runOperatingPoint({ nodeId: target.nodeId, param: target.param, value: val });
+              runs.push({
+                value: val,
+                formattedValue: formatSweepValue(val, target.unit),
+                result: opRes,
+              });
+            }
+            return {
+              ok: true,
+              domain: 'op',
+              target,
+              steps: runs,
+            };
+          }
+
+          if (domain === 'tran' || domain === 'transient') {
+            if (!runTransientStep) return { ok: false, error: 'runTransientStep is not available' };
+            if (!outputNet) return { ok: false, error: 'No probed outputNet available for transient sweep.', probePoints: probes };
+            const series = [];
+            for (const val of cappedValues) {
+              const raw = await runTransientStep({ nodeId: target.nodeId, param: target.param, value: val });
+              const trace = buildTransientTrace(raw, outputNet);
+              if (trace && trace.voltage.length > 0) {
+                const maxV = Math.max(...trace.voltage);
+                const minV = Math.min(...trace.voltage);
+                series.push({
+                  value: val,
+                  formattedValue: formatSweepValue(val, target.unit),
+                  timeMs: trace.timeMs,
+                  voltage: trace.voltage,
+                  minV,
+                  maxV,
+                  vpp: maxV - minV,
+                });
+              }
+            }
+            return {
+              ok: true,
+              domain: 'tran',
+              target,
+              outputNet,
+              series,
+            };
+          }
+
+          // Default domain: 'ac'
+          if (!runAcSweep) return { ok: false, error: 'runAcSweep is not available' };
+          const sources = sweepSources ?? [];
+          const sourceNodeId = String(msg.sourceNodeId || sources[0]?.id || '');
+          if (!sourceNodeId) return { ok: false, error: 'No AC-capable source on circuit.', sources };
+          if (!outputNet) return { ok: false, error: 'No probed outputNet available for AC sweep.', probePoints: probes };
+          const fStart = Math.max(1e-3, Number(msg.fStart) || 10);
+          const fStop = Math.max(fStart * 1.01, Number(msg.fStop) || 100_000);
+          const pointsPerDecade = Math.max(2, Math.min(200, Math.round(Number(msg.pointsPerDecade) || 20)));
+          const series = [];
+          for (const val of cappedValues) {
+            const raw = await runAcSweep({
+              sourceNodeId,
+              fStart,
+              fStop,
+              pointsPerDecade,
+              overrideStep: { nodeId: target.nodeId, param: target.param, value: val },
+            });
+            const trace = buildBodeTrace(raw, outputNet);
+            if (trace) {
+              series.push({
+                value: val,
+                formattedValue: formatSweepValue(val, target.unit),
+                freqHz: trace.freqHz,
+                magDb: trace.magDb,
+                phaseDeg: trace.phaseDeg,
+                cornerHz: cornerFrequencyHz(trace),
+              });
+            }
+          }
+          return {
+            ok: true,
+            domain: 'ac',
+            target,
+            sourceNodeId,
+            outputNet,
+            fStart,
+            fStop,
+            pointsPerDecade,
+            series,
+          };
         }
 
         case 'STOP_SIM':
@@ -625,11 +875,53 @@ export function useMCPBridge(props: BridgeProps) {
             }
           });
 
+          let ercAdvisories: Advisory[] = [];
+          let portToNet: Record<string, string> = {};
+          if (errors.length === 0) {
+            try {
+              const targetDesignators = assignDesignators(targetNodes);
+              const nameOf = (id: string) => {
+                const n = nodeMap.get(id);
+                if (!n) return id;
+                const d = targetDesignators[id];
+                const raw = typeof n.data?.label === 'string' ? n.data.label.trim() : '';
+                if (!d) return raw || getNodeDefaultName(n.id, n.type ?? '');
+                if (!raw || raw === d || raw === getNodeDefaultName(n.id, n.type ?? '')) return d;
+                return `${d} (${raw})`;
+              };
+              const built = generateSpiceNetlist(
+                targetNodes,
+                targetEdges,
+                { simLength: 1, simResolution: 'normal', analysis: { kind: 'op' } },
+              );
+              portToNet = built.portToNet;
+              ercAdvisories = runErc({
+                nodes: targetNodes,
+                pins: built.pins,
+                portToNet: built.portToNet,
+                nameOf,
+              });
+              for (const adv of ercAdvisories) {
+                if (adv.id === 'erc:no-ground' && !hasGround) continue;
+                const text = `${adv.title}: ${adv.detail}`;
+                if (adv.severity === 'error') {
+                  errors.push(text);
+                } else {
+                  warnings.push(text);
+                }
+              }
+            } catch (e) {
+              errors.push(e instanceof Error ? e.message : String(e));
+            }
+          }
+
           return {
             ok: errors.length === 0,
             hasGround,
             errors,
             warnings,
+            advisories: ercAdvisories,
+            portToNet,
             connectedEdgeCount: targetEdges.length,
             nodeCount: targetNodes.length,
           };
@@ -677,6 +969,7 @@ export function useMCPBridge(props: BridgeProps) {
         case 'GET_SUMMARY': {
           const nodeSummaries = nodes.map(n => ({
             id: n.id,
+            designator: designators?.[n.id],
             type: n.type,
             position: n.position,
             label: n.data?.label,
@@ -684,7 +977,11 @@ export function useMCPBridge(props: BridgeProps) {
           }));
           return {
             nodes: nodeSummaries,
-            edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label }))
+            edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle, label: e.label })),
+            advisories: advisories ?? [],
+            sweepableTargets: sweepableTargets ?? [],
+            probePoints: probePoints ?? [],
+            sweepSources: sweepSources ?? [],
           };
         }
 

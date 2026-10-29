@@ -18,6 +18,14 @@ export type EdgePaths = Record<string, Point[]>;
  * use: a wire to the wires it routes against, and to whether it is the one
  * hovered.
  */
+function samePoints(a: Point[] | undefined, b: Point[]): boolean {
+  if (!a || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].x !== b[i].x || a[i].y !== b[i].y) return false;
+  }
+  return true;
+}
+
 export class EdgePathStore {
   private paths: EdgePaths = {};
   private hoveredEdgeId: string | null = null;
@@ -37,7 +45,7 @@ export class EdgePathStore {
   getPaths = () => this.paths;
 
   registerPath = (id: string, points: Point[]) => {
-    if (JSON.stringify(this.paths[id]) === JSON.stringify(points)) return;
+    if (samePoints(this.paths[id], points)) return;
     this.paths = { ...this.paths, [id]: points };
     this.emit();
   };

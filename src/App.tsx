@@ -42,12 +42,12 @@ import {
 } from './utils/shareLink';
 import { revokeShare, isProRequired } from './utils/apiClient';
 import { SIGN_IN_REQUESTED_EVENT, SIGNED_IN_EVENT } from './components/UserProfileButton';
-import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight, Wrench, Share2, Copy, Check, Gauge, Waves, Cable, FolderOpen, ChevronDown } from 'lucide-react';
+import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight, Wrench, Share2, Copy, Check, Gauge, Waves, SlidersHorizontal, Cable, FolderOpen, ChevronDown } from 'lucide-react';
 import { CircuitBrowser } from './components/CircuitBrowser';
 import { firstBrowserTab, type CircuitBrowserTab } from './utils/recentCircuits';
 import AICopilotPanel from './components/AICopilotPanel';
 import { ExportPcbModal } from './components/ExportPcbModal';
-import { webSerialManager, type MachineState } from './utils/webSerialManager';
+import { webSerialManager } from './utils/webSerialManager';
 import { playbackTicker } from './utils/playbackTicker';
 import { presets, DEFAULT_PRESET_KEY } from './utils/presets';
 import { EdgePathProvider } from './components/AuraEdge';
@@ -96,7 +96,8 @@ import { readOperatingPoint } from './utils/analysisResults';
 import { unpackResult } from './utils/simTransfer';
 import { withoutRunReadings } from './utils/runReadings';
 import { AdvisoryPanel } from './components/AdvisoryPanel';
-import { BodePanel } from './components/BodePanel';
+import { BodePanel, type StepOverride, type SweepParams } from './components/BodePanel';
+import { applyParameterValue, buildSweepableTargets } from './utils/parameterSweep';
 
 
 
@@ -183,6 +184,59 @@ const makeNameOf = (nodes: Node[]) => {
   };
 };
 
+/**
+ * Isolated machine status pill for the bottom bar.
+ *
+ * Subscribing to `webSerialManager` at the root of `App` re-rendered the entire
+ * schematic canvas on every GRBL `?` status report and streamed G-code line.
+ * Holding the subscription here — and bailing out when `connected` and `status`
+ * are unchanged — keeps high-frequency DRO ticks out of the React tree.
+ */
+function MachineStatusBarPill({ onOpenMachine }: { onOpenMachine: () => void }) {
+  const [summary, setSummary] = useState(() => {
+    const s = webSerialManager.getState();
+    return { connected: s.connected, status: s.status };
+  });
+  useEffect(
+    () =>
+      webSerialManager.addListener(s => {
+        setSummary(prev =>
+          prev.connected === s.connected && prev.status === s.status
+            ? prev
+            : { connected: s.connected, status: s.status },
+        );
+      }),
+    [],
+  );
+
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        className={`w-2 h-2 rounded-full ${
+          summary.connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400 dark:bg-slate-600'
+        }`}
+      />
+      <span>Machine:</span>
+      <span
+        className={
+          summary.connected
+            ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+            : 'text-slate-400'
+        }
+      >
+        {summary.status}
+      </span>
+      <button
+        onClick={onOpenMachine}
+        className="p-1 rounded text-amber-600 dark:text-amber-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+        title="Connect the machine, home it, and set the work origin"
+      >
+        <Wrench className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   // ── Initialise from localStorage ────────────────────────────────────────────
   const savedSettings = loadSettings();
@@ -228,40 +282,25 @@ export default function App() {
    * pressed about the board.
    */
   const [pcbModalOnMachine, setPcbModalOnMachine] = useState(false);
+  const openMachineModal = useCallback(() => {
+    setPcbModalOnMachine(true);
+    setIsPcbModalOpen(true);
+  }, []);
 
-  /*
-   * Machine state for the bottom bar.
-   *
-   * Seeded from the manager rather than a literal, so a bar that mounts after a
-   * connection shows the real state instead of a disconnected one — the same
-   * arrangement Mesh and Etch use.
-   */
-  const [machineState, setMachineState] = useState<MachineState>(webSerialManager.getState());
-  useEffect(() => webSerialManager.addListener(setMachineState), []);
   const [showAura, setShowAura] = useState(savedSettings.showAura ?? false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
   // A palette entry tapped on a touch device, waiting for FlowArea to place it
   // at the middle of the canvas. `seq` makes two taps of the same part two
   // distinct requests rather than one unchanged object the effect ignores.
   const [pickedPart, setPickedPart] = useState<{ type: string; label?: string; seq: number } | null>(null);
-  /**
-   * Whether the properties inspector is showing as an overlay drawer.
-   *
-   * Only consulted below `lg` — on a desktop the inspector is a permanent
-   * column beside the canvas and this is ignored, so nothing here can change
-   * the desktop layout. Below `lg` the drawer covers most of the canvas, so it
-   * opens when it is asked for and not merely because a part was selected:
-   * touching a component to move it is not a request to read its datasheet.
-   */
-  /*
-   * Whether the inspector drawer has been *asked* for. What is actually shown is
-   * `isPropertiesOpen` below, which also requires something to be selected:
-   * losing the selection closes the drawer, so the next component tapped does
-   * not reopen it unasked. Derived rather than written back from an effect,
-   * which used to re-render the whole app on every change to `nodes`.
-   */
+  const clearPickedPart = useCallback(() => setPickedPart(null), []);
+  const readNoteCardRect = useCallback(
+    () => document.querySelector('[data-note-card]')?.getBoundingClientRect() ?? null,
+    [],
+  );
+  const selectedNode = useMemo(() => nodes.find(n => n.selected) ?? null, [nodes]);
   const [isPropertiesRequested, setIsPropertiesRequested] = useState(false);
-  const isPropertiesOpen = isPropertiesRequested && nodes.some(n => n.selected);
+  const isPropertiesOpen = isPropertiesRequested && selectedNode !== null;
   const [probeMode, setProbeMode] = useState(false);
   const [probeData, setProbeData] = useState<{
     netName: string;
@@ -297,6 +336,7 @@ export default function App() {
    */
   const [dcMode, setDcMode] = useState(false);
   const [isBodeOpen, setIsBodeOpen] = useState(false);
+  const [bodeStepMode, setBodeStepMode] = useState(false);
   const [initialConditions, setInitialConditions] = useState<Record<string, number>>({});
   
   const nodesRef = useRef(nodes);
@@ -545,7 +585,10 @@ export default function App() {
 
       const sketches = runSketches(currentNodes, simLength);
       let mcuLogs = sketches.logs;
-      let { netlist, portToNet } = generateSpiceNetlist(currentNodes, edges, { simLength, simResolution, mcuDrives: sketches.drives, initialConditions: customICs !== undefined ? customICs : initialConditions });
+      const firstPass = generateSpiceNetlist(currentNodes, edges, { simLength, simResolution, mcuDrives: sketches.drives, initialConditions: customICs !== undefined ? customICs : initialConditions });
+      let netlist = firstPass.netlist;
+      let portToNet = firstPass.portToNet;
+      let netlistPins = firstPass.pins;
       
       const mcuNodes = currentNodes.filter(n => n.type === 'mcu');
       const needsTwoPass = mcuNodes.some(n => {
@@ -583,6 +626,7 @@ export default function App() {
          const pass2 = generateSpiceNetlist(currentNodes, edges, { simLength, simResolution, mcuDrives: replay.drives, initialConditions: customICs !== undefined ? customICs : initialConditions });
          netlist = pass2.netlist;
          portToNet = pass2.portToNet;
+         netlistPins = pass2.pins;
          const secondRun = await runSimInWorker(netlist);
          result = secondRun.result;
          runMessages = secondRun.messages;
@@ -723,19 +767,37 @@ export default function App() {
        * them can stop or change a run, which is the point — the waveform is
        * still on screen, and this only says what it cost.
        */
-      setRatingAdvisories(
-        checkComponentRatings({ nodes: updatedNodes, portToNet, result, nameOf: makeNameOf(updatedNodes) }),
-      );
+      const nameOfUpdated = makeNameOf(updatedNodes);
+      const nextRatingAdvisories = checkComponentRatings({
+        nodes: updatedNodes,
+        portToNet,
+        result,
+        nameOf: nameOfUpdated,
+      });
+      setRatingAdvisories(nextRatingAdvisories);
 
       const warning = summariseSpiceWarnings(runMessages);
-      setRunAdvisories(warning
+      const nextRunAdvisories: Advisory[] = warning
         ? [{
             id: 'run:warnings',
             severity: 'warning',
             title: 'The solver had something to say about this run',
             detail: warning,
           }]
-        : []);
+        : [];
+      setRunAdvisories(nextRunAdvisories);
+
+      const nextErcAdvisories = runErc({
+        nodes: updatedNodes,
+        pins: netlistPins,
+        portToNet,
+        nameOf: nameOfUpdated,
+      });
+      const combinedAdvisories = sortAdvisories([
+        ...nextRunAdvisories,
+        ...nextErcAdvisories,
+        ...nextRatingAdvisories,
+      ]);
 
       const updatedEdges = edges.map(e => {
         const srcNode = updatedNodes.find(n => n.id === e.source);
@@ -771,6 +833,11 @@ export default function App() {
         ok: true,
         nodes: updatedNodes,
         edges: updatedEdges,
+        portToNet,
+        advisories: combinedAdvisories,
+        ercAdvisories: nextErcAdvisories,
+        ratingAdvisories: nextRatingAdvisories,
+        runAdvisories: nextRunAdvisories,
         rawResult: result
       };
       
@@ -787,8 +854,25 @@ export default function App() {
        * likely to fix it and put where it can be read.
        */
       const explained = explainSpiceFailure(messagesFromError(e));
-      setRunAdvisories([{ id: 'run:failed', severity: 'error', ...explained }]);
-      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      const failAdvisory: Advisory = { id: 'run:failed', severity: 'error', ...explained };
+      setRunAdvisories([failAdvisory]);
+      const baseNodes = nodesOverride || nodes;
+      let currentErc: Advisory[] = [];
+      try {
+        const { portToNet: ptn, pins } = generateSpiceNetlist(
+          baseNodes, edges, { simLength, simResolution, analysis: { kind: 'op' } },
+        );
+        currentErc = runErc({ nodes: baseNodes, pins, portToNet: ptn, nameOf: makeNameOf(baseNodes) });
+      } catch {
+        // Ignore secondary ERC netlist failure when solver already failed.
+      }
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+        diagnosis: explained,
+        advisories: sortAdvisories([failAdvisory, ...currentErc]),
+        ercAdvisories: currentErc,
+      };
     } finally {
       simInFlightRef.current = false;
       // Values moved on while this solve was running; take the newest ones.
@@ -1058,11 +1142,29 @@ export default function App() {
    * no AC magnitude has one of zero. So nothing about the circuit is edited to
    * take the measurement, and there is nothing to put back afterwards.
    */
-  const runAcSweep = useCallback(async (params: {
-    sourceNodeId: string; fStart: number; fStop: number; pointsPerDecade: number;
-  }): Promise<SpiceComplexResult> => {
+  const runAcSweep = useCallback(async (params: SweepParams): Promise<SpiceComplexResult> => {
+    const targetNodes = params.overrideStep
+      ? applyParameterValue(
+          nodesRef.current,
+          params.overrideStep.nodeId,
+          params.overrideStep.param,
+          params.overrideStep.value,
+        )
+      : nodesRef.current;
     const { netlist } = generateSpiceNetlist(
-      nodesRef.current, edgesRef.current, { simLength, simResolution, analysis: { kind: 'ac', ...params } },
+      targetNodes,
+      edgesRef.current,
+      {
+        simLength,
+        simResolution,
+        analysis: {
+          kind: 'ac',
+          sourceNodeId: params.sourceNodeId,
+          fStart: params.fStart,
+          fStop: params.fStop,
+          pointsPerDecade: params.pointsPerDecade,
+        },
+      },
     );
     try {
       const { result } = await runSimInWorker<SpiceComplexResult>(netlist, 'ac', 30_000);
@@ -1073,12 +1175,84 @@ export default function App() {
     }
   }, [simLength, simResolution]);
 
+  const runTransientStep = useCallback(async (overrideStep?: StepOverride): Promise<SpiceResult> => {
+    const steppedNodes = overrideStep
+      ? applyParameterValue(nodesRef.current, overrideStep.nodeId, overrideStep.param, overrideStep.value)
+      : nodesRef.current;
+    const cleanNodes = steppedNodes.map(n =>
+      n.type === 'mcu' ? { ...n, data: { ...n.data, state: undefined } } : n,
+    );
+    const sketches = runSketches(cleanNodes, simLength);
+    const { netlist } = generateSpiceNetlist(
+      cleanNodes,
+      edgesRef.current,
+      { simLength, simResolution, mcuDrives: sketches.drives },
+    );
+    try {
+      const { result } = await runSimInWorker<SpiceResult>(netlist, 'tran', 30_000);
+      return result;
+    } catch (e) {
+      const { title, detail } = explainSpiceFailure(messagesFromError(e));
+      throw new Error(`${title}\n\n${detail}`, { cause: e });
+    }
+  }, [simLength, simResolution]);
+
+  const runOperatingPoint = useCallback(async (overrideStep?: StepOverride) => {
+    const targetNodes = overrideStep
+      ? applyParameterValue(nodesRef.current, overrideStep.nodeId, overrideStep.param, overrideStep.value)
+      : nodesRef.current;
+    const { netlist, portToNet, pins } = generateSpiceNetlist(
+      targetNodes,
+      edgesRef.current,
+      { simLength, simResolution, analysis: { kind: 'op' } },
+    );
+    try {
+      const { result, messages } = await runSimInWorker<SpiceResult>(netlist, 'op', 20_000);
+      const voltages = readOperatingPoint(result);
+      const portVoltages: Record<string, number> = {};
+      for (const [port, net] of Object.entries(portToNet)) {
+        if (net === '0') {
+          portVoltages[port] = 0;
+        } else {
+          const v = voltages[net.toLowerCase()];
+          if (v !== undefined) portVoltages[port] = v;
+        }
+      }
+      const nameOf = makeNameOf(targetNodes);
+      const erc = runErc({ nodes: targetNodes, pins, portToNet, nameOf });
+      const warning = summariseSpiceWarnings(messages);
+      const runAdv: Advisory[] = warning
+        ? [{ id: 'op:warnings', severity: 'warning', title: 'The solver had something to say about this operating point', detail: warning }]
+        : [];
+      return {
+        ok: true as const,
+        voltages,
+        portVoltages,
+        portToNet,
+        probePoints: buildProbePoints(pins, nameOf),
+        advisories: sortAdvisories([...runAdv, ...erc]),
+      };
+    } catch (e) {
+      const explained = explainSpiceFailure(messagesFromError(e));
+      return {
+        ok: false as const,
+        error: `${explained.title}: ${explained.detail}`,
+        diagnosis: explained,
+      };
+    }
+  }, [simLength, simResolution]);
+
   const sweepSources = useMemo(() => {
     const nameOf = makeNameOf(nodes);
     return nodes
       .filter(n => AC_DRIVE_TYPES.has(n.type ?? ''))
       .map(n => ({ id: n.id, label: nameOf(n.id) }));
   }, [nodes]);
+
+  const sweepableTargets = useMemo(
+    () => buildSweepableTargets(nodes, makeNameOf(nodes)),
+    [nodes],
+  );
 
   /*
    * Where a sweep can be measured: one entry per net, named after a pin on it,
@@ -1447,7 +1621,15 @@ export default function App() {
 
   useMCPBridge({
     nodes, edges, isSimulating, selectedPreset, probeMode,
+    advisories,
+    designators,
     runSimulation, stopSimulation, resetSimulation,
+    runOperatingPoint,
+    runAcSweep,
+    runTransientStep,
+    sweepableTargets,
+    probePoints,
+    sweepSources,
     setProbeMode,
     setNodes,
     setEdges,
@@ -1699,13 +1881,13 @@ export default function App() {
             */}
             <button
               onClick={() => setIsPropertiesRequested(!isPropertiesOpen)}
-              disabled={!nodes.some(n => n.selected)}
+              disabled={!selectedNode}
               className={`lg:hidden flex items-center justify-center w-8 h-8 rounded-full border transition-colors focus:outline-none flex-shrink-0 cursor-pointer shadow-xs disabled:opacity-40 disabled:cursor-not-allowed ${
                 isPropertiesOpen
                   ? 'bg-emerald-100 border-emerald-400 text-emerald-700 dark:bg-emerald-950 dark:border-emerald-700 dark:text-emerald-400'
                   : 'border-slate-200 dark:border-slate-700 text-slate-650 dark:text-slate-300 bg-white dark:bg-slate-900'
               }`}
-              title={nodes.some(n => n.selected) ? 'Properties' : 'Select a component to see its properties'}
+              title={selectedNode ? 'Properties' : 'Select a component to see its properties'}
             >
               <PanelRight className="w-4 h-4" />
             </button>
@@ -1811,13 +1993,13 @@ export default function App() {
             designators={designators}
             fitKey={selectedPreset}
             hasNoteCard={noteCards.length > 0}
-            noteCardRect={() => document.querySelector('[data-note-card]')?.getBoundingClientRect() ?? null}
+            noteCardRect={readNoteCardRect}
             setNodes={setNodes} setEdges={setEdges}
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
             onNodeClick={onNodeClick}
             isSimulating={isSimulating}
             pickedPart={pickedPart}
-            onPickedPartPlaced={() => setPickedPart(null)}
+            onPickedPartPlaced={clearPickedPart}
             probeMode={probeMode}
             onEdgeProbe={(edgeId: string, event: React.MouseEvent) => {
               if (!probeMode || !simResultRef.current) return;
@@ -1857,16 +2039,16 @@ export default function App() {
       </EdgePathProvider>
         {/* Dimmer behind the inspector drawer. Only exists below `lg`, where the
             inspector is an overlay; tapping the circuit puts it away. */}
-        {isPropertiesOpen && nodes.find(n => n.selected) && (
+        {isPropertiesOpen && selectedNode && (
           <div
             className="lg:hidden absolute inset-0 z-[105] bg-slate-950/30"
             onClick={() => setIsPropertiesRequested(false)}
           />
         )}
-        {nodes.find(n => n.selected) && (
+        {selectedNode && (
           <PropertiesPanel
-            selectedNode={nodes.find(n => n.selected)!}
-            designator={designators[nodes.find(n => n.selected)!.id]}
+            selectedNode={selectedNode}
+            designator={designators[selectedNode.id]}
             setNodes={setNodes}
             setEdges={setEdges}
             isSimulating={isSimulating}
@@ -2116,9 +2298,13 @@ export default function App() {
 
         {isBodeOpen && (
           <BodePanel
+            key={bodeStepMode ? 'step' : 'bode'}
             sources={sweepSources}
             probePoints={probePoints}
+            sweepableTargets={sweepableTargets}
             runSweep={runAcSweep}
+            runTransientStep={runTransientStep}
+            initialStepMode={bodeStepMode}
             darkMode={darkMode}
             onClose={() => setIsBodeOpen(false)}
           />
@@ -2179,9 +2365,16 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => setIsBodeOpen(!isBodeOpen)}
+            onClick={() => {
+              if (isBodeOpen && !bodeStepMode) {
+                setIsBodeOpen(false);
+              } else {
+                setBodeStepMode(false);
+                setIsBodeOpen(true);
+              }
+            }}
             className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] transition-colors cursor-pointer ${
-              isBodeOpen
+              isBodeOpen && !bodeStepMode
                 ? 'bg-violet-600 border-violet-650 text-white font-semibold shadow-xs'
                 : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
             }`}
@@ -2189,6 +2382,26 @@ export default function App() {
           >
             <Waves className="w-3.5 h-3.5" />
             <span>Bode</span>
+          </button>
+
+          <button
+            onClick={() => {
+              if (isBodeOpen && bodeStepMode) {
+                setIsBodeOpen(false);
+              } else {
+                setBodeStepMode(true);
+                setIsBodeOpen(true);
+              }
+            }}
+            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] transition-colors cursor-pointer ${
+              isBodeOpen && bodeStepMode
+                ? 'bg-violet-600 border-violet-650 text-white font-semibold shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+            }`}
+            title="Parameter sweep — step a component value across a range or list and compare overlaid AC or transient curves"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span>Step</span>
           </button>
 
           <button
@@ -2225,38 +2438,7 @@ export default function App() {
         {/* Right: Simulation Parameters (Duration & Resolution) */}
         <div className="flex items-center gap-3 max-lg:shrink-0">
           {/* The mill that cuts the board this schematic becomes. */}
-          <div className="flex items-center gap-2">
-            <div
-              className={`w-2 h-2 rounded-full ${
-                machineState.connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400 dark:bg-slate-600'
-              }`}
-            />
-            <span>Machine:</span>
-            <span
-              className={
-                machineState.connected
-                  ? 'text-emerald-600 dark:text-emerald-400 font-bold'
-                  : 'text-slate-400'
-              }
-            >
-              {machineState.status}
-            </span>
-            {/* Next to the status it acts on. A disconnected machine is the
-                moment someone wants this button. Volt keeps its machine setup
-                inside the PCB export modal, so this opens that modal straight
-                onto the machine dialog — not onto the board, which is not what
-                was being asked about. */}
-            <button
-              onClick={() => {
-                setPcbModalOnMachine(true);
-                setIsPcbModalOpen(true);
-              }}
-              className="p-1 rounded text-amber-600 dark:text-amber-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-              title="Connect the machine, home it, and set the work origin"
-            >
-              <Wrench className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          <MachineStatusBarPill onOpenMachine={openMachineModal} />
 
           <div className="w-px h-3 bg-slate-200 dark:bg-slate-800 max-lg:hidden" />
 
