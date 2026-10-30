@@ -12,7 +12,8 @@ import { upgradeLegacyLabels } from '../utils/legacyLabels';
 import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey, loadMachiningSettings, loadLayoutSnapshot } from '../utils/storage';
 import { layoutForCircuit } from '../utils/pcbLayoutStore';
 import type { NoteCard } from './useNoteCards';
-import type { PcbOptions } from '../utils/pcbExporter';
+import { DEFAULT_PCB_OPTIONS, type PcbOptions } from '../utils/pcbExporter';
+import { encodeMeshPcbHandoff, layoutToMeshSpec } from '../utils/meshPcbHandoff';
 import { createVoltMachineHandlers, setCurrentCircuit } from '../utils/machineMcp';
 import { generateSpiceNetlist } from '../utils/spice';
 import { runErc } from '../utils/erc';
@@ -1106,6 +1107,11 @@ export function useMCPBridge(props: BridgeProps) {
             violations: result.violations,
             warnings: result.warnings,
             cycleTimeSec: result.cycleTimeSec,
+            // The board as Mesh's enclosure builder reads it: pass this to
+            // Mesh's SYNC_PCB_ENCLOSURE command (send_command) as `handoff`.
+            meshHandoff: `#${encodeMeshPcbHandoff(
+              layoutToMeshSpec(result, { ...DEFAULT_PCB_OPTIONS, ...loadMachiningSettings(), ...overrides })
+            )}`,
           };
 
           if (msg.includePads) {

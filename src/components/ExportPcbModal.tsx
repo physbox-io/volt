@@ -20,6 +20,7 @@ import {
   Map,
   Move3d,
   Undo2,
+  Package,
 } from 'lucide-react';
 import {
   generateAirCutPerimeterGcode,
@@ -69,6 +70,7 @@ import {
   DEFAULT_PASTE_SHIM_OPTIONS,
 } from '../utils/pcbPasteStencil';
 import { openSvgInEtch } from '../utils/etchHandoff';
+import { layoutToMeshSpec, openPcbInMesh } from '../utils/meshPcbHandoff';
 import { usePcbLayout } from '../hooks/usePcbLayout';
 import { webSerialManager } from '../utils/webSerialManager';
 import { NumberInput, ToolChangeDialog, type ZeroResult } from '@physbox-io/ui';
@@ -1077,6 +1079,23 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       setStencilNote('Stencil sent to Etch — set the kerf compensation there before cutting.');
     } catch (e) {
       setStencilNote(errorMessage(e) || 'Could not open the stencil in Etch.');
+    }
+  };
+
+  /**
+   * Hands the board to Mesh, which builds an enclosure round it: standoffs
+   * under the mounting holes, a lid with screws, and holes in it for the
+   * knobs, buttons and lights. Mesh opens its PCB dialog with the board in it.
+   */
+  const handleSendToMesh = () => {
+    if (!result.success) return;
+    setStencilNote(null);
+    try {
+      const name = `Volt board ${Math.round(result.boardWidthMm)}x${Math.round(result.boardHeightMm)}`;
+      openPcbInMesh(layoutToMeshSpec(result, options, name));
+      setStencilNote('Board sent to Mesh — the enclosure dialog opens there.');
+    } catch (e) {
+      setStencilNote(errorMessage(e) || 'Could not open the board in Mesh.');
     }
   };
 
@@ -2761,6 +2780,20 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                   title={ETCH_HINT}
                 >
                   <Scissors className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  onClick={handleSendToMesh}
+                  disabled={!result.success}
+                  onMouseEnter={() => setHoveredFooterHint('Send the board to PhysBox: Mesh, to build an enclosure round it.')}
+                  onMouseLeave={() => setHoveredFooterHint(null)}
+                  onFocus={() => setHoveredFooterHint('Send the board to PhysBox: Mesh, to build an enclosure round it.')}
+                  onBlur={() => setHoveredFooterHint(null)}
+                  className="px-2 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 font-bold rounded flex items-center cursor-pointer text-xs"
+                  title="Send to Mesh (enclosure): standoffs under the mounting holes, a screwed lid, and holes for the knobs, buttons and lights"
+                  aria-label="Send to Mesh (enclosure)"
+                >
+                  <Package className="w-3.5 h-3.5" />
                 </button>
 
                 <button
