@@ -71,6 +71,10 @@ export function useMeshLink({ nodesRef, edgesRef, setNodes, setRunAdvisories, so
     setStatus(link.status);
     setChannels([...link.channels]);
     setScene(link.scene);
+    if (link.status === 'linked') setRunAdvisories(prev => prev.filter(a => a.id !== 'mesh:failed-to-link'));
+    if (link.status === 'closed' && link.failure) {
+      advise(setRunAdvisories, { id: 'mesh:failed-to-link', severity: 'warning', title: 'Could not link Mesh', detail: link.failure });
+    }
     if (link.status === 'closed' && runningRef.current) {
       runningRef.current = false;
       advise(setRunAdvisories, { id: 'mesh:closed', severity: 'warning', title: 'Mesh unlinked', detail: 'The Mesh window closed or unlinked, so the run stopped.' });

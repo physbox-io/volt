@@ -51,6 +51,18 @@ export function meshBaseUrl(location: { hostname: string; protocol: string } = w
   return local ? `${location.protocol}//${location.hostname}:5175` : 'https://mesh.physbox.io';
 }
 
+/**
+ * The Mesh page a link opens. `link=volt` has Mesh serve it without the
+ * cross-origin isolation headers: with them, the browser puts Mesh in a
+ * browsing context group of its own, its `window.opener` is null, and this
+ * page's handle to it reads as closed, so no HELLO is ever answered.
+ */
+export function meshLinkUrl(baseUrl: string): string {
+  const url = new URL(baseUrl);
+  url.searchParams.set('link', 'volt');
+  return url.toString();
+}
+
 /** The channel names a joint offers. */
 export const jointChannels = (joint: string) => ({
   force: `joint:${joint}.force`,
@@ -83,6 +95,8 @@ export class MeshLink implements CoSimEndpoint {
   private helloTimer: ReturnType<typeof setInterval> | null = null;
   private listener = (evt: MessageEvent) => this.onMessage(evt);
   status: LinkStatus = 'closed';
+  /** Why the last attempt ended before Mesh answered, if it did; cleared by `open`. */
+  failure = '';
   channels: CoSimChannel[] = [];
   scene = '';
   private listeners = new Set<() => void>();
@@ -99,14 +113,19 @@ export class MeshLink implements CoSimEndpoint {
 
   open(baseUrl = meshBaseUrl()): boolean {
     this.close();
-    const win = window.open(baseUrl, 'physbox-mesh-link');
+    this.failure = '';
+    const win = window.open(meshLinkUrl(baseUrl), 'physbox-mesh-link');
     if (!win) return false;
     this.win = win;
     this.origin = new URL(baseUrl).origin;
     this.status = 'opening';
     window.addEventListener('message', this.listener);
     const hello = () => {
-      if (!this.win || this.win.closed) { this.close(); return; }
+      if (!this.win || this.win.closed) {
+        this.failure = 'The Mesh window closed, or the browser cut it off from this page, before Mesh answered.';
+        this.close();
+        return;
+      }
       try { this.win.postMessage(envelope({ type: 'HELLO' }), this.origin); } catch { /* not loaded yet */ }
     };
     hello();
