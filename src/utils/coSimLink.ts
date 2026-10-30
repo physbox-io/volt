@@ -81,15 +81,53 @@ export interface CoSimEndpoint {
 export type LinkStatus = 'closed' | 'opening' | 'linked';
 
 /**
+ * A step that failed because of the link, not the circuit: Mesh is not open,
+ * its window was closed or reloaded, or it did not answer. Kept apart from a
+ * solver failure so it is not explained as one (it used to read as "the
+ * circuit was solved to nothing").
+ */
+export class MeshLinkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MeshLinkError';
+  }
+}
+
+/** The name of the window a link opens, so a later link can find it again. */
+export const MESH_WINDOW_NAME = 'physbox-mesh-link';
+
+/** How often a live link checks that the Mesh window is still there. */
+export const HEARTBEAT_MS = 1000;
+
+/** True for a window this page may read, which a window still on about:blank is and a loaded Mesh is not. */
+function isBlank(win: Window): boolean {
+  try {
+    return win.location.href === 'about:blank';
+  } catch {
+    // Cross-origin: a Mesh page is loaded in it.
+    return false;
+  }
+}
+
+/**
  * The link to one Mesh window.
  *
  * `open` must be called from a click: browsers only let a page open a window
  * in direct response to one. The handshake is HELLO, repeated until Mesh has
  * built its scene and answers with its catalogue.
+ *
+ * A Mesh window this page opened before is linked again where it is, never
+ * navigated: loading the link URL into it reloaded Mesh and threw its scene
+ * away. While linked, a heartbeat watches for the window closing, and Mesh
+ * says UNLINK when its page goes away, so the link does not go on reading
+ * "linked" to a Mesh that is gone.
  */
 export class MeshLink implements CoSimEndpoint {
   private win: Window | null = null;
+  /** The window the last link used, kept after it ends so linking again reattaches to it. */
+  private lastWin: Window | null = null;
   private origin = '';
+  private heartbeat: ReturnType<typeof setInterval> | null = null;
   private seq = 0;
   private pending = new Map<number, { resolve: (s: Stepped) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   private helloTimer: ReturnType<typeof setInterval> | null = null;
@@ -97,6 +135,8 @@ export class MeshLink implements CoSimEndpoint {
   status: LinkStatus = 'closed';
   /** Why the last attempt ended before Mesh answered, if it did; cleared by `open`. */
   failure = '';
+  /** Why a link that was up ended from Mesh's side (closed, reloaded, gone quiet); cleared by `open`. */
+  lost = '';
   channels: CoSimChannel[] = [];
   scene = '';
   private listeners = new Set<() => void>();
@@ -114,7 +154,8 @@ export class MeshLink implements CoSimEndpoint {
   open(baseUrl = meshBaseUrl()): boolean {
     this.close();
     this.failure = '';
-    const win = window.open(meshLinkUrl(baseUrl), 'physbox-mesh-link');
+    this.lost = '';
+    const win = this.meshWindow(meshLinkUrl(baseUrl));
     if (!win) return false;
     this.win = win;
     this.origin = new URL(baseUrl).origin;
@@ -134,19 +175,44 @@ export class MeshLink implements CoSimEndpoint {
     return true;
   }
 
+  /**
+   * The window to link: the one the last link used if it is still open, else
+   * whichever window already carries the link's name (this page may have been
+   * reloaded since it opened Mesh), else a new one. Only a window still on
+   * about:blank is sent to the link URL.
+   */
+  private meshWindow(url: string): Window | null {
+    const known = this.lastWin && !this.lastWin.closed ? this.lastWin : null;
+    const win = known ?? window.open('', MESH_WINDOW_NAME);
+    if (!win) return null;
+    if (isBlank(win)) win.location.href = url;
+    else win.focus?.();
+    return win;
+  }
+
+  /** Ends a link that Mesh's side ended, saying why. */
+  private lose(reason: string): void {
+    if (this.status === 'closed') return;
+    this.lost = reason;
+    this.close(false);
+  }
+
   close(tellMesh = true): void {
     if (this.helloTimer) clearInterval(this.helloTimer);
     this.helloTimer = null;
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    this.heartbeat = null;
     if (tellMesh && this.win && !this.win.closed && this.status === 'linked') {
       try { this.win.postMessage(envelope({ type: 'UNLINK' }), this.origin); } catch { /* gone */ }
     }
     window.removeEventListener('message', this.listener);
     for (const p of this.pending.values()) {
       clearTimeout(p.timer);
-      p.reject(new Error('The link to Mesh was closed.'));
+      p.reject(new MeshLinkError(this.lost || 'The link to Mesh was closed.'));
     }
     this.pending.clear();
     const changed = this.status !== 'closed';
+    if (this.win) this.lastWin = this.win;
     this.win = null;
     this.status = 'closed';
     this.channels = [];
@@ -154,14 +220,20 @@ export class MeshLink implements CoSimEndpoint {
   }
 
   stepFor(dtMs: number, inputs: Record<string, number>, outputs: string[], timeoutMs = 5000): Promise<Stepped> {
-    if (this.status !== 'linked' || !this.win || this.win.closed) {
-      return Promise.reject(new Error('Mesh is not linked.'));
+    if (this.status === 'linked' && (!this.win || this.win.closed)) this.lose('The Mesh window was closed.');
+    if (this.status !== 'linked' || !this.win) {
+      return Promise.reject(new MeshLinkError(this.lost
+        ? `Mesh is not open, or the link to it was lost: ${this.lost} Press Link Mesh to link again.`
+        : 'Mesh is not linked. Press Link Mesh to open it and link.'));
     }
     const seq = ++this.seq;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(seq);
-        reject(new Error(`Mesh did not answer a ${dtMs}ms step within ${timeoutMs / 1000}s.`));
+        if (!this.win || this.win.closed) this.lose('The Mesh window was closed.');
+        reject(new MeshLinkError(this.lost
+          ? `Mesh is not open, or the link to it was lost: ${this.lost}`
+          : `Mesh did not answer a ${dtMs}ms step within ${timeoutMs / 1000}s. Check that its tab is still open and its scene is built.`));
       }, timeoutMs);
       this.pending.set(seq, { resolve, reject, timer });
       this.win!.postMessage(envelope({ type: 'STEP_FOR', seq, dtMs, inputs, outputs }), this.origin);
@@ -175,6 +247,10 @@ export class MeshLink implements CoSimEndpoint {
       case 'CATALOGUE':
         if (this.helloTimer) clearInterval(this.helloTimer);
         this.helloTimer = null;
+        // A catalogue again while linked (a cavity measured) keeps the one heartbeat.
+        this.heartbeat ??= setInterval(() => {
+          if (!this.win || this.win.closed) this.lose('The Mesh window was closed.');
+        }, HEARTBEAT_MS);
         this.status = 'linked';
         this.channels = msg.channels;
         this.scene = msg.scene;
@@ -193,11 +269,13 @@ export class MeshLink implements CoSimEndpoint {
         if (!p) return;
         this.pending.delete(msg.seq!);
         clearTimeout(p.timer);
-        p.reject(new Error(msg.message));
+        p.reject(new MeshLinkError(`Mesh: ${msg.message}`));
+        // Mesh answering that it is not linked has been reloaded since it was.
+        if (/not linked/i.test(msg.message)) this.lose('Mesh was reloaded, which ended the link.');
         return;
       }
       case 'UNLINK':
-        this.close(false);
+        this.lose('Mesh was closed or reloaded, which ended the link.');
         return;
       default:
         return;

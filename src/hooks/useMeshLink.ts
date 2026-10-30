@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import type { Node, Edge } from '@xyflow/react';
-import { MeshLink, jointChannels, type CoSimChannel, type LinkStatus } from '../utils/coSimLink';
+import { MeshLink, MeshLinkError, jointChannels, type CoSimChannel, type LinkStatus } from '../utils/coSimLink';
 import { coSimBindings, coSimStep, initialCoSimState, type CoSimState } from '../sim/coSimStep';
 import { TraceHistory } from '../sim/traceHistory';
 import { explainSpiceFailure, messagesFromError } from '../utils/simDiagnostics';
@@ -71,14 +71,19 @@ export function useMeshLink({ nodesRef, edgesRef, setNodes, setRunAdvisories, so
     setStatus(link.status);
     setChannels([...link.channels]);
     setScene(link.scene);
-    if (link.status === 'linked') setRunAdvisories(prev => prev.filter(a => a.id !== 'mesh:failed-to-link'));
+    if (link.status === 'linked') setRunAdvisories(prev => prev.filter(a => a.id !== 'mesh:failed-to-link' && a.id !== 'mesh:lost'));
     if (link.status === 'closed' && link.failure) {
       advise(setRunAdvisories, { id: 'mesh:failed-to-link', severity: 'warning', title: 'Could not link Mesh', detail: link.failure });
     }
     if (link.status === 'closed' && runningRef.current) {
       runningRef.current = false;
-      advise(setRunAdvisories, { id: 'mesh:closed', severity: 'warning', title: 'Mesh unlinked', detail: 'The Mesh window closed or unlinked, so the run stopped.' });
+      advise(setRunAdvisories, {
+        id: 'mesh:closed', severity: 'warning', title: 'Mesh link lost',
+        detail: `${link.lost || 'The Mesh window closed or unlinked.'} The run stopped. Press Link Mesh to link again.`,
+      });
       onRunEndedRef.current();
+    } else if (link.status === 'closed' && link.lost) {
+      advise(setRunAdvisories, { id: 'mesh:lost', severity: 'warning', title: 'Mesh link lost', detail: `${link.lost} Press Link Mesh to link again.` });
     }
   }), [link, setRunAdvisories]);
   useEffect(() => () => link.close(), [link]);
@@ -125,7 +130,11 @@ export function useMeshLink({ nodesRef, edgesRef, setNodes, setRunAdvisories, so
         }
       } catch (e) {
         if (!runningRef.current) break;
-        const explained = explainSpiceFailure(messagesFromError(e));
+        // A link that failed is not a circuit that failed: the solver's
+        // explanation read as "the circuit was solved to nothing".
+        const explained = e instanceof MeshLinkError
+          ? { title: 'Mesh is not open or the link was lost', detail: e.message }
+          : explainSpiceFailure(messagesFromError(e));
         advise(setRunAdvisories, { id: 'mesh:failed', severity: 'error', title: `Linked run stopped: ${explained.title}`, detail: explained.detail });
         runningRef.current = false;
         onRunEndedRef.current();
