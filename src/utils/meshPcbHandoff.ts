@@ -163,7 +163,9 @@ export function layoutToMeshSpec(
   result: PcbLayoutResult,
   options: Pick<PcbOptions, 'boardThicknessMm' | 'profileToolDiaMm'> &
     Partial<Pick<PcbOptions, 'layers' | 'mirrorSingleSided'>>,
-  name = 'Volt PCB'
+  // The same name whether the board leaves by the Send to Mesh button or by
+  // circuit_get_pcb_layout's meshHandoff: it names Mesh's enclosure.
+  name = `Volt board ${Math.round(result.boardWidthMm)}x${Math.round(result.boardHeightMm)}`
 ): MeshPcbSpec {
   const twoLayer = (result.layers ?? options.layers) === 2;
   const milledMirrored = !twoLayer && options.mirrorSingleSided !== false;

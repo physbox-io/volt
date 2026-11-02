@@ -1091,8 +1091,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     if (!result.success) return;
     setStencilNote(null);
     try {
-      const name = `Volt board ${Math.round(result.boardWidthMm)}x${Math.round(result.boardHeightMm)}`;
-      openPcbInMesh(layoutToMeshSpec(result, options, name));
+      openPcbInMesh(layoutToMeshSpec(result, options));
       setStencilNote('Board sent to Mesh — the enclosure dialog opens there.');
     } catch (e) {
       setStencilNote(errorMessage(e) || 'Could not open the board in Mesh.');

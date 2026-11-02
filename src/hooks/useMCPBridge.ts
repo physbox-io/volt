@@ -4,6 +4,8 @@
 
 import { useEffect, useRef } from 'react';
 import { getStoredAuthToken } from '../utils/apiClient';
+import { tabSession } from '../utils/tabSession';
+import { SWITCH_COMMANDS } from './mcpCommandList';
 import { nodeNetName, virtualNetPort } from '../utils/netNaming';
 import { getNodesBounds, type Node, type Edge } from '@xyflow/react';
 import { captureCircuit, captureCircuitThumb, PAD } from '../utils/canvasCapture';
@@ -214,6 +216,13 @@ function getSpeakerAudio(
   return values;
 }
 
+function tabIdentity(): { sessionId: string; label: string; href: string; startedAt: number } {
+  const { id, startedAt } = tabSession();
+  const href = typeof location !== 'undefined' ? location.href : '';
+  const port = typeof location !== 'undefined' ? location.port : '';
+  return { sessionId: id, label: `Volt :${port} ${id.slice(4)}`, href, startedAt };
+}
+
 export function useMCPBridge(props: BridgeProps) {
   const p = useRef(props);
   useEffect(() => { p.current = props; });
@@ -246,6 +255,10 @@ export function useMCPBridge(props: BridgeProps) {
           app: 'circuit',
           port: location.port,
           token: getStoredAuthToken() ?? undefined,
+          // Which TAB this is. Several Volt tabs all connect to the one hub;
+          // without an id each, list_sessions shows "unknown (old client)" and
+          // an agent cannot tell them apart or pin one with use_session.
+          ...tabIdentity(),
         }));
 
       ws.onmessage = (evt) => {
@@ -1184,8 +1197,14 @@ export function useMCPBridge(props: BridgeProps) {
           return { ok: false, error: 'loadPreset not available' };
         }
 
+        // What send_command can ask: every command, the machine ones too.
+        // tests/mcpCommandList.test.ts keeps SWITCH_COMMANDS equal to this
+        // switch's case labels.
+        case 'LIST_COMMANDS':
+          return { ok: true, commands: [...new Set([...SWITCH_COMMANDS, ...Object.keys(machineHandlers)])].sort() };
+
         default:
-          return { error: `Unknown command: ${cmd}` };
+          return { error: `Unknown command: ${cmd}. LIST_COMMANDS names every command this app takes.` };
       }
     };
 
