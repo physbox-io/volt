@@ -5,6 +5,8 @@ import {
   gridOffPlaneMm,
   requireNumber,
   type ArmingState,
+  cancelAgentJobOnDisarm,
+  disarmWhenMachineStops,
 } from '@physbox-io/machining';
 import type { Edge, Node } from '@xyflow/react';
 import { webSerialManager, type ProbeGrid } from './webSerialManager';
@@ -45,12 +47,9 @@ import { pcbJobName, pcbRunSettings } from './pcbRunSettings';
  * opposite of what someone reaching for it wants.
  */
 export const machineArming = new ArmingGate({
-  onDisarm: () => {
-    if (webSerialManager.isRunning() || webSerialManager.isJobPaused()) {
-      void webSerialManager.cancelJob();
-    }
-  },
+  onDisarm: (reason) => cancelAgentJobOnDisarm(webSerialManager, reason),
 });
+disarmWhenMachineStops(webSerialManager, machineArming);
 
 /** What the UI banner watches. */
 export function subscribeToArming(listener: (state: ArmingState) => void): () => void {
