@@ -16,7 +16,8 @@ import {
   type CircuitPreset,
 } from '../utils/storage';
 import { applyCamSetup, loadCamSetup } from '../utils/pcbTooling';
-import { PRESETS_UPDATED_EVENT } from '../utils/cloudSync';
+import { PRESETS_UPDATED_EVENT, type PresetsPulledDetail } from '../utils/cloudSync';
+import { webSerialManager } from '../utils/webSerialManager';
 import { cloudAutosave } from '../utils/cloudDocuments';
 import { recordRecent } from '../utils/recentCircuits';
 import { captureCircuitThumb } from '../utils/canvasCapture';
@@ -32,10 +33,12 @@ interface UsePresetsArgs {
   /** Tells the undo history a circuit just arrived, or was just saved. */
   markLoaded: () => void;
   markSaved: () => void;
+  isSimulating: boolean;
+  hasUnsavedWork: () => boolean;
 }
 
 /** Owns preset selection/loading so the "apply preset to state" sequence exists in exactly one place instead of being copy-pasted at every call site. */
-export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation, markLoaded, markSaved }: UsePresetsArgs) {
+export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation, markLoaded, markSaved, isSimulating, hasUnsavedWork }: UsePresetsArgs) {
   const [selectedPreset, setSelectedPreset] = useState(DEFAULT_PRESET_KEY);
   const [userPresets, setUserPresets] = useState<Record<string, CircuitPreset>>(() => loadUserPresets());
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
@@ -46,12 +49,6 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
    * account's circuits in behind this state would change nothing on screen until a
    * reload. `mergePulledPresets` announces itself; this is the ear.
    */
-  useEffect(() => {
-    const reread = () => setUserPresets(loadUserPresets());
-    window.addEventListener(PRESETS_UPDATED_EVENT, reread);
-    return () => window.removeEventListener(PRESETS_UPDATED_EVENT, reread);
-  }, []);
-
   const allPresets: Record<string, CircuitPreset> = useMemo(
     () => ({ ...presets, ...userPresets }),
     [userPresets]
@@ -91,6 +88,21 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     saveLayoutSnapshot(preset.pcbLayout);
     markLoaded();
   }, [stopSimulation, setInitialConditions, setNodes, setEdges, setSimLength, markLoaded]);
+
+  useEffect(() => {
+    const reread = (event: Event) => {
+      const stored = loadUserPresets();
+      setUserPresets(stored);
+      // A later save of the open circuit, from another machine. Edits made here
+      // stay on screen, and so does a running simulation or machine job.
+      const { refreshed } = (event as CustomEvent<PresetsPulledDetail | null>).detail ?? {};
+      if (!refreshed?.includes(selectedPreset)) return;
+      if (hasUnsavedWork() || isSimulating || webSerialManager.isRunning()) return;
+      applyPreset(stored[selectedPreset]);
+    };
+    window.addEventListener(PRESETS_UPDATED_EVENT, reread);
+    return () => window.removeEventListener(PRESETS_UPDATED_EVENT, reread);
+  }, [selectedPreset, applyPreset, hasUnsavedWork, isSimulating]);
 
   const loadPreset = useCallback((key: string) => {
     const preset = allPresets[key];

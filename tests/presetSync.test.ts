@@ -82,6 +82,23 @@ describe('mergePulledPresets', () => {
   });
 });
 
+describe('what a pull announces', () => {
+  it('names the presets it replaced, not the ones it only added', () => {
+    const events: CustomEvent[] = [];
+    const dispatch = vi.spyOn(window, 'dispatchEvent').mockImplementation((e) => {
+      events.push(e as CustomEvent);
+      return true;
+    });
+    addUserPreset(nameToKey('held'), preset('old', 1000), { keepDate: true });
+    events.length = 0;
+
+    mergePulledPresets({ [nameToKey('held')]: preset('new', 2000), [nameToKey('other')]: preset('other', 2000) });
+
+    expect(events[0].detail).toEqual({ refreshed: [nameToKey('held')] });
+    dispatch.mockRestore();
+  });
+});
+
 describe('addUserPreset', () => {
   it('dates every save, so the next merge can order them', () => {
     const before = Date.now();

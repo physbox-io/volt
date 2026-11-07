@@ -48,8 +48,8 @@ function syncPresetsFromCloud(force = false): Promise<void> {
 
   const run = Promise.all([
     pullCloudPresets().then((pulled) => {
-      // Additive: anything already saved in this browser is left alone, and the
-      // preset list is only told to re-read when something was actually new.
+      // The later save of each preset wins, and the preset list is only told
+      // to re-read when something actually changed.
       mergePulledPresets(pulled);
     }),
     // The tool rack rides the same pull, for the same reason: a bit added or

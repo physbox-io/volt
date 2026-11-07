@@ -419,7 +419,7 @@ export default function App() {
     allPresets,
     applyPreset,
     currentCircuit,
-  } = usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation, markLoaded, markSaved });
+  } = usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation, markLoaded, markSaved, isSimulating, hasUnsavedWork });
 
   useEffect(() => {
     selectedPresetRef.current = selectedPreset;

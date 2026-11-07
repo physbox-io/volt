@@ -9,7 +9,7 @@
  *
  * Ported from `physics/src/utils/cloudSync.ts`, including the two things that
  * module learned the hard way: presets are addressed by the id the *server* gave
- * them, and a pull never overwrites a local preset of the same name.
+ * them, and a pull never overwrites a later local save of the same name.
  *
  * It deliberately does not import `storage`: that module saves and deletes through
  * here, so a dependency the other way would be a cycle. Pulled presets are handed
@@ -41,6 +41,11 @@ const PRESET_ID_MAP_KEY = 'circuitexpt_cloud_preset_ids';
  * a custom name is clearer than overloading that one.
  */
 export const PRESETS_UPDATED_EVENT = 'physbox:presets-updated';
+
+/** Carried by that event after a pull: the presets another machine saved a later copy of. */
+export interface PresetsPulledDetail {
+  refreshed: string[];
+}
 
 function readPresetIdMap(): Record<string, string> {
   try {
@@ -85,15 +90,16 @@ export async function removeCloudPreset(key: string): Promise<void> {
   }
 }
 
+function savedAtOf(data: unknown): number {
+  return (data as CircuitPreset).savedAt ?? 0;
+}
+
 /**
  * Pulls the account's saved circuits.
  *
- * Returned rather than written, so the caller decides how to merge — additively,
- * leaving anything already saved in this browser alone. Taking the cloud copy
- * instead would be the wrong call for the case that actually happens: edits made
- * while offline are newer than what the account holds, and overwriting them loses
- * work to restore a stale copy. Ids for skipped keys are still recorded, so
- * deleting them later removes the cloud copy too.
+ * Returned rather than written, so the caller decides how to merge. The server
+ * does not keep names unique, so the latest save of a name is the one that
+ * counts, for its data and its id.
  */
 export async function pullCloudPresets(): Promise<Record<string, CircuitPreset>> {
   const pulled: Record<string, CircuitPreset> = {};
@@ -104,10 +110,15 @@ export async function pullCloudPresets(): Promise<Record<string, CircuitPreset>>
     return pulled; // Signed out, offline, or refused — keep what is local.
   }
 
+  const latest = new Map<string, (typeof presets)[number]>();
   for (const preset of presets) {
     if (!preset?.name || !preset?.data) continue;
-    if (preset.id) rememberPresetId(preset.name, preset.id);
-    pulled[preset.name] = preset.data as CircuitPreset;
+    const held = latest.get(preset.name);
+    if (!held || savedAtOf(preset.data) > savedAtOf(held.data)) latest.set(preset.name, preset);
+  }
+  for (const [name, preset] of latest) {
+    if (preset.id) rememberPresetId(name, preset.id);
+    pulled[name] = preset.data as CircuitPreset;
   }
   return pulled;
 }

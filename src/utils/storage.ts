@@ -1,7 +1,7 @@
 import type { PcbLayoutSnapshot, PcbOptions } from './pcbExporter';
 import type { CamSetup } from './pcbTooling';
 import { type Node, type Edge } from '@xyflow/react';
-import { saveCloudPreset, removeCloudPreset, PRESETS_UPDATED_EVENT } from './cloudSync';
+import { saveCloudPreset, removeCloudPreset, PRESETS_UPDATED_EVENT, type PresetsPulledDetail } from './cloudSync';
 import { copyName } from './circuitCatalog';
 import { forgetRecent, renameRecent } from './recentCircuits';
 
@@ -231,16 +231,18 @@ export function duplicateUserPreset(fromKey: string): PresetFileResult {
 export function mergePulledPresets(pulled: Record<string, CircuitPreset>): number {
   const existing = loadUserPresets();
   let added = 0;
+  const refreshed: string[] = [];
   const updated = { ...existing };
   for (const [key, preset] of Object.entries(pulled)) {
     const local = updated[key];
     if (local && (preset.savedAt ?? 0) <= (local.savedAt ?? 0)) continue;
+    if (local) refreshed.push(key);
     updated[key] = preset;
     added += 1;
   }
   if (added === 0) return 0;
   saveUserPresets(updated);
-  window.dispatchEvent(new Event(PRESETS_UPDATED_EVENT));
+  window.dispatchEvent(new CustomEvent<PresetsPulledDetail>(PRESETS_UPDATED_EVENT, { detail: { refreshed } }));
   return added;
 }
 
