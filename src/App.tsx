@@ -1718,18 +1718,18 @@ export default function App() {
                     savePresetByName(name);
                   }}
                   className="flex items-center justify-center p-1 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors focus:outline-none cursor-pointer"
-                  title={`Update preset "${userPresets[selectedPreset].name.replace(/^User:\s*/, '')}"`}
+                  title={`Update circuit "${userPresets[selectedPreset].name.replace(/^User:\s*/, '')}"`}
                 >
                   <Save className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => {
-                    if (window.confirm(`Are you sure you want to delete the preset "${userPresets[selectedPreset].name}"?`)) {
+                    if (window.confirm(`Are you sure you want to delete the circuit "${userPresets[selectedPreset].name}"?`)) {
                       deleteUserPreset(selectedPreset);
                     }
                   }}
                   className="flex items-center justify-center p-1 rounded-md text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors focus:outline-none cursor-pointer"
-                  title={`Delete preset "${userPresets[selectedPreset].name}"`}
+                  title={`Delete circuit "${userPresets[selectedPreset].name}"`}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -1792,7 +1792,7 @@ export default function App() {
                 setIsSaveDialogOpen(true);
               }}
               className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-650 dark:text-slate-300 transition-colors focus:outline-none cursor-pointer"
-              title="Save circuit preset as…"
+              title="Save circuit as…"
             >
               <Save className="w-3.5 h-3.5" />
             </button>
@@ -2265,7 +2265,7 @@ export default function App() {
                   <Save className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="font-bold text-slate-800 dark:text-slate-200 text-base">Save Circuit Preset</h2>
+                  <h2 className="font-bold text-slate-800 dark:text-slate-200 text-base">Save Circuit</h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Give your circuit a name to save it locally</p>
                 </div>
               </div>

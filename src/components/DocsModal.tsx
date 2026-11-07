@@ -340,7 +340,7 @@ export function DocsModal({ onClose }: DocsModalProps) {
                   A sweep needs something to drive — a signal generator, an AC source or a DC supply. The chosen
                   source is given a 1V small-signal stimulus for the measurement and every other source
                   contributes nothing, so the circuit itself is never edited and there is nothing to put back.
-                  Load the <strong>Sallen-Key Low-Pass (Bode)</strong> preset for a filter built to show what the
+                  Load the <strong>Sallen-Key Low-Pass (Bode)</strong> example for a filter built to show what the
                   plot is for.
                 </p>
 
