@@ -73,7 +73,7 @@ import { openSvgInEtch } from '../utils/etchHandoff';
 import { layoutToMeshSpec, openPcbInMesh } from '../utils/meshPcbHandoff';
 import { usePcbLayout } from '../hooks/usePcbLayout';
 import { webSerialManager } from '../utils/webSerialManager';
-import { NumberInput, ToolChangeDialog, type ZeroResult } from '@physbox-io/ui';
+import { NumberInput } from '@physbox-io/ui';
 import {
   getGridStats,
   findUnwarpableCommands,
@@ -85,7 +85,7 @@ import { setActiveHeightmap } from '../utils/machineMcp';
 import { heightmapCoversBoard } from '../utils/boardLevelling';
 import { PcbToolpathPreview } from './PcbToolpathPreview';
 import { InfoTip } from './InfoTip';
-import { JobPauseModal } from './JobPauseModal';
+import { setTouchPlateMm, useTouchPlateMm } from '../utils/touchPlate';
 import { PanZoomContainer } from './PanZoomContainer';
 import { MachineConnectModal } from './MachineConnectModal';
 import { JobOverrides } from './JobOverrides';
@@ -141,7 +141,6 @@ const SHIM_HINT =
 /** Search distance for a mesh probe point, measured down from the retract. */
 const DEFAULT_PROBE_DEPTH_MM = 3;
 /** Thickness of the touch plate used to set work Z0. */
-const DEFAULT_TOUCH_PLATE_MM = 12;
 
 /**
  * Reads a persisted machine setting. These are bench measurements — plate
@@ -291,9 +290,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * top of the plate, work Z0 is set to this height — so it has to match the
    * plate actually on the bench, or every cut is off by the difference.
    */
-  const [touchPlateMm, setTouchPlateMm] = useState<number>(() =>
-    readNumericSetting('grblTouchPlateMm', DEFAULT_TOUCH_PLATE_MM)
-  );
+  const touchPlateMm = useTouchPlateMm();
   const [busy, setBusy] = useState<'' | 'probing' | 'zeroing' | 'milling' | 'framing' | 'homing'>('');
   const [machineError, setMachineError] = useState<string | null>(null);
   /** Last word from the stencil export — the file written, or why not. */
@@ -378,25 +375,15 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     webSerialManager.clearLastError();
   };
 
-  const handleSafeClose = React.useCallback(() => {
-    const isJobActive = serialState.status === 'RUNNING' || serialState.status === 'PROBING' || busy !== '';
-    if (isJobActive) {
-      if (!window.confirm('A machine operation is currently in progress. Closing this dialog will leave the machine running. Are you sure you want to close?')) {
-        return;
-      }
-    }
-    onClose();
-  }, [serialState.status, busy, onClose]);
-
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        handleSafeClose();
+        onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleSafeClose]);
+  }, [onClose]);
 
   /*
    * The ids the pickers show. A selection stored before the rack — or the
@@ -822,13 +809,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   });
 
   /**
-   * An M0 / M6 pause: the stream stopped between lines and the machine has
-   * drained, so it is standing still and will accept commands.
-   */
-  const isStreamPaused =
-    serialState.status === 'PAUSED_TOOL' || serialState.status === 'PAUSED_MATERIAL';
-
-  /**
    * Jogging and re-zeroing are allowed when idle *and* during a stream pause —
    * changing a bit is exactly when work Z0 stops being valid, so re-probing has
    * to be reachable without cancelling the job.
@@ -940,6 +920,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     }
 
     setBusy('milling');
+    webSerialManager.setJobHeightmap(grid);
     try {
       await webSerialManager.startJob(program, jobContext());
     } catch (e) {
@@ -1173,17 +1154,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * Z = <the map's reading here> instead puts Z0 back on the map's own plane,
    * whichever spot the operator happened to stop over.
    */
-  /** Runs a zeroing routine for the tool-change dialog, which reads a result rather than a throw. */
-  const asZeroResult = async (action: () => Promise<void>, done: string): Promise<ZeroResult> => {
-    clearErrors();
-    try {
-      await action();
-      return { success: true, message: done };
-    } catch (e) {
-      return { success: false, message: errorMessage(e) || 'Zeroing Z failed' };
-    }
-  };
-
   const surfaceOffsetHere = () => {
     // Past the flip the bit is over the other face, which the map does not
     // describe; offsetting this zero by the top face's reading at this XY
@@ -1321,24 +1291,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   };
 
   /**
-   * Traces the board outline with the spindle off, so the blank can be checked
-   * against the job before any of it is cut.
-   */
-  const handleResume = async () => {
-    clearErrors();
-    try {
-      await webSerialManager.resumeJob();
-    } catch (e) {
-      setMachineError(errorMessage(e) || 'Could not resume the job');
-    }
-  };
-
-  const handleCancel = async () => {
-    await webSerialManager.cancelJob();
-    setBusy('');
-  };
-
-  /**
    * Abandons the operation being cut and runs it again from its first line —
    * which stops at that layer's tool change, bringing the re-zero prompt back
    * up before anything is re-cut.
@@ -1355,12 +1307,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       setBusy('');
     }
   };
-
-  // The speed the program will spin up to next — the bit going in, not the
-  // isolation V-bit whose figure sits in the options. Read off the queue like
-  // the layer below.
-  const resumeSpindleRpm =
-    (isRunning || isPaused ? webSerialManager.nextSpindleRpm() : null) ?? options.spindleRpm;
 
   // Read during render rather than mirrored into state: it is derived purely
   // from the queue position, which only changes alongside a status update the
@@ -1472,10 +1418,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       onZeroZOnPlate={handleZeroZOnPlate}
       onGoToZero={handleGoToZero}
       touchPlateMm={touchPlateMm}
-      onTouchPlateChange={v => {
-        setTouchPlateMm(v);
-        localStorage.setItem('grblTouchPlateMm', String(v));
-      }}
+      onTouchPlateChange={setTouchPlateMm}
       safeZMm={options.safeZ}
       onSafeZChange={v => {
         setOptions(prev => ({ ...prev, safeZ: v }));
@@ -1589,7 +1532,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
             </button>
 
             <button
-              onClick={handleSafeClose}
+              onClick={onClose}
               className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
@@ -2841,79 +2784,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       </div>
 
       {machineDialog}
-
-      {serialState.status === 'PAUSED_TOOL' && (
-        <ToolChangeDialog
-          machine="cnc"
-          message={serialState.pauseMessage || 'Fit the next bit.'}
-          progress={{ line: serialState.currentLine, total: serialState.totalLines }}
-          position={serialState.wpos}
-          connected={serialState.connected}
-          onJog={(delta, feed) => webSerialManager.jog(delta, feed)}
-          onJogStop={() => webSerialManager.jogCancel()}
-          zero={{
-            zeroed: !serialState.needsZeroBeforeResume,
-            surface: {
-              label: 'On the copper',
-              hint: 'Continuity clip on the board. The zero the surface map was taken from.',
-              onProbe: () =>
-                asZeroResult(() => webSerialManager.zeroZOnSurface(surfaceOffsetHere()), 'Z zeroed on the copper.'),
-            },
-            plate: {
-              mm: touchPlateMm,
-              onMmChange: (v) => {
-                setTouchPlateMm(v);
-                localStorage.setItem('grblTouchPlateMm', String(v));
-              },
-              onProbe: (mm) =>
-                asZeroResult(() => webSerialManager.zeroZ(mm, surfaceOffsetHere()), 'Z zeroed on the touch plate.'),
-            },
-            probeCircuit: { active: !!serialState.probePinActive, seen: !!serialState.probeCircuitSeen },
-            note:
-              serialState.zeroZScatterMm !== undefined ? (
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Last zero: the two stabs agreed to{' '}
-                  <span className="font-mono font-semibold">{serialState.zeroZScatterMm.toFixed(3)} mm</span>.
-                </p>
-              ) : undefined,
-          }}
-          resumeBlockedReason={
-            serialState.needsZeroBeforeResume ? 'Re-zero Z on the new bit before resuming.' : null
-          }
-          onResume={handleResume}
-          onStop={handleCancel}
-        >
-          {/* The bit going in is what this speed has to suit, and the number is
-              otherwise in a tab behind this dialog. */}
-          <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-slate-700 dark:text-slate-200">
-            <span className="text-[11px] font-semibold">Spindle speed on resume</span>
-            <span className="font-mono text-sm font-bold tabular-nums">
-              {resumeSpindleRpm.toLocaleString()} <span className="text-[10px] opacity-70">RPM</span>
-            </span>
-          </div>
-          {machineError && (
-            <p className="text-[11px] leading-snug text-red-600 dark:text-red-400">{machineError}</p>
-          )}
-        </ToolChangeDialog>
-      )}
-
-      {isPaused && serialState.status !== 'PAUSED_TOOL' && (
-        <JobPauseModal
-          message={serialState.pauseMessage || 'Job paused'}
-          isStreamPaused={isStreamPaused}
-          touchPlateMm={touchPlateMm}
-          spindleRpm={resumeSpindleRpm}
-          zeroScatterMm={serialState.zeroZScatterMm}
-          probeCircuit={{ active: serialState.probePinActive, seen: serialState.probeCircuitSeen }}
-          busy={busy}
-          needsZero={!!serialState.needsZeroBeforeResume}
-          error={machineError}
-          onResume={handleResume}
-          onCancel={handleCancel}
-          onZeroOnCopper={handleZeroZ}
-          onZeroOnPlate={handleZeroZOnPlate}
-        />
-      )}
 
       {safetyWarning}
     </div>

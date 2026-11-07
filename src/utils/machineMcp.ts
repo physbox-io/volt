@@ -176,6 +176,7 @@ async function millCurrentBoard(args: Record<string, unknown>): Promise<{ summar
   // startJob makes the remaining checks itself — the machine must not be in
   // alarm, and work Z0 must have been confirmed this session rather than left
   // over in the controller's EEPROM from another board.
+  webSerialManager.setJobHeightmap(heightmap);
   await webSerialManager.startJob(gcode, {
     name: pcbJobName(cloudAutosave.getDocumentName()),
     // An agent never opens the CAM dialog, so the laminate is whatever was last

@@ -19,7 +19,7 @@ export interface JobPauseModalProps {
    * same RPM, and the number is otherwise buried in a tab behind this dialog at
    * the one moment the operator has their hands on the machine.
    */
-  spindleRpm: number;
+  spindleRpm: number | null;
   /**
    * How far the two stabs of the last Z zeroing probe disagreed, in mm — shown
    * here because this is the moment the operator zeroes, and a probe that
@@ -95,12 +95,14 @@ export const JobPauseModal: React.FC<JobPauseModalProps> = ({
 
         {isStreamPaused && (
           <div className="space-y-2 pt-2 border-t border-amber-500/30">
-            <div className="flex items-center justify-between gap-2 bg-slate-900/5 dark:bg-slate-950/50 border border-amber-500/30 rounded-lg px-2.5 py-1.5">
-              <span className="text-[11px] font-semibold">Spindle speed on resume</span>
-              <span className="font-mono text-sm font-bold tabular-nums">
-                {spindleRpm.toLocaleString()} <span className="text-[10px] font-semibold opacity-70">RPM</span>
-              </span>
-            </div>
+            {spindleRpm !== null && (
+              <div className="flex items-center justify-between gap-2 bg-slate-900/5 dark:bg-slate-950/50 border border-amber-500/30 rounded-lg px-2.5 py-1.5">
+                <span className="text-[11px] font-semibold">Spindle speed on resume</span>
+                <span className="font-mono text-sm font-bold tabular-nums">
+                  {spindleRpm.toLocaleString()} <span className="text-[10px] font-semibold opacity-70">RPM</span>
+                </span>
+              </div>
+            )}
 
             <p className="text-[11px] leading-relaxed">
               A new bit is a different length, so work Z0 no longer matches the tool. Resume

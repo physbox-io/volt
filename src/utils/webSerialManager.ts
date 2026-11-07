@@ -4,6 +4,7 @@ import {
   TelemetryThrottle,
   classifyPauseLine,
   getGridStats,
+  interpolateGridZ,
   gridFromPoints,
   gridOffPlaneMm,
   normalizeGrid,
@@ -1210,6 +1211,24 @@ export class WebSerialManager extends GrblMachine<MachineState> {
    * bottom copper to the top's warp, mirrored wrong and in the wrong places.
    * The bottom runs unlevelled instead, at the depth the exporter gave it.
    */
+  /** The map this job's program was warped to. Outlives the dialog that probed it. */
+  private jobHeightmap: ProbeGrid | null = null;
+
+  public setJobHeightmap(grid: ProbeGrid | null): void {
+    this.jobHeightmap = grid;
+  }
+
+  /**
+   * How far the copper under the bit stands above the map's plane, for a re-zero
+   * mid-job. Past the flip the bit is over the other face, which the map does
+   * not describe, so the top's warp must not shift the bottom side.
+   */
+  public surfaceOffsetHere(): number {
+    if (!this.jobHeightmap || this.isPastBoardFlip()) return 0;
+    const { x, y } = this.state.wpos;
+    return interpolateGridZ(this.jobHeightmap, x, y);
+  }
+
   public applyHeightmapToGcode(gcode: string, grid: ProbeGrid | null): string {
     if (!grid) return gcode;
     const { probedFace, afterFlip } = splitAtBoardFlip(gcode);

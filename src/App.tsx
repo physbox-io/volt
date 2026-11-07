@@ -42,12 +42,13 @@ import {
 } from './utils/shareLink';
 import { revokeShare, isProRequired } from './utils/apiClient';
 import { SIGN_IN_REQUESTED_EVENT, SIGNED_IN_EVENT } from './components/UserProfileButton';
-import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Hammer, PanelRight, Wrench, Share2, Copy, Check, Gauge, Waves, SlidersHorizontal, Cable, FolderOpen, ChevronDown } from 'lucide-react';
+import { MachineStatusBar } from './components/MachineStatusBar';
+import { JobInterruptions } from './components/JobInterruptions';
+import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Hammer, PanelRight, Share2, Copy, Check, Gauge, Waves, SlidersHorizontal, Cable, FolderOpen, ChevronDown } from 'lucide-react';
 import { CircuitBrowser } from './components/CircuitBrowser';
 import { firstBrowserTab, type CircuitBrowserTab } from './utils/recentCircuits';
 import AICopilotPanel from './components/AICopilotPanel';
 import { ExportPcbModal } from './components/ExportPcbModal';
-import { webSerialManager } from './utils/webSerialManager';
 import { playbackTicker } from './utils/playbackTicker';
 import { presets, DEFAULT_PRESET_KEY } from './utils/presets';
 import { EdgePathProvider } from './components/AuraEdge';
@@ -184,59 +185,6 @@ const makeNameOf = (nodes: Node[]) => {
     return map[nodeId] || getNodeDefaultName(nodeId, node?.type ?? '');
   };
 };
-
-/**
- * Isolated machine status pill for the bottom bar.
- *
- * Subscribing to `webSerialManager` at the root of `App` re-rendered the entire
- * schematic canvas on every GRBL `?` status report and streamed G-code line.
- * Holding the subscription here — and bailing out when `connected` and `status`
- * are unchanged — keeps high-frequency DRO ticks out of the React tree.
- */
-function MachineStatusBarPill({ onOpenMachine }: { onOpenMachine: () => void }) {
-  const [summary, setSummary] = useState(() => {
-    const s = webSerialManager.getState();
-    return { connected: s.connected, status: s.status };
-  });
-  useEffect(
-    () =>
-      webSerialManager.addListener(s => {
-        setSummary(prev =>
-          prev.connected === s.connected && prev.status === s.status
-            ? prev
-            : { connected: s.connected, status: s.status },
-        );
-      }),
-    [],
-  );
-
-  return (
-    <div className="flex items-center gap-2">
-      <div
-        className={`w-2 h-2 rounded-full ${
-          summary.connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400 dark:bg-slate-600'
-        }`}
-      />
-      <span>Machine:</span>
-      <span
-        className={
-          summary.connected
-            ? 'text-emerald-600 dark:text-emerald-400 font-bold'
-            : 'text-slate-400'
-        }
-      >
-        {summary.status}
-      </span>
-      <button
-        onClick={onOpenMachine}
-        className="p-1 rounded text-amber-600 dark:text-amber-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-        title="Connect the machine, home it, and set the work origin"
-      >
-        <Wrench className="w-3.5 h-3.5" />
-      </button>
-    </div>
-  );
-}
 
 export default function App() {
   // ── Initialise from localStorage ────────────────────────────────────────────
@@ -2447,7 +2395,7 @@ export default function App() {
         {/* Right: Simulation Parameters (Duration & Resolution) */}
         <div className="flex items-center gap-3 max-lg:shrink-0">
           {/* The mill that cuts the board this schematic becomes. */}
-          <MachineStatusBarPill onOpenMachine={openMachineModal} />
+          <MachineStatusBar onOpenMachine={openMachineModal} />
 
           <div className="w-px h-3 bg-slate-200 dark:bg-slate-800 max-lg:hidden" />
 
@@ -2489,6 +2437,7 @@ export default function App() {
         </div>
       </footer>
       {/* A job that ran to its last line, wherever it was started from. */}
+      <JobInterruptions />
       <JobCompleteNotice />
     </div>
     </CanvasStateProvider>
