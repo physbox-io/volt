@@ -226,7 +226,7 @@ Edges:
 ]
 
 ═══════════════════════════════════════════
-PCB MILLING & AUTO-LEVELLING (Export → PCB Milling)
+PCB MILLING & AUTO-LEVELLING (Make → PCB Milling)
 ═══════════════════════════════════════════
 
 The app can turn a schematic into a single-sided milled PCB: it places

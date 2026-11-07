@@ -42,7 +42,7 @@ import {
 } from './utils/shareLink';
 import { revokeShare, isProRequired } from './utils/apiClient';
 import { SIGN_IN_REQUESTED_EVENT, SIGNED_IN_EVENT } from './components/UserProfileButton';
-import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Printer, PanelRight, Wrench, Share2, Copy, Check, Gauge, Waves, SlidersHorizontal, Cable, FolderOpen, ChevronDown } from 'lucide-react';
+import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Hammer, PanelRight, Wrench, Share2, Copy, Check, Gauge, Waves, SlidersHorizontal, Cable, FolderOpen, ChevronDown } from 'lucide-react';
 import { CircuitBrowser } from './components/CircuitBrowser';
 import { firstBrowserTab, type CircuitBrowserTab } from './utils/recentCircuits';
 import AICopilotPanel from './components/AICopilotPanel';
@@ -1778,6 +1778,21 @@ export default function App() {
             </button>
           </div>
 
+          {/* Make: the same control, in the same place, in every PhysBox app. */}
+          <div className="flex items-center shrink-0 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
+            <button
+              onClick={() => {
+                setPcbModalOnMachine(false);
+                setIsPcbModalOpen(true);
+              }}
+              className="flex items-center justify-center gap-1.5 px-3 py-1 rounded-md font-semibold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-100 transition-all cursor-pointer"
+              title="Lay out the board and mill it"
+            >
+              <Hammer className="w-3 h-3 text-amber-500 dark:text-amber-400" />
+              <span className="hidden md:inline">Make</span>
+            </button>
+          </div>
+
           {/* Files & Actions Segmented Group */}
           <div className="flex items-center shrink-0 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
             <button 
@@ -1831,17 +1846,6 @@ export default function App() {
               title="Copy a share link — the circuit travels inside it"
             >
               <Share2 className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              onClick={() => {
-                setPcbModalOnMachine(false);
-                setIsPcbModalOpen(true);
-              }}
-              className="flex items-center justify-center p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-amber-600 dark:text-amber-400 transition-colors focus:outline-none cursor-pointer"
-              title="PCB Mill (CNC & WebSerial)"
-            >
-              <Printer className="w-3.5 h-3.5" />
             </button>
 
             <button

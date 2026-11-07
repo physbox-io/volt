@@ -400,7 +400,7 @@ export function DocsModal({ onClose }: DocsModalProps) {
               <div className="prose dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 leading-relaxed">
                 <h3 className="text-2xl font-bold mb-4">PCB Milling &amp; Auto-Levelling</h3>
                 <p className="mb-4">
-                  <strong>Export &rarr; PCB Milling</strong> turns your schematic into a single- or double-sided copper board:
+                  <strong>Make</strong> turns your schematic into a single- or double-sided copper board:
                   it places footprints, routes traces, and generates isolation, drilling, and profile toolpaths.
                   The board is carved straight from the browser: the toolpaths are streamed to a GRBL machine
                   over WebSerial rather than saved out for another sender. The only file this app writes is the
