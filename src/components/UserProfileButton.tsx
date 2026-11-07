@@ -9,8 +9,7 @@ import { JobHistoryModal } from './JobHistoryModal';
 import { CloudSaveStatus } from './CloudSaveStatus';
 import { GuestListModal } from './GuestListModal';
 import { restoreLlmSettingsFromCloud } from '../utils/llmSettings';
-import { pullCloudPresets, pullToolRack } from '../utils/cloudSync';
-import { mergePulledPresets } from '../utils/storage';
+import { presetSync, pullToolRack } from '../utils/cloudSync';
 
 /**
  * How long to leave between automatic pulls of the account's circuits.
@@ -35,7 +34,7 @@ let presetSyncInFlight: Promise<void> | null = null;
  *
  * The throttle state is at module scope rather than in a ref because it guards a
  * shared resource — the account's preset list — rather than anything belonging to
- * a particular mount. `pullCloudPresets` already no-ops when signed out, so there
+ * a particular mount. `presetSync.pull` already no-ops when signed out, so there
  * is no token check here.
  */
 function syncPresetsFromCloud(force = false): Promise<void> {
@@ -47,11 +46,7 @@ function syncPresetsFromCloud(force = false): Promise<void> {
   }
 
   const run = Promise.all([
-    pullCloudPresets().then((pulled) => {
-      // The later save of each preset wins, and the preset list is only told
-      // to re-read when something actually changed.
-      mergePulledPresets(pulled);
-    }),
+    presetSync.pull(),
     // The tool rack rides the same pull, for the same reason: a bit added or
     // retired in Etch on another machine should be what the pickers here offer
     // without signing out and back in.
@@ -147,9 +142,11 @@ export const UserProfileButton: React.FC = () => {
     };
     document.addEventListener('visibilitychange', resync);
     window.addEventListener('focus', resync);
+    window.addEventListener('online', resync);
     return () => {
       document.removeEventListener('visibilitychange', resync);
       window.removeEventListener('focus', resync);
+      window.removeEventListener('online', resync);
     };
   }, []);
 

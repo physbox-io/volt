@@ -240,16 +240,37 @@ export async function fetchCloudParameters(appId: string): Promise<Record<string
   }
 }
 
-export async function syncCloudPreset(appId: string, name: string, data: unknown, id?: string): Promise<string | null> {
+/** What became of a save: taken, stale, refused for good, or null for could not ask. */
+export type PresetSaveOutcome =
+  | { id: string; revision: number }
+  | { conflict: { id: string; revision: number } }
+  | { refused: true }
+  | null;
+
+/**
+ * Saves a preset onto the revision `baseRevision`, 0 for none. A row that has
+ * moved past that comes back as a conflict, for the caller to keep both.
+ */
+export async function syncCloudPreset(
+  appId: string,
+  name: string,
+  data: unknown,
+  id?: string,
+  baseRevision?: number,
+): Promise<PresetSaveOutcome> {
   if (!getStoredAuthToken()) return null;
   try {
-    const res = await request<{ id: string }>('/api/presets', {
+    const res = await request<{ id: string; revision: number }>('/api/presets', {
       method: 'POST',
-      body: JSON.stringify({ id, app_id: appId, preset_name: name, preset_data: data }),
+      body: JSON.stringify({ id, app_id: appId, preset_name: name, preset_data: data, base_revision: baseRevision }),
     });
-    return res.id || null;
+    return { id: res.id, revision: res.revision };
   } catch (err) {
+    if (err instanceof PhysBoxApiError && err.code === 'preset_conflict') {
+      return { conflict: { id: String(err.body.id), revision: Number(err.body.revision) } };
+    }
     console.warn('[PhysBox Cloud] Preset sync failed:', err);
+    if (err instanceof PhysBoxApiError && err.status === 413) return { refused: true };
     return null;
   }
 }
@@ -260,20 +281,42 @@ export async function syncCloudPreset(appId: string, name: string, data: unknown
  * module is shared by apps that each save a different shape into it — the
  * caller is the only side that knows which one it asked for.
  */
-export interface CloudPresetRecord {
-  id?: string;
-  name?: string;
-  data?: unknown;
+export interface CloudPresetMeta {
+  id: string;
+  name: string;
+  revision: number;
+  savedAt: number | null;
+  deleted?: boolean;
+  updatedAt?: string;
 }
 
-export async function fetchCloudPresets(appId: string): Promise<CloudPresetRecord[]> {
+export interface CloudPreset {
+  data?: unknown;
+  revision?: number;
+  blobUrls?: Record<string, string>;
+}
+
+/**
+ * The account's presets, without their data: each is fetched by id when needed.
+ * Throws when the account cannot be reached: an unreachable account is not an
+ * empty one, and must not read as up to date.
+ */
+export async function fetchCloudPresetList(appId: string): Promise<CloudPresetMeta[]> {
   if (!getStoredAuthToken()) return [];
+  const res = await request<{ presets: CloudPresetMeta[] }>(
+    `/api/presets?app_id=${encodeURIComponent(appId)}&fields=meta&include_deleted=1`,
+  );
+  return res.presets || [];
+}
+
+/** One preset with its data, by the id the server gave it; null when it cannot be had. */
+export async function fetchCloudPreset(id: string): Promise<CloudPreset | null> {
+  if (!getStoredAuthToken()) return null;
   try {
-    const res = await request<{ presets: CloudPresetRecord[] }>(`/api/presets?app_id=${encodeURIComponent(appId)}`);
-    return res.presets || [];
+    return await request<CloudPreset>(`/api/presets/${encodeURIComponent(id)}`);
   } catch (err) {
-    console.warn('[PhysBox Cloud] Failed to load cloud presets:', err);
-    return [];
+    console.warn('[PhysBox Cloud] Failed to load cloud preset:', err);
+    return null;
   }
 }
 

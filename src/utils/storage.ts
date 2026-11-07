@@ -1,7 +1,8 @@
 import type { PcbLayoutSnapshot, PcbOptions } from './pcbExporter';
 import type { CamSetup } from './pcbTooling';
 import { type Node, type Edge } from '@xyflow/react';
-import { saveCloudPreset, removeCloudPreset, PRESETS_UPDATED_EVENT, type PresetsPulledDetail } from './cloudSync';
+import { presetSync, saveCloudPreset, removeCloudPreset, PRESETS_UPDATED_EVENT, type PresetsPulledDetail } from './cloudSync';
+import { getStoredAuthToken } from './apiClient';
 import { copyName } from './circuitCatalog';
 import { forgetRecent, renameRecent } from './recentCircuits';
 
@@ -103,22 +104,50 @@ export function saveSettings(s: Partial<AppSettings>): void {
 
 // ─── User Presets ─────────────────────────────────────────────────────────────
 
+/**
+ * Circuits the account holds that this browser had no room for, for the session.
+ * Listed and loadable with the rest; every read and write below goes round them.
+ */
+const accountOnly: Record<string, CircuitPreset> = {};
+
 export function loadUserPresets(): Record<string, CircuitPreset> {
   try {
     const raw = localStorage.getItem(USER_PRESETS_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw) as Record<string, CircuitPreset>;
+    return { ...accountOnly, ...(raw ? (JSON.parse(raw) as Record<string, CircuitPreset>) : {}) };
   } catch {
-    return {};
+    return { ...accountOnly };
   }
 }
 
+let lastWriteFailed = false;
+
+/** Whether the last write of the presets was refused, which the browser does when full. */
+export function takeLastWriteFailed(): boolean {
+  const failed = lastWriteFailed;
+  lastWriteFailed = false;
+  return failed;
+}
+
 export function saveUserPresets(presets: Record<string, CircuitPreset>): void {
-  try {
-    localStorage.setItem(USER_PRESETS_KEY, JSON.stringify(presets));
-  } catch {
-    // Silently ignore
+  const stored = { ...presets };
+  for (const key of Object.keys(accountOnly)) {
+    if (!Object.hasOwn(presets, key)) {
+      delete accountOnly[key];
+    } else {
+      accountOnly[key] = presets[key];
+      delete stored[key];
+    }
   }
+  try {
+    localStorage.setItem(USER_PRESETS_KEY, JSON.stringify(stored));
+  } catch {
+    lastWriteFailed = true;
+  }
+}
+
+/** What to say when a circuit will not fit. */
+export function noRoomMessage(name: string): string {
+  return `There is no room left in this browser to save “${name}”. Delete a saved circuit, or export this one to a file.`;
 }
 
 /*
@@ -143,6 +172,12 @@ export function addUserPreset(
   const stamped: CircuitPreset = keepDate && typeof preset.savedAt === 'number' ? preset : { ...preset, savedAt: Date.now() };
   const updated = { ...existing, [key]: stamped };
   saveUserPresets(updated);
+  if (lastWriteFailed) {
+    void saveCloudPreset(key, stamped);
+    if (!getStoredAuthToken()) return existing;
+    lastWriteFailed = false;
+    accountOnly[key] = stamped;
+  }
   // Callers that hold the preset list in React state get it back from the
   // return value, but a writer outside React — the MCP bridge — has nowhere to
   // put it, so the copy on screen would go on serving the version it was
@@ -189,6 +224,7 @@ export function renameUserPreset(fromKey: string, to: string): PresetFileResult 
   }
   if (presets[key]) return { ok: false, message: `There is already a circuit called “${userPresetName(presets[key])}”.` };
   addUserPreset(key, { ...from, name: `User: ${name}` }, { keepDate: true });
+  if (takeLastWriteFailed()) return { ok: false, message: noRoomMessage(name) };
   // Moved before the delete, which would otherwise forget it.
   renameRecent(fromKey, key);
   removeUserPreset(fromKey);
@@ -209,42 +245,36 @@ export function duplicateUserPreset(fromKey: string): PresetFileResult {
   }
   const key = nameToKey(name);
   addUserPreset(key, { ...from, name: `User: ${name}` });
+  if (takeLastWriteFailed()) return { ok: false, message: noRoomMessage(name) };
   return { ok: true, key, name };
 }
 
-/**
- * Folds presets pulled from the account into the local set.
- *
- * Adds anything new, and takes the cloud copy of a preset this browser already
- * has only when it was saved later. Purely additive was the old rule, on the
- * reasoning that an offline edit is newer than what the account holds — but it
- * also meant an *update* could never cross machines at all. Saving a corrected
- * board on one machine and opening it on another gave the old one back, with
- * nothing on screen to say why. Comparing `savedAt` keeps the case that rule
- * was protecting, since a local edit made later still wins.
- *
- * An undated copy counts as older, so a preset saved before dating existed
- * never overwrites a dated one, and two undated copies leave the local one
- * alone exactly as before. Returns how many were added or refreshed, and
- * announces the change so the preset list on screen picks it up.
- */
-export function mergePulledPresets(pulled: Record<string, CircuitPreset>): number {
-  const existing = loadUserPresets();
-  let added = 0;
-  const refreshed: string[] = [];
-  const updated = { ...existing };
-  for (const [key, preset] of Object.entries(pulled)) {
-    const local = updated[key];
-    if (local && (preset.savedAt ?? 0) <= (local.savedAt ?? 0)) continue;
-    if (local) refreshed.push(key);
-    updated[key] = preset;
-    added += 1;
-  }
-  if (added === 0) return 0;
-  saveUserPresets(updated);
-  window.dispatchEvent(new CustomEvent<PresetsPulledDetail>(PRESETS_UPDATED_EVENT, { detail: { refreshed } }));
-  return added;
-}
+presetSync.connect({
+  held: loadUserPresets,
+  read: async (key) => loadUserPresets()[key] ?? null,
+  write: (key, data) => {
+    const presets = loadUserPresets();
+    presets[key] = data as CircuitPreset;
+    saveUserPresets(presets);
+    if (lastWriteFailed) {
+      lastWriteFailed = false;
+      accountOnly[key] = data as CircuitPreset;
+    }
+    return true;
+  },
+  remove: (key) => {
+    const presets = loadUserPresets();
+    if (!Object.hasOwn(presets, key)) return;
+    delete presets[key];
+    delete accountOnly[key];
+    saveUserPresets(presets);
+    forgetRecent(key);
+  },
+  renamed: (data, key) => ({ ...(data as CircuitPreset), name: `User: ${key.replace(/^user_/, '')}` }),
+  changed: (refreshed) => {
+    window.dispatchEvent(new CustomEvent<PresetsPulledDetail>(PRESETS_UPDATED_EVENT, { detail: { refreshed } }));
+  },
+});
 
 /** Derive a safe localStorage key from a user-supplied name */
 /**

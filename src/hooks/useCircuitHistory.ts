@@ -50,6 +50,7 @@ export function useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, 
    * pending: the circuit the app opens with is clean.
    */
   const cleanRef = useRef<unknown>(PENDING_CLEAN);
+  const restoredRef = useRef(false);
   const gatheringRef = useRef(false);
   const top = useCallback(() => historyRef.current[historyIndexRef.current] ?? null, []);
 
@@ -156,7 +157,13 @@ export function useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, 
    * debounce, so until then the circuit counts as the one just loaded.
    */
   const markLoaded = useCallback(() => {
+    restoredRef.current = false;
     cleanRef.current = PENDING_CLEAN;
+  }, []);
+
+  /** The circuit on the canvas was restored unsaved, so it stays unsaved until someone saves it. */
+  const markUnsaved = useCallback(() => {
+    restoredRef.current = true;
   }, []);
 
   /**
@@ -165,10 +172,12 @@ export function useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, 
    * waiting out the debounce, in which case its snapshot is.
    */
   const markSaved = useCallback(() => {
+    restoredRef.current = false;
     cleanRef.current = gatheringRef.current ? PENDING_CLEAN : top();
   }, [top]);
 
   const hasUnsavedWork = useCallback((): boolean => {
+    if (restoredRef.current) return true;
     if (cleanRef.current === PENDING_CLEAN) return false;
     return gatheringRef.current || top() !== cleanRef.current;
   }, [top]);
@@ -180,6 +189,7 @@ export function useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, 
     canRedo: position.index < position.length - 1,
     markLoaded,
     markSaved,
+    markUnsaved,
     hasUnsavedWork,
   };
 }

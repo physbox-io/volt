@@ -18,10 +18,12 @@ vi.mock('../src/utils/cloudSync', () => ({
   PRESETS_UPDATED_EVENT: 'physbox:presets-updated',
   saveCloudPreset: vi.fn(),
   removeCloudPreset: vi.fn(),
+  presetSync: { connect: vi.fn() },
 }));
 
 import {
-  addUserPreset, loadUserPresets, nameToKey, removeUserPreset, renameUserPreset, duplicateUserPreset, userPresetName,
+  addUserPreset, loadUserPresets, nameToKey, noRoomMessage, removeUserPreset, renameUserPreset, duplicateUserPreset,
+  takeLastWriteFailed, userPresetName,
   type CircuitPreset,
 } from '../src/utils/storage';
 import { listRecent, recordRecent } from '../src/utils/recentCircuits';
@@ -111,5 +113,42 @@ describe('recents', () => {
     expect(listRecent().map((r) => r.id)).toEqual(['user_amp', 'basicBlink']);
     removeUserPreset('user_amp');
     expect(listRecent().map((r) => r.id)).toEqual(['basicBlink']);
+  });
+});
+
+describe('a browser with no room left', () => {
+  const refuseWrites = () => vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+    throw new DOMException('full', 'QuotaExceededError');
+  });
+
+  it('says a save did not land, rather than listing a circuit it cannot keep', () => {
+    save('kept');
+    const refused = refuseWrites();
+    const list = addUserPreset(nameToKey('new'), preset('new'));
+    refused.mockRestore();
+    expect(takeLastWriteFailed()).toBe(true);
+    expect(takeLastWriteFailed()).toBe(false);
+    expect(Object.keys(list)).toEqual([nameToKey('kept')]);
+  });
+
+  it('keeps the original when a rename cannot be written', () => {
+    save('amp');
+    const refused = refuseWrites();
+    const result = renameUserPreset(nameToKey('amp'), 'filter');
+    refused.mockRestore();
+    expect(result).toEqual({ ok: false, message: noRoomMessage('filter') });
+    expect(names()).toEqual(['amp']);
+  });
+
+  it('leaves a circuit with the account when there is one, listed for the session', () => {
+    localStorage.setItem('physbox_auth_token', 'token');
+    const refused = refuseWrites();
+    const list = addUserPreset(nameToKey('big'), preset('big'));
+    refused.mockRestore();
+    localStorage.removeItem('physbox_auth_token');
+    expect(takeLastWriteFailed()).toBe(false);
+    expect(Object.keys(list)).toContain(nameToKey('big'));
+    expect(names()).toContain('big');
+    removeUserPreset(nameToKey('big'));
   });
 });

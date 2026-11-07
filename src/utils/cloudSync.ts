@@ -1,36 +1,24 @@
 /**
  * Cloud preset sync for Volt.
  *
- * `apiClient` has exported `syncCloudPreset`, `fetchCloudPresets` and
+ * `apiClient` has exported `syncCloudPreset`, `fetchCloudPresetList` and
  * `deleteCloudPreset` since it was written, and in this app nothing ever called
  * any of them — the functions were dead code and circuits were localStorage-only,
  * while Etch and Mesh had both halves. So signing in on a second machine restored
  * nothing here, and the account menu said otherwise.
  *
- * Ported from `physics/src/utils/cloudSync.ts`, including the two things that
- * module learned the hard way: presets are addressed by the id the *server* gave
- * them, and a pull never overwrites a later local save of the same name.
- *
  * It deliberately does not import `storage`: that module saves and deletes through
- * here, so a dependency the other way would be a cycle. Pulled presets are handed
- * back to the caller.
+ * here, and connects itself to `presetSync`, which keeps the two level.
  */
 
 import { CNC_BED_PARAMETER, TOOL_RACK_PARAMETER } from '@physbox-io/machining';
 import { machineBedStore } from './machineBed';
-import { fetchCloudPresets, syncCloudPreset, deleteCloudPreset, fetchCloudParameters } from './apiClient';
+import { fetchCloudParameters } from './apiClient';
 import { settleToolRack } from './pcbTooling';
 import type { CircuitPreset } from './storage';
+import { PresetSync } from './presetSync';
 
-/**
- * Maps a preset's key to the id the server gave it.
- *
- * Needed because deleting would otherwise have to guess: the app saves under its
- * own key, the server generates its own id, and deleting by key matches nothing —
- * leaving the preset in the account forever, ready to be pulled straight back down
- * on the next sign-in.
- */
-const PRESET_ID_MAP_KEY = 'circuitexpt_cloud_preset_ids';
+export const presetSync = new PresetSync('circuit', 'circuitexpt_cloud_preset_ids');
 
 /**
  * Fired after a pull has merged presets into localStorage.
@@ -47,80 +35,15 @@ export interface PresetsPulledDetail {
   refreshed: string[];
 }
 
-function readPresetIdMap(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(PRESET_ID_MAP_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
+/** Records a save as owed to the account and uploads it. If that fails it goes again at the next pull. */
+export function saveCloudPreset(key: string, preset: CircuitPreset): Promise<boolean> {
+  presetSync.noteSaved(key);
+  return presetSync.upload(key, preset);
 }
 
-function writePresetIdMap(map: Record<string, string>): void {
-  try {
-    localStorage.setItem(PRESET_ID_MAP_KEY, JSON.stringify(map));
-  } catch {
-    // Non-fatal: deletes fall back to leaving the cloud copy in place.
-  }
-}
-
-function rememberPresetId(key: string, id: string): void {
-  const map = readPresetIdMap();
-  if (map[key] === id) return;
-  map[key] = id;
-  writePresetIdMap(map);
-}
-
-/** Uploads a saved preset and records the id the server assigned it. */
-export async function saveCloudPreset(key: string, preset: CircuitPreset): Promise<void> {
-  const existingId = readPresetIdMap()[key];
-  const id = await syncCloudPreset('circuit', key, preset, existingId);
-  if (id) rememberPresetId(key, id);
-}
-
-/** Deletes the cloud copy of a preset, by its real server id. */
-export async function removeCloudPreset(key: string): Promise<void> {
-  const map = readPresetIdMap();
-  const id = map[key];
-  if (!id) return;
-  const deleted = await deleteCloudPreset(id);
-  if (deleted) {
-    delete map[key];
-    writePresetIdMap(map);
-  }
-}
-
-function savedAtOf(data: unknown): number {
-  return (data as CircuitPreset).savedAt ?? 0;
-}
-
-/**
- * Pulls the account's saved circuits.
- *
- * Returned rather than written, so the caller decides how to merge. The server
- * does not keep names unique, so the latest save of a name is the one that
- * counts, for its data and its id.
- */
-export async function pullCloudPresets(): Promise<Record<string, CircuitPreset>> {
-  const pulled: Record<string, CircuitPreset> = {};
-  let presets;
-  try {
-    presets = await fetchCloudPresets('circuit');
-  } catch {
-    return pulled; // Signed out, offline, or refused — keep what is local.
-  }
-
-  const latest = new Map<string, (typeof presets)[number]>();
-  for (const preset of presets) {
-    if (!preset?.name || !preset?.data) continue;
-    const held = latest.get(preset.name);
-    if (!held || savedAtOf(preset.data) > savedAtOf(held.data)) latest.set(preset.name, preset);
-  }
-  for (const [name, preset] of latest) {
-    if (preset.id) rememberPresetId(name, preset.id);
-    pulled[name] = preset.data as CircuitPreset;
-  }
-  return pulled;
+/** Deletes the cloud copy of a preset, now if the account can be reached and at the next pull if not. */
+export function removeCloudPreset(key: string): Promise<void> {
+  return presetSync.remove(key);
 }
 
 /**

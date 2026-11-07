@@ -31,6 +31,7 @@ import {
   getStoredAuthToken,
   putCloudDocument,
   fetchCloudDocument,
+  deleteCloudDocument,
   PhysBoxApiError,
 } from './apiClient';
 
@@ -39,6 +40,24 @@ const APP_ID = 'circuit';
 
 /** Remembers which cloud document this browser's working copy belongs to. */
 const DOCUMENT_ID_KEY = 'circuit_cloud_document_id';
+
+/**
+ * The account's copy of work nobody saved, noted for the next time the app opens.
+ *
+ * Closing a tab is not asked about when autosave holds the latest, so this is
+ * what brings that work back. Only a write of unsaved work notes it: a scene
+ * opened and left alone has nothing to offer.
+ */
+const DRAFT_KEY = 'circuit_cloud_draft';
+
+/** Held by every open tab, so a new one can tell a closed session from a live one. */
+const TAB_LOCK = 'circuit_open_tab';
+
+/** Long enough for the lock of the page a reload just replaced to go. */
+const DRAFT_OFFER_DELAY_MS = 500;
+
+/** An offer ignored for a week is not going to be taken up. */
+const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Quiet time before a save. Long enough to cover typing, short enough to feel safe. */
 const IDLE_MS = 3000;
@@ -82,6 +101,17 @@ export interface AutosaveStatus {
   message: string | null;
   /** Set when the server holds a newer revision than the one we started from. */
   conflictRevision: number | null;
+  /** Unsaved work from the last session, while it is on offer. */
+  draft: CloudDraft | null;
+}
+
+export interface CloudDraft {
+  documentId: string;
+  name: string;
+  /** When it was written, ms since the epoch. */
+  at: number;
+  /** A draft still on offer when this session started writing a new one. */
+  older?: CloudDraft;
 }
 
 type Listener = (status: AutosaveStatus) => void;
@@ -118,15 +148,50 @@ function writeStored(key: string, value: string | null): void {
   }
 }
 
+function readDraft(): CloudDraft | null {
+  try {
+    const raw = readStored(DRAFT_KEY);
+    return raw ? (JSON.parse(raw) as CloudDraft) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDraft(draft: CloudDraft | null): void {
+  writeStored(DRAFT_KEY, draft ? JSON.stringify(draft) : null);
+}
+
+/** Whether another tab of this app is open. Without Web Locks, every tab counts as alone. */
+async function otherTabOpen(): Promise<boolean> {
+  try {
+    const { held } = await navigator.locks.query();
+    return Boolean(held?.some((lock) => lock.name === TAB_LOCK));
+  } catch {
+    return false;
+  }
+}
+
+/** Held until the tab goes, however it goes, which a flag written on close cannot promise. */
+function holdTabLock(): void {
+  try {
+    void navigator.locks.request(TAB_LOCK, { mode: 'shared' }, () => new Promise(() => {})).catch(() => {});
+  } catch {
+    // No Web Locks here; see otherTabOpen.
+  }
+}
+
 /** A document id this browser owns, minted once and then reused. */
 function ensureDocumentId(): string {
   const existing = readStored(DOCUMENT_ID_KEY);
   if (existing) return existing;
-  // Minted here rather than by the server so a document created offline keeps its
-  // identity when it eventually syncs.
-  const id = `doc_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+  const id = mintDocumentId();
   writeStored(DOCUMENT_ID_KEY, id);
   return id;
+}
+
+/** Minted here rather than by the server so a document created offline keeps its identity when it eventually syncs. */
+function mintDocumentId(): string {
+  return `doc_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
 }
 
 class CloudAutosave {
@@ -137,6 +202,7 @@ class CloudAutosave {
     savedAt: null,
     message: null,
     conflictRevision: null,
+    draft: null,
   };
 
   /** What the open circuit is called, as last offered to `schedule`. */
@@ -157,6 +223,18 @@ class CloudAutosave {
   private pendingHash: string | null = null;
   private lastSentHash: string | null = null;
   private inFlight = false;
+  /** Settles when the write in flight has finished. */
+  private writing: Promise<void> | null = null;
+  /** The document holding last session's work, which writes keep off until it is settled. */
+  private protectedDraft: CloudDraft | null = null;
+  /**
+   * This tab's own document, when another tab already has the browser's. Two tabs
+   * are two pieces of work, usually on different scenes, and one document would
+   * have them overwriting each other. Only ever held in memory: it is this tab's.
+   */
+  private tabDocumentId: string | null = null;
+  private hasUnsavedWork: () => boolean = () => false;
+  private applyDraft: ((data: unknown, name: string) => void) | null = null;
   /** Whether this session has asked the account what revision it holds. */
   private primed = false;
   /** Set after a conflict; nothing is written again until it is cleared. */
@@ -170,7 +248,127 @@ class CloudAutosave {
       window.addEventListener('online', () => {
         if (this.pendingHash && !this.blocked) this.save();
       });
+      this.protectedDraft = this.enabled() ? readDraft() : null;
+      setTimeout(() => void this.settleDraft(), DRAFT_OFFER_DELAY_MS);
     }
+  }
+
+  /** Puts last session's unsaved work on offer, unless that session is still open in another tab. */
+  private async settleDraft(): Promise<void> {
+    const live = await otherTabOpen();
+    holdTabLock();
+    if (live) {
+      this.protectedDraft = null;
+      this.tabDocumentId = mintDocumentId();
+      this.primed = true;
+      this.set({ documentId: this.tabDocumentId, revision: null });
+      return;
+    }
+    const draft = this.protectedDraft;
+    if (!draft) return;
+    if (Date.now() - draft.at > DRAFT_MAX_AGE_MS) {
+      this.protectedDraft = null;
+      writeDraft(null);
+      return;
+    }
+    if (draft.older) {
+      void deleteCloudDocument(draft.older.documentId);
+      delete draft.older;
+      writeDraft(draft);
+    }
+    this.set({ draft });
+  }
+
+  /** How this module reaches the document on screen. */
+  connectDocument(hasUnsavedWork: () => boolean, applyDraft: (data: unknown, name: string) => void): void {
+    this.hasUnsavedWork = hasUnsavedWork;
+    this.applyDraft = applyDraft;
+  }
+
+  /** Puts the offered work back on screen. False when it could not be fetched. */
+  async restoreDraft(): Promise<boolean> {
+    const { draft } = this.status;
+    if (!draft || !this.applyDraft) return false;
+    try {
+      const doc = await fetchCloudDocument(draft.documentId);
+      this.applyDraft(doc.data, draft.name);
+      this.protectedDraft = null;
+      writeStored(DOCUMENT_ID_KEY, draft.documentId);
+      this.primed = true;
+      this.lastSentHash = null;
+      this.set({ draft: null, documentId: draft.documentId, revision: doc.revision });
+      return true;
+    } catch (err) {
+      console.warn('[PhysBox Cloud] Could not restore unsaved work:', err);
+      return false;
+    }
+  }
+
+  /** Lets the offered work go. */
+  dismissDraft(): void {
+    const { draft } = this.status;
+    if (!draft) return;
+    this.protectedDraft = null;
+    this.set({ draft: null });
+    const held = readDraft();
+    if (held?.documentId === draft.documentId) {
+      writeDraft(null);
+    } else if (held?.older) {
+      delete held.older;
+      writeDraft(held);
+    }
+    if (draft.documentId !== readStored(DOCUMENT_ID_KEY)) void deleteCloudDocument(draft.documentId);
+    void this.save();
+  }
+
+  /**
+   * The document to write to.
+   *
+   * While last session's work is on offer, a scene nobody has touched is not
+   * written over it, and edits go to a new document so it stays restorable.
+   * Null when the write should wait for the offer to be settled.
+   */
+  private writeTarget(deliberate = false): string | null {
+    // A second tab that nobody has touched has nothing to keep.
+    if (this.tabDocumentId) return deliberate || this.hasUnsavedWork() ? this.tabDocumentId : null;
+    const id = ensureDocumentId();
+    if (this.protectedDraft?.documentId !== id) return id;
+    if (!deliberate && !this.hasUnsavedWork()) return null;
+    writeStored(DOCUMENT_ID_KEY, null);
+    this.primed = true;
+    const fresh = ensureDocumentId();
+    this.set({ documentId: fresh, revision: null });
+    return fresh;
+  }
+
+  /** After a write: notes unsaved work for the next session, or that there is none. */
+  private noteDraft(id: string, name: string): void {
+    if (!this.hasUnsavedWork()) {
+      this.clearDraft(id);
+      return;
+    }
+    const held = readDraft();
+    const older = this.protectedDraft ?? held?.older;
+    writeDraft({ documentId: id, name, at: Date.now(), older: older?.documentId === id ? undefined : older });
+  }
+
+  private clearDraft(id: string): void {
+    const held = readDraft();
+    if (held?.documentId === id) writeDraft(held.older ?? null);
+  }
+
+  /** Marks a write as under way; the function returned ends it. */
+  private beginWrite(): () => void {
+    this.inFlight = true;
+    let finish = () => {};
+    this.writing = new Promise((resolve) => {
+      finish = resolve;
+    });
+    return () => {
+      this.inFlight = false;
+      this.writing = null;
+      finish();
+    };
   }
 
   subscribe(listener: Listener): () => void {
@@ -220,9 +418,9 @@ class CloudAutosave {
       }
       return;
     }
-    if (this.blocked) return;
-
+    // Kept through a conflict: resolving it sends what is on screen by then.
     this.latest = { name, data };
+    if (this.blocked) return;
 
     const since = Date.now() - this.lastSerializedAt;
     if (since >= COALESCE_MS) {
@@ -295,8 +493,13 @@ class CloudAutosave {
    */
   async saveExplicit(name: string, data: unknown, label: string): Promise<void> {
     if (!this.enabled() || this.blocked) return;
-    const id = ensureDocumentId();
+    // An autosave in flight moves the revision this write has to be built on.
+    while (this.writing) await this.writing;
+    if (this.blocked) return;
+    const id = this.writeTarget(true)!;
     this.clearTimers();
+    const superseded = this.pendingHash;
+    const finishWrite = this.beginWrite();
     this.set({ state: 'saving', documentId: id });
     try {
       const res = await putCloudDocument({
@@ -312,10 +515,19 @@ class CloudAutosave {
       } catch {
         this.lastSentHash = null;
       }
-      this.pendingHash = null;
-      this.set({ state: 'saved', revision: res.revision, savedAt: Date.now(), message: null });
+      if (this.pendingHash === superseded) this.pendingHash = null;
+      this.set({
+        state: this.pendingHash ? 'pending' : 'saved',
+        revision: res.revision,
+        savedAt: Date.now(),
+        message: null,
+      });
+      this.clearDraft(id);
+      if (this.pendingHash) this.idleTimer = setTimeout(() => this.save(), IDLE_MS);
     } catch (err) {
       this.handleFailure(err);
+    } finally {
+      finishWrite();
     }
   }
 
@@ -365,16 +577,17 @@ class CloudAutosave {
     if (this.inFlight || this.blocked || this.pendingHash === null) return;
     if (!this.enabled()) return;
 
-    const id = ensureDocumentId();
-    if (this.status.revision === null) await this.primeRevision(id);
-    const name = this.pendingName;
-    const data = this.pendingData;
-    const sending = this.pendingHash;
-
-    this.inFlight = true;
-    this.set({ state: 'saving', documentId: id, message: null });
+    const id = this.writeTarget();
+    if (id === null) return;
+    const finishWrite = this.beginWrite();
 
     try {
+      if (this.status.revision === null) await this.primeRevision(id);
+      const name = this.pendingName;
+      const data = this.pendingData;
+      const sending = this.pendingHash;
+      this.set({ state: 'saving', documentId: id, message: null });
+
       const res = await putCloudDocument({
         id,
         appId: APP_ID,
@@ -387,6 +600,7 @@ class CloudAutosave {
 
       this.lastSentHash = sending;
       if (this.pendingHash === sending) this.pendingHash = null;
+      this.noteDraft(id, name);
       this.retryDelay = RETRY_MS;
       this.set({
         state: this.pendingHash ? 'pending' : 'saved',
@@ -400,7 +614,7 @@ class CloudAutosave {
     } catch (err) {
       this.handleFailure(err);
     } finally {
-      this.inFlight = false;
+      finishWrite();
     }
   }
 
@@ -486,6 +700,7 @@ class CloudAutosave {
     }
     this.blocked = false;
     this.lastSentHash = null;
+    this.ingest();
     this.set({ state: 'pending', conflictRevision: null, message: null });
     await this.save();
   }
@@ -500,6 +715,7 @@ class CloudAutosave {
     writeStored(DOCUMENT_ID_KEY, null);
     this.blocked = false;
     this.lastSentHash = null;
+    this.ingest();
     // A new id has no revision on the server, and must not inherit the old one's.
     this.primed = true;
     this.set({

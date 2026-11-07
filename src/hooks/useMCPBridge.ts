@@ -11,7 +11,7 @@ import { getNodesBounds, type Node, type Edge } from '@xyflow/react';
 import { captureCircuit, captureCircuitThumb, PAD } from '../utils/canvasCapture';
 import { presets as builtinPresets } from '../utils/presets';
 import { upgradeLegacyLabels } from '../utils/legacyLabels';
-import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey, loadMachiningSettings, loadLayoutSnapshot } from '../utils/storage';
+import { loadUserPresets, addUserPreset, removeUserPreset, nameToKey, loadMachiningSettings, loadLayoutSnapshot, noRoomMessage, takeLastWriteFailed } from '../utils/storage';
 import { layoutForCircuit } from '../utils/pcbLayoutStore';
 import type { NoteCard } from './useNoteCards';
 import { DEFAULT_PCB_OPTIONS, type PcbOptions } from '../utils/pcbExporter';
@@ -970,6 +970,7 @@ export function useMCPBridge(props: BridgeProps) {
           // same way.
           const thumbnail = await captureCircuitThumb(nodes);
           addUserPreset(key, thumbnail ? { ...presetObj, thumbnail } : presetObj);
+          if (takeLastWriteFailed()) return { ok: false, error: noRoomMessage(name) };
           return { ok: true, name, key };
         }
 

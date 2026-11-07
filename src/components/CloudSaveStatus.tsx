@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { Cloud, CloudOff, Check, Loader2, AlertTriangle } from 'lucide-react';
+import { Cloud, CloudOff, Check, Loader2, AlertTriangle, History, X } from 'lucide-react';
 import { cloudAutosave, type AutosaveStatus } from '../utils/cloudDocuments';
+import { PRESET_KEPT_BOTH_EVENT } from '../utils/presetSync';
 
 /**
  * What cloud auto-save is doing, when there is something worth saying.
@@ -20,10 +21,39 @@ import { cloudAutosave, type AutosaveStatus } from '../utils/cloudDocuments';
  */
 
 const AUTO_HIDE_MS = 2500;
+const KEPT_BOTH_HIDE_MS = 8000;
+
+/** How long ago, as something to put in a sentence. */
+function timeAgo(at: number): string {
+  const minutes = Math.round((Date.now() - at) / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
 
 export const CloudSaveStatus: React.FC = () => {
   const [status, setStatus] = useState<AutosaveStatus>(cloudAutosave.getStatus());
   const [busy, setBusy] = useState(false);
+  const [restoreFailed, setRestoreFailed] = useState(false);
+  /** Two saves could not share a name, so one has a new one: worth a sentence, not a question. */
+  const [keptBoth, setKeptBoth] = useState<string | null>(null);
+
+  useEffect(() => {
+    const show = (event: Event) => {
+      const { name, copy } = (event as CustomEvent<{ name: string; copy: string }>).detail;
+      setKeptBoth(`“${name}” was also saved elsewhere. That version is “${copy}”.`);
+    };
+    window.addEventListener(PRESET_KEPT_BOTH_EVENT, show);
+    return () => window.removeEventListener(PRESET_KEPT_BOTH_EVENT, show);
+  }, []);
+  useEffect(() => {
+    if (!keptBoth) return;
+    const timer = setTimeout(() => setKeptBoth(null), KEPT_BOTH_HIDE_MS);
+    return () => clearTimeout(timer);
+  }, [keptBoth]);
   /** Whether the "saved" badge is still within its welcome. */
   const [showSaved, setShowSaved] = useState(false);
 
@@ -56,16 +86,15 @@ export const CloudSaveStatus: React.FC = () => {
     status.state === 'offline' ||
     (status.state === 'saved' && showSaved);
 
-  if (!visible) return null;
+  const { draft } = status;
+  if (!visible && !draft && !keptBoth) return null;
 
   /**
    * Both choices keep both versions of the work.
    *
-   * There is deliberately no "take theirs" here. Nothing in this app loads a
-   * document *from* the account — the local copy is always what is on screen — so
-   * a button offering the other version could fetch it and then have nowhere to put
-   * it. Forking is the honest form of the same wish: both survive, under different
-   * ids, and neither is thrown away by a badge in the corner.
+   * There is deliberately no "take theirs" here: it would throw away what is on
+   * screen from a badge in the corner. Forking is the honest form of the same
+   * wish: both survive, under different ids.
    */
   const resolve = (action: 'keep' | 'fork') => {
     if (action === 'fork') {
@@ -76,12 +105,49 @@ export const CloudSaveStatus: React.FC = () => {
     void cloudAutosave.keepLocalCopy().finally(() => setBusy(false));
   };
 
+  const restore = () => {
+    setBusy(true);
+    void cloudAutosave.restoreDraft().then((restored) => {
+      setRestoreFailed(!restored);
+      setBusy(false);
+    });
+  };
+
   return ReactDOM.createPortal(
     <div
-      className="fixed bottom-4 left-4 z-[99998] max-w-xs text-xs pointer-events-auto"
+      className="fixed bottom-4 left-4 z-[99998] max-w-xs text-xs pointer-events-auto flex flex-col items-start gap-2"
       role="status"
       aria-live="polite"
     >
+      {keptBoth && (
+        <div className="px-2.5 py-1.5 rounded-xl bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 shadow-lg text-slate-600 dark:text-slate-300">
+          {keptBoth}
+        </div>
+      )}
+      {draft && (
+        <div className="inline-flex items-center gap-2 pl-2.5 pr-1.5 py-1.5 rounded-full bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 shadow-lg text-slate-600 dark:text-slate-300">
+          <History className="w-3.5 h-3.5 shrink-0 text-cyan-600 dark:text-cyan-400" />
+          <span className="truncate">
+            {restoreFailed ? 'Could not fetch it' : `Unsaved “${draft.name}”, ${timeAgo(draft.at)}`}
+          </span>
+          <button
+            onClick={restore}
+            disabled={busy}
+            className="px-2 py-0.5 rounded-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold cursor-pointer shrink-0"
+          >
+            {restoreFailed ? 'Retry' : 'Restore'}
+          </button>
+          <button
+            onClick={() => cloudAutosave.dismissDraft()}
+            disabled={busy}
+            aria-label="Discard unsaved work"
+            title="Discard"
+            className="p-0.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
       {conflict ? (
         <div className="bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-500/40 rounded-xl shadow-2xl p-3 space-y-2 text-slate-700 dark:text-slate-200">
           <div className="flex items-start gap-2 font-bold text-amber-700 dark:text-amber-400">
@@ -109,7 +175,7 @@ export const CloudSaveStatus: React.FC = () => {
             </button>
           </div>
         </div>
-      ) : (
+      ) : visible && (
         <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 shadow-lg text-slate-600 dark:text-slate-300">
           {status.state === 'saving' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
           {status.state === 'saved' && <Check className="w-3.5 h-3.5 text-emerald-500" />}

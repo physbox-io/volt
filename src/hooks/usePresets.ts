@@ -9,6 +9,8 @@ import {
   renameUserPreset,
   duplicateUserPreset,
   nameToKey,
+  noRoomMessage,
+  takeLastWriteFailed,
   loadMachiningSettings,
   saveMachiningSettings,
   loadLayoutSnapshot,
@@ -33,21 +35,23 @@ interface UsePresetsArgs {
   /** Tells the undo history a circuit just arrived, or was just saved. */
   markLoaded: () => void;
   markSaved: () => void;
+  markUnsaved: () => void;
   isSimulating: boolean;
   hasUnsavedWork: () => boolean;
 }
 
 /** Owns preset selection/loading so the "apply preset to state" sequence exists in exactly one place instead of being copy-pasted at every call site. */
-export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation, markLoaded, markSaved, isSimulating, hasUnsavedWork }: UsePresetsArgs) {
+export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation, markLoaded, markSaved, markUnsaved, isSimulating, hasUnsavedWork }: UsePresetsArgs) {
   const [selectedPreset, setSelectedPreset] = useState(DEFAULT_PRESET_KEY);
   const [userPresets, setUserPresets] = useState<Record<string, CircuitPreset>>(() => loadUserPresets());
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [saveDialogName, setSaveDialogName] = useState('');
 
   /*
    * Presets are seeded from localStorage once, so a sign-in that merges the
    * account's circuits in behind this state would change nothing on screen until a
-   * reload. `mergePulledPresets` announces itself; this is the ear.
+   * reload. A pull announces itself; this is the ear.
    */
   const allPresets: Record<string, CircuitPreset> = useMemo(
     () => ({ ...presets, ...userPresets }),
@@ -96,13 +100,30 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
       // A later save of the open circuit, from another machine. Edits made here
       // stay on screen, and so does a running simulation or machine job.
       const { refreshed } = (event as CustomEvent<PresetsPulledDetail | null>).detail ?? {};
+      // Deleted on another machine: the circuit stays, as work nothing holds any more.
+      if (refreshed && !Object.hasOwn(stored, selectedPreset) && !Object.hasOwn(presets, selectedPreset)) {
+        setSelectedPreset(DEFAULT_PRESET_KEY);
+        markUnsaved();
+        return;
+      }
       if (!refreshed?.includes(selectedPreset)) return;
       if (hasUnsavedWork() || isSimulating || webSerialManager.isRunning()) return;
       applyPreset(stored[selectedPreset]);
     };
     window.addEventListener(PRESETS_UPDATED_EVENT, reread);
     return () => window.removeEventListener(PRESETS_UPDATED_EVENT, reread);
-  }, [selectedPreset, applyPreset, hasUnsavedWork, isSimulating]);
+  }, [selectedPreset, applyPreset, hasUnsavedWork, isSimulating, markUnsaved]);
+
+  // Unsaved work from the last session comes back as it was left: unsaved, and
+  // on the circuit it was an edit of, so saving it saves over that circuit.
+  useEffect(() => {
+    cloudAutosave.connectDocument(hasUnsavedWork, (draft, name) => {
+      applyPreset(draft as CircuitPreset);
+      const key = nameToKey(name);
+      if (Object.hasOwn(loadUserPresets(), key)) setSelectedPreset(key);
+      markUnsaved();
+    });
+  }, [hasUnsavedWork, applyPreset, markUnsaved]);
 
   const loadPreset = useCallback((key: string) => {
     const preset = allPresets[key];
@@ -147,27 +168,38 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
    * circuit browser. The picture is taken before the write, so the save lands
    * a moment after the click rather than twice.
    */
-  const saveCurrentAs = useCallback(async (trimmed: string) => {
+  const saveCurrentAs = useCallback(async (trimmed: string): Promise<boolean> => {
     const key = nameToKey(trimmed);
     const preset = currentCircuit(`User: ${trimmed}`);
     // Clean as of what was just serialised, not as of when the picture is done.
     markSaved();
     const thumbnail = await captureCircuitThumb(nodes);
     const updated = addUserPreset(key, thumbnail ? { ...preset, thumbnail } : preset);
+    if (takeLastWriteFailed()) {
+      markUnsaved();
+      setSaveDialogName(trimmed);
+      setSaveError(noRoomMessage(trimmed));
+      setIsSaveDialogOpen(true);
+      return false;
+    }
+    setSaveError(null);
     setUserPresets(updated);
     // A deliberate save is also a named revision of the cloud document, which the
     // pruner never discards — unlike the automatic checkpoints.
     void cloudAutosave.saveExplicit(trimmed, preset, `Saved as “${trimmed}”`);
     setSelectedPreset(key);
     recordRecent(key);
-  }, [currentCircuit, nodes, markSaved]);
+    return true;
+  }, [currentCircuit, nodes, markSaved, markUnsaved]);
 
   const savePreset = useCallback(() => {
     const trimmed = saveDialogName.trim();
     if (!trimmed) return;
-    void saveCurrentAs(trimmed);
-    setIsSaveDialogOpen(false);
-    setSaveDialogName('');
+    void saveCurrentAs(trimmed).then((saved) => {
+      if (!saved) return;
+      setIsSaveDialogOpen(false);
+      setSaveDialogName('');
+    });
   }, [saveDialogName, saveCurrentAs]);
 
   const savePresetByName = useCallback((name: string) => {
@@ -213,6 +245,7 @@ export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditi
     setSaveDialogName,
     savePreset,
     savePresetByName,
+    saveError,
     deleteUserPreset,
     renamePreset,
     duplicatePreset,

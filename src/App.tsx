@@ -56,6 +56,7 @@ import { UserProfileButton } from './components/UserProfileButton';
 import { AgentMachineBanner } from './components/AgentMachineBanner';
 import { JobCompleteNotice } from './components/JobCompleteNotice';
 import { loadSettings, saveSettings, loadMachiningSettings, loadLayoutSnapshot, type CircuitPreset } from './utils/storage';
+import { loadCamSetup } from './utils/pcbTooling';
 import { cloudAutosave } from './utils/cloudDocuments';
 import { useMCPBridge } from './hooks/useMCPBridge';
 import { usePresets } from './hooks/usePresets';
@@ -399,7 +400,7 @@ export default function App() {
    * Before the presets and the file hooks, which tell it when the circuit was
    * loaded, saved or imported: its stack is what "unsaved" is measured against.
    */
-  const { undo, redo, canUndo, canRedo, markLoaded, markSaved, hasUnsavedWork } =
+  const { undo, redo, canUndo, canRedo, markLoaded, markSaved, markUnsaved, hasUnsavedWork } =
     useCircuitHistory({ nodes, edges, isSimulating, stopSimulation, setNodes, setEdges });
   useUnsavedWorkPrompt(hasUnsavedWork);
 
@@ -413,13 +414,14 @@ export default function App() {
     setSaveDialogName,
     savePreset,
     savePresetByName,
+    saveError,
     deleteUserPreset,
     renamePreset,
     duplicatePreset,
     allPresets,
     applyPreset,
     currentCircuit,
-  } = usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation, markLoaded, markSaved, isSimulating, hasUnsavedWork });
+  } = usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation, markLoaded, markSaved, markUnsaved, isSimulating, hasUnsavedWork });
 
   useEffect(() => {
     selectedPresetRef.current = selectedPreset;
@@ -484,6 +486,8 @@ export default function App() {
       // clock, so it comes out worse on slower hardware — carrying it is what
       // lets a board be laid out on one machine and milled from another.
       pcbLayout: loadLayoutSnapshot(),
+      // The bit and laminate behind the settings above, as the hand-save carries them.
+      camSetup: loadCamSetup(),
       // Carried through for the same reason the hand-save carries it: a circuit
       // restored from the account should still explain itself.
       noteCard: userPresets[selectedPreset]?.noteCard,
@@ -2277,6 +2281,7 @@ export default function App() {
                 }}
                 className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100"
               />
+              {saveError && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{saveError}</p>}
               <div className="flex justify-end gap-2 text-xs">
                 <button
                   onClick={() => setIsSaveDialogOpen(false)}

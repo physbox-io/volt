@@ -22,13 +22,17 @@ class MemoryStorage {
 
 // The module uploads through cloudSync on every save; the merge rule under test
 // is purely local, so the network half is stubbed out.
+const connected = vi.hoisted(() => ({ store: null as unknown as import('../src/utils/presetSync').PresetStore }));
+
 vi.mock('../src/utils/cloudSync', () => ({
   PRESETS_UPDATED_EVENT: 'physbox:presets-updated',
   saveCloudPreset: vi.fn(),
   removeCloudPreset: vi.fn(),
+  presetSync: { connect: (s: PresetStore) => { connected.store = s; } },
 }));
 
-import { addUserPreset, mergePulledPresets, loadUserPresets, nameToKey, type CircuitPreset } from '../src/utils/storage';
+import { addUserPreset, loadUserPresets, nameToKey, type CircuitPreset } from '../src/utils/storage';
+import type { PresetStore } from '../src/utils/presetSync';
 
 const preset = (label: string, savedAt?: number): CircuitPreset => ({
   name: label,
@@ -37,49 +41,9 @@ const preset = (label: string, savedAt?: number): CircuitPreset => ({
   ...(savedAt === undefined ? {} : { savedAt }),
 });
 
-const labelOf = (key: string) => loadUserPresets()[key]?.nodes[0]?.id;
 
 beforeEach(() => {
   localStorage.clear();
-});
-
-describe('mergePulledPresets', () => {
-  it('adds a preset this browser has never seen', () => {
-    expect(mergePulledPresets({ user_a: preset('cloud') })).toBe(1);
-    expect(labelOf('user_a')).toBe('cloud');
-  });
-
-  it('takes the cloud copy when it was saved later', () => {
-    localStorage.setItem('circuitexpt_user_presets', JSON.stringify({ user_a: preset('local', 1000) }));
-    expect(mergePulledPresets({ user_a: preset('cloud', 2000) })).toBe(1);
-    expect(labelOf('user_a')).toBe('cloud');
-  });
-
-  // The case the old additive rule existed to protect: an edit made offline is
-  // newer than the account's copy, and must not be rolled back by a pull.
-  it('keeps a local edit that is newer than the account', () => {
-    localStorage.setItem('circuitexpt_user_presets', JSON.stringify({ user_a: preset('local', 3000) }));
-    expect(mergePulledPresets({ user_a: preset('cloud', 2000) })).toBe(0);
-    expect(labelOf('user_a')).toBe('local');
-  });
-
-  it('leaves the local copy alone when neither is dated', () => {
-    localStorage.setItem('circuitexpt_user_presets', JSON.stringify({ user_a: preset('local') }));
-    expect(mergePulledPresets({ user_a: preset('cloud') })).toBe(0);
-    expect(labelOf('user_a')).toBe('local');
-  });
-
-  it('never lets an undated cloud copy overwrite a dated local one', () => {
-    localStorage.setItem('circuitexpt_user_presets', JSON.stringify({ user_a: preset('local', 1000) }));
-    expect(mergePulledPresets({ user_a: preset('cloud') })).toBe(0);
-    expect(labelOf('user_a')).toBe('local');
-  });
-
-  it('same timestamp is not newer, so the local copy stands', () => {
-    localStorage.setItem('circuitexpt_user_presets', JSON.stringify({ user_a: preset('local', 2000) }));
-    expect(mergePulledPresets({ user_a: preset('cloud', 2000) })).toBe(0);
-    expect(labelOf('user_a')).toBe('local');
-  });
 });
 
 describe('what a pull announces', () => {
@@ -92,7 +56,7 @@ describe('what a pull announces', () => {
     addUserPreset(nameToKey('held'), preset('old', 1000), { keepDate: true });
     events.length = 0;
 
-    mergePulledPresets({ [nameToKey('held')]: preset('new', 2000), [nameToKey('other')]: preset('other', 2000) });
+    connected.store.changed([nameToKey('held')]);
 
     expect(events[0].detail).toEqual({ refreshed: [nameToKey('held')] });
     dispatch.mockRestore();
@@ -105,12 +69,6 @@ describe('addUserPreset', () => {
     addUserPreset('user_a', preset('local'));
     const savedAt = loadUserPresets().user_a.savedAt!;
     expect(savedAt).toBeGreaterThanOrEqual(before);
-  });
-
-  it('a save on this machine beats the copy the account already held', () => {
-    addUserPreset('user_a', preset('local'));
-    expect(mergePulledPresets({ user_a: preset('cloud', 1000) })).toBe(0);
-    expect(labelOf('user_a')).toBe('local');
   });
 });
 
