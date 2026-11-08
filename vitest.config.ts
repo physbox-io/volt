@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config';
 // a WASM binary and is deliberately not loaded here.
 export default defineConfig({
   test: {
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.{ts,tsx}'],
     environment: 'node',
     // Board layout runs a real router over real presets; the default 5s is not
     // enough for the two full-board integration cases.

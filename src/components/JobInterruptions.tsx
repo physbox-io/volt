@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { ToolChangeDialog, type ZeroResult } from '@physbox-io/ui';
+import { JobPauseDialog, ToolChangeDialog, jobPauseKind, jobStopKey, type ZeroResult } from '@physbox-io/ui';
+import { jobPause } from '../utils/jobPause';
 import { setTouchPlateMm, useTouchPlateMm } from '../utils/touchPlate';
 import { webSerialManager } from '../utils/webSerialManager';
-import { JobPauseModal } from './JobPauseModal';
 
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : undefined);
 
@@ -13,30 +13,23 @@ const errorMessage = (e: unknown) => (e instanceof Error ? e.message : undefined
  */
 export const JobInterruptions: React.FC = () => {
   const [state, setState] = useState(() => webSerialManager.getState());
-  const [busy, setBusy] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const hiddenKey = jobPause.useHiddenKey();
   const touchPlateMm = useTouchPlateMm();
   useEffect(() => webSerialManager.addListener(setState), []);
 
   const { status } = state;
   const toolChange = status === 'PAUSED_TOOL';
-  const streamStop = toolChange || status === 'PAUSED_MATERIAL';
-  if (!streamStop && status !== 'PAUSED_OPERATOR') return null;
+  const pauseKind = jobPauseKind(status);
+  if (!toolChange && !pauseKind) return null;
+  // Hide is per stop: the status bar's button brings it back, and the next stop
+  // opens on its own. A feed hold's line can still tick over as the planner
+  // drains, so a hold is one stop until the job runs again.
+  const key = jobStopKey(status, pauseKind === 'hold' ? 0 : state.currentLine, state.pauseMessage);
+  if (hiddenKey === key) return null;
 
   const spindleRpm = webSerialManager.nextSpindleRpm();
 
-  const zero = async (action: () => Promise<void>) => {
-    setBusy('zeroing');
-    setError(null);
-    webSerialManager.clearLastError();
-    try {
-      await action();
-    } catch (e) {
-      setError(errorMessage(e) || 'Zeroing Z failed');
-    } finally {
-      setBusy('');
-    }
-  };
   const asZeroResult = async (action: () => Promise<void>, done: string): Promise<ZeroResult> => {
     setError(null);
     webSerialManager.clearLastError();
@@ -95,6 +88,7 @@ export const JobInterruptions: React.FC = () => {
         resumeBlockedReason={state.needsZeroBeforeResume ? 'Re-zero Z on the new bit before resuming.' : null}
         onResume={resume}
         onStop={stop}
+        onHide={() => jobPause.hide(key)}
       >
         {spindleRpm !== null && (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-700 px-2 py-1.5">
@@ -109,21 +103,25 @@ export const JobInterruptions: React.FC = () => {
     );
   }
 
+  if (!pauseKind) return null;
   return (
-    <JobPauseModal
-      message={state.pauseMessage || 'Job paused'}
-      isStreamPaused={streamStop}
-      touchPlateMm={touchPlateMm}
-      spindleRpm={spindleRpm}
-      zeroScatterMm={state.zeroZScatterMm}
-      probeCircuit={{ active: state.probePinActive, seen: state.probeCircuitSeen }}
-      busy={busy}
-      needsZero={!!state.needsZeroBeforeResume}
-      error={error}
+    <JobPauseDialog
+      machine="cnc"
+      kind={pauseKind}
+      message={state.pauseMessage}
+      progress={{ line: state.currentLine, total: state.totalLines }}
+      jog={{
+        position: state.wpos,
+        connected: state.connected,
+        onJog: (delta, feed) => webSerialManager.jog(delta, feed),
+        onJogStop: () => webSerialManager.jogCancel(),
+      }}
+      resumeBlockedReason={null}
       onResume={resume}
-      onCancel={stop}
-      onZeroOnCopper={() => void zero(zeroOnCopper)}
-      onZeroOnPlate={() => void zero(() => zeroOnPlate(touchPlateMm))}
-    />
+      onStop={stop}
+      onHide={() => jobPause.hide(key)}
+    >
+      {error && <p className="text-[11px] leading-snug text-red-600 dark:text-red-400">{error}</p>}
+    </JobPauseDialog>
   );
 };

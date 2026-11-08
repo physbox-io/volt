@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@physbox-io/machining": "^0.8.1",
-    "@physbox-io/ui": "^0.3.2",
+    "@physbox-io/ui": "^0.4.2",
     "@tailwindcss/vite": "^4.2.4",
     "@types/clipper-lib": "^6.4.0",
     "@xyflow/react": "^12.10.2",
@@ -41,6 +41,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.5.0",
+    "jsdom": "^29.1.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.58.2",
     "vite": "^8.0.10",

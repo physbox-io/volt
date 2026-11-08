@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pause, Square, Wrench } from 'lucide-react';
 import { jobInProgress, stopControl } from '../utils/machineGates';
+import { JobWaitingButton, jobPauseKind } from '@physbox-io/ui';
 import { webSerialManager } from '../utils/webSerialManager';
+import { jobPause } from '../utils/jobPause';
 
 interface Summary {
   connected: boolean;
@@ -13,6 +15,7 @@ interface Summary {
   total: number;
   percent: number;
   message?: string;
+  needsZero: boolean;
 }
 
 function summarise(): Summary {
@@ -26,6 +29,7 @@ function summarise(): Summary {
     total: s.totalLines,
     percent: s.progressPercent,
     message: s.pauseMessage,
+    needsZero: !!s.needsZeroBeforeResume,
   };
 }
 
@@ -95,6 +99,15 @@ export function MachineStatusBar({ onOpenMachine }: { onOpenMachine: () => void 
           </div>
           {summary.message && (
             <span className="text-amber-600 dark:text-amber-400 truncate max-w-[22rem]">{summary.message}</span>
+          )}
+          {/* Paused, the way back to the dialog: Resume and the re-zero are
+              there, and Hide only ever tucked them away. */}
+          {paused && (
+            <JobWaitingButton
+              kind={summary.status === 'PAUSED_TOOL' ? 'tool' : (jobPauseKind(summary.status) ?? 'hold')}
+              needsZero={summary.needsZero}
+              onOpen={() => jobPause.show()}
+            />
           )}
           {!paused && (
             <button
