@@ -3,6 +3,7 @@ import {
   createMachineHandlers,
   describeMachine,
   gridOffPlaneMm,
+  refuseWhileJobHoldsMachine,
   requireNumber,
   type ArmingState,
   cancelAgentJobOnDisarm,
@@ -24,6 +25,7 @@ import {
 import { boardProbeBounds, heightmapCoversBoard } from './boardLevelling';
 import { loadMachiningSettings } from './storage';
 import { pcbJobName, pcbRunSettings } from './pcbRunSettings';
+import { runFromLineProblem } from './runFrom';
 
 // ---------------------------------------------------------------------------
 // Driving Volt's machine from MCP
@@ -310,6 +312,35 @@ export function createVoltMachineHandlers(): Record<
         // repeatability at the one place everything else is referenced to.
         zeroScatterMm: webSerialManager.getState().zeroZScatterMm,
       };
+    },
+
+    /**
+     * Picks a board that stopped short back up from a line: the Run From panel.
+     * `status.interruption` says where it stopped and suggests a line a little
+     * before that. Starting from the top instead would recut every pass already
+     * done at whatever Z0 is now.
+     *
+     * Returns once the stream is under way, like mill_pcb; refusals that come
+     * before the first line — the travel of what is left, above all — are
+     * reported here rather than lost.
+     */
+    MACHINE_RESUME_FROM_LINE: async (args: Record<string, unknown>) => {
+      machineArming.requireArmed('resume_from_line');
+      refuseWhileJobHoldsMachine(webSerialManager, 'resume from a line');
+      const fromLine = requireNumber(args, 'fromLine') ?? null;
+      const problem = runFromLineProblem(fromLine, webSerialManager.getState().totalLines || undefined);
+      if (problem) throw new Error(problem);
+      const refused = webSerialManager.startBlockedReason([]);
+      if (refused) throw new Error(refused);
+      machineArming.noteAgentCommand('resume_from_line', `line=${fromLine}`);
+      const running = webSerialManager.runFromLine(fromLine!, { isLaser: false });
+      const early = await Promise.race([
+        running.then(() => null, (err: unknown) => (err instanceof Error ? err.message : String(err))),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 0)),
+      ]);
+      if (early) throw new Error(early);
+      running.catch(() => { /* reported on the machine state as lastError */ });
+      return { ...describeMachine(webSerialManager, machineArming), message: `Running from line ${fromLine}.` };
     },
 
     MACHINE_PROBE_SURFACE: async (args: Record<string, unknown>) => {
