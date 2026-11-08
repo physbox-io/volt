@@ -11,7 +11,7 @@
  * purpose.
  */
 
-import { syncCloudParameters, fetchCloudParameters } from './apiClient';
+import { syncCloudParameters } from './apiClient';
 
 export const GEMINI_KEY = 'gemini_api_key';
 export const ANTHROPIC_KEY = 'anthropic_api_key';
@@ -107,7 +107,8 @@ export const writeMaxTokens = (value: number): number => {
 };
 
 /**
- * Pulls the account's copilot settings down into this browser, so a key entered
+ * Takes the account's copilot settings (its `global` parameters) into this
+ * browser, returning how many changed, so a key entered
  * in `etch`, `physics`, or on physbox.io's settings page is already there when
  * the copilot is first opened here.
  *
@@ -118,24 +119,21 @@ export const writeMaxTokens = (value: number): number => {
  * is applied too. Keys the account has no row for at all are left alone, so a
  * key typed here before signing in survives the sign-in that follows it.
  */
-export const restoreLlmSettingsFromCloud = async (): Promise<void> => {
-  let params: Record<string, unknown>;
-  try {
-    params = await fetchCloudParameters('global');
-  } catch {
-    return; // Signed out, offline, or the server said no — keep what's local.
-  }
+export const adoptLlmSettings = (params: Record<string, unknown>): number => {
+  let changed = 0;
   for (const key of SYNCED_LLM_PARAMETER_KEYS) {
-    const value = params?.[key];
+    const value = params[key];
     if (value === undefined || value === null) continue;
     if (read(key) === String(value)) continue;
     try {
       localStorage.setItem(key, String(value));
+      changed += 1;
     } catch {
       // Nothing to do — the setting simply stays unset in this browser.
     }
   }
   // Panels read localStorage on mount and on 'storage'; this write is same-tab,
   // which does not fire that event on its own.
-  window.dispatchEvent(new Event('storage'));
+  if (changed > 0) window.dispatchEvent(new Event('storage'));
+  return changed;
 };

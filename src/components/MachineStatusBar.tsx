@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pause, Square, Wrench } from 'lucide-react';
 import { jobInProgress, stopControl } from '../utils/machineGates';
-import { JobWaitingButton, jobPauseKind } from '@physbox-io/ui';
+import { JobWaitingButton, jobPauseKind, readMachineLink } from '@physbox-io/ui';
 import { webSerialManager } from '../utils/webSerialManager';
 import { jobPause } from '../utils/jobPause';
 
@@ -36,6 +36,8 @@ function summarise(): Summary {
 const same = (a: Summary, b: Summary) =>
   (Object.keys(a) as (keyof Summary)[]).every(key => a[key] === b[key]);
 
+let resumeAttempted = false;
+
 /**
  * The machine, its job and its stop, with every dialog closed.
  *
@@ -46,6 +48,23 @@ const same = (a: Summary, b: Summary) =>
  */
 export function MachineStatusBar({ onOpenMachine }: { onOpenMachine: () => void }) {
   const [summary, setSummary] = useState(summarise);
+  /*
+   * Picks the machine back up once at app start. USB only to the port this
+   * origin was granted before (`autoConnect`): a port prompt must never be
+   * raised unprompted. Silent on failure: the box may simply be asleep.
+   */
+  useEffect(() => {
+    if (resumeAttempted || webSerialManager.getState().connected) return;
+    resumeAttempted = true;
+    const link = readMachineLink();
+    if (link.kind === 'usb') {
+      void webSerialManager.autoConnect().catch(() => {});
+      return;
+    }
+    if (!link.deviceId) return;
+    webSerialManager.setTransport('wifi', link.deviceId);
+    void webSerialManager.connect().catch(() => {});
+  }, []);
   useEffect(
     () =>
       webSerialManager.addListener(() => {

@@ -3,6 +3,8 @@
  * Enables cloud authentication, parameter sync, preset sync, and remote telemetry monitoring.
  */
 
+import { clearSession, getSessionToken, getSessionUser, setSession } from '@physbox-io/ui/suite';
+
 export interface PhysBoxUser {
   id: string;
   email: string;
@@ -37,9 +39,6 @@ export interface MachiningTelemetry {
   settings?: Record<string, unknown> | null;
 }
 
-const AUTH_TOKEN_KEY = 'physbox_auth_token';
-const USER_KEY = 'physbox_user_profile';
-
 export function getApiBaseUrl(): string {
   // Set by the page that hosts the app, so it is a property of `window` that no
   // .d.ts here declares. The `typeof` guard has to stay outside the read: this
@@ -56,38 +55,19 @@ export function getApiBaseUrl(): string {
 }
 
 export function getStoredAuthToken(): string | null {
-  try {
-    return localStorage.getItem(AUTH_TOKEN_KEY);
-  } catch {
-    return null;
-  }
+  return getSessionToken();
 }
 
 export function getStoredUser(): PhysBoxUser | null {
-  try {
-    const raw = localStorage.getItem(USER_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+  return getSessionUser<PhysBoxUser>();
 }
 
 export function setStoredAuth(token: string, user: PhysBoxUser): void {
-  try {
-    localStorage.setItem(AUTH_TOKEN_KEY, token);
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
-  } catch (e) {
-    console.error('Failed to store auth session', e);
-  }
+  setSession(token, user);
 }
 
 export function clearStoredAuth(): void {
-  try {
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
-  } catch (e) {
-    console.error('Failed to clear auth session', e);
-  }
+  clearSession();
 }
 
 /**
@@ -209,8 +189,9 @@ export async function fetchCurrentUser(): Promise<PhysBoxUser | null> {
       return res.user;
     }
     return null;
-  } catch {
-    clearStoredAuth();
+  } catch (err) {
+    // Only the API refusing the token ends the session; offline or a 5xx keeps it.
+    if (err instanceof PhysBoxApiError && (err.status === 401 || err.status === 403)) clearStoredAuth();
     return null;
   }
 }

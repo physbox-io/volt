@@ -12,9 +12,11 @@
  */
 
 import { CNC_BED_PARAMETER, TOOL_RACK_PARAMETER } from '@physbox-io/machining';
+import { adoptSuiteParameters } from '@physbox-io/ui/suite';
 import { machineBedStore } from './machineBed';
 import { fetchCloudParameters } from './apiClient';
 import { settleToolRack } from './pcbTooling';
+import { adoptLlmSettings } from './llmSettings';
 import type { CircuitPreset } from './storage';
 import { PresetSync } from './presetSync';
 
@@ -47,25 +49,25 @@ export function removeCloudPreset(key: string): Promise<void> {
 }
 
 /**
- * Settles the shared tool rack against the account's, as Etch does on its
- * sign-in pull.
+ * Brings the account down: the shared `global` settings (copilot keys, tool
+ * rack, machine bed, the suite's dark mode and touch plate) and the circuits.
+ * Returns how many settings changed here and how many circuits arrived; throws
+ * when the account cannot be listed, so an unreachable account never reads as
+ * up to date.
  *
- * The rack lives under the app-agnostic `global` scope, which is where Etch and
- * Mesh write it, so an edit made in either is the rack this app offers next.
- * Whichever copy was edited last wins, and an older account copy is answered
- * with ours. Signed out, there is nothing to settle against and nothing is
- * touched — `fetchCloudParameters` returns empty, and an empty answer is not
- * the account saying it has no rack.
+ * The rack lives under `global`, where Etch and Mesh write it too; whichever
+ * copy was edited last wins. An empty answer (signed out or offline) is not
+ * the account saying it has no rack, so nothing is settled against it.
  */
-export async function pullToolRack(): Promise<boolean> {
-  let params: Record<string, unknown>;
-  try {
-    params = await fetchCloudParameters('global');
-  } catch {
-    return false;
+export async function pullCloudState(): Promise<{ parameters: number; items: number }> {
+  const params = await fetchCloudParameters('global');
+  let parameters = 0;
+  if (Object.keys(params).length > 0) {
+    parameters += adoptLlmSettings(params);
+    parameters += adoptSuiteParameters(params);
+    if (machineBedStore.adoptRemote(params[CNC_BED_PARAMETER])) parameters += 1;
+    if (settleToolRack(params[TOOL_RACK_PARAMETER])) parameters += 1;
   }
-  if (!params || Object.keys(params).length === 0) return false;
-  // The machine's envelope is shared with Etch and Mesh, like the rack.
-  machineBedStore.adoptRemote(params[CNC_BED_PARAMETER]);
-  return settleToolRack(params[TOOL_RACK_PARAMETER]);
+  const presets = await presetSync.pull();
+  return { parameters, items: presets.received };
 }

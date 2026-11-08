@@ -18,12 +18,12 @@ import {
   Unlock,
   Wrench,
 } from 'lucide-react';
-import { NumberInput } from '@physbox-io/ui';
-import { TeknoBoxPicker } from './TeknoBoxPicker';
+import { NumberInput, TeknoBoxPicker, type TeknoBoxApi } from '@physbox-io/ui';
 import { ToolRackDialog } from './ToolRackDialog';
 import { MachineBedFields } from '@physbox-io/ui';
 import { machineBedStore } from '../utils/machineBed';
 import { webSerialManager, type MachineState } from '../utils/webSerialManager';
+import { claimMachineDevice, fetchMachineDevices, forgetMachineDevice, getStoredAuthToken } from '../utils/apiClient';
 
 /**
  * The bench: everything that is true of the machine rather than of a board.
@@ -152,6 +152,11 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
    */
   const [toolsOpen, setToolsOpen] = React.useState(false);
   const [bed, setBed] = React.useState(() => machineBedStore.get());
+  const signedIn = Boolean(getStoredAuthToken());
+  const teknoBoxApi = React.useMemo<TeknoBoxApi>(
+    () => ({ signedIn, list: fetchMachineDevices, claim: (code) => claimMachineDevice(code), forget: forgetMachineDevice }),
+    [signedIn]
+  );
 
   return (
     <div
@@ -287,6 +292,7 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
                     Tekno Box
                   </label>
                   <TeknoBoxPicker
+                    api={teknoBoxApi}
                     value={cloudDeviceId}
                     onChange={onCloudDeviceIdChange}
                     onPaired={onPairedBox}

@@ -13,6 +13,19 @@ class MemoryStorage {
 (globalThis as unknown as { window: { dispatchEvent: (event: Event) => boolean } }).window = {
   dispatchEvent: () => true,
 };
+// The session is a suite cookie, so a cookie jar: a write sets or (Max-Age=0) deletes one.
+const jar = new Map<string, string>();
+(globalThis as unknown as { document: { cookie: string } }).document = {
+  get cookie() {
+    return [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
+  },
+  set cookie(line: string) {
+    const [pair, ...attrs] = line.split(';').map((s) => s.trim());
+    const eq = pair.indexOf('=');
+    if (attrs.includes('Max-Age=0')) jar.delete(pair.slice(0, eq));
+    else jar.set(pair.slice(0, eq), pair.slice(eq + 1));
+  },
+};
 
 vi.mock('../src/utils/cloudSync', () => ({
   PRESETS_UPDATED_EVENT: 'physbox:presets-updated',
@@ -27,6 +40,7 @@ import {
   type CircuitPreset,
 } from '../src/utils/storage';
 import { listRecent, recordRecent } from '../src/utils/recentCircuits';
+import { clearStoredAuth, setStoredAuth } from '../src/utils/apiClient';
 
 const preset = (name: string): CircuitPreset => ({
   name: `User: ${name}`,
@@ -141,11 +155,11 @@ describe('a browser with no room left', () => {
   });
 
   it('leaves a circuit with the account when there is one, listed for the session', () => {
-    localStorage.setItem('physbox_auth_token', 'token');
+    setStoredAuth('token', { id: 'u1', email: 'a@b.c', subscription_tier: 'early_access' });
     const refused = refuseWrites();
     const list = addUserPreset(nameToKey('big'), preset('big'));
     refused.mockRestore();
-    localStorage.removeItem('physbox_auth_token');
+    clearStoredAuth();
     expect(takeLastWriteFailed()).toBe(false);
     expect(Object.keys(list)).toContain(nameToKey('big'));
     expect(names()).toContain('big');

@@ -11,11 +11,12 @@
 
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { readDarkMode } from '@physbox-io/ui';
 import { downloadOpenCircuit } from '../utils/circuitFile';
 
 function isDark(): boolean {
   try {
-    return localStorage.getItem('circuit_dark_mode') === 'true';
+    return readDarkMode('circuit_dark_mode');
   } catch {
     return false;
   }

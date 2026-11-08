@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { JobPauseDialog, ToolChangeDialog, jobPauseKind, jobStopKey, type ZeroResult } from '@physbox-io/ui';
+import { JobPauseDialog, ToolChangeDialog, jobPauseKind, jobStopKey, setTouchPlateMm, useTouchPlateMm, type ZeroResult } from '@physbox-io/ui';
 import { jobPause } from '../utils/jobPause';
-import { setTouchPlateMm, useTouchPlateMm } from '../utils/touchPlate';
 import { webSerialManager } from '../utils/webSerialManager';
 
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : undefined);

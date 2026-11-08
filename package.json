@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@physbox-io/machining": "^0.8.1",
-    "@physbox-io/ui": "^0.4.2",
+    "@physbox-io/ui": "^0.5.0",
     "@tailwindcss/vite": "^4.2.4",
     "@types/clipper-lib": "^6.4.0",
     "@xyflow/react": "^12.10.2",

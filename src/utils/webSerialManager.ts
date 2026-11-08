@@ -29,6 +29,7 @@ import { machineSocketUrl, postMachineTelemetry, submitMachineJob,
 import { cloudAutosave } from './cloudDocuments';
 import { setJobWakeLock } from './jobWakeLock';
 import { machineBedStore } from './machineBed';
+import { readTouchPlateMm } from '@physbox-io/ui/suite';
 import { isBoardFlipLine, splitAtBoardFlip } from './boardLevelling';
 
 // ---------------------------------------------------------------------------
@@ -192,7 +193,6 @@ export interface ProbeMeshOptions {
 
 export type MachineStateListener = (state: MachineState) => void;
 
-const DEFAULT_TOUCH_PLATE_MM = 12;
 const PROBE_RETRACT_MM = 5;
 /**
  * How far a Z zeroing probe searches for the surface. The bit is parked a few
@@ -599,7 +599,7 @@ export class WebSerialManager extends GrblMachine<MachineState> {
    * height map's own reference plane — see {@link zeroZOnSurface}.
    */
   public async zeroZ(
-    touchPlateThicknessMm = DEFAULT_TOUCH_PLATE_MM,
+    touchPlateThicknessMm = readTouchPlateMm(),
     surfaceOffsetMm = 0
   ): Promise<void> {
     await this.runZeroZ(touchPlateThicknessMm + surfaceOffsetMm, ZERO_SEARCH_MM);

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { loadMachiningSettings, saveMachiningSettings, saveLayoutSnapshot } from '../utils/storage';
 import type { Node, Edge } from '@xyflow/react';
 import {
@@ -73,7 +73,7 @@ import { openSvgInEtch } from '../utils/etchHandoff';
 import { layoutToMeshSpec, openPcbInMesh } from '../utils/meshPcbHandoff';
 import { usePcbLayout } from '../hooks/usePcbLayout';
 import { webSerialManager } from '../utils/webSerialManager';
-import { NumberInput } from '@physbox-io/ui';
+import { NumberInput, readMachineLink, setMachineLink, setTouchPlateMm, useSafetyGate, useTouchPlateMm } from '@physbox-io/ui';
 import {
   getGridStats,
   findUnwarpableCommands,
@@ -85,7 +85,6 @@ import { setActiveHeightmap } from '../utils/machineMcp';
 import { heightmapCoversBoard } from '../utils/boardLevelling';
 import { PcbToolpathPreview } from './PcbToolpathPreview';
 import { InfoTip } from './InfoTip';
-import { setTouchPlateMm, useTouchPlateMm } from '../utils/touchPlate';
 import { PanZoomContainer } from './PanZoomContainer';
 import { MachineConnectModal } from './MachineConnectModal';
 import { JobOverrides } from './JobOverrides';
@@ -96,9 +95,6 @@ import { runFromView } from '../utils/runFrom';
 /** Stable empty inputs for machine-only mode — see the layout call. */
 const EMPTY_NODES: Node[] = [];
 const EMPTY_EDGES: Edge[] = [];
-
-/** Shown once per browser before the first connect; never again after acknowledged. */
-const SAFETY_ACK_KEY = 'grblSafetyAck';
 
 /**
  * What each of the three stencil buttons makes. Long enough to matter on a
@@ -220,26 +216,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     saveMachiningSettings(rawOptions);
   }, [rawOptions]);
 
-  /*
-   * Pick the machine back up when this panel opens.
-   *
-   * Only one attempt. A cloud link reconnects with nobody present; USB only to
-   * the port this origin was granted last time (`autoConnect`), since a port
-   * prompt must never be raised unprompted. Silent on failure: the box may
-   * simply be asleep.
-   */
-  useEffect(() => {
-    const savedMode = localStorage.getItem('grblTransport');
-    const savedDevice = localStorage.getItem('grblCloudDeviceId');
-    if (savedMode !== 'wifi') {
-      void webSerialManager.autoConnect().catch(() => {});
-      return;
-    }
-    if (!savedDevice) return;
-    if (webSerialManager.getState().connected) return;
-    webSerialManager.setTransport('wifi', savedDevice);
-    void webSerialManager.connect().catch(() => {});
-  }, []);
   const [activeTab, setActiveTab] = useState<'layout' | 'cam'>('layout');
   /**
    * The bench, in its own dialog rather than as a third tab. It has to be able
@@ -264,18 +240,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const [showPadNumbers, setShowPadNumbers] = useState(true);
   const [serialState, setSerialState] = useState(webSerialManager.getState());
 
-  // Gate on the first real connect attempt only. The auto-resume effect above
-  // never reaches this — it only fires for a device already connected once
-  // before, which means the warning already ran.
-  const [showSafetyWarning, setShowSafetyWarning] = useState(false);
-  const safetyResolverRef = useRef<((ack: boolean) => void) | null>(null);
-  const requestSafetyAck = (): Promise<boolean> => {
-    if (localStorage.getItem(SAFETY_ACK_KEY)) return Promise.resolve(true);
-    setShowSafetyWarning(true);
-    return new Promise((resolve) => {
-      safetyResolverRef.current = resolve;
-    });
-  };
+  const safetyGate = useSafetyGate('grblSafetyAck');
   /**
    * How far the tool searches downward for the copper on each probe point, as
    * a travel distance from the retract height. It has to clear the retract plus
@@ -344,14 +309,16 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   const [autoIsolationDepth, setAutoIsolationDepth] = useState<boolean>(loadAutoIsolationDepth);
   const [jogStep, setJogStep] = useState<number>(1.0);
 
-  // How the machine is reached: a USB cable to this computer, or a Tekno Box
-  // over WiFi. USB stays the default; the chosen box is remembered.
-  const [transportMode, setTransportMode] = useState<'usb' | 'wifi'>(
-    () => (localStorage.getItem('grblTransport') === 'wifi' ? 'wifi' : 'usb')
+  /*
+   * How the machine is reached: a USB cable to this computer, or a Tekno Box
+   * over WiFi. Shared with the other PhysBox apps and saved only on connect:
+   * every app reconnects to it at launch, so a tab merely looked at must not
+   * become what they all dial.
+   */
+  const [transportMode, setTransportMode] = useState<'usb' | 'wifi'>(() =>
+    readMachineLink().kind === 'cloud' ? 'wifi' : 'usb'
   );
-  const [cloudDeviceId, setCloudDeviceId] = useState<string>(
-    () => localStorage.getItem('grblCloudDeviceId') || ''
-  );
+  const [cloudDeviceId, setCloudDeviceId] = useState(() => readMachineLink().deviceId ?? '');
 
 
   React.useEffect(() => {
@@ -830,12 +797,13 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
   const ensureConnected = async () => {
     if (serialState.connected) return true;
-    if (!(await requestSafetyAck())) return false;
+    if (!(await safetyGate.request())) return false;
     clearErrors();
     if (transportMode === 'wifi' && !cloudDeviceId) {
-      setMachineError('Enter the device IP address for WiFi mode');
+      setMachineError('Choose a Tekno Box first');
       return false;
     }
+    setMachineLink(transportMode === 'wifi' ? { kind: 'cloud', deviceId: cloudDeviceId } : { kind: 'usb' });
     webSerialManager.setTransport(transportMode, cloudDeviceId);
     const connected = await webSerialManager.connect();
     if (!connected) {
@@ -1322,57 +1290,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * The machine dialog and the safety warning are shared by both modes, so they
    * are built once here and rendered under whichever root applies below.
    */
-  /*
-   * Shown before the first connect of a session, whichever door the
-   * machine was reached through — so it is built here rather than inside
-   * either render root.
-   */
-  const safetyWarning = showSafetyWarning && (
-      <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-        <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-amber-500" />
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
-              Before you connect a machine
-            </h3>
-          </div>
-          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-            This connects to a real machine that moves and cuts under its own power. Keep clear of
-            moving parts, wear eye protection, and never leave a running job unattended. Use your
-            own judgment — you are responsible for the machine&apos;s safe operation.
-          </p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-            Provided with no warranty and no liability for injury, loss, or damage of any kind. Full
-            terms: PhysBox Permissive Public License (PPPL-1.0) — see License &amp; Disclaimers in
-            this app&apos;s Help.
-          </p>
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              onClick={() => {
-                setShowSafetyWarning(false);
-                safetyResolverRef.current?.(false);
-                safetyResolverRef.current = null;
-              }}
-              className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
-            >
-              No Machine Control
-            </button>
-            <button
-              onClick={() => {
-                localStorage.setItem(SAFETY_ACK_KEY, '1');
-                setShowSafetyWarning(false);
-                safetyResolverRef.current?.(true);
-                safetyResolverRef.current = null;
-              }}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg cursor-pointer"
-            >
-              Acknowledged
-            </button>
-          </div>
-        </div>
-      </div>
-  );
-
   const machineDialog = showMachine && (
     <MachineConnectModal
       standalone={machineOnly}
@@ -1385,22 +1302,17 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       error={machineError || serialState.lastError || null}
       onDismissError={clearErrors}
       transportMode={transportMode}
-      onTransportModeChange={mode => {
-        setTransportMode(mode);
-        localStorage.setItem('grblTransport', mode);
-      }}
+      onTransportModeChange={setTransportMode}
       cloudDeviceId={cloudDeviceId}
-      onCloudDeviceIdChange={deviceId => {
-        setCloudDeviceId(deviceId);
-        localStorage.setItem('grblCloudDeviceId', deviceId);
-      }}
+      onCloudDeviceIdChange={setCloudDeviceId}
       onPairedBox={deviceId => {
         // Straight on to the machine: having just proved you are standing in
         // front of it, being asked to press Connect is a step with nothing
         // behind it.
-        localStorage.setItem('grblCloudDeviceId', deviceId);
-        void requestSafetyAck().then(ack => {
+        setCloudDeviceId(deviceId);
+        void safetyGate.request().then(ack => {
           if (!ack) return;
+          setMachineLink({ kind: 'cloud', deviceId });
           webSerialManager.setTransport('wifi', deviceId);
           void webSerialManager.connect();
         });
@@ -1431,7 +1343,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     return (
       <>
         {machineDialog}
-        {safetyWarning}
+        {safetyGate.dialog}
       </>
     );
   }
@@ -2785,7 +2697,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
       {machineDialog}
 
-      {safetyWarning}
+      {safetyGate.dialog}
     </div>
   );
 };

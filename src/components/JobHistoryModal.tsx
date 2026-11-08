@@ -260,8 +260,7 @@ export const JobHistoryModal: React.FC<JobHistoryModalProps> = ({ isOpen, onClos
     if (!isPro) return;
     // The rule sees a setState reachable from an effect body — `load` raises its
     // spinner before it awaits. This is fetching from an external system when the
-    // modal opens, not state derived during render, and it is the same exception
-    // UserProfileButton documents for the same reason.
+    // modal opens, not state derived during render.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [isOpen, signedIn, isPro, load]);

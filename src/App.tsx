@@ -41,7 +41,7 @@ import {
   type ShareLink,
 } from './utils/shareLink';
 import { revokeShare, isProRequired } from './utils/apiClient';
-import { SIGN_IN_REQUESTED_EVENT, SIGNED_IN_EVENT } from './components/UserProfileButton';
+import { SIGN_IN_REQUESTED_EVENT, SIGNED_IN_EVENT, useSuiteDarkMode } from '@physbox-io/ui';
 import { MachineStatusBar } from './components/MachineStatusBar';
 import { JobInterruptions } from './components/JobInterruptions';
 import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Hammer, PanelRight, Share2, Copy, Check, Gauge, Waves, SlidersHorizontal, Cable, FolderOpen, ChevronDown } from 'lucide-react';
@@ -190,21 +190,7 @@ export default function App() {
   // ── Initialise from localStorage ────────────────────────────────────────────
   const savedSettings = loadSettings();
 
-  const [darkMode, setDarkMode] = useState(() => {
-    return localStorage.getItem('circuit_dark_mode') === 'true';
-  });
-
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('circuit_dark_mode', 'true');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('circuit_dark_mode', 'false');
-    }
-  }, [darkMode]);
-
-  const toggleDarkMode = () => setDarkMode(prev => !prev);
+  const [darkMode, toggleDarkMode] = useSuiteDarkMode('circuit_dark_mode');
 
   const [nodes, setNodes] = useState<Node[]>(presets[DEFAULT_PRESET_KEY].nodes);
   const [edges, setEdges] = useState<Edge[]>(presets[DEFAULT_PRESET_KEY].edges);
