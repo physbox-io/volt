@@ -317,6 +317,7 @@ check('and it prints flat', Math.abs(shimMinZ) < 1e-9 && Math.abs(shimMaxZ - shi
   const calls: { url: string; target?: string; features?: string }[] = [];
   let navigatedTo: string | null = null;
   const fakeTab = {
+    focus() {},
     get location() {
       return {
         set href(v: string) {
@@ -350,6 +351,7 @@ check('and it prints flat', Math.abs(shimMinZ) < 1e-9 && Math.abs(shimMaxZ - shi
   check('nothing has to navigate it afterwards', navigatedTo === null, String(navigatedTo));
   // 'noopener' makes window.open return null, which is indistinguishable from a
   // blocked pop-up. Never pass it here.
+  check('it targets the named Etch tab, so a re-send reuses it', calls[0]?.target === 'physbox-etch', calls[0]?.target);
   check('noopener is not passed', !(calls[0]?.features || '').includes('noopener'), calls[0]?.features);
   check('it goes to the local Etch in dev', calls[0]?.url.startsWith('http://localhost:5176/#'), calls[0]?.url.slice(0, 40));
 

@@ -83,8 +83,14 @@ export async function encodeSvgHandoff(
   }).toString();
 }
 
+/** The window name every send to Etch targets, so a re-send lands in the same tab. */
+export const ETCH_TAB_NAME = 'physbox-etch';
+
 /**
- * Opens Etch in a new tab with the artwork loaded.
+ * Opens Etch with the artwork loaded, reusing the Etch tab an earlier send
+ * opened. Only the fragment differs between sends, so Etch takes a re-send
+ * without reloading (it listens for `hashchange`). The browser finds the tab
+ * by name only while this window is its opener — one more reason to keep it.
  *
  * Deliberately not `noopener`. It reads like the safe choice and it is the
  * reason this used to open a blank tab and nothing else: `window.open` returns
@@ -103,10 +109,11 @@ export async function openSvgInEtch(
   // The ordinary path: one synchronous call, still inside the click that asked
   // for it, which is what keeps a pop-up blocker out of it.
   if (plain.length <= SYNC_LIMIT_BYTES) {
-    const tab = window.open(`${etchBaseUrl()}/#${plain}`, '_blank');
+    const tab = window.open(`${etchBaseUrl()}/#${plain}`, ETCH_TAB_NAME);
     if (!tab) {
       throw new Error('Etch could not be opened — allow pop-ups for this site and try again.');
     }
+    tab.focus();
     return;
   }
 
@@ -114,16 +121,22 @@ export async function openSvgInEtch(
    * A board big enough to be worth compressing. Compression is async, and a
    * window opened after an await is no longer plainly attributable to the
    * click — so the tab is opened first, empty, and navigated once the artwork
-   * is ready.
+   * is ready. An empty URL leaves an existing Etch tab where it is.
    */
-  const tab = window.open('', '_blank');
+  const tab = window.open('', ETCH_TAB_NAME);
   if (!tab) {
     throw new Error('Etch could not be opened — allow pop-ups for this site and try again.');
   }
+  // A tab opened just now is a blank page of this origin, so readable; an
+  // Etch tab from an earlier send is cross-origin and throws. Only the blank
+  // one is ours to close if encoding fails.
+  let fresh = false;
+  try { fresh = tab.location.href === 'about:blank'; } catch { /* Etch's own tab */ }
   try {
     tab.location.href = `${etchBaseUrl()}/#${await encodeSvgHandoff(svg, name, stock)}`;
+    tab.focus();
   } catch (e) {
-    tab.close();
+    if (fresh) tab.close();
     throw e;
   }
 }
