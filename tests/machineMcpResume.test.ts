@@ -57,7 +57,7 @@ describe('resume from a line over MCP', () => {
   });
 
   it('is refused while disarmed', async () => {
-    machineArming.disarm('test');
+    machineArming.disarm('operator');
     await expect(handlers.MACHINE_RESUME_FROM_LINE({ fromLine: 10 })).rejects.toThrow(/not armed/);
     expect(machine.runFromLine).not.toHaveBeenCalled();
   });
