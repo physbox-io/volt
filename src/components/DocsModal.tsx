@@ -277,6 +277,9 @@ export function DocsModal({ onClose }: DocsModalProps) {
                 <ShortcutTable rows={[
                   ['Ctrl+Z', 'Undo.'],
                   ['Ctrl+Shift+Z or Ctrl+Y', 'Redo.'],
+                  ['Ctrl+S', 'Save the open circuit, or name it if it has never been saved.'],
+                  ['Ctrl+Shift+S', 'Save as a new circuit.'],
+                  ['Ctrl+O', 'Open a circuit.'],
                   ['Esc', 'Close the quick-add search, leave probe mode, and deselect everything.'],
                 ]} />
 

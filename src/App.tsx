@@ -1296,11 +1296,28 @@ export default function App() {
   // Keyboard Shortcuts Handler (Undo / Redo / Delete / Deselect)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const isModifier = isMac ? e.metaKey : e.ctrlKey;
+
+      // Ctrl/Cmd+S updates the open saved circuit, or asks for a name when there is
+      // none; Ctrl/Cmd+Shift+S always asks. Caught even in a text field, where the
+      // browser's own Ctrl+S would save the page as HTML.
+      if (isModifier && !e.altKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        const saved = selectedPreset ? userPresets[selectedPreset] : undefined;
+        const name = saved ? saved.name.replace(/^User:\s*/, '') : '';
+        if (saved && !e.shiftKey) {
+          savePresetByName(name);
+        } else {
+          setSaveDialogName(name);
+          setIsSaveDialogOpen(true);
+        }
+        return;
+      }
+
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) {
         return;
       }
-      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-      const isModifier = isMac ? e.metaKey : e.ctrlKey;
 
       if (isModifier && e.key.toLowerCase() === 'z') {
         e.preventDefault();
@@ -1379,6 +1396,7 @@ export default function App() {
   }, [
     deleteSelected, undo, redo, canUndo, canRedo, probeMode,
     rotateSelected, copySelected, pasteClipboardNodes, duplicateSelected,
+    selectedPreset, userPresets, savePresetByName, setSaveDialogName, setIsSaveDialogOpen,
   ]);
 
   const { exportJson, importJson } = useCircuitFile({ nodes, edges, setNodes, setEdges, stopSimulation, markLoaded });
@@ -1878,7 +1896,7 @@ export default function App() {
                   ? 'bg-purple-100 border-purple-400 text-purple-750 dark:bg-purple-955 dark:border-purple-700 dark:text-purple-400' 
                   : 'border-purple-200 dark:border-purple-800 text-purple-655 dark:text-purple-450 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-900/40'
               }`}
-              title="AI Copilot Expert"
+              title="AI Copilot"
             >
               <Sparkles className="w-4 h-4" />
             </button>
