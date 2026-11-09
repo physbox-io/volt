@@ -221,6 +221,16 @@ export default function App() {
     setPcbModalOnMachine(true);
     setIsPcbModalOpen(true);
   }, []);
+  /*
+   * A resumed job brings back the window that mills it, with its live
+   * progress, as Etch's Make panel does. Left as it is if it is already open,
+   * in either mode.
+   */
+  const showMillWindow = useCallback(() => {
+    if (isPcbModalOpen) return;
+    setPcbModalOnMachine(false);
+    setIsPcbModalOpen(true);
+  }, [isPcbModalOpen]);
 
   const [showAura, setShowAura] = useState(savedSettings.showAura ?? false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
@@ -2441,7 +2451,7 @@ export default function App() {
         </div>
       </footer>
       {/* A job that ran to its last line, wherever it was started from. */}
-      <JobInterruptions />
+      <JobInterruptions onResumed={showMillWindow} />
       <JobCompleteNotice />
     </div>
     </CanvasStateProvider>

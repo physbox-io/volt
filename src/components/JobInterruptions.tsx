@@ -10,7 +10,10 @@ const errorMessage = (e: unknown) => (e instanceof Error ? e.message : undefined
  * dialog can be closed mid-job and an agent can mill with it never opened, and
  * the machine waits on someone either way.
  */
-export const JobInterruptions: React.FC = () => {
+export const JobInterruptions: React.FC<{
+  /** After a resume goes through: brings back the window that runs the job. */
+  onResumed?: () => void;
+}> = ({ onResumed }) => {
   const [state, setState] = useState(() => webSerialManager.getState());
   const [error, setError] = useState<string | null>(null);
   const hiddenKey = jobPause.useHiddenKey();
@@ -47,6 +50,7 @@ export const JobInterruptions: React.FC = () => {
     webSerialManager.clearLastError();
     try {
       await webSerialManager.resumeJob();
+      onResumed?.();
     } catch (e) {
       setError(errorMessage(e) || 'Could not resume the job');
     }
