@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Pause, Square, Wrench } from 'lucide-react';
+import { Pause, Wrench } from 'lucide-react';
 import { jobInProgress, stopControl } from '../utils/machineGates';
-import { JobWaitingButton, jobPauseKind, readMachineLink } from '@physbox-io/ui';
+import { FloatingStop, JobWaitingButton, jobPauseKind, readMachineLink } from '@physbox-io/ui';
 import { webSerialManager } from '../utils/webSerialManager';
 import { jobPause } from '../utils/jobPause';
 
@@ -141,24 +140,11 @@ export function MachineStatusBar({ onOpenMachine }: { onOpenMachine: () => void 
       )}
 
       {/* On the body so it stays above the mill dialog and every other window. */}
-      {summary.stop &&
-        createPortal(
-          <button
-            onClick={() =>
-              void (summary.stop === 'job' ? webSerialManager.cancelJob() : webSerialManager.eStop())
-            }
-            title={
-              summary.stop === 'job'
-                ? 'E-Stop: soft reset. Stops the machine now and loses the position. The line it reached is kept, to run from.'
-                : 'Soft reset: stops the machine now. If it was moving, the position is lost and it wants homing.'
-            }
-            className="fixed bottom-1 right-4 z-[100001] flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold shadow-lg cursor-pointer"
-          >
-            <Square className="w-3.5 h-3.5" />
-            <span>{summary.stop === 'job' ? 'E-Stop' : 'Stop machine'}</span>
-          </button>,
-          document.body,
-        )}
+      <FloatingStop
+        stop={summary.stop}
+        onCancelJob={() => void webSerialManager.cancelJob()}
+        onEStop={() => void webSerialManager.eStop()}
+      />
     </div>
   );
 }
