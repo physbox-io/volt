@@ -216,7 +216,10 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
     saveMachiningSettings(rawOptions);
   }, [rawOptions]);
 
-  const [activeTab, setActiveTab] = useState<'layout' | 'cam'>('layout');
+  // A job put back from before a reload opens where its Run From is.
+  const [activeTab, setActiveTab] = useState<'layout' | 'cam'>(() =>
+    webSerialManager.getState().interruption?.restored ? 'cam' : 'layout'
+  );
   /**
    * The bench, in its own dialog rather than as a third tab. It has to be able
    * to sit over either view: the reason to jog is usually something you can see
@@ -1480,6 +1483,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       line={runFromLineInput}
                       onLineChange={setRunFromLineInput}
                       onRun={() => void handleRunFrom()}
+                      onDiscard={() => webSerialManager.dismissInterruption()}
                       running={busy === 'milling'}
                     />
                   </div>

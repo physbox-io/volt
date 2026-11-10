@@ -2,6 +2,7 @@ import {
   ArmingGate,
   createMachineHandlers,
   describeMachine,
+  describeResumePreview,
   gridOffPlaneMm,
   refuseWhileJobHoldsMachine,
   requireNumber,
@@ -341,6 +342,14 @@ export function createVoltMachineHandlers(): Record<
       if (early) throw new Error(early);
       running.catch(() => { /* reported on the machine state as lastError */ });
       return { ...describeMachine(webSerialManager, machineArming), message: `Running from line ${fromLine}.` };
+    },
+
+    /** What a run from a line would send before the program picks up. Read-only, so never gated. */
+    MACHINE_PREVIEW_RESUME: async (args: Record<string, unknown>) => {
+      const fromLine = requireNumber(args, 'fromLine') ?? null;
+      const problem = runFromLineProblem(fromLine, webSerialManager.getState().totalLines || undefined);
+      if (problem) throw new Error(problem);
+      return describeResumePreview(webSerialManager.previewRunFromLine(fromLine!));
     },
 
     MACHINE_PROBE_SURFACE: async (args: Record<string, unknown>) => {

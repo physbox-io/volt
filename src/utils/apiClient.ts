@@ -37,6 +37,8 @@ export interface MachiningTelemetry {
   documentId?: string | null;
   documentRevision?: number | null;
   settings?: Record<string, unknown> | null;
+  /** The archived program of this run (`circuit-run-program-*`), for `GET /api/runs/:id/gcode`. */
+  programDocumentId?: string | null;
 }
 
 export function getApiBaseUrl(): string {

@@ -3,6 +3,7 @@ import {
   RT_HOLD,
   TelemetryThrottle,
   classifyPauseLine,
+  createJobCheckpoint,
   getGridStats,
   interpolateGridZ,
   gridFromPoints,
@@ -19,15 +20,23 @@ import {
   type ParsedJob,
   type ProbeGrid,
   type ProbePoint,
+  type RestorableCheckpoint,
   type StatusReport,
   type Vec3,
 } from '@physbox-io/machining';
 import { machineSocketUrl, postMachineTelemetry, submitMachineJob,
+  deleteCloudDocument,
+  fetchCloudDocument,
+  fetchCloudDocuments,
+  getStoredAuthToken,
+  isProAccount,
+  putCloudDocument,
   type MachiningTelemetry,
   type RemoteCommand,
 } from './apiClient';
 import { cloudAutosave } from './cloudDocuments';
 import { setJobWakeLock } from './jobWakeLock';
+import { tabSession } from './tabSession';
 import { machineBedStore } from './machineBed';
 import { readTouchPlateMm } from '@physbox-io/ui/suite';
 import { isBoardFlipLine, splitAtBoardFlip } from './boardLevelling';
@@ -373,6 +382,41 @@ export class WebSerialManager extends GrblMachine<MachineState> {
 
   constructor() {
     super({ endpoints: { machineSocketUrl, submitMachineJob } });
+    // Every job is written down as it runs, so a reload, a sleep or a power cut
+    // leaves it to be picked up from where it got to (`restoreInterruptedJob`).
+    this.attachCheckpoint(
+      createJobCheckpoint({
+        storagePrefix: 'circuit',
+        docPrefix: 'circuit',
+        appId: 'circuit-job',
+        runProgramAppId: 'circuit-run-program',
+        tabId: () => tabSession().id,
+        cloud: {
+          available: () => !!getStoredAuthToken() && isProAccount(),
+          put: (doc) => putCloudDocument(doc),
+          fetch: (id) => fetchCloudDocument(id),
+          list: (appId) => fetchCloudDocuments(appId),
+          remove: (id) => deleteCloudDocument(id),
+        },
+      }),
+      () => ({
+        jobName: this.jobContext.name ?? null,
+        settings: this.jobContext.settings ?? null,
+        documentId: cloudAutosave.getStatus().documentId,
+      })
+    );
+  }
+
+  /** A job from before a reload is back, with the name and settings it ran under. */
+  protected onCheckpointRestored(cp: RestorableCheckpoint): Partial<MachineState> {
+    this.jobContext = { name: cp.program.jobName ?? undefined, settings: cp.program.settings };
+    this.runFromJobName = this.jobContext.name;
+    return {};
+  }
+
+  /** What a Run From `line` would send before the program picks up. See `previewRunFrom`. */
+  public previewRunFromLine(line: number) {
+    return this.previewRunFrom(line, { isLaser: false });
   }
 
   protected createInitialState(): MachineState {
@@ -1336,6 +1380,9 @@ export class WebSerialManager extends GrblMachine<MachineState> {
         // points back at the circuit that produced it.
         documentId: cloudAutosave.getStatus().documentId,
         documentRevision: cloudAutosave.getStatus().revision,
+        // The program itself, stored as its own document for a Pro account, so
+        // the archive can say what was cut and not only how it went.
+        programDocumentId: this.getCheckpoint()?.runProgramDocumentId() ?? null,
       },
       state.status,
       this.isJobRunning

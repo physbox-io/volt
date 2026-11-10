@@ -49,6 +49,7 @@ import { CircuitBrowser } from './components/CircuitBrowser';
 import { firstBrowserTab, type CircuitBrowserTab } from './utils/recentCircuits';
 import AICopilotPanel from './components/AICopilotPanel';
 import { ExportPcbModal } from './components/ExportPcbModal';
+import { watchForInterruptedJob } from './utils/jobRestore';
 import { playbackTicker } from './utils/playbackTicker';
 import { presets, DEFAULT_PRESET_KEY } from './utils/presets';
 import { EdgePathProvider } from './components/AuraEdge';
@@ -231,6 +232,15 @@ export default function App() {
     setPcbModalOnMachine(false);
     setIsPcbModalOpen(true);
   }, [isPcbModalOpen]);
+  // A job the last page left unfinished comes back in the mill window, on its Run From.
+  useEffect(
+    () =>
+      watchForInterruptedJob(() => {
+        setPcbModalOnMachine(false);
+        setIsPcbModalOpen(true);
+      }),
+    []
+  );
 
   const [showAura, setShowAura] = useState(savedSettings.showAura ?? false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);

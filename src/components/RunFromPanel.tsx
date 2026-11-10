@@ -22,8 +22,10 @@ export const RunFromPanel: React.FC<{
   line: number | null;
   onLineChange: (line: number | null) => void;
   onRun: () => void;
+  /** The job is over: stop offering it, and forget its stored copy. */
+  onDiscard?: () => void;
   running: boolean;
-}> = ({ view, jobName, line, onLineChange, onRun, running }) => {
+}> = ({ view, jobName, line, onLineChange, onRun, onDiscard, running }) => {
   const { stop, lineProblem, blockedReason, canRun } = view;
   const why = blockedReason ?? lineProblem;
   return (
@@ -35,7 +37,10 @@ export const RunFromPanel: React.FC<{
           {stop.stoppedAtLine.toLocaleString()}.
         </span>
       </p>
-      <p className="text-red-700 dark:text-red-300/90 leading-snug">{stop.reason}</p>
+      <p className="text-red-700 dark:text-red-300/90 leading-snug">
+        {stop.reason}
+        {stop.restored?.approximate && ' Saved to your account once a minute: start a little earlier if unsure.'}
+      </p>
       <p className="text-slate-600 dark:text-slate-300 leading-snug">
         Suggested restart: line{' '}
         <span className="font-mono font-semibold">{stop.suggestedLine.toLocaleString()}</span> — a little
@@ -74,6 +79,16 @@ export const RunFromPanel: React.FC<{
         </button>
       </div>
       {why && <p className="text-amber-700 dark:text-amber-300 leading-snug">{why}</p>}
+      {onDiscard && (
+        <button
+          type="button"
+          onClick={onDiscard}
+          title="This job is over: stop offering to run it from a line"
+          className="text-slate-500 dark:text-slate-400 hover:underline cursor-pointer"
+        >
+          Discard
+        </button>
+      )}
     </div>
   );
 };
