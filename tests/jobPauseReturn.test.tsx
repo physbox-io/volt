@@ -21,6 +21,7 @@ const base = {
 const machine = {
   getState: () => state,
   addListener: (l: Listener) => { listeners.add(l); return () => listeners.delete(l); },
+  getCheckpoint: () => null,
   resumeJob: vi.fn().mockResolvedValue(undefined),
   cancelJob: vi.fn(), pauseJob: vi.fn(), eStop: vi.fn(), clearLastError: vi.fn(),
   jog: vi.fn(), jogCancel: vi.fn(), nextSpindleRpm: () => 12000, surfaceOffsetHere: () => 0,

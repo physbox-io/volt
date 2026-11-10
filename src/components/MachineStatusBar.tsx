@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Pause, Wrench } from 'lucide-react';
 import { jobInProgress, stopControl } from '../utils/machineGates';
-import { FloatingStop, JobWaitingButton, jobPauseKind, readMachineLink } from '@physbox-io/ui';
+import { FloatingStop, JobWaitingButton, RemoteJobChip, jobPauseKind, readMachineLink } from '@physbox-io/ui';
+import { recheckInterruptedJob, subscribeRemoteJob } from '../utils/jobRestore';
 import { webSerialManager } from '../utils/webSerialManager';
 import { jobPause } from '../utils/jobPause';
 
@@ -138,6 +139,8 @@ export function MachineStatusBar({ onOpenMachine }: { onOpenMachine: () => void 
           )}
         </>
       )}
+      {/* A job another tab or computer is cutting: not offered here, but not hidden either. */}
+      <RemoteJobChip subscribe={subscribeRemoteJob} recheck={recheckInterruptedJob} />
 
       {/* On the body so it stays above the mill dialog and every other window. */}
       <FloatingStop
