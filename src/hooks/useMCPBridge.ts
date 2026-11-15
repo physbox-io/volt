@@ -278,10 +278,17 @@ export function useMCPBridge(props: BridgeProps) {
           p.current.onTransactionEnd?.();
           return;
         }
+        // Still on it, every 2 s: the hub waits as long as these keep coming,
+        // so a long command (a simulation, a PCB layout) is not reported as
+        // timed out while it runs, and a tab that has died still is.
+        const working = result instanceof Promise
+          ? setInterval(() => ws?.send(JSON.stringify({ event: 'WORKING', cmd, id })), 2000)
+          : undefined;
         Promise.resolve(result)
           .then(data => ws?.send(JSON.stringify({ event: 'RESULT', cmd, id, data })))
           .catch(e  => ws?.send(JSON.stringify({ event: 'ERROR', cmd, id, error: String(e) })))
           .finally(() => {
+            clearInterval(working);
             p.current.onTransactionEnd?.();
           });
       };
