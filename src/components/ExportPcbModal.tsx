@@ -1361,7 +1361,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
           switching tabs, a warning appearing, a checkbox label wrapping onto a
           second line — resized the whole modal under the pointer. Both columns
           scroll internally, so a fixed height costs nothing. */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col h-[92vh]">
+      <div role="dialog" aria-modal="true" aria-label="PCB Milling and CAM Engine" className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col h-[92dvh]">
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-100/70 dark:bg-slate-950/60">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-600 dark:text-emerald-400">
@@ -1455,9 +1455,9 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-12 overflow-hidden">
+        <div className="flex-1 grid grid-cols-1 md:grid-cols-12 overflow-y-auto md:overflow-hidden">
           {/* Main Visualizer Area */}
-          <div className="md:col-span-7 p-5 bg-slate-100/70 dark:bg-slate-950/40 flex flex-col justify-between border-r border-slate-200 dark:border-slate-800 overflow-y-auto">
+          <div className="md:col-span-7 p-4 sm:p-5 bg-slate-100/70 dark:bg-slate-950/40 flex flex-col justify-between border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 md:overflow-y-auto">
             {activeTab === 'cam' ? (
               <div className="flex-1 flex flex-col min-h-[360px]">
                 <PcbToolpathPreview

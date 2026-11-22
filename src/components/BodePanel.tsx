@@ -650,7 +650,7 @@ export function BodePanel({
   );
 
   return createPortal(
-    <div className="fixed bottom-12 right-4 max-lg:left-1/2 max-lg:right-auto max-lg:-translate-x-1/2 z-[105] w-[38rem] max-w-[95vw] rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden">
+    <div className="fixed bottom-12 right-4 max-lg:left-1/2 max-lg:right-auto max-lg:-translate-x-1/2 z-[105] w-[38rem] max-w-[95vw] max-h-[calc(100dvh-4rem)] overflow-y-auto rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl">
       <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-slate-100 dark:border-slate-800">
         <div className="flex items-center gap-2 min-w-0">
           {activeTarget ? (

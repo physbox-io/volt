@@ -135,8 +135,8 @@ export function DocsModal({ onClose }: DocsModalProps) {
             </button>
           </div>
         </div>
-        <div className="flex flex-1 overflow-hidden">
-          <div className="w-64 bg-slate-50 dark:bg-slate-950/60 border-r border-slate-200 dark:border-slate-800 p-4 flex flex-col gap-2 overflow-y-auto">
+        <div className="flex flex-col sm:flex-row flex-1 overflow-hidden min-h-0">
+          <div className="w-full sm:w-56 md:w-64 shrink-0 bg-slate-50 dark:bg-slate-950/60 border-b sm:border-b-0 sm:border-r border-slate-200 dark:border-slate-800 p-2.5 sm:p-4 flex flex-row sm:flex-col gap-1.5 sm:gap-2 overflow-x-auto sm:overflow-y-auto">
             <button
               onClick={() => setActiveTab('about')}
               className={`text-left px-4 py-2 rounded-md font-medium transition-colors cursor-pointer ${

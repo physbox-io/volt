@@ -73,7 +73,7 @@ export function SettingsModal({ onClose, showAura, setShowAura }: SettingsModalP
     'block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1';
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Preferences" className="absolute top-4 right-6 w-64 md:w-72 glass-panel rounded-lg p-4 z-30 shadow-lg text-slate-800 dark:text-slate-100 flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-200 pointer-events-auto">
+    <div role="dialog" aria-modal="true" aria-label="Preferences" className="absolute top-4 right-6 max-sm:right-2 w-64 md:w-72 max-h-[calc(100dvh-2rem)] overflow-y-auto glass-panel rounded-lg p-4 z-50 shadow-lg text-slate-800 dark:text-slate-100 flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-200 pointer-events-auto">
       {/* Header */}
       <h2 className="font-semibold text-sm flex items-center justify-between text-slate-800 dark:text-slate-100">
         <span className="flex items-center gap-2">

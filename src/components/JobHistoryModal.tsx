@@ -420,7 +420,7 @@ export const JobHistoryModal: React.FC<JobHistoryModalProps> = ({ isOpen, onClos
                   <button
                     onClick={() => void toggleRun(run)}
                     aria-expanded={openId === run.id}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-xs hover:bg-slate-50 dark:hover:bg-slate-800/60 transition cursor-pointer"
+                    className="w-full flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-left text-xs hover:bg-slate-50 dark:hover:bg-slate-800/60 transition cursor-pointer"
                   >
                     {openId === run.id ? (
                       <ChevronDown className="w-3.5 h-3.5 shrink-0 text-slate-400" />

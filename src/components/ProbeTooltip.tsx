@@ -53,8 +53,11 @@ export function ProbeTooltip({ probeData, isSimulating, onClose }: { probeData: 
 
   return (
     <div
-      className="fixed z-[200] bg-slate-950/95 backdrop-blur-md text-white rounded-xl px-4 py-3 shadow-2xl border border-violet-500/40 text-xs font-mono pointer-events-auto animate-in fade-in duration-100 flex flex-col gap-2 min-w-[220px]"
-      style={{ left: probeData.x + 12, top: probeData.y - 10 }}
+      className="fixed z-[200] bg-slate-950/95 backdrop-blur-md text-white rounded-xl px-4 py-3 shadow-2xl border border-violet-500/40 text-xs font-mono pointer-events-auto animate-in fade-in duration-100 flex flex-col gap-2 min-w-[220px] max-w-[calc(100vw-1rem)]"
+      style={{
+        left: typeof window !== 'undefined' ? Math.min(Math.max(8, probeData.x + 12), window.innerWidth - 240) : probeData.x + 12,
+        top: typeof window !== 'undefined' ? Math.min(Math.max(8, probeData.y - 10), window.innerHeight - 160) : probeData.y - 10,
+      }}
       onClick={onClose}
     >
       <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 gap-4">

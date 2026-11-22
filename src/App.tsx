@@ -100,6 +100,8 @@ import { unpackResult } from './utils/simTransfer';
 import { withoutRunReadings } from './utils/runReadings';
 import { AdvisoryPanel } from './components/AdvisoryPanel';
 import { BodePanel, type StepOverride, type SweepParams } from './components/BodePanel';
+import { WelcomeTourOverlay } from './components/WelcomeTourOverlay';
+import { parseVoltDeepLink, stripVoltDeepLinkSearch, START_TOUR_EVENT } from './utils/deepLink';
 import { applyParameterValue, buildSweepableTargets } from './utils/parameterSweep';
 
 
@@ -193,8 +195,13 @@ export default function App() {
 
   const [darkMode, toggleDarkMode] = useSuiteDarkMode('circuit_dark_mode');
 
-  const [nodes, setNodes] = useState<Node[]>(presets[DEFAULT_PRESET_KEY].nodes);
-  const [edges, setEdges] = useState<Edge[]>(presets[DEFAULT_PRESET_KEY].edges);
+  const initialPresetKey = useMemo(() => {
+    const p = parseVoltDeepLink(window.location.search)?.preset;
+    return p && presets[p] ? p : DEFAULT_PRESET_KEY;
+  }, []);
+
+  const [nodes, setNodes] = useState<Node[]>(() => presets[initialPresetKey].nodes);
+  const [edges, setEdges] = useState<Edge[]>(() => presets[initialPresetKey].edges);
   const [isSimulating, setIsSimulating] = useState(false);
   const isSimulatingRef = useRef(false);
   useEffect(() => { isSimulatingRef.current = isSimulating; }, [isSimulating]);
@@ -375,7 +382,7 @@ export default function App() {
     allPresets,
     applyPreset,
     currentCircuit,
-  } = usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation, markLoaded, markSaved, markUnsaved, isSimulating, hasUnsavedWork });
+  } = usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation, markLoaded, markSaved, markUnsaved, isSimulating, hasUnsavedWork, initialPreset: initialPresetKey });
 
   useEffect(() => {
     selectedPresetRef.current = selectedPreset;
@@ -894,6 +901,33 @@ export default function App() {
   useEffect(() => {
     runSimulationRef.current = runSimulation;
   });
+
+  // Apply deep-link URL query parameters (`?preset=...&open=...&run=1`) once on mount.
+  useEffect(() => {
+    const link = parseVoltDeepLink(window.location.search);
+    if (!link) return;
+    if (link.preset) loadPreset(link.preset);
+    if (link.tour) window.dispatchEvent(new CustomEvent(START_TOUR_EVENT));
+    if (link.open === 'pcb') {
+      setTimeout(() => {
+        setPcbModalOnMachine(false);
+        setIsPcbModalOpen(true);
+      }, 60);
+    } else if (link.open === 'bode') {
+      setTimeout(() => {
+        setBodeStepMode(false);
+        setIsBodeOpen(true);
+      }, 60);
+    }
+    if (link.run) {
+      setTimeout(() => {
+        setInitialConditions({});
+        void runSimulationRef.current(undefined, {});
+      }, 120);
+    }
+    window.history.replaceState(null, '', stripVoltDeepLinkSearch(window.location.href));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /*
    * Node data the netlist is actually built from.
@@ -1664,7 +1698,7 @@ export default function App() {
           <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 hidden lg:block"></div>
           
           {/* Preset Selector */}
-          <div className="flex items-center min-w-0 max-lg:flex-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
+          <div data-tour="preset-picker" className="flex items-center min-w-0 max-lg:flex-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
             {/* The open circuit's name, and the way to every other one. A button
                 rather than the <select> it replaced: that listed forty-odd
                 examples and every saved circuit in one column, with no search. */}
@@ -1720,7 +1754,7 @@ export default function App() {
         */}
         <div className="flex items-center gap-2 md:gap-3 min-w-0 max-lg:w-full max-lg:flex-wrap max-lg:justify-between max-lg:gap-y-1.5">
           {/* Simulation Controller Block */}
-          <div className="flex items-center shrink-0 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
+          <div data-tour="sim-run" className="flex items-center shrink-0 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
             <button 
               onClick={() => { setInitialConditions({}); runSimulation(undefined, {}); }}
               disabled={isSimulating}
@@ -1751,7 +1785,7 @@ export default function App() {
           </div>
 
           {/* Make: the same control, in the same place, in every PhysBox app. */}
-          <div className="flex items-center shrink-0 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
+          <div data-tour="make-btn" className="flex items-center shrink-0 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
             <button
               onClick={() => {
                 setPcbModalOnMachine(false);
@@ -1842,7 +1876,7 @@ export default function App() {
           <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 mx-0.5 hidden sm:block" />
 
           {/* Right Utilities (Dark Mode, Docs, Settings, Copilot, GitHub) */}
-          <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+          <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2 max-w-full">
             {/* Dark Mode Toggle */}
             <button
               onClick={toggleDarkMode}
@@ -2305,7 +2339,7 @@ export default function App() {
       */}
       <footer className="h-8 shrink-0 w-full bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800/80 px-4 flex items-center justify-between z-20 text-[11px] text-slate-500 dark:text-slate-400 font-mono select-none transition-colors max-lg:h-auto max-lg:flex-wrap max-lg:justify-start max-lg:px-2 max-lg:py-1 max-lg:gap-x-3 max-lg:gap-y-1">
         {/* Left: ways of looking at the circuit, and what Volt noticed about it */}
-        <div className="flex items-center gap-3 max-lg:flex-wrap max-lg:gap-y-1 max-lg:shrink">
+        <div data-tour="inspect-bar" className="flex items-center gap-3 max-lg:flex-wrap max-lg:gap-y-1 max-lg:shrink">
           <button
             onClick={() => { setProbeMode(!probeMode); setProbeData(null); }}
             className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] transition-colors cursor-pointer ${
@@ -2417,7 +2451,7 @@ export default function App() {
         </div>
 
         {/* Right: Simulation Parameters (Duration & Resolution) */}
-        <div className="flex items-center gap-3 max-lg:shrink-0">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 max-w-full">
           {/* The mill that cuts the board this schematic becomes. */}
           <MachineStatusBar onOpenMachine={openMachineModal} />
 
@@ -2463,6 +2497,7 @@ export default function App() {
       {/* A job that ran to its last line, wherever it was started from. */}
       <JobInterruptions onResumed={showMillWindow} />
       <JobCompleteNotice />
+      <WelcomeTourOverlay />
     </div>
     </CanvasStateProvider>
     </MeshLinkContext.Provider>

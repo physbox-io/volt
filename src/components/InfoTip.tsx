@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Info } from 'lucide-react';
 
@@ -37,6 +37,15 @@ export function InfoTip({ children, size = 13, className = '' }: InfoTipProps) {
 
   const hide = () => setPos(null);
 
+  useEffect(() => {
+    if (!pos) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) hide();
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    return () => window.removeEventListener('pointerdown', onPointerDown, true);
+  }, [pos]);
+
   return (
     <>
       <button
@@ -48,8 +57,13 @@ export function InfoTip({ children, size = 13, className = '' }: InfoTipProps) {
         onFocus={show}
         onBlur={hide}
         // Tooltips are the whole point of this control; don't let a stray tap
-        // inside a form submit or toggle anything.
-        onClick={e => e.preventDefault()}
+        // inside a form submit or toggle anything, and toggle on touch tap.
+        onClick={e => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (pos) hide();
+          else show();
+        }}
         className={`inline-flex items-center justify-center text-slate-500 hover:text-cyan-400 focus:text-cyan-400 transition-colors cursor-help align-middle ${className}`}
       >
         <Info style={{ width: size, height: size }} />

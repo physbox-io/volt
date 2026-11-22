@@ -232,7 +232,7 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
         </div>
 
         {/* Operation Layer Toggles */}
-        <div className="flex items-center gap-2 text-[11px] font-mono text-slate-300">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-slate-300">
           <label className="flex items-center gap-1 cursor-pointer">
             <input
               type="checkbox"

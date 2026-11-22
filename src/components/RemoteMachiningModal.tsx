@@ -161,7 +161,7 @@ export const RemoteMachiningModal: React.FC<RemoteMachiningModalProps> = ({ isOp
                   </div>
 
                   {/* Metrics grid */}
-                  <div className="grid grid-cols-3 gap-3 pt-2 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs">
                     <div className="bg-white dark:bg-slate-900/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
                       <span className="text-slate-500 dark:text-slate-400 block mb-0.5">XYZ Position (mm)</span>
                       <span className="font-mono text-emerald-600 dark:text-emerald-300 font-semibold">
