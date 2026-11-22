@@ -385,10 +385,10 @@ Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
     const tokens = str.split(regex);
     return tokens.map((token, i) => {
       if (token.startsWith('**') && token.endsWith('**')) {
-        return <strong key={i} className="font-extrabold text-slate-800">{token.slice(2, -2)}</strong>;
+        return <strong key={i} className="font-extrabold text-slate-800 dark:text-slate-100">{token.slice(2, -2)}</strong>;
       }
       if (token.startsWith('`') && token.endsWith('`')) {
-        return <code key={i} className="bg-slate-100 px-1 py-0.5 rounded font-mono text-[10px] text-indigo-650 font-bold">{token.slice(1, -1)}</code>;
+        return <code key={i} className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-mono text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">{token.slice(1, -1)}</code>;
       }
       return token;
     });
@@ -399,21 +399,21 @@ Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
     const lines = text.split('\n');
     return lines.map((line, idx) => {
       if (line.startsWith('# ')) {
-        return <h1 key={idx} className="text-sm font-extrabold text-slate-800 border-b border-slate-150 pb-1 mt-3 mb-2 tracking-tight">{line.substring(2)}</h1>;
+        return <h1 key={idx} className="text-sm font-extrabold text-slate-800 dark:text-slate-100 border-b border-slate-200 dark:border-slate-800 pb-1 mt-3 mb-2 tracking-tight">{line.substring(2)}</h1>;
       }
       if (line.startsWith('## ')) {
-        return <h2 key={idx} className="text-xs font-bold text-slate-850 mt-3 mb-1 tracking-tight">{line.substring(3)}</h2>;
+        return <h2 key={idx} className="text-xs font-bold text-slate-800 dark:text-slate-100 mt-3 mb-1 tracking-tight">{line.substring(3)}</h2>;
       }
       if (line.startsWith('### ')) {
-        return <h3 key={idx} className="text-xs font-semibold text-slate-700 mt-2 mb-1">{line.substring(4)}</h3>;
+        return <h3 key={idx} className="text-xs font-semibold text-slate-700 dark:text-slate-200 mt-2 mb-1">{line.substring(4)}</h3>;
       }
       if (line.startsWith('* ') || line.startsWith('- ')) {
-        return <li key={idx} className="ml-4 list-disc text-slate-600 my-0.5 leading-relaxed">{parseBoldAndCode(line.substring(2))}</li>;
+        return <li key={idx} className="ml-4 list-disc text-slate-600 dark:text-slate-300 my-0.5 leading-relaxed">{parseBoldAndCode(line.substring(2))}</li>;
       }
       if (!line.trim()) {
         return <div key={idx} className="h-1.5" />;
       }
-      return <p key={idx} className="my-1.5 text-slate-600 leading-relaxed font-sans">{parseBoldAndCode(line)}</p>;
+      return <p key={idx} className="my-1.5 text-slate-600 dark:text-slate-300 leading-relaxed font-sans">{parseBoldAndCode(line)}</p>;
     });
   };
 
@@ -432,7 +432,7 @@ Edges (${edgesSummary.length}): ${JSON.stringify(edgesSummary)}`;
             <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">{modelDisplayName(model)}</p>
           </div>
         </div>
-        <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-650 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer"><X className="w-5 h-5" /></button>
+        <button onClick={onClose} aria-label="Close AI Copilot" title="Close" className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer"><X className="w-5 h-5" /></button>
       </div>
 
       {/* Main Panel Content */}

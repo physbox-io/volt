@@ -59,19 +59,37 @@ function FootprintNumber({
   step: number;
   onChange: (v: number | undefined) => void;
 }) {
+  const [raw, setRaw] = useState(value === undefined ? '' : String(value));
+  useEffect(() => {
+    const parsed = parseFloat(raw);
+    if (value === undefined && raw !== '') setRaw('');
+    else if (value !== undefined && parsed !== value) setRaw(String(value));
+  }, [value]);
   return (
     <label className="block">
       <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">{label}</span>
       <input
         type="number"
         step={step}
-        value={value ?? ''}
+        value={raw}
         placeholder="auto"
         onChange={e => {
-          const raw = e.target.value.trim();
-          if (raw === '') return onChange(undefined);
-          const n = parseFloat(raw);
-          onChange(Number.isFinite(n) ? n : undefined);
+          const next = e.target.value;
+          setRaw(next);
+          const trimmed = next.trim();
+          if (trimmed === '') return onChange(undefined);
+          const n = parseFloat(trimmed);
+          if (Number.isFinite(n)) onChange(n);
+        }}
+        onBlur={() => {
+          const trimmed = raw.trim();
+          const n = parseFloat(trimmed);
+          if (trimmed === '' || !Number.isFinite(n)) {
+            setRaw('');
+            onChange(undefined);
+          } else {
+            setRaw(String(n));
+          }
         }}
         className={FOOTPRINT_INPUT_CLASS}
       />
@@ -139,6 +157,12 @@ function RatingField({
   step: number;
   onChange: (v: number | undefined) => void;
 }) {
+  const [raw, setRaw] = useState(value === undefined ? '' : String(value));
+  useEffect(() => {
+    const parsed = parseFloat(raw);
+    if (value === undefined && raw !== '' && Number.isFinite(parsed) && parsed > 0) setRaw('');
+    else if (value !== undefined && parsed !== value) setRaw(String(value));
+  }, [value]);
   return (
     <label className="block">
       <span className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-0.5">{label}</span>
@@ -146,13 +170,25 @@ function RatingField({
         type="number"
         step={step}
         min={0}
-        value={value ?? ''}
+        value={raw}
         placeholder={placeholder}
         onChange={e => {
-          const raw = e.target.value.trim();
-          if (raw === '') return onChange(undefined);
-          const n = parseFloat(raw);
-          onChange(Number.isFinite(n) && n > 0 ? n : undefined);
+          const next = e.target.value;
+          setRaw(next);
+          const trimmed = next.trim();
+          if (trimmed === '') return onChange(undefined);
+          const n = parseFloat(trimmed);
+          if (Number.isFinite(n) && n > 0) onChange(n);
+        }}
+        onBlur={() => {
+          const trimmed = raw.trim();
+          const n = parseFloat(trimmed);
+          if (trimmed === '' || !Number.isFinite(n) || n <= 0) {
+            setRaw('');
+            onChange(undefined);
+          } else {
+            setRaw(String(n));
+          }
         }}
         className={FOOTPRINT_INPUT_CLASS}
       />

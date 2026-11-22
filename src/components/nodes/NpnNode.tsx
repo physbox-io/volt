@@ -3,7 +3,7 @@ import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BJT_NPN_MODELS, BJT_PNP_MODELS, getBjtModel, resolveBjtParams } from '../../utils/deviceModels';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { BjtNodeData } from '../../types/nodes';
@@ -15,6 +15,14 @@ export function BJTProperties({ node, updateData }: NodePropertiesProps) {
   const models = isPnp ? BJT_PNP_MODELS : BJT_NPN_MODELS;
   const currentModelId = (node.data?.model as string) || 'generic';
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const resolvedIs = resolveBjtParams(isPnp ? 'pnp' : 'npn', node.data).is;
+  const [isText, setIsText] = useState(() => resolvedIs.toExponential());
+  useEffect(() => {
+    const parsed = parseFloat(isText);
+    if (!Number.isFinite(parsed) || parsed !== resolvedIs) {
+      setIsText(resolvedIs.toExponential());
+    }
+  }, [resolvedIs]);
 
   const handleModelChange = (id: string) => {
     // Only the model and the caption. The parameters come from the catalogue
@@ -95,14 +103,17 @@ export function BJTProperties({ node, updateData }: NodePropertiesProps) {
               <label className="block text-[11px] font-medium text-gray-600 dark:text-slate-300 mb-0.5">Saturation Current (IS, A)</label>
               <input
                 type="text"
-                value={currentIs.toExponential()}
+                value={isText}
                 onChange={e => {
-                  const val = parseFloat(e.target.value);
+                  const next = e.target.value;
+                  setIsText(next);
+                  const val = parseFloat(next);
                   if (Number.isFinite(val) && val > 0) {
                     updateData('is', val);
                     updateData('model', 'custom');
                   }
                 }}
+                onBlur={() => setIsText(currentIs.toExponential())}
                 className="w-full text-xs border border-gray-300 dark:border-slate-700 rounded px-1.5 py-0.5 bg-white dark:bg-slate-900"
               />
             </div>

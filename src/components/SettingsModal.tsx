@@ -73,17 +73,17 @@ export function SettingsModal({ onClose, showAura, setShowAura }: SettingsModalP
     'block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1';
 
   return (
-    <div className="absolute top-4 right-6 w-64 md:w-72 glass-panel rounded-lg p-4 z-30 shadow-lg text-slate-800 dark:text-slate-100 flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-200 pointer-events-auto">
+    <div role="dialog" aria-modal="true" aria-label="Preferences" className="absolute top-4 right-6 w-64 md:w-72 glass-panel rounded-lg p-4 z-30 shadow-lg text-slate-800 dark:text-slate-100 flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-200 pointer-events-auto">
       {/* Header */}
-      <h3 className="font-semibold text-sm flex items-center justify-between text-slate-800 dark:text-slate-100">
+      <h2 className="font-semibold text-sm flex items-center justify-between text-slate-800 dark:text-slate-100">
         <span className="flex items-center gap-2">
           <Settings className="w-4 h-4 text-slate-500 dark:text-slate-400" />
           Preferences
         </span>
-        <button onClick={onClose} className="cursor-pointer">
-          <X className="w-4 h-4 text-slate-400 dark:text-slate-500 hover:text-slate-655 dark:hover:text-slate-300" />
+        <button onClick={onClose} aria-label="Close" title="Close" className="cursor-pointer">
+          <X className="w-4 h-4 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300" />
         </button>
-      </h3>
+      </h2>
 
       {/* Body */}
       <div className="flex flex-col gap-3.5 text-xs">

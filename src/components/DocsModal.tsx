@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Sparkles, X } from 'lucide-react';
+import { START_TOUR_EVENT } from '../utils/deepLink';
 
 interface DocsModalProps {
   onClose: () => void;
@@ -98,16 +99,41 @@ function ShortcutTable({ rows }: { rows: [string, string][] }) {
 export function DocsModal({ onClose }: DocsModalProps) {
   const [activeTab, setActiveTab] = useState<'about' | 'usage' | 'shortcuts' | 'simulation' | 'audio' | 'milling' | 'license'>('about');
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     // Same modal layer as every other full-screen dialog. At z-[100] this tied
     // with the note card, leaving DOM order to decide which one won.
-    <div className="fixed inset-0 bg-black/50 z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-4xl w-full h-[80vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+    <div
+      className="fixed inset-0 bg-black/50 z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-200"
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div role="dialog" aria-modal="true" aria-label="Documentation" className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-4xl w-full h-[80vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
           <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Documentation</h2>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer">
-            <X size={24} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                window.dispatchEvent(new CustomEvent(START_TOUR_EVENT));
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-xs font-semibold transition-colors cursor-pointer"
+              title="Replay the 5-step interactive workspace tour"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Quick Tour</span>
+            </button>
+            <button onClick={onClose} aria-label="Close" title="Close" className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer">
+              <X size={24} />
+            </button>
+          </div>
         </div>
         <div className="flex flex-1 overflow-hidden">
           <div className="w-64 bg-slate-50 dark:bg-slate-950/60 border-r border-slate-200 dark:border-slate-800 p-4 flex flex-col gap-2 overflow-y-auto">
