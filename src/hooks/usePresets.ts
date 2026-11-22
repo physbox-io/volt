@@ -38,11 +38,12 @@ interface UsePresetsArgs {
   markUnsaved: () => void;
   isSimulating: boolean;
   hasUnsavedWork: () => boolean;
+  initialPreset?: string;
 }
 
 /** Owns preset selection/loading so the "apply preset to state" sequence exists in exactly one place instead of being copy-pasted at every call site. */
-export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation, markLoaded, markSaved, markUnsaved, isSimulating, hasUnsavedWork }: UsePresetsArgs) {
-  const [selectedPreset, setSelectedPreset] = useState(DEFAULT_PRESET_KEY);
+export function usePresets({ nodes, edges, setNodes, setEdges, setInitialConditions, setSimLength, stopSimulation, markLoaded, markSaved, markUnsaved, isSimulating, hasUnsavedWork, initialPreset }: UsePresetsArgs) {
+  const [selectedPreset, setSelectedPreset] = useState(initialPreset ?? DEFAULT_PRESET_KEY);
   const [userPresets, setUserPresets] = useState<Record<string, CircuitPreset>>(() => loadUserPresets());
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);

@@ -68,7 +68,7 @@ export function Sidebar({
         className="fixed inset-0 bg-slate-900/20 backdrop-blur-xs lg:hidden pointer-events-auto" 
         onClick={onClose}
       ></div>
-      <aside className="w-64 md:w-56 shrink-0 h-full glass-panel border-r border-slate-200 dark:border-slate-800 px-3 py-3 flex flex-col bg-white/95 dark:bg-slate-900/95 shadow-xl lg:shadow-none z-50 relative overflow-y-auto pointer-events-auto transition-colors">
+      <aside data-tour="left-parts" className="w-64 md:w-56 shrink-0 h-full glass-panel border-r border-slate-200 dark:border-slate-800 px-3 py-3 flex flex-col bg-white/95 dark:bg-slate-900/95 shadow-xl lg:shadow-none z-50 relative overflow-y-auto pointer-events-auto transition-colors">
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Components</h2>
           <button onClick={onClose} className="lg:hidden p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400">
