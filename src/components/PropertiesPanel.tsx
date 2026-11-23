@@ -60,11 +60,13 @@ function FootprintNumber({
   onChange: (v: number | undefined) => void;
 }) {
   const [raw, setRaw] = useState(value === undefined ? '' : String(value));
-  useEffect(() => {
+  const [prevValue, setPrevValue] = useState(value);
+  if (prevValue !== value) {
+    setPrevValue(value);
     const parsed = parseFloat(raw);
     if (value === undefined && raw !== '') setRaw('');
     else if (value !== undefined && parsed !== value) setRaw(String(value));
-  }, [value]);
+  }
   return (
     <label className="block">
       <span className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">{label}</span>
@@ -158,11 +160,13 @@ function RatingField({
   onChange: (v: number | undefined) => void;
 }) {
   const [raw, setRaw] = useState(value === undefined ? '' : String(value));
-  useEffect(() => {
+  const [prevValue, setPrevValue] = useState(value);
+  if (prevValue !== value) {
+    setPrevValue(value);
     const parsed = parseFloat(raw);
     if (value === undefined && raw !== '' && Number.isFinite(parsed) && parsed > 0) setRaw('');
     else if (value !== undefined && parsed !== value) setRaw(String(value));
-  }, [value]);
+  }
   return (
     <label className="block">
       <span className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-0.5">{label}</span>

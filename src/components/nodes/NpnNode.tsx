@@ -3,7 +3,7 @@ import type { NodePropertiesProps } from './registry';
 import { SchematicLabel } from './schematic';
 import { NumberInput } from '@physbox-io/ui';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { BJT_NPN_MODELS, BJT_PNP_MODELS, getBjtModel, resolveBjtParams } from '../../utils/deviceModels';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { BjtNodeData } from '../../types/nodes';
@@ -17,12 +17,14 @@ export function BJTProperties({ node, updateData }: NodePropertiesProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const resolvedIs = resolveBjtParams(isPnp ? 'pnp' : 'npn', node.data).is;
   const [isText, setIsText] = useState(() => resolvedIs.toExponential());
-  useEffect(() => {
+  const [prevResolvedIs, setPrevResolvedIs] = useState(resolvedIs);
+  if (prevResolvedIs !== resolvedIs) {
+    setPrevResolvedIs(resolvedIs);
     const parsed = parseFloat(isText);
     if (!Number.isFinite(parsed) || parsed !== resolvedIs) {
       setIsText(resolvedIs.toExponential());
     }
-  }, [resolvedIs]);
+  }
 
   const handleModelChange = (id: string) => {
     // Only the model and the caption. The parameters come from the catalogue
