@@ -44,8 +44,9 @@ export interface PresetStore {
   changed(refreshed: string[]): void;
 }
 
-/** Fired when two saves of a preset could not both keep its name. */
-export const PRESET_KEPT_BOTH_EVENT = 'physbox:preset-kept-both';
+/** Fired when two saves of a preset could not both keep its name; the shared badge listens for it. */
+import { PRESET_KEPT_BOTH_EVENT } from '@physbox-io/ui/cloud';
+export { PRESET_KEPT_BOTH_EVENT };
 
 export interface PresetSyncResult {
   /** Presets that arrived or changed here. */
