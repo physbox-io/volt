@@ -1800,7 +1800,7 @@ export default function App() {
           </div>
 
           {/* Files & Actions Segmented Group */}
-          <div className="flex items-center shrink-0 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
+          <div className="flex items-center max-md:flex-1 max-md:min-w-0 max-md:overflow-x-auto max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden [&>*]:shrink-0 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700/60 shadow-inner">
             <button 
               onClick={() => {
                 // Always "Save As": the disk icon beside the circuit's name is the one that
@@ -1876,7 +1876,7 @@ export default function App() {
           <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 mx-0.5 hidden sm:block" />
 
           {/* Right Utilities (Dark Mode, Docs, Settings, Copilot, GitHub) */}
-          <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2 max-w-full">
+          <div className="flex flex-wrap items-center justify-end gap-1.5 max-sm:gap-1 md:gap-2 max-w-full">
             {/* Dark Mode Toggle */}
             <button
               onClick={toggleDarkMode}
@@ -2339,7 +2339,7 @@ export default function App() {
       */}
       <footer className="h-8 shrink-0 w-full bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800/80 px-4 flex items-center justify-between z-20 text-[11px] text-slate-500 dark:text-slate-400 font-mono select-none transition-colors max-lg:h-auto max-lg:flex-wrap max-lg:justify-start max-lg:px-2 max-lg:py-1 max-lg:gap-x-3 max-lg:gap-y-1">
         {/* Left: ways of looking at the circuit, and what Volt noticed about it */}
-        <div data-tour="inspect-bar" className="flex items-center gap-3 max-lg:flex-wrap max-lg:gap-y-1 max-lg:shrink">
+        <div data-tour="inspect-bar" className="flex items-center gap-3 max-lg:w-full max-lg:overflow-x-auto max-lg:[scrollbar-width:none] max-lg:[&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
           <button
             onClick={() => { setProbeMode(!probeMode); setProbeData(null); }}
             className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] transition-colors cursor-pointer ${
@@ -2451,7 +2451,7 @@ export default function App() {
         </div>
 
         {/* Right: Simulation Parameters (Duration & Resolution) */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 max-w-full">
+        <div className="flex items-center gap-x-3 max-lg:w-full max-lg:overflow-x-auto max-lg:[scrollbar-width:none] max-lg:[&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
           {/* The mill that cuts the board this schematic becomes. */}
           <MachineStatusBar onOpenMachine={openMachineModal} />
 
