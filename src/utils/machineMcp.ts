@@ -73,11 +73,22 @@ export function setCurrentCircuit(nodes: Node[], edges: Edge[]): void {
   currentCircuit = { nodes, edges };
 }
 
-/** The height map the export dialog last probed, if it is still on screen. */
+/** The height map the export dialog last probed, stamped with the datum epoch it was taken on. */
 let activeHeightmap: ProbeGrid | null = null;
+let activeHeightmapDatumEpoch: number | undefined;
 
 export function setActiveHeightmap(grid: ProbeGrid | null): void {
   activeHeightmap = grid;
+  activeHeightmapDatumEpoch = grid ? webSerialManager.getState().datumEpoch : undefined;
+}
+
+function getValidActiveHeightmap(): ProbeGrid | null {
+  if (!activeHeightmap) return null;
+  if (webSerialManager.getState().datumEpoch !== activeHeightmapDatumEpoch) {
+    activeHeightmap = null;
+    return null;
+  }
+  return activeHeightmap;
 }
 
 function boardBounds(): { minX: number; minY: number; maxX: number; maxY: number } | null {
@@ -104,7 +115,7 @@ async function millCurrentBoard(args: Record<string, unknown>): Promise<{ summar
     throw new Error('The canvas is empty — there is no board to mill.');
   }
 
-  const heightmap = activeHeightmap;
+  const heightmap = getValidActiveHeightmap();
   const overrides = { ...((args.options ?? {}) as Partial<PcbOptions>) };
   // A map levels the top face only. The bottom of a double-sided board is cut
   // unlevelled, so it gets the depth that carries the full flatness allowance
@@ -176,9 +187,8 @@ async function millCurrentBoard(args: Record<string, unknown>): Promise<{ summar
   }
 
   const gcode = webSerialManager.applyHeightmapToGcode(result.gcode, heightmap);
-  // startJob makes the remaining checks itself — the machine must not be in
-  // alarm, and work Z0 must have been confirmed this session rather than left
-  // over in the controller's EEPROM from another board.
+  const blocked = webSerialManager.jobBlockedReason(gcode);
+  if (blocked) throw new Error(blocked);
   webSerialManager.setJobHeightmap(heightmap);
   await webSerialManager.startJob(gcode, {
     name: pcbJobName(cloudAutosave.getDocumentName()),
@@ -354,6 +364,7 @@ export function createVoltMachineHandlers(): Record<
 
     MACHINE_PROBE_SURFACE: async (args: Record<string, unknown>) => {
       machineArming.requireArmed('probe_surface');
+      refuseWhileJobHoldsMachine(webSerialManager, 'probe the surface');
       machineArming.noteAgentCommand('probe_surface');
       return probeBoardSurface(args);
     },

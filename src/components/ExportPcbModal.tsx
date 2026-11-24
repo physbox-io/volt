@@ -353,6 +353,11 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * changes the channel width, which changes the auto-sized board, which would
    * otherwise invalidate the map that set the depth in the first place.
    */
+  const [heightmapDatumEpoch, setHeightmapDatumEpoch] = useState<number | undefined>(undefined);
+  if (heightmap !== null && serialState.datumEpoch !== heightmapDatumEpoch) {
+    setHeightmap(null);
+    setHeightmapDatumEpoch(undefined);
+  }
   const [staleMapIgnored, setStaleMapIgnored] = useState(false);
   const probedSpanZ = useMemo(
     () => (heightmap && !staleMapIgnored ? getGridStats(heightmap).spanZ : undefined),
@@ -709,6 +714,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
         clearanceMm: options.safeZ,
       });
       setHeightmap(grid);
+      setHeightmapDatumEpoch(webSerialManager.getState().datumEpoch);
       return grid;
     } catch (e) {
       setMachineError(errorMessage(e) || 'Surface probe failed');

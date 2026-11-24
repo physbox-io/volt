@@ -237,7 +237,7 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
               <MachineBedFields
                 bed={bed}
                 onChange={(next) => setBed(machineBedStore.set(next))}
-                note="How far each axis can travel. Used to check a job fits when the controller has not reported its own travel, and shared with Etch and Mesh through your account."
+                note="Axis travel limits (used if the controller doesn't report them)."
               />
             </div>
 
@@ -308,9 +308,8 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
                 and lands there again after a limit trip or a failed probe,
                 refusing every G-code line with error:9 until it is cleared. */}
             {serialState.status === 'ALARM' && (
-              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-600/60 rounded-lg text-amber-700 dark:text-amber-300 text-[11px] leading-relaxed">
-                <span className="font-semibold">Machine is in alarm.</span> It will reject every
-                command (error:9) until it is unlocked or homed.
+              <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-600/60 rounded-lg text-amber-700 dark:text-amber-300 text-[11px]">
+                <span className="font-semibold">Alarm active</span> — Home ($H) or Unlock ($X) to continue.
               </div>
             )}
 
@@ -480,8 +479,8 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
                     copper. */}
                 <button
                   onClick={onZeroXY}
-                  disabled={machineBusy}
-                  title="Sets the work origin X0 Y0 at the tool's current position (G10 L20)"
+                  disabled={machineBusy || !serialState.connected}
+                  title="Set X0 Y0 at current position (G10 L20)"
                   className={`w-full py-1.5 rounded font-semibold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                     xyZeroed
                       ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
@@ -489,18 +488,17 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
                   }`}
                 >
                   {xyZeroed ? <Check className="w-3.5 h-3.5" /> : <Crosshair className="w-3.5 h-3.5" />}
-                  {xyZeroed ? 'Re-set XY0 here' : 'Set XY0 at this spot'}
+                  {xyZeroed ? 'Re-set XY0 here' : 'Set XY0 here'}
                 </button>
                 <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-normal">
-                  Jog the bit over the front-left corner of the blank first — everything the job cuts is
-                  measured from the spot you set here.
+                  Jog to front-left corner of blank, then set XY0.
                 </p>
 
                 <div className="flex gap-2">
                   <button
                     onClick={onZeroZOnCopper}
                     disabled={manualMoveBlocked}
-                    title="Probe straight onto the copper, using the continuity clip"
+                    title="Probe onto copper with continuity clip"
                     className={`${quietButton} flex-1`}
                   >
                     {busy === 'zeroing' && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
@@ -509,7 +507,7 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
                   <button
                     onClick={onZeroZOnPlate}
                     disabled={manualMoveBlocked}
-                    title={`Probe onto the touch plate and set Z0 ${touchPlateMm}mm below the contact point`}
+                    title={`Probe onto ${touchPlateMm}mm touch plate`}
                     className={`${quietButton} flex-1`}
                   >
                     Probe Z0 on plate
@@ -520,43 +518,28 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
                   seen={serialState.probeCircuitSeen}
                 />
 
-                {/* Go to XY zero. Enabled on the *datum*, not on the tool standing
-                    at it — the reason to press this is that the tool is somewhere
-                    else. Z still has to be set, because the move lifts before it
-                    travels and an unset Z means it does not know how far up is. */}
                 <button
                   onClick={onGoToZero}
                   disabled={manualMoveBlocked || !zZeroed}
-                  title={
-                    zZeroed
-                      ? `Lift Z to the ${safeZMm}mm retract, then rapid back to the work origin (X0 Y0)`
-                      : 'Set Z zero first — the move lifts to the retract height before it travels, and without a Z datum it cannot know where that is'
-                  }
+                  title={zZeroed ? `Lift to Z${safeZMm} and go to X0 Y0` : 'Probe Z0 first'}
                   className={`${quietButton} w-full`}
                 >
                   <Crosshair className="w-3.5 h-3.5" />
                   Go to XY zero
                 </button>
 
-                {/* Setting the work origin is otherwise silent: the button sends a
-                    line, GRBL says nothing a human sees, and the only evidence is
-                    the DRO changing. */}
                 <div className="space-y-0.5 text-[10px] font-semibold pt-0.5">
                   {serialState.zeroXYPending ? (
-                    <div className="text-amber-600 dark:text-amber-400">
-                      XY zeroing — waiting for the machine to confirm…
-                    </div>
+                    <div className="text-amber-600 dark:text-amber-400">Zeroing XY…</div>
                   ) : xyZeroed ? (
                     <div className="text-emerald-600 dark:text-emerald-400">
-                      XY0 set{serialState.zeroXYConfirmed ? ' — the tool is standing on it' : ''}
+                      XY0 set{serialState.zeroXYConfirmed ? ' (at origin)' : ''}
                     </div>
                   ) : (
-                    <div className="text-slate-500 dark:text-slate-400">XY0 not set this session</div>
+                    <div className="text-slate-500 dark:text-slate-400">XY0 not set</div>
                   )}
                   {serialState.zeroZPending ? (
-                    <div className="text-amber-600 dark:text-amber-400">
-                      Z zeroing — waiting for the machine to confirm…
-                    </div>
+                    <div className="text-amber-600 dark:text-amber-400">Zeroing Z…</div>
                   ) : zZeroed ? (
                     <div className="text-emerald-600 dark:text-emerald-400">
                       Z0 set at {(serialState.zeroZTargetMm ?? 0).toFixed(2)}mm
@@ -565,17 +548,13 @@ export const MachineConnectModal: React.FC<MachineConnectModalProps> = ({
                         : ''}
                     </div>
                   ) : (
-                    <div className="text-slate-500 dark:text-slate-400">Z0 not set this session</div>
+                    <div className="text-slate-500 dark:text-slate-400">Z0 not set</div>
                   )}
                 </div>
 
-                {/* The zeros outlive the tab. Closing it mid-job used to lose the
-                    only record of where the origin was, and a re-zero by eye does
-                    not land back on the same spot. */}
                 {serialState.savedZero && (
                   <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                    Remembered from last session
-                    {serialState.zeroRestored ? ' — restored onto the machine; touch off Z again' : ''}{' '}
+                    {serialState.zeroRestored ? 'Restored XY from last session — re-probe Z' : 'Saved origin'}{' '}
                     ({(['x', 'y', 'z'] as const)
                       .filter(a => serialState.savedZero![a] !== undefined)
                       .map(a => `${a.toUpperCase()} ${serialState.savedZero![a]!.toFixed(2)}`)

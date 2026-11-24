@@ -112,6 +112,8 @@ export interface MachineState extends BaseMachineState {
    */
   zeroXYConfirmed?: boolean;
   zeroZConfirmed?: boolean;
+  /** Increments whenever XY0 or an unmapped Z0 is re-established, invalidating stale heightmaps. */
+  datumEpoch?: number;
   /**
    * Whether a work datum has been *established* on those axes during this
    * connection — as opposed to the tool currently standing on it.
@@ -582,9 +584,8 @@ export class WebSerialManager extends GrblMachine<MachineState> {
         zeroXYSet: this.state.zeroXYSet || saved!.x !== undefined || saved!.y !== undefined,
       });
     } catch {
-      // A controller that refuses the offset leaves the operator to re-zero;
-      // saying so is the UI's job, and the flag simply stays clear.
-      this.zeroRestoreDone = false;
+      // A controller that refuses the offset leaves the operator to re-zero.
+      // Keep zeroRestoreDone = true so status reports do not spam G10 at 4 Hz.
     }
   }
 
@@ -630,79 +631,52 @@ export class WebSerialManager extends GrblMachine<MachineState> {
   // -------------------------------------------------------------------------
 
   public async zeroXY(): Promise<void> {
-    this.updateState({ zeroXYPending: true, zeroXYConfirmed: false });
+    this.updateState({
+      zeroXYPending: true,
+      zeroXYConfirmed: false,
+      datumEpoch: (this.state.datumEpoch ?? 0) + 1,
+    });
     await super.zeroXY();
   }
 
-  /**
-   * Sets work Z0 using a conductive touch plate. The tool stops on *top* of the
-   * plate, so Z0 sits `touchPlateThicknessMm` below the contact point — pass
-   * the real thickness or every cut is off by the difference.
-   *
-   * `surfaceOffsetMm` is how far the copper under the plate stands above the
-   * height map's own reference plane — see {@link zeroZOnSurface}.
-   */
   public async zeroZ(
     touchPlateThicknessMm = readTouchPlateMm(),
     surfaceOffsetMm = 0
   ): Promise<void> {
-    await this.runZeroZ(touchPlateThicknessMm + surfaceOffsetMm, ZERO_SEARCH_MM);
+    await this.runZeroZ(touchPlateThicknessMm + surfaceOffsetMm, ZERO_SEARCH_MM, surfaceOffsetMm !== 0);
   }
 
-  /**
-   * Sets work Z0 on the copper surface directly under the bit, using the
-   * continuity clip rather than a touch plate. This is the zero the mesh probe
-   * references, so it is the one to set before auto-levelling.
-   *
-   * `surfaceOffsetMm` is how far the copper *here* stands above the plane the
-   * height map is referenced to. Zero for the first zeroing of a job, when that
-   * plane is being defined; afterwards it is the map's own reading at this XY.
-   * Without it, re-zeroing at a tool change anywhere other than the exact point
-   * the map was referenced from shifts every remaining cut by the height
-   * difference between the two spots — which is the whole warp on a bowed
-   * board. With it, the operator can re-zero wherever the bit happens to be
-   * parked and the job carries on cutting to the same plane.
-   */
   public async zeroZOnSurface(surfaceOffsetMm = 0): Promise<void> {
-    await this.runZeroZ(surfaceOffsetMm, ZERO_SEARCH_MM);
+    await this.runZeroZ(surfaceOffsetMm, ZERO_SEARCH_MM, surfaceOffsetMm !== 0);
   }
 
-  /**
-   * Refuses to probe on a circuit nobody has proved. See `probeCircuitSeen`.
-   *
-   * The opposite state is refused too: an input that reads closed with the
-   * bit in the air is a lead shorted to the frame or `$6` set the wrong way,
-   * and the controller would alarm on the first stab (ALARM:4) rather than
-   * measure anything.
-   */
   private assertProbeCircuit(): void {
     if (this.state.probePinActive) {
       throw new Error(
-        'The probe input already reads closed. If the bit is not touching the copper, the ' +
-          'lead is shorted or the probe pin invert ($6) is set the wrong way — either way a ' +
-          'probe cannot tell contact from open air, so it is not started.'
+        'Probe input already reads closed — check for a shorted clip or inverted $6.'
       );
     }
     if (!this.state.probeCircuitSeen) {
       throw new Error(
-        'The probe circuit has not been proved on this connection. Clip the continuity lead ' +
-          'on, touch the bit to the copper by hand until the probe light comes on, then try ' +
-          'again. A probe stops only when that circuit closes; without it the bit is driven ' +
-          'into the board.'
+        'Probe circuit has not been proved — touch bit to copper with clip attached first.'
       );
     }
   }
 
-  /**
-   * The body both Z zeroing routines share.
-   *
-   * Re-zeroing is the main reason to stop for a tool change, so this has to be
-   * callable mid-job. The status is restored rather than forced to IDLE:
-   * clobbering a PAUSED_TOOL would take the resume banner off screen while the
-   * job was still sitting there half-streamed.
-   */
-  private async runZeroZ(targetZmm: number, searchDepthMm: number): Promise<void> {
+  private async runZeroZ(
+    targetZmm: number,
+    searchDepthMm: number,
+    preservesHeightmap = false
+  ): Promise<void> {
     this.assertUnlocked();
+    if (
+      this.probingGrid ||
+      this.state.status === 'RUNNING' ||
+      this.state.status === 'PROBING' ||
+      this.state.status === 'PAUSED_OPERATOR'
+    ) {
+      throw new Error('Cannot probe Z while a job or probe is active.');
+    }
     this.assertProbeCircuit();
     const resumeStatus = this.state.status;
     this.updateState({
@@ -721,7 +695,11 @@ export class WebSerialManager extends GrblMachine<MachineState> {
       await this.retract(PROBE_RETRACT_MM);
       await this.drain();
       this.zeroZOps++;
-      this.updateState({ needsZeroBeforeResume: false });
+      this.recordZDatum();
+      this.updateState({
+        needsZeroBeforeResume: false,
+        ...(preservesHeightmap ? {} : { datumEpoch: (this.state.datumEpoch ?? 0) + 1 }),
+      });
     } finally {
       if (this.state.status === 'PROBING') {
         this.updateState({ status: resumeStatus === 'PROBING' ? 'IDLE' : resumeStatus });
@@ -729,31 +707,9 @@ export class WebSerialManager extends GrblMachine<MachineState> {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Job policy
-  // -------------------------------------------------------------------------
-
-  /**
-   * Refuses to start a job while the Z datum is unconfirmed.
-   *
-   * GRBL keeps G54's Z offset in EEPROM across sessions, tools and boards, so a
-   * datum that reads back as perfectly valid may belong to a different setup
-   * entirely — connecting leaves it unconfirmed until proven otherwise.
-   * "Proven" means this session zeroed Z itself (`zeroZSet`, which survives
-   * the jog clear of the copper that follows every probe — see the flag's own
-   * note).
-   *
-   * A restored origin (`zeroRestored`) used to count as well, and it must not:
-   * the remembered Z was taken with whatever bit was in the collet then, and a
-   * restore landing over a fresh bit was a plunge as deep as the two differ.
-   */
   protected assertReadyToCut(): void {
     if (!this.state.zeroZSet) {
-      throw new Error(
-        'Z zero has not been set this session. Touch off Z on the copper with the bit you are ' +
-          'about to cut with before running a job: a Z move against an unconfirmed datum can ' +
-          'drive the tool into the board.'
-      );
+      throw new Error('Z zero has not been set — probe Z0 on the copper with the active bit first.');
     }
   }
 
@@ -985,12 +941,6 @@ export class WebSerialManager extends GrblMachine<MachineState> {
     this.isJobRunning = true;
     this.isPaused = true;
     this.pauseKind = 'stream';
-    // The reset stopped the spindle. An operation that opens with its own bit
-    // change brings the spindle back up itself, after the M6 — spinning it up
-    // on resume would have it turning through that park and M5, with hands
-    // about to go near the collet. Otherwise it is replayed on resume, at the
-    // speed the program last asked for before this operation: the bit in the
-    // collet is the one that set it, not whatever the header started with.
     const spindle = layerSpindleRestart(program, layer.startIndex);
     this.spindleRestartPending = spindle !== null;
     if (spindle) this.jobSpindleLine = spindle;
@@ -999,7 +949,7 @@ export class WebSerialManager extends GrblMachine<MachineState> {
       status: 'PAUSED_TOOL',
       currentLine: layer.startIndex,
       progressPercent: Math.round((layer.startIndex / program.length) * 100),
-      pauseMessage: `Restarting "${layer.label}". Re-zero Z, then click Resume.`,
+      pauseMessage: `Restarting "${layer.label}". Re-zero Z, then Resume.`,
       needsZeroBeforeResume: true,
     });
   }
@@ -1015,6 +965,10 @@ export class WebSerialManager extends GrblMachine<MachineState> {
 
   protected onAlarm(): void {
     this.alarmFaultSeen = true;
+    // Require the probe circuit to be proved again after any alarm (e.g. ALARM:4/5).
+    if (this.state.probeCircuitSeen) {
+      this.updateState({ probeCircuitSeen: false });
+    }
   }
 
   /**
@@ -1046,6 +1000,15 @@ export class WebSerialManager extends GrblMachine<MachineState> {
    */
   public async probeSurfaceMesh(opts: ProbeMeshOptions): Promise<ProbeGrid> {
     this.assertUnlocked();
+    if (
+      this.isRunning() ||
+      this.isJobPaused() ||
+      this.probingGrid ||
+      this.state.status === 'RUNNING' ||
+      this.state.status === 'PROBING'
+    ) {
+      throw new Error('Cannot probe surface while a job or probe is active.');
+    }
     this.assertProbeCircuit();
 
     const cols = Math.max(2, Math.round(opts.cols ?? 4));
@@ -1053,15 +1016,10 @@ export class WebSerialManager extends GrblMachine<MachineState> {
     let probeDepth = opts.probeDepthMm ?? 3;
     const clearance = opts.clearanceMm ?? 2;
     const probeFeed = opts.probeFeed ?? 50;
-    const travelFeed = opts.travelFeed ?? 1500;
 
-    // Each point probes downward from the retract height, so a search shorter
-    // than that retract cannot reach the copper at all. Caught here rather than
-    // at the machine, where it surfaces as ALARM:5 on the first point.
     if (probeDepth <= clearance) {
       throw new Error(
-        `Probe search depth (${probeDepth}mm) must exceed the retract height (${clearance}mm), ` +
-          'or the probe stops above the surface without touching it.'
+        `Probe search depth (${probeDepth}mm) must exceed the retract height (${clearance}mm).`
       );
     }
 
@@ -1077,43 +1035,18 @@ export class WebSerialManager extends GrblMachine<MachineState> {
       await this.sendLine('G21');
       await this.sendLine('G90');
 
-      // [PRB:] is reported in machine coordinates, so the work origin is what
-      // turns a contact height into "how far the copper sits above or below the
-      // Z0 plane" — which is exactly the number warpGcode adds. Read once, up
-      // front: nothing in the loop below changes a work offset.
       const workOffset = await this.awaitWorkOffset();
+      await this.awaitStatus();
 
-      // Zeroing leaves the tool parked PROBE_RETRACT_MM up, and the first point
-      // then lifts a further clearance before it searches — more than the
-      // default search covers, so the first point alarmed out with nothing
-      // touched. When Z0 was set on this connection the live work Z says how
-      // far down the copper is, and the search is stretched to reach it, plus
-      // a little for the surface being lower here than where Z0 was taken.
-      // Bounded, and a longer search is only ever a longer G38.2: it still
-      // stops on contact, and the contact circuit was proved before starting.
       if (this.state.zeroZSet && this.state.wpos.z > 0) {
         probeDepth = Math.min(
           MAX_MESH_SEARCH_MM,
           Math.max(probeDepth, this.state.wpos.z + clearance + 1)
         );
+      } else if (!this.state.zeroZSet) {
+        probeDepth = Math.min(MAX_MESH_SEARCH_MM, Math.max(probeDepth, clearance + 3));
       }
 
-      /*
-       * Relative, and every lift below it is too.
-       *
-       * This used to be an absolute `G0 Z<clearance>`, on the reasoning that
-       * the datum had just been confirmed by `zeroZOnSurface` and each probe
-       * needs a known height to search from. The reasoning holds right up until
-       * the datum is wrong — a Z zeroed on the wrong face, a G54 offset left
-       * over from another job — and then the move that was meant to lift clear
-       * is a full-speed plunge through the board before any probe has run. That
-       * is not hypothetical: it destroyed a tool and a plate on Mesh, which is
-       * why no probe routine in any of these apps commands an absolute Z any
-       * more.
-       *
-       * The height the tool starts at is the operator's, and each lift below
-       * tracks the surface it just measured.
-       */
       await this.sendProgram(retractProgram(clearance));
 
       const points: ProbePoint[][] = [];
@@ -1124,14 +1057,10 @@ export class WebSerialManager extends GrblMachine<MachineState> {
         const y = opts.minY + r * stepY;
 
         for (let c = 0; c < cols; c++) {
-          // Serpentine: reverse alternate rows so the head never traverses the
-          // whole board between points.
           const colIdx = r % 2 === 0 ? c : cols - 1 - c;
           const x = opts.minX + colIdx * stepX;
 
-          // XY only: no Z word, so the tool crosses at the height the last
-          // lift left it, which tracks the copper rather than a datum.
-          await this.sendLine(`G0 X${x.toFixed(3)} Y${y.toFixed(3)} F${travelFeed}`);
+          await this.sendLine(`G0 X${x.toFixed(3)} Y${y.toFixed(3)}`);
           const contact = await this.probeDown(probeDepth, probeFeed);
           await this.sendProgram(retractProgram(clearance));
 
@@ -1148,89 +1077,46 @@ export class WebSerialManager extends GrblMachine<MachineState> {
         points.push(rowPoints);
       }
 
-      // Re-probe the point the mesh started on. One reading per point is a
-      // measurement with nothing to check it against; this second reading of a
-      // known spot is the only number in the whole pipeline that says how much
-      // the machine's own scatter — trigger repeatability, backlash, a frame
-      // that shifted and lost steps part way round — is worth. The isolation
-      // depth budget is spent against exactly that, and it used to be a
-      // constant somebody picked.
+      // Re-probe the first point to measure repeatability. The loop above
+      // already retracted `clearance` after the last point, so do not retract
+      // a second time (which would put the bit 2*clearance up and cause ALARM:5).
       const first = points[0][0];
-      // Relative, as above: a fixed-depth probe follows this move, and an
-      // absolute Z before a probe is the plunge this routine refuses to make.
-      await this.sendProgram(retractProgram(clearance));
-      await this.sendLine(`G0 X${first.x.toFixed(3)} Y${first.y.toFixed(3)} F${travelFeed}`);
+      await this.sendLine(`G0 X${first.x.toFixed(3)} Y${first.y.toFixed(3)}`);
       const recheck = await this.probeDown(probeDepth, probeFeed);
       const recheckZ = workOffset ? round3(recheck.z - workOffset.z) : recheck.z;
       const verifyDeviationMm = Math.abs(round3(recheckZ - first.z));
 
-      // The last move of the routine, with no probe left to follow it, so this
-      // one really is just a retract — clamped like any other.
       const finalClearZ = await this.clampedRetractZ(clearance * 2);
-      await this.sendLine(`G0 Z${finalClearZ.toFixed(3)} F${travelFeed}`);
-      await this.sendLine(`G0 X${opts.minX.toFixed(3)} Y${opts.minY.toFixed(3)} F${travelFeed}`);
+      await this.sendLine(`G0 Z${finalClearZ.toFixed(3)}`);
+      await this.sendLine(`G0 X${opts.minX.toFixed(3)} Y${opts.minY.toFixed(3)}`);
       await this.drain();
 
       const grid = gridFromPoints(points);
       if (!grid) throw new Error('Probe produced too few points to interpolate');
       grid.verifyDeviationMm = verifyDeviationMm;
 
-      // A machine that cannot find the same spot twice cannot be levelled to,
-      // and a map built from single readings hides that completely.
       if (verifyDeviationMm > MAX_PROBE_SCATTER_MM) {
         throw new Error(
-          `Re-probing the first point read ${verifyDeviationMm.toFixed(3)}mm away from its ` +
-            'first reading, which is more scatter than a height map can be built on. Check the ' +
-            'continuity clip for an intermittent contact, the collet for a slipping bit, and ' +
-            'the Z axis for lost steps or backlash.'
+          `Probe repeatability too high (${verifyDeviationMm.toFixed(3)}mm) — check clip, collet, or Z backlash.`
         );
       }
 
       if (!workOffset) {
-        // No WCO ever arrived, so work space is unknown and the readings are
-        // raw machine heights. Falling back to the origin corner keeps the
-        // *shape* of the board, but pins the map to whatever that one probe
-        // read rather than to the plane the operator zeroed on.
         return normalizeGrid(grid);
       }
 
-      // A heightmap describes a board's warp — tenths of a millimetre. A whole
-      // map sitting well off the Z0 plane means Z0 is not on this copper: a
-      // zero left over from another setup, a tool changed since, or a probe
-      // that was never done. Cutting with it would offset the entire job by
-      // that amount, so it is refused rather than streamed.
       const stats = getGridStats(grid);
       const bias = Math.max(Math.abs(stats.minZ), Math.abs(stats.maxZ));
       if (bias > MAX_SURFACE_OFFSET_MM) {
         throw new Error(
-          `The probed surface sits ${bias.toFixed(2)}mm from work Z0, which is far more than a ` +
-            'board warps. Work Z0 is not on this copper — zero Z on the surface with the bit ' +
-            'you are about to cut with, then probe again.'
+          `Probed surface is ${bias.toFixed(2)}mm off Z0. Re-probe Z0 on the copper and try again.`
         );
       }
 
-      // The gross check above only catches a Z0 left over from another setup.
-      // The quiet failure is smaller and worse: a map that is the right *shape*
-      // but sits bodily off the Z0 plane, because Z0 was set against a stale
-      // map's offset rather than on the copper. warpGcode adds this map to
-      // every commanded Z, so that body offset lifts the entire job — the
-      // isolation pass stops severing the foil while the map still looks
-      // perfectly reasonable.
-      //
-      // Zeroing on the copper puts Z0 *inside* the surface the map spans, so
-      // the map's range should straddle zero. It is allowed to clear it by the
-      // board's own warp — Z0 may have been set just outside the mesh, on a
-      // corner that really is the high or low point — plus a little for probe
-      // repeatability, and no further.
       const offPlane = gridOffPlaneMm(grid);
       if (offPlane > SURFACE_PLANE_TOLERANCE_MM) {
         throw new Error(
-          `The whole probed surface sits ${offPlane.toFixed(3)}mm ${stats.minZ > 0 ? 'above' : 'below'} ` +
-            `work Z0, but the board only varies by ${stats.spanZ.toFixed(3)}mm across the map. ` +
-            'That is a displaced Z0 rather than a warped board — it usually means Z was re-zeroed ' +
-            "while an older height map was loaded, which offsets the new zero by that map's " +
-            'reading. Clear the height map, zero Z on the copper with the bit you are cutting ' +
-            'with, then probe again.'
+          `Probed surface sits ${offPlane.toFixed(3)}mm ${stats.minZ > 0 ? 'above' : 'below'} Z0. Clear the map, re-probe Z0 on the copper, and probe again.`
         );
       }
 

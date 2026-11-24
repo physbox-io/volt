@@ -20,7 +20,7 @@ export const ProbeCircuitStatus: React.FC<ProbeCircuitStatusProps> = ({ active, 
     return (
       <div className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
         <Zap className="w-3.5 h-3.5" />
-        Probe circuit closed — the controller sees the bit on the copper.
+        Probe contact detected.
       </div>
     );
   }
@@ -28,18 +28,14 @@ export const ProbeCircuitStatus: React.FC<ProbeCircuitStatusProps> = ({ active, 
     return (
       <div className="flex items-center gap-1.5 text-[10px] text-emerald-700 dark:text-emerald-400">
         <Check className="w-3.5 h-3.5" />
-        Probe circuit proved this connection.
+        Probe circuit ready.
       </div>
     );
   }
   return (
     <div className="flex items-start gap-1.5 text-[10px] text-amber-700 dark:text-amber-300 leading-snug">
       <Zap className="w-3.5 h-3.5 shrink-0 mt-px" />
-      <span>
-        Probe circuit not yet proved. Clip the continuity lead on and touch the bit to the copper
-        by hand until this turns green — probing is refused until then, because a probe only
-        stops when that circuit closes.
-      </span>
+      <span>Touch bit to copper with clip attached to test probe.</span>
     </div>
   );
 };
