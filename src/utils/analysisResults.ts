@@ -79,14 +79,20 @@ export function buildBodeTrace(result: SpiceComplexResult | null | undefined, ne
     freqHz.push(f);
     magDb.push(mag > 0 ? Math.max(-200, 20 * Math.log10(mag)) : -200);
 
-    const raw = (Math.atan2(img, real) * 180) / Math.PI;
-    if (prevRaw !== null) {
-      const step = raw - prevRaw;
-      if (step > 180) turns -= 1;
-      else if (step < -180) turns += 1;
+    if (mag < 1e-15) {
+      // Hold previous phase across exact transmission zeros so atan2(0, 0) = 0
+      // does not inject a spurious ±360° turn into subsequent frequencies.
+      phaseDeg.push(phaseDeg.length > 0 ? phaseDeg[phaseDeg.length - 1] : 0);
+    } else {
+      const raw = (Math.atan2(img, real) * 180) / Math.PI;
+      if (prevRaw !== null) {
+        const step = raw - prevRaw;
+        if (step > 180) turns -= 1;
+        else if (step < -180) turns += 1;
+      }
+      prevRaw = raw;
+      phaseDeg.push(raw + turns * 360);
     }
-    prevRaw = raw;
-    phaseDeg.push(raw + turns * 360);
   }
 
   return { freqHz, magDb, phaseDeg };
@@ -116,7 +122,8 @@ export function cornerFrequencyHz(trace: BodeTrace | null): number | null {
       if (prev < 0 || prev >= trace.magDb.length) continue;
       const a = trace.magDb[prev];
       const b = trace.magDb[i];
-      if (a > target && b <= target) {
+      if (a >= target && b <= target && a > b) {
+        if (a === target) return trace.freqHz[prev];
         // Interpolated in log frequency, which is the axis it is read on.
         const fa = Math.log10(Math.max(trace.freqHz[prev], 1e-12));
         const fb = Math.log10(Math.max(trace.freqHz[i], 1e-12));

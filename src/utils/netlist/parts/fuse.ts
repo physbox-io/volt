@@ -36,7 +36,7 @@ export const fuse: PartEmitter = {
     const g = `int_${id}_g`;
     const in2 = rating * rating;
     const i = `(V(${a}, ${b}) * V(${g}))`;
-    return `B_${id}_m ${melted} 0 V = 1 / (1 + exp(-(V(${h}) - ${i2t}) / ${i2t * 0.001}))\n`
+    return `B_${id}_m ${melted} 0 V = 0.5 * (1 + tanh((V(${h}) - ${i2t}) / ${i2t * 0.002}))\n`
       + `B_${id}_g ${g} 0 V = ${1 / coldR} * (1 - V(${melted})) + 1e-9\n`
       + `B_${id} ${a} ${b} I = ${i}\n`
       + `C_${id}_h ${h} 0 1\n`

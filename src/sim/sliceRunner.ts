@@ -6,8 +6,33 @@ import { hashDrives } from '../utils/mcu';
 import { runSketches, type PWLPoint } from '../utils/mcu';
 import type { HILMemoizer } from '../utils/hilMemoizer';
 import type { SpiceResult } from '../types/simulation';
+import { getEffectiveMcuConfig } from '../utils/mcuConfig';
 import { HELTEC_V4_GPIO_PINS } from '../components/nodes/partDefaults';
 import { chooseMaxStepMs, encodePinEdges, trackHalfPeriod, type Hold } from '../hil/pinEncoding';
+
+const VOLATILE_NODE_KEYS = new Set([
+  'pinVoltages', 'state', 'logs', 'voltage', 'voltageData', 'voltageData1', 'voltageData2',
+  'current_array', 'time_points', 'timePoints', 'segmentVoltages', 'segmentVoltageArrays',
+  'isSimulating', 'rpm', 'angleDeg', 'blown', 'signalValue', 'latchedHigh', 'brightness',
+  'isExploded', 'selected', 'hilStats', 'hilClearCacheRequested', 'isConnected', 'hilEnabled', 'hilError',
+]);
+
+/** Lightweight deterministic fingerprint of circuit topology & non-volatile part parameters. */
+function circuitFingerprint(nodes: Node[], edges: Edge[]): string {
+  const nParts = nodes.map(n => {
+    const data = (n.data || {}) as Record<string, unknown>;
+    const keys = Object.keys(data).filter(k => !VOLATILE_NODE_KEYS.has(k)).sort();
+    const fields = keys.map(k => {
+      const v = data[k];
+      return `${k}:${typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v)}`;
+    });
+    return `${n.id}|${n.type ?? ''}|${fields.join(',')}`;
+  }).sort();
+  const eParts = edges
+    .map(e => `${e.source}:${e.sourceHandle ?? ''}->${e.target}:${e.targetHandle ?? ''}`)
+    .sort();
+  return `${nParts.join(';')}#${eParts.join(';')}`;
+}
 
 /**
  * One step of a sliced run: the circuit, the state the last slice ended on and
@@ -26,6 +51,8 @@ export type SliceState = {
   prevInputs: Record<string, number>;
   /** Each digital_out pin's tracked half-period, ms, which sets the step size. */
   halfPeriods: Record<string, number>;
+  /** Last slice's net map, for stripping stepped board input nets and resolving indirect MCU wiring. */
+  portToNet?: Record<string, string>;
 };
 
 export const initialSliceState = (): SliceState => ({ sim: {}, prevInputs: {}, halfPeriods: {} });
@@ -67,21 +94,48 @@ export async function runSlice(state: SliceState, input: SliceInput, { solve, me
 
   const maxStepMs = chooseMaxStepMs(state.halfPeriods, sliceMs, nodes.some(n => n.type === 'speaker'));
 
-  // A board pin wired straight to an MCU pin is that MCU's input, ramped from
-  // the last reading to this one across the slice.
+  // A board pin wired to any MCU pin (in either edge direction, or sharing a net
+  // from the prior slice) is that MCU's input, ramped from the last reading to this one.
   const mcuWaveforms: Record<string, Record<string, PWLPoint[]>> = {};
   let prevInputs = state.prevInputs;
-  const mcuNode = nodes.find(n => n.type === 'mcu');
-  if (mcuNode) {
-    mcuWaveforms[mcuNode.id] = {};
+  const mcuNodes = nodes.filter(n => n.type === 'mcu');
+  if (mcuNodes.length > 0) {
+    const mcuById = new Map(mcuNodes.map(n => [n.id, n]));
+    for (const mcuNode of mcuNodes) mcuWaveforms[mcuNode.id] = {};
+
+    const assignRamp = (mcuId: string, mcuPin: string, boardPin: string) => {
+      const volt = inputs[boardPin] ?? 0.0;
+      const prevVolt = state.prevInputs[boardPin] ?? volt;
+      mcuWaveforms[mcuId][mcuPin] = [{ t: 0, v: prevVolt }, { t: sliceMs, v: volt }];
+    };
+
+    // Direct edges in either direction (board -> mcu or mcu -> board)
     for (const edge of edges) {
-      if (edge.source !== boardId || edge.target !== mcuNode.id) continue;
-      const boardPin = edge.sourceHandle;
-      const mcuPin = edge.targetHandle;
-      if (boardPin && mcuPin && boardPin.startsWith('GPIO_')) {
-        const volt = inputs[boardPin] ?? 0.0;
-        const prevVolt = state.prevInputs[boardPin] ?? volt;
-        mcuWaveforms[mcuNode.id][mcuPin] = [{ t: 0, v: prevVolt }, { t: sliceMs, v: volt }];
+      if (edge.source === boardId && mcuById.has(edge.target)) {
+        const boardPin = edge.sourceHandle;
+        const mcuPin = edge.targetHandle;
+        if (boardPin && mcuPin && boardPin.startsWith('GPIO_')) assignRamp(edge.target, mcuPin, boardPin);
+      } else if (edge.target === boardId && mcuById.has(edge.source)) {
+        const boardPin = edge.targetHandle;
+        const mcuPin = edge.sourceHandle;
+        if (boardPin && mcuPin && boardPin.startsWith('GPIO_')) assignRamp(edge.source, mcuPin, boardPin);
+      }
+    }
+
+    // Indirect connections (via junctions or net labels) resolved from last slice's portToNet
+    if (state.portToNet) {
+      const netToBoardPin = new Map<string, string>();
+      for (const pinId of HELTEC_V4_GPIO_PINS) {
+        const net = state.portToNet[`${boardId}-${pinId}`];
+        if (net && net !== '0') netToBoardPin.set(net, pinId);
+      }
+      for (const mcuNode of mcuNodes) {
+        for (const pin of getEffectiveMcuConfig(mcuNode.data).pins) {
+          if (mcuWaveforms[mcuNode.id][pin.id]) continue;
+          const net = state.portToNet[`${mcuNode.id}-${pin.id}`];
+          const boardPin = net ? netToBoardPin.get(net) : undefined;
+          if (boardPin) assignRamp(mcuNode.id, pin.id, boardPin);
+        }
       }
     }
     prevInputs = { ...inputs };
@@ -97,12 +151,18 @@ export async function runSlice(state: SliceState, input: SliceInput, { solve, me
   const clock = dependsOnTime(nodes) ? `@${simTime(state.sim).toFixed(6)}` : '';
   const drive = (Object.keys(sketches.drives).length > 0 ? hashDrives(sketches.drives) : '') + clock;
   const circuitState = withoutTime(state.sim);
+  const cktKey = circuitFingerprint(nodes, edges);
 
-  const cached = memoizer.get(inputs, circuitState, sliceMs, maxStepMs, drive);
+  const cached = memoizer.get(inputs, circuitState, sliceMs, maxStepMs, drive, cktKey);
   if (cached) {
     // A hit from another time moves the clock on from this one.
     return {
-      state: { sim: { ...cached.nextICs, [SIM_TIME]: simTime(state.sim) + sliceMs / 1000 }, prevInputs, halfPeriods: { ...cached.halfPeriods } },
+      state: {
+        sim: { ...cached.nextICs, [SIM_TIME]: simTime(state.sim) + sliceMs / 1000 },
+        prevInputs,
+        halfPeriods: { ...cached.halfPeriods },
+        portToNet: cached.portToNet,
+      },
       nodes,
       result: cached.result,
       index: cached.index,
@@ -111,8 +171,21 @@ export async function runSlice(state: SliceState, input: SliceInput, { solve, me
     };
   }
 
+  // Strip nets driven by stepped Heltec input voltage sources so .ic does not fight V_heltec_* under uic.
+  const simForSolve: SimState = { ...state.sim };
+  const boardPins = (board.data.pins as Record<string, string>) || {};
+  if (state.portToNet) {
+    for (const pinId of HELTEC_V4_GPIO_PINS) {
+      const mode = boardPins[pinId] || 'digital_in';
+      if (mode === 'analog_in' || mode === 'digital_in') {
+        const net = state.portToNet[`${boardId}-${pinId}`];
+        if (net && net !== '0') delete simForSolve[net.toLowerCase()];
+      }
+    }
+  }
+
   const { netlist, portToNet } = generateSpiceNetlist(nodes, edges, {
-    simLength: sliceMs / 1000, mcuDrives: sketches.drives, initialConditions: state.sim, hilMaxStepMs: maxStepMs, realtime: true,
+    simLength: sliceMs / 1000, mcuDrives: sketches.drives, initialConditions: simForSolve, hilMaxStepMs: maxStepMs, realtime: true,
   });
   const result = await solve(netlist);
   const resultIndex = buildNetlistResultIndex(result);
@@ -120,9 +193,8 @@ export async function runSlice(state: SliceState, input: SliceInput, { solve, me
 
   const outputs: Record<string, Hold[]> = {};
   const halfPeriods = { ...state.halfPeriods };
-  const pins = (board.data.pins as Record<string, string>) || {};
   for (const pinId of HELTEC_V4_GPIO_PINS) {
-    if (pins[pinId] !== 'digital_out') continue;
+    if (boardPins[pinId] !== 'digital_out') continue;
     const trace = findNetGraph(result, portToNet[`${boardId}-${pinId}`], resultIndex);
     const { seq, shortestPulseUs } = encodePinEdges(trace, sliceMs, maxStepMs);
     if (shortestPulseUs !== null) halfPeriods[pinId] = trackHalfPeriod(halfPeriods[pinId], shortestPulseUs);
@@ -131,7 +203,7 @@ export async function runSlice(state: SliceState, input: SliceInput, { solve, me
 
   memoizer.set(inputs, circuitState, sliceMs, maxStepMs, {
     result, index: resultIndex, portToNet, nextICs: sim, outputs, halfPeriods: { ...halfPeriods },
-  }, drive);
+  }, drive, cktKey);
 
-  return { state: { sim, prevInputs, halfPeriods }, nodes, result, index: resultIndex, portToNet, outputs };
+  return { state: { sim, prevInputs, halfPeriods, portToNet }, nodes, result, index: resultIndex, portToNet, outputs };
 }

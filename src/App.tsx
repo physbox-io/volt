@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { Suspense, lazy, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   applyNodeChanges,
   applyEdgeChanges,
@@ -16,7 +16,7 @@ import { generateSpiceNetlist } from './utils/spice';
 import { readEndState } from './utils/simState';
 import { parseEngValue } from './utils/engValue';
 import { getEffectiveMcuConfig } from './utils/mcuConfig';
-import { findNetGraph } from './utils/netlistResult';
+import { buildNetlistResultIndex, findNetGraph } from './utils/netlistResult';
 import { isPortConnected } from './utils/graphTopology';
 import {
   copySelection,
@@ -45,34 +45,26 @@ import { SIGN_IN_REQUESTED_EVENT, SIGNED_IN_EVENT, useSuiteDarkMode } from '@phy
 import { MachineStatusBar } from './components/MachineStatusBar';
 import { JobInterruptions } from './components/JobInterruptions';
 import { Play, Square, Trash2, Info, Menu, Settings, Save, Download, Upload, Undo, Redo, Crosshair, Sparkles, Sun, Moon, Zap, Activity, Hammer, PanelRight, Share2, Copy, Check, Gauge, Waves, SlidersHorizontal, Cable, FolderOpen, ChevronDown } from 'lucide-react';
-import { CircuitBrowser } from './components/CircuitBrowser';
 import { firstBrowserTab, type CircuitBrowserTab } from './utils/recentCircuits';
-import AICopilotPanel from './components/AICopilotPanel';
-import { ExportPcbModal } from './components/ExportPcbModal';
 import { watchForInterruptedJob } from './utils/jobRestore';
 import { playbackTicker } from './utils/playbackTicker';
 import { presets, DEFAULT_PRESET_KEY } from './utils/presets';
 import { EdgePathProvider } from './components/AuraEdge';
-import { SettingsModal } from './components/SettingsModal';
 import { UserProfileButton } from './components/UserProfileButton';
 import { AgentMachineBanner } from './components/AgentMachineBanner';
 import { JobCompleteNotice } from './components/JobCompleteNotice';
 import { loadSettings, saveSettings, loadMachiningSettings, loadLayoutSnapshot, type CircuitPreset } from './utils/storage';
 import { loadCamSetup } from './utils/pcbTooling';
 import { cloudAutosave } from './utils/cloudDocuments';
-import { useMCPBridge } from './hooks/useMCPBridge';
 import { usePresets } from './hooks/usePresets';
 import { useCircuitHistory } from './hooks/useCircuitHistory';
 import { useUnsavedWorkPrompt } from './hooks/useUnsavedWorkPrompt';
 import { useNoteCards } from './hooks/useNoteCards';
 import { useCircuitFile } from './hooks/useCircuitFile';
 import { Logo } from './components/Logo';
-import { DocsModal } from './components/DocsModal';
-import { NoteCardOverlay } from './components/NoteCardOverlay';
 import { Sidebar } from './components/Sidebar';
 import { PropertiesPanel } from './components/PropertiesPanel';
 import { FlowArea } from './components/FlowArea';
-import { ProbeTooltip } from './components/ProbeTooltip';
 import { useHil } from './hooks/useHil';
 import { useMeshLink } from './hooks/useMeshLink';
 import { MeshLinkContext } from './components/meshLinkContext';
@@ -99,16 +91,48 @@ import { readOperatingPoint } from './utils/analysisResults';
 import { unpackResult } from './utils/simTransfer';
 import { withoutRunReadings } from './utils/runReadings';
 import { AdvisoryPanel } from './components/AdvisoryPanel';
-import { BodePanel, type StepOverride, type SweepParams } from './components/BodePanel';
-import { WelcomeTourOverlay } from './components/WelcomeTourOverlay';
+import type { StepOverride, SweepParams } from './components/BodePanel';
 import { parseVoltDeepLink, stripVoltDeepLinkSearch, START_TOUR_EVENT } from './utils/deepLink';
 import { applyParameterValue, buildSweepableTargets } from './utils/parameterSweep';
+
+const ExportPcbModal = lazy(() =>
+  import('./components/ExportPcbModal').then(m => ({ default: m.ExportPcbModal }))
+);
+const DocsModal = lazy(() =>
+  import('./components/DocsModal').then(m => ({ default: m.DocsModal }))
+);
+const BodePanel = lazy(() =>
+  import('./components/BodePanel').then(m => ({ default: m.BodePanel }))
+);
+const AICopilotPanel = lazy(() => import('./components/AICopilotPanel'));
+const CircuitBrowser = lazy(() =>
+  import('./components/CircuitBrowser').then(m => ({ default: m.CircuitBrowser }))
+);
+const SettingsModal = lazy(() =>
+  import('./components/SettingsModal').then(m => ({ default: m.SettingsModal }))
+);
+const NoteCardOverlay = lazy(() =>
+  import('./components/NoteCardOverlay').then(m => ({ default: m.NoteCardOverlay }))
+);
+const ProbeTooltip = lazy(() =>
+  import('./components/ProbeTooltip').then(m => ({ default: m.ProbeTooltip }))
+);
+const WelcomeTourOverlay = lazy(() =>
+  import('./components/WelcomeTourOverlay').then(m => ({ default: m.WelcomeTourOverlay }))
+);
+const McpBridgeMount = lazy(() => import('./components/McpBridgeMount'));
 
 
 
 let simulationWorker: Worker | null = null;
 type SpiceRun<T> = { result: T; messages: string[] };
-const pendingSimulations = new Map<string, { resolve: (res: SpiceRun<never>) => void; reject: (err: unknown) => void }>();
+type PendingSim = {
+  resolve: (res: SpiceRun<never>) => void;
+  reject: (err: unknown) => void;
+  timer?: ReturnType<typeof setTimeout>;
+};
+const pendingSimulations = new Map<string, PendingSim>();
+const DEFAULT_WORKER_TIMEOUT_MS = 60_000;
 
 const getSimulationWorker = () => {
   if (!simulationWorker) {
@@ -118,6 +142,7 @@ const getSimulationWorker = () => {
       if (type === 'RESULT') {
         const pending = pendingSimulations.get(id);
         if (pending) {
+          if (pending.timer !== undefined) clearTimeout(pending.timer);
           pendingSimulations.delete(id);
           if (ok) {
             pending.resolve({ result: unpackResult(result), messages: messages ?? [] } as SpiceRun<never>);
@@ -135,13 +160,14 @@ const getSimulationWorker = () => {
   return simulationWorker;
 };
 
-const terminateWorker = () => {
+const terminateWorker = (reason = "Simulation worker terminated.") => {
   if (simulationWorker) {
     simulationWorker.terminate();
     simulationWorker = null;
   }
   for (const pending of pendingSimulations.values()) {
-    pending.reject(new SpiceRunError("Simulation worker terminated."));
+    if (pending.timer !== undefined) clearTimeout(pending.timer);
+    pending.reject(new SpiceRunError(reason, [reason]));
   }
   pendingSimulations.clear();
 };
@@ -162,11 +188,28 @@ const runSimInWorker = <T = SpiceResult,>(
 ): Promise<SpiceRun<T>> => {
   return new Promise((resolve, reject) => {
     const id = Math.random().toString(36).slice(2);
-    pendingSimulations.set(id, { resolve: resolve as (res: SpiceRun<never>) => void, reject });
+    const effectiveTimeoutMs = timeoutMs ?? DEFAULT_WORKER_TIMEOUT_MS;
+    const entry: PendingSim = {
+      resolve: resolve as (res: SpiceRun<never>) => void,
+      reject,
+    };
+    if (effectiveTimeoutMs > 0 && Number.isFinite(effectiveTimeoutMs)) {
+      entry.timer = setTimeout(() => {
+        if (!pendingSimulations.has(id)) return;
+        pendingSimulations.delete(id);
+        // Synchronous WASM calls block the worker's event loop, so the only way
+        // to abort a wedged solve is to terminate the worker from the main thread.
+        terminateWorker('TIMED_OUT');
+        reject(new SpiceRunError('TIMED_OUT', ['TIMED_OUT']));
+      }, effectiveTimeoutMs);
+    }
+    pendingSimulations.set(id, entry);
     try {
       const worker = getSimulationWorker();
-      worker.postMessage({ type: 'RUN', id, netlist, analysis, timeoutMs });
+      worker.postMessage({ type: 'RUN', id, netlist, analysis, timeoutMs: effectiveTimeoutMs });
     } catch (err) {
+      if (entry.timer !== undefined) clearTimeout(entry.timer);
+      pendingSimulations.delete(id);
       reject(err);
     }
   });
@@ -190,8 +233,8 @@ const makeNameOf = (nodes: Node[]) => {
 };
 
 export default function App() {
-  // ── Initialise from localStorage ────────────────────────────────────────────
-  const savedSettings = loadSettings();
+  // ── Initialise from localStorage (once, not on every render) ────────────────
+  const [savedSettings] = useState(() => loadSettings());
 
   const [darkMode, toggleDarkMode] = useSuiteDarkMode('circuit_dark_mode');
 
@@ -328,7 +371,13 @@ export default function App() {
     [meshLink.status, meshLink.channels, meshLink.scene, meshLink.read],
   );
 
+  const simSeqRef = useRef(0);
+
   const stopSimulation = () => {
+    simSeqRef.current++;
+    if (simInFlightRef.current) {
+      terminateWorker('Simulation cancelled.');
+    }
     setIsSimulating(false);
     setIsSpiceRunning(false);
     playbackTicker.stop();
@@ -407,14 +456,31 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Preload SPICE simulation module on mount
+  // Defer SPICE simulation worker preload until idle so it doesn't compete with
+  // initial paint; skip eager preload on constrained connections.
   useEffect(() => {
-    try {
-      const worker = getSimulationWorker();
-      worker.postMessage({ type: 'INIT' });
-    } catch (e) {
-      console.error("[App] Failed to preload simulation worker:", e);
+    const conn = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+    if (conn?.saveData || conn?.effectiveType === '2g' || conn?.effectiveType === 'slow-2g') {
+      return;
     }
+    const preload = () => {
+      try {
+        const worker = getSimulationWorker();
+        worker.postMessage({ type: 'INIT' });
+      } catch (e) {
+        console.error('[App] Failed to preload simulation worker:', e);
+      }
+    };
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(preload, { timeout: 2500 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const timer = setTimeout(preload, 1500);
+    return () => clearTimeout(timer);
   }, []);
 
   /*
@@ -511,6 +577,7 @@ export default function App() {
   const simInFlightRef = useRef(false);
 
   const runSimulation = async (nodesOverride?: Node[], customICs?: Record<string, number>) => {
+    const seq = ++simSeqRef.current;
     simInFlightRef.current = true;
     try {
       const baseNodes = nodesOverride || nodes;
@@ -545,8 +612,9 @@ export default function App() {
       setIsSimulating(true);
       // Whatever the last solve complained about was about the last circuit.
       setRunAdvisories([]);
-      // Yield to allow React/browser to render the "SPICE Simulating" notice
-      await new Promise(resolve => setTimeout(resolve, 50));
+      // Yield one frame so React paints the "SPICE Simulating" notice without adding 50ms latency.
+      await new Promise(resolve => setTimeout(resolve, 0));
+      if (seq !== simSeqRef.current) return { ok: false };
 
       const sketches = runSketches(currentNodes, simLength);
       let mcuLogs = sketches.logs;
@@ -562,10 +630,12 @@ export default function App() {
       });
 
       const firstRun = await runSimInWorker(netlist);
+      if (seq !== simSeqRef.current) return { ok: false };
       let result = firstRun.result;
       let runMessages = firstRun.messages;
 
       if (needsTwoPass) {
+         const pass1Index = buildNetlistResultIndex(result);
          const mcuWaveforms: Record<string, Record<string, PWLPoint[]>> = {};
          for (const mcu of mcuNodes) {
            mcuWaveforms[mcu.id] = {};
@@ -573,7 +643,7 @@ export default function App() {
            for (const pin of mcuPins) {
              const pinId = pin.id;
              const net = portToNet[`${mcu.id}-${pinId}`];
-             const graph = findNetGraph(result, net);
+             const graph = findNetGraph(result, net, pass1Index);
              if (graph) {
                mcuWaveforms[mcu.id][pinId] = graph.timestamps_ms.map((t: number, i: number) => ({
                  t, v: graph.voltage_levels[i]
@@ -593,11 +663,13 @@ export default function App() {
          portToNet = pass2.portToNet;
          netlistPins = pass2.pins;
          const secondRun = await runSimInWorker(netlist);
+         if (seq !== simSeqRef.current) return { ok: false };
          result = secondRun.result;
          runMessages = secondRun.messages;
       }
       
-      const findGraph = (netName: string) => findNetGraph(result, netName);
+      const resultIndex = buildNetlistResultIndex(result);
+      const findGraph = (netName: string) => findNetGraph(result, netName, resultIndex);
 
       const updatedNodes = currentNodes.map(n => {
         const newNode: Node = { ...n };
@@ -807,6 +879,9 @@ export default function App() {
       };
       
     } catch (e) {
+      if (seq !== simSeqRef.current) {
+        return { ok: false };
+      }
       console.error("Simulation failed:", e);
       setIsSpiceRunning(false);
       setIsSimulating(false);
@@ -839,12 +914,15 @@ export default function App() {
         ercAdvisories: currentErc,
       };
     } finally {
-      simInFlightRef.current = false;
-      // Values moved on while this solve was running; take the newest ones.
+      if (seq === simSeqRef.current) {
+        simInFlightRef.current = false;
+      }
+      // Values moved on while this solve was running; take the newest ones via
+      // runSimulationRef so we never re-simulate a stale closure.
       if (rerunPendingRef.current) {
         rerunPendingRef.current = false;
         if (isSimulatingRef.current && !hilRunningRef.current) {
-          setTimeout(() => void runSimulation(), 0);
+          setTimeout(() => void runSimulationRef.current(), 0);
         }
       }
     }
@@ -1629,24 +1707,8 @@ export default function App() {
   // A cavity Mesh measured, handed over unlinked: kept for the speaker inspector to apply.
   useEffect(() => { captureCavityFragment(); }, []);
 
-  useMCPBridge({
-    nodes, edges, isSimulating, selectedPreset, probeMode,
-    advisories,
-    designators,
-    runSimulation, stopSimulation, resetSimulation,
-    runOperatingPoint,
-    runAcSweep,
-    runTransientStep,
-    sweepableTargets,
-    probePoints,
-    sweepSources,
-    setProbeMode,
-    setNodes,
-    setEdges,
-    loadPreset,
-    onTransactionStart: () => setMcpActiveCount(prev => prev + 1),
-    onTransactionEnd: () => setMcpActiveCount(prev => Math.max(0, prev - 1)),
-  });
+  const mcpOnTransactionStart = useCallback(() => setMcpActiveCount(prev => prev + 1), []);
+  const mcpOnTransactionEnd = useCallback(() => setMcpActiveCount(prev => Math.max(0, prev - 1)), []);
 
   /*
    * Memoised: the value is read by every symbol on the canvas, so a fresh object
@@ -2072,34 +2134,42 @@ export default function App() {
             onClose={() => setIsPropertiesRequested(false)}
           />
         )}
-        {noteCards.map(card => (
-          <NoteCardOverlay
-            key={card.id}
-            card={card}
-            isEditing={editingCardId === card.id}
-            onToggleEdit={() => toggleEdit(card.id)}
-            onToggleMinimize={() => toggleMinimize(card.id)}
-            onMarkdownChange={(md) => updateMarkdown(card.id, md)}
-            onClose={() => closeCard(card.id)}
-            onMove={(x, y) => moveCard(card.id, x, y)}
-          />
-        ))}
+        {noteCards.length > 0 && (
+          <Suspense fallback={null}>
+            {noteCards.map(card => (
+              <NoteCardOverlay
+                key={card.id}
+                card={card}
+                isEditing={editingCardId === card.id}
+                onToggleEdit={() => toggleEdit(card.id)}
+                onToggleMinimize={() => toggleMinimize(card.id)}
+                onMarkdownChange={(md) => updateMarkdown(card.id, md)}
+                onClose={() => closeCard(card.id)}
+                onMove={(x, y) => moveCard(card.id, x, y)}
+              />
+            ))}
+          </Suspense>
+        )}
         {showAICopilot && (
-          <AICopilotPanel
-            nodes={nodes}
-            edges={edges}
-            setNodes={setNodes}
-            setEdges={setEdges}
-            onClose={() => setShowAICopilot(false)}
-          />
+          <Suspense fallback={null}>
+            <AICopilotPanel
+              nodes={nodes}
+              edges={edges}
+              setNodes={setNodes}
+              setEdges={setEdges}
+              onClose={() => setShowAICopilot(false)}
+            />
+          </Suspense>
         )}
         {isPcbModalOpen && (
-          <ExportPcbModal
-            onClose={() => setIsPcbModalOpen(false)}
-            nodes={nodes}
-            edges={edges}
-            machineOnly={pcbModalOnMachine}
-          />
+          <Suspense fallback={null}>
+            <ExportPcbModal
+              onClose={() => setIsPcbModalOpen(false)}
+              nodes={nodes}
+              edges={edges}
+              machineOnly={pcbModalOnMachine}
+            />
+          </Suspense>
         )}
         {/* Share link report.
 
@@ -2244,27 +2314,30 @@ export default function App() {
             document.body
           )}
 
-        {isDocsOpen && <DocsModal onClose={() => setIsDocsOpen(false)} />}
-        {isSettingsOpen && (
-          <SettingsModal
-            onClose={() => setIsSettingsOpen(false)}
-            showAura={showAura}
-            setShowAura={setShowAura}
-          />
-        )}
-
-        <CircuitBrowser
-          tab={browserTab}
-          onTab={setBrowserTab}
-          onClose={closeBrowser}
-          userPresets={userPresets}
-          selectedPreset={selectedPreset}
-          onLoad={loadPreset}
-          onRename={renamePreset}
-          onDuplicate={duplicatePreset}
-          onDelete={deleteUserPreset}
-          onImportJson={importJson}
-        />
+        <Suspense fallback={null}>
+          {isDocsOpen && <DocsModal onClose={() => setIsDocsOpen(false)} />}
+          {isSettingsOpen && (
+            <SettingsModal
+              onClose={() => setIsSettingsOpen(false)}
+              showAura={showAura}
+              setShowAura={setShowAura}
+            />
+          )}
+          {browserTab !== null && (
+            <CircuitBrowser
+              tab={browserTab}
+              onTab={setBrowserTab}
+              onClose={closeBrowser}
+              userPresets={userPresets}
+              selectedPreset={selectedPreset}
+              onLoad={loadPreset}
+              onRename={renamePreset}
+              onDuplicate={duplicatePreset}
+              onDelete={deleteUserPreset}
+              onImportJson={importJson}
+            />
+          )}
+        </Suspense>
 
         {/* Save Circuit Dialog */}
         {isSaveDialogOpen && (
@@ -2311,24 +2384,26 @@ export default function App() {
           </div>
         )}
 
-        {isBodeOpen && (
-          <BodePanel
-            key={bodeStepMode ? 'step' : 'bode'}
-            sources={sweepSources}
-            probePoints={probePoints}
-            sweepableTargets={sweepableTargets}
-            runSweep={runAcSweep}
-            runTransientStep={runTransientStep}
-            initialStepMode={bodeStepMode}
-            darkMode={darkMode}
-            onClose={() => setIsBodeOpen(false)}
-          />
-        )}
+        <Suspense fallback={null}>
+          {isBodeOpen && (
+            <BodePanel
+              key={bodeStepMode ? 'step' : 'bode'}
+              sources={sweepSources}
+              probePoints={probePoints}
+              sweepableTargets={sweepableTargets}
+              runSweep={runAcSweep}
+              runTransientStep={runTransientStep}
+              initialStepMode={bodeStepMode}
+              darkMode={darkMode}
+              onClose={() => setIsBodeOpen(false)}
+            />
+          )}
 
-        {/* Probe Tooltip */}
-        {probeData && (
-          <ProbeTooltip probeData={probeData} isSimulating={isSimulating} onClose={() => setProbeData(null)} />
-        )}
+          {/* Probe Tooltip */}
+          {probeData && (
+            <ProbeTooltip probeData={probeData} isSimulating={isSimulating} onClose={() => setProbeData(null)} />
+          )}
+        </Suspense>
       </div>
 
       {/* Bottom Status Bar matching Etch */}
@@ -2497,7 +2572,33 @@ export default function App() {
       {/* A job that ran to its last line, wherever it was started from. */}
       <JobInterruptions onResumed={showMillWindow} />
       <JobCompleteNotice />
-      <WelcomeTourOverlay />
+      <Suspense fallback={null}>
+        <WelcomeTourOverlay />
+        <McpBridgeMount
+          nodes={nodes}
+          edges={edges}
+          isSimulating={isSimulating}
+          selectedPreset={selectedPreset}
+          probeMode={probeMode}
+          advisories={advisories}
+          designators={designators}
+          runSimulation={runSimulation}
+          stopSimulation={stopSimulation}
+          resetSimulation={resetSimulation}
+          runOperatingPoint={runOperatingPoint}
+          runAcSweep={runAcSweep}
+          runTransientStep={runTransientStep}
+          sweepableTargets={sweepableTargets}
+          probePoints={probePoints}
+          sweepSources={sweepSources}
+          setProbeMode={setProbeMode}
+          setNodes={setNodes}
+          setEdges={setEdges}
+          loadPreset={loadPreset}
+          onTransactionStart={mcpOnTransactionStart}
+          onTransactionEnd={mcpOnTransactionEnd}
+        />
+      </Suspense>
     </div>
     </CanvasStateProvider>
     </MeshLinkContext.Provider>

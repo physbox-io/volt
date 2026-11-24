@@ -295,19 +295,24 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], options: Netl
     return { netlist, portToNet, pins: [...pinsByPort.values()] };
   }
 
-  // Apply initial conditions if present
-  if (initialConditions && Object.keys(initialConditions).length > 0) {
-    const icParts = nodeVoltages(initialConditions)
-      .map(([net, val]) => `V(${net})=${val.toFixed(6)}`)
-      .join(' ');
-    if (icParts) {
-      netlist += `.ic ${icParts}\n`;
+  // Apply initial conditions if present (wrapped to stay under ngspice's ~1024-char line buffer)
+  const icEntries = nodeVoltages(initialConditions)
+    .filter(([, val]) => Number.isFinite(val))
+    .map(([net, val]) => `V(${net})=${val.toFixed(6)}`);
+  if (icEntries.length > 0) {
+    const IC_PER_LINE = 8;
+    for (let i = 0; i < icEntries.length; i += IC_PER_LINE) {
+      const prefix = i === 0 ? '.ic ' : '+ ';
+      netlist += `${prefix}${icEntries.slice(i, i + IC_PER_LINE).join(' ')}\n`;
     }
   }
 
   // Basic transient analysis (variable total)
-  // Audio circuits need much finer time steps for proper frequency resolution
-  const useUic = (initialConditions && Object.keys(initialConditions).length > 0) ? ' uic' : '';
+  // Audio circuits need much finer time steps for proper frequency resolution.
+  // Only enable `uic` when there is actual voltage or inductor state to seed
+  // (not when `initialConditions` carries only `@t`).
+  const hasInductorIc = Object.keys(initialConditions ?? {}).some(k => /^i\(l/.test(k));
+  const useUic = (icEntries.length > 0 || hasInductorIc) ? ' uic' : '';
   if (hasAudio) {
     // 0.05ms step → 20kHz Nyquist → captures full audio bandwidth
     netlist += `.tran 0.05m ${simLength}s 0 0.05m${useUic}\n`;
@@ -321,7 +326,21 @@ export function generateSpiceNetlist(nodes: Node[], edges: Edge[], options: Netl
   } else if (simResolution === 'high') {
     netlist += `.tran 1m ${simLength}s 0 0.1m${useUic}\n`;
   } else {
-    netlist += `.tran 1m ${simLength}s${useUic}\n`;
+    // Cap max internal step so fast sources don't alias, while keeping step count bounded.
+    let maxFreq = 0;
+    for (const n of nodes) {
+      if (n.type === 'acvoltage' || n.type === 'signalgen') {
+        const f = Number(n.data?.frequency);
+        if (Number.isFinite(f) && f > maxFreq) maxFreq = f;
+      }
+    }
+    if (maxFreq > 50) {
+      const tmax = Math.max(simLength / 2000, Math.min(1e-3, 1 / (20 * maxFreq)));
+      const tmaxStr = tmax < 1e-3 ? `${Number((tmax * 1e6).toPrecision(4))}u` : `${Number((tmax * 1e3).toPrecision(4))}m`;
+      netlist += `.tran 1m ${simLength}s 0 ${tmaxStr}${useUic}\n`;
+    } else {
+      netlist += `.tran 1m ${simLength}s${useUic}\n`;
+    }
   }
   netlist += `.end\n`;
 

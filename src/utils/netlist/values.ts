@@ -1,15 +1,44 @@
 /** Strip Unicode symbols from component labels to produce valid SPICE values.
- *  e.g. '47kΩ' → '47k', '10µF' / '10μF' → '10uF' */
+ *  e.g. '47kΩ' → '47k', '10µF' / '10μF' → '10uF', '10 kΩ' → '10k', '1F' → '1' */
 export function sanitizeSpiceValue(val: string): string {
-  // 1. Replace symbols
-  const cleaned = val.replace(/Ω/g, '').replace(/[µμ]/g, 'u').trim();
-  // 2. Extract leading numeric part with potential SI suffix (e.g. 10k, 4.7, 100u, 5V)
-  const match = cleaned.match(/^([-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?[a-zA-Z]*)/);
-  // A capital M is mega as people write it, and milli to SPICE, which ignores
-  // case: "1M" on a resistor simulated as a milliohm. "Meg" is already right.
-  if (match) return match[1].replace(/^([-+]?[0-9.]+(?:[eE][-+]?[0-9]+)?)M(?![eE][gG])/, '$1meg');
-  
+  // 1. Replace symbols and strip trailing unit words
+  const cleaned = val
+    .replace(/[Ωω]/g, '')
+    .replace(/[µμ]/g, 'u')
+    .replace(/(?:ohms?|hz)$/i, '')
+    .trim();
+  // 2. Extract leading numeric part with optional whitespace and SI suffix (e.g. 10k, 10 k, 4.7, 100u, 5V)
+  const match = cleaned.match(/^([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*([a-zA-Z]*)/);
+  if (match) {
+    const numPart = match[1];
+    let suffix = match[2];
+    // Bare capital 'F' means Farads, NOT SPICE femto (1e-15).
+    if (suffix === 'F') suffix = '';
+    // A capital M is mega as people write it, and milli to SPICE, which ignores
+    // case: "1M" on a resistor simulated as a milliohm. "Meg" is already right.
+    suffix = suffix.replace(/^M(?![eE][gG])/, 'meg');
+    return `${numPart}${suffix}`;
+  }
+
   return cleaned.replace(/[^\x20-\x7E]/g, '');
+}
+
+const VALID_SPICE_NUM = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?[a-zA-Z]*$/;
+
+/**
+ * Normalizes a component parameter (numeric field or label string) into a
+ * valid SPICE value token, falling back to `fallback` when missing/empty/NaN.
+ */
+export function spiceValue(primary: unknown, label: unknown, fallback: string): string {
+  if (typeof primary === 'number') {
+    return Number.isFinite(primary) ? String(primary) : fallback;
+  }
+  if (typeof primary === 'string' && primary.trim() !== '') {
+    const s = sanitizeSpiceValue(primary);
+    if (VALID_SPICE_NUM.test(s)) return s;
+  }
+  const fromLabel = sanitizeSpiceValue(String(label ?? ''));
+  return VALID_SPICE_NUM.test(fromLabel) ? fromLabel : fallback;
 }
 
 /**
@@ -42,7 +71,8 @@ export function pwlFrom(points: { t: number; v: number }[], t0: number): { t: nu
   if (k === 0) return points.map(p => ({ t: p.t - t0, v: p.v }));
   const a = points[k - 1];
   const b = points[k];
-  const v = a.v + ((t0 - a.t) / (b.t - a.t)) * (b.v - a.v);
+  const dt = b.t - a.t;
+  const v = dt > 0 ? a.v + ((t0 - a.t) / dt) * (b.v - a.v) : b.v;
   return [{ t: 0, v }, ...points.slice(k).map(p => ({ t: p.t - t0, v: p.v }))];
 }
 

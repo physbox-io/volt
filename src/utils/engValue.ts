@@ -12,6 +12,7 @@
  */
 const SUFFIXES: [string, number][] = [
   ['meg', 1e6],
+  ['t', 1e12],
   ['g', 1e9],
   ['k', 1e3],
   ['m', 1e-3],
@@ -19,6 +20,7 @@ const SUFFIXES: [string, number][] = [
   ['µ', 1e-6],
   ['n', 1e-9],
   ['p', 1e-12],
+  ['f', 1e-15],
 ];
 
 /**
@@ -29,13 +31,26 @@ export function parseEngValue(raw: string): number | null {
   // Greek mu (U+03BC) is what most keyboards and phones produce for "μF"; the
   // micro sign (U+00B5) is what the part libraries write. They look identical,
   // and reading one as a bare number turned "10μ" into ten farads.
-  const s = String(raw).trim().replace(/μ/g, 'µ').replace(/[ωΩfhva]$/i, '');
-  const m = /^(-?\d*\.?\d+)\s*([a-zA-Zµ]*)$/.exec(s);
+  const s = String(raw)
+    .trim()
+    .replace(/μ/g, 'µ')
+    .replace(/(?:ohms?|hz|[ωΩ])$/i, '')
+    .trim();
+  const m = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*([a-zA-Zµ]*)$/.exec(s);
   if (!m) return null;
   const n = parseFloat(m[1]);
   if (!Number.isFinite(n)) return null;
-  const suffix = m[2];
+  let suffix = m[2];
   if (!suffix) return n;
+
+  // Bare unit letter with no SI prefix: "1F" is 1 Farad (not 1 femto!), while
+  // lowercase "10f" is 10 femto. H, V, A are always bare units when alone.
+  if (suffix === 'F' || /^[hva]$/i.test(suffix)) return n;
+  // Strip a trailing unit letter when preceded by an SI prefix (e.g. "10uF" -> "u", "10fF" -> "f").
+  if (suffix.length > 1 && /[fhva]$/i.test(suffix)) {
+    suffix = suffix.slice(0, -1);
+  }
+
   /*
    * Case matters for M alone: "1M" is a megohm and "1m" a milliohm, as
    * everyone but SPICE writes them. SPICE ignores case and would read both as

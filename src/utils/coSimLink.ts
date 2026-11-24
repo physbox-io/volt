@@ -98,6 +98,8 @@ export const MESH_WINDOW_NAME = 'physbox-mesh-link';
 
 /** How often a live link checks that the Mesh window is still there. */
 export const HEARTBEAT_MS = 1000;
+/** How long `open()` waits for Mesh to answer HELLO with a CATALOGUE. */
+export const HANDSHAKE_TIMEOUT_MS = 20_000;
 
 /** True for a window this page may read, which a window still on about:blank is and a loaded Mesh is not. */
 function isBlank(win: Window): boolean {
@@ -131,6 +133,7 @@ export class MeshLink implements CoSimEndpoint {
   private seq = 0;
   private pending = new Map<number, { resolve: (s: Stepped) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   private helloTimer: ReturnType<typeof setInterval> | null = null;
+  private handshakeTimer: ReturnType<typeof setTimeout> | null = null;
   private listener = (evt: MessageEvent) => this.onMessage(evt);
   status: LinkStatus = 'closed';
   /** Why the last attempt ended before Mesh answered, if it did; cleared by `open`. */
@@ -171,6 +174,11 @@ export class MeshLink implements CoSimEndpoint {
     };
     hello();
     this.helloTimer = setInterval(hello, 500);
+    this.handshakeTimer = setTimeout(() => {
+      if (this.status !== 'opening') return;
+      this.failure = 'Mesh did not answer the handshake in time. Check that its tab is open and loaded.';
+      this.close();
+    }, HANDSHAKE_TIMEOUT_MS);
     this.changed();
     return true;
   }
@@ -200,6 +208,8 @@ export class MeshLink implements CoSimEndpoint {
   close(tellMesh = true): void {
     if (this.helloTimer) clearInterval(this.helloTimer);
     this.helloTimer = null;
+    if (this.handshakeTimer) clearTimeout(this.handshakeTimer);
+    this.handshakeTimer = null;
     if (this.heartbeat) clearInterval(this.heartbeat);
     this.heartbeat = null;
     if (tellMesh && this.win && !this.win.closed && this.status === 'linked') {
@@ -236,7 +246,13 @@ export class MeshLink implements CoSimEndpoint {
           : `Mesh did not answer a ${dtMs}ms step within ${timeoutMs / 1000}s. Check that its tab is still open and its scene is built.`));
       }, timeoutMs);
       this.pending.set(seq, { resolve, reject, timer });
-      this.win!.postMessage(envelope({ type: 'STEP_FOR', seq, dtMs, inputs, outputs }), this.origin);
+      try {
+        this.win!.postMessage(envelope({ type: 'STEP_FOR', seq, dtMs, inputs, outputs }), this.origin);
+      } catch (err) {
+        clearTimeout(timer);
+        this.pending.delete(seq);
+        reject(new MeshLinkError(`Could not send step to Mesh: ${err instanceof Error ? err.message : String(err)}`));
+      }
     });
   }
 
@@ -247,6 +263,8 @@ export class MeshLink implements CoSimEndpoint {
       case 'CATALOGUE':
         if (this.helloTimer) clearInterval(this.helloTimer);
         this.helloTimer = null;
+        if (this.handshakeTimer) clearTimeout(this.handshakeTimer);
+        this.handshakeTimer = null;
         // A catalogue again while linked (a cavity measured) keeps the one heartbeat.
         this.heartbeat ??= setInterval(() => {
           if (!this.win || this.win.closed) this.lose('The Mesh window was closed.');
@@ -266,10 +284,11 @@ export class MeshLink implements CoSimEndpoint {
       }
       case 'ERROR': {
         const p = msg.seq === undefined ? undefined : this.pending.get(msg.seq);
-        if (!p) return;
-        this.pending.delete(msg.seq!);
-        clearTimeout(p.timer);
-        p.reject(new MeshLinkError(`Mesh: ${msg.message}`));
+        if (p) {
+          this.pending.delete(msg.seq!);
+          clearTimeout(p.timer);
+          p.reject(new MeshLinkError(`Mesh: ${msg.message}`));
+        }
         // Mesh answering that it is not linked has been reloaded since it was.
         if (/not linked/i.test(msg.message)) this.lose('Mesh was reloaded, which ended the link.');
         return;

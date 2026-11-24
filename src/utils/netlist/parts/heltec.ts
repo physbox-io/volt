@@ -18,8 +18,11 @@ export const heltec: PartEmitter = {
       const mode = pinModes[pin] || 'digital_in';
 
       if (mode === 'analog_in' || mode === 'digital_in') {
-        const v = pinVoltages[pin] !== undefined ? Number(pinVoltages[pin]) : 0.0;
-        cards += `V_heltec_${node.id}_${pin} ${pinNet} 0 DC ${v.toFixed(4)}\n`;
+        const rawV = pinVoltages[pin] !== undefined ? Number(pinVoltages[pin]) : 0.0;
+        const v = Number.isFinite(rawV) ? rawV : 0.0;
+        const intPinNet = `int_heltec_${node.id}_${pin}`;
+        cards += `V_heltec_${node.id}_${pin} ${intPinNet} 0 DC ${v.toFixed(4)}\n`;
+        cards += `R_heltec_${node.id}_${pin}_out ${intPinNet} ${pinNet} 1\n`;
       } else if (mode === 'digital_out') {
         cards += `R_heltec_${node.id}_${pin} ${pinNet} 0 100k\n`;
       }
@@ -27,7 +30,9 @@ export const heltec: PartEmitter = {
 
     const vccNet = net('3V3');
     const gndNet = net('GND');
-    cards += `V_heltec_${node.id}_3V3 ${vccNet} 0 DC 3.3\n`;
+    const intVccNet = `int_heltec_${node.id}_3V3`;
+    cards += `V_heltec_${node.id}_3V3 ${intVccNet} 0 DC 3.3\n`;
+    cards += `R_heltec_${node.id}_3V3_res ${intVccNet} ${vccNet} 1\n`;
     cards += `R_heltec_${node.id}_GND ${gndNet} 0 1m\n`;
     return cards;
   },

@@ -132,7 +132,21 @@ export function bootstrapCode(pins: Record<string, PinMode>, connected: Set<stri
   return code;
 }
 
-/** What puts the board back to idle after a run: GPIO_3 low, mesh and GPS back on. */
+/** What puts the board back to idle after a run: all wired digital_out pins low, mesh and GPS back on. */
+export function stopCode(pins: Record<string, PinMode>, connected: Set<string>): string {
+  let code = "import lib.webserver as ws\n"
+    + "h = ws._mesh_get_heltec()\n";
+  for (const pinId of HELTEC_V4_GPIO_PINS) {
+    if (connected.has(pinId) && pins[pinId] === 'digital_out') {
+      code += `h.gpio_write(${pinNumber(pinId)}, 0)\n`;
+    }
+  }
+  code += "h.lora_mode('mesh')\n"
+    + "h.gps_power(1)\n";
+  return code;
+}
+
+/** Legacy default stop script: GPIO_3 low, mesh and GPS back on. */
 export const STOP_CODE = "import lib.webserver as ws\n"
   + "h = ws._mesh_get_heltec()\n"
   + "h.gpio_write(3, 0)\n"
@@ -212,6 +226,7 @@ export class HeltecLink {
   /** The board has answered and is idle, waiting for its next command. */
   waitingForCommand = false;
   private replBuffer = '';
+  private static readonly MAX_REPL_BUFFER = 16384;
 
   /** Whether a socket is open or opening. */
   get busy(): boolean {
@@ -240,10 +255,14 @@ export class HeltecLink {
           return;
         }
         if (msg.type === 'repl_output') {
-          if (msg.output && !msg.output.includes(POLL_TAG)) {
+          if (typeof msg.output !== 'string') return;
+          if (!msg.output.includes(POLL_TAG)) {
             console.log("[HIL REPL Output]:", msg.output);
           }
           this.replBuffer += msg.output;
+          if (this.replBuffer.length > HeltecLink.MAX_REPL_BUFFER) {
+            this.replBuffer = this.replBuffer.slice(-HeltecLink.MAX_REPL_BUFFER);
+          }
           let newlineIdx;
           while ((newlineIdx = this.replBuffer.indexOf('\n')) !== -1) {
             const line = this.replBuffer.slice(0, newlineIdx).trim();
@@ -269,14 +288,22 @@ export class HeltecLink {
 
   close(): void {
     this.connected = false;
-    if (!this.socket) return;
-    // Already closed, or never opened: either way the socket is going.
-    try { this.socket.close(); } catch { /* closing a dead socket */ }
+    const ws = this.socket;
     this.socket = null;
+    if (!ws) return;
+    // Detach handlers first so an asynchronously closing old socket cannot
+    // clobber state belonging to a newer socket.
+    ws.onopen = null;
+    ws.onmessage = null;
+    ws.onclose = null;
+    ws.onerror = null;
+    // Already closed, or never opened: either way the socket is going.
+    try { ws.close(); } catch { /* closing a dead socket */ }
   }
 
   sendRepl(code: string): void {
-    this.socket?.send(JSON.stringify({ cmd: 'repl_input', code }));
+    if (!this.isOpen) return;
+    this.socket!.send(JSON.stringify({ cmd: 'repl_input', code }));
   }
 
   sendAudio(samples: Int16Array): void {
@@ -311,11 +338,10 @@ export class HeltecLink {
    * open. Returns whether it did.
    */
   dispatch(batchTargetMs: number): boolean {
-    if (this.queue.length === 0) return false;
+    if (this.queue.length === 0 || !this.isOpen) return false;
     const { command, durationMs, taken } = mergeSlices(this.queue, batchTargetMs);
     this.queue.splice(0, taken);
     this.queuedMs -= durationMs;
-    if (!this.isOpen) return false;
     this.send(command);
     return true;
   }

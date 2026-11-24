@@ -37,4 +37,43 @@ export default defineConfig({
   preview: {
     proxy: COPILOT_PROXIES,
   },
+  build: {
+    rolldownOptions: {
+      output: {
+        // Coalesce initial vendor modules into stable long-term cached chunks
+        // without ever pulling lazy-only modules into the cold-start graph.
+        codeSplitting: {
+          groups: [
+            {
+              name: 'vendor-react',
+              tags: ['$initial'],
+              test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/,
+              priority: 30,
+            },
+            {
+              name: 'vendor-xyflow',
+              tags: ['$initial'],
+              test: /node_modules[\\/]@xyflow[\\/]/,
+              priority: 25,
+            },
+            {
+              name: 'vendor-physbox',
+              tags: ['$initial'],
+              test: /node_modules[\\/]@physbox-io[\\/]/,
+              priority: 20,
+            },
+            {
+              name: 'vendor-icons',
+              tags: ['$initial'],
+              test: /node_modules[\\/]lucide-react[\\/]/,
+              priority: 15,
+            },
+          ],
+        },
+      },
+    },
+  },
+  worker: {
+    format: 'es',
+  },
 })

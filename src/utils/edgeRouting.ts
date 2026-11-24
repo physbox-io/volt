@@ -536,11 +536,8 @@ function buildSoftObstacles(
   // Deterministic lower-id-only ordering: an edge only avoids edges that
   // sort before it. This makes avoidance a DAG (no A-avoids-B-avoids-A
   // flip-flop) so the layout provably settles instead of oscillating.
-  const sortedIds = [...otherIds, edgeId].sort();
-  const myRank = sortedIds.indexOf(edgeId);
-
   for (const otherId of otherIds) {
-    if (sortedIds.indexOf(otherId) > myRank) continue;
+    if (otherId >= edgeId) continue;
     // Never repel a wire from its own net — that is what split a single trunk
     // into parallel duplicate runs.
     if (sameNetIds.has(otherId)) continue;

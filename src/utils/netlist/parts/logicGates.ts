@@ -1,25 +1,36 @@
 import type { PartEmitter } from '../part';
+import { logicHigh } from '../logic';
 
-// Native B-sources: no XSPICE `.model` is needed.
-const gate = (expr: (in1: string, in2: string) => string): PartEmitter => ({
+const GATE_THRESHOLD_V = 2.5;
+const hi = (pin: string) => logicHigh(pin, '0', GATE_THRESHOLD_V);
+
+// Smooth native B-sources with finite output impedance (50Ω + 10pF) so
+// capacitive loads and combinational feedback loops converge cleanly.
+const gate = (expr: (a: string, b: string) => string): PartEmitter => ({
   emit: (node, { net }) => {
     const in1 = net('in1');
     const in2 = net('in2');
     const out = net('out');
-    return `B_gate_${node.id} ${out} 0 V = ${expr(in1, in2)}\n`;
+    const drv = `int_gate_${node.id}`;
+    return `B_gate_${node.id} ${drv} 0 V = ${expr(hi(in1), hi(in2))}\n`
+      + `R_gate_${node.id}_out ${drv} ${out} 50\n`
+      + `C_gate_${node.id}_out ${out} 0 10p\n`;
   },
 });
 
-export const and = gate((a, b) => `V(${a}) > 2.5 ? (V(${b}) > 2.5 ? 5 : 0) : 0`);
-export const or = gate((a, b) => `V(${a}) > 2.5 ? 5 : (V(${b}) > 2.5 ? 5 : 0)`);
-export const nand = gate((a, b) => `V(${a}) > 2.5 ? (V(${b}) > 2.5 ? 0 : 5) : 5`);
-export const nor = gate((a, b) => `V(${a}) > 2.5 ? 0 : (V(${b}) > 2.5 ? 0 : 5)`);
-export const xor = gate((a, b) => `V(${a}) > 2.5 ? (V(${b}) > 2.5 ? 0 : 5) : (V(${b}) > 2.5 ? 5 : 0)`);
+export const and = gate((a, b) => `5 * (${a}) * (${b})`);
+export const or = gate((a, b) => `5 * (1 - (1 - ${a}) * (1 - ${b}))`);
+export const nand = gate((a, b) => `5 * (1 - (${a}) * (${b}))`);
+export const nor = gate((a, b) => `5 * (1 - ${a}) * (1 - ${b})`);
+export const xor = gate((a, b) => `5 * ((${a}) * (1 - ${b}) + (1 - ${a}) * (${b}))`);
 
 export const not: PartEmitter = {
   emit: (node, { net }) => {
     const in1 = net('in1');
     const out = net('out');
-    return `B_gate_${node.id} ${out} 0 V = V(${in1}) > 2.5 ? 0 : 5\n`;
+    const drv = `int_gate_${node.id}`;
+    return `B_gate_${node.id} ${drv} 0 V = 5 * (1 - ${hi(in1)})\n`
+      + `R_gate_${node.id}_out ${drv} ${out} 50\n`
+      + `C_gate_${node.id}_out ${out} 0 10p\n`;
   },
 };

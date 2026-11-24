@@ -22,8 +22,10 @@ export function readElectromech(node: Node, result: SpiceResult): Record<string,
     if (node.type === 'stepper') {
       angle = lastOf(findNetGraph(result, position)?.voltage_levels);
     } else {
-      // A DC motor's coupling doesn't depend on angle, so it isn't simulated; sum the speed.
-      angle = 0;
+      // A DC motor's coupling doesn't depend on angle, so it isn't simulated;
+      // accumulate from the previous slice's angle so sliced runs rotate continuously.
+      const prevDeg = typeof node.data.angleDeg === 'number' && Number.isFinite(node.data.angleDeg) ? node.data.angleDeg : 0;
+      angle = (prevDeg * Math.PI) / 180;
       const t = w.timestamps_ms;
       for (let i = 1; i < t.length; i++) angle += 0.5 * (w.voltage_levels[i] + w.voltage_levels[i - 1]) * (t[i] - t[i - 1]) / 1000;
     }

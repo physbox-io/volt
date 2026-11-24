@@ -1,12 +1,14 @@
 import type { PartEmitter } from '../part';
+import { numParam } from '../params';
 import { pulseDelay, sinePhase } from '../values';
 
 export const signalgen: PartEmitter = {
   emit: (node, { net, acDrive, time }) => {
-    const rawFreq = Number(node.data.frequency);
-    const freq = Number.isFinite(rawFreq) && rawFreq > 0 ? rawFreq : 0;
-    const amp = Number.isFinite(Number(node.data.amplitude)) ? Number(node.data.amplitude) : 5;
-    const duty = (node.data.dutyCycle !== undefined ? Number(node.data.dutyCycle) : 50) / 100;
+    const rawFreq = numParam(node.data, 'frequency', 0);
+    const freq = rawFreq > 0 ? rawFreq : 0;
+    const amp = numParam(node.data, 'amplitude', 5);
+    const dutyPct = Math.max(0, Math.min(100, numParam(node.data, 'dutyCycle', 50)));
+    const duty = dutyPct / 100;
     /*
      * 0Hz is DC, and now behaves like it.
      *
@@ -19,12 +21,18 @@ export const signalgen: PartEmitter = {
      * cycle, and the rise and fall are kept small relative to the period.
      */
     const trf = freq > 0 ? Math.min(1e-6, 0.01 / freq) : 1e-6;
+    const period = freq > 0 ? 1 / freq : 0;
+    const pw = freq > 0 ? Math.min(duty * period, Math.max(0, period - 2 * trf)) : 0;
     const type = freq === 0
       ? `DC ${amp}`
       : node.data.waveform === 'square'
-        ? `PULSE(0 ${amp} ${pulseDelay(1 / freq, time)} ${trf} ${trf} ${duty / freq} ${1 / freq})`
+        ? dutyPct <= 0
+          ? 'DC 0'
+          : dutyPct >= 100
+            ? `DC ${amp}`
+            : `PULSE(0 ${amp} ${pulseDelay(period, time)} ${trf} ${trf} ${pw} ${period})`
         : `SINE(0 ${amp} ${freq}${sinePhase(freq, time)})`;
     return `V_${node.id} ${net('out')} ${net('gnd')} ${type}${acDrive}\n`;
   },
-  timeVarying: node => Number(node.data.frequency) > 0,
+  timeVarying: node => numParam(node.data, 'frequency', 0) > 0,
 };

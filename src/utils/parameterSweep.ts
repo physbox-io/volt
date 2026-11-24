@@ -63,8 +63,8 @@ const SI_SPICE: { factor: number; suffix: string }[] = [
   { factor: 1e-12, suffix: 'p' },
 ];
 
-function trimNum(n: number): string {
-  return Number(n.toPrecision(3)).toString();
+function trimNum(n: number, precision = 3): string {
+  return Number(n.toPrecision(precision)).toString();
 }
 
 /**
@@ -95,11 +95,11 @@ export function formatSpiceToken(value: number): string {
   if (abs === 0) return '0';
   for (const { factor, suffix } of SI_SPICE) {
     if (abs >= factor * 0.9995) {
-      return `${trimNum(value / factor)}${suffix}`;
+      return `${trimNum(value / factor, 6)}${suffix}`;
     }
   }
   const last = SI_SPICE[SI_SPICE.length - 1];
-  return `${trimNum(value / last.factor)}${last.suffix}`;
+  return `${trimNum(value / last.factor, 6)}${last.suffix}`;
 }
 
 function readNum(v: unknown): number | undefined {

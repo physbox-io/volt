@@ -30,8 +30,8 @@ export function isEngineNoise(line: string): boolean {
   if (!s) return true;
   return (
     s.includes('/usr/local/lib/ngspice/') ||
-    s.startsWith("Error: Library ") ||
-    s.includes('code model') ||
+    /^Error opening code model\s+"\/usr\/local\/lib\/ngspice\//.test(s) ||
+    /^Error: Library\s+\/usr\/local\/lib\/ngspice\//.test(s) ||
     s.includes("can't find the initialization file spinit") ||
     s.includes('SPARSE 1.3') ||
     s.includes('OSDI')

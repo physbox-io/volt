@@ -1,12 +1,19 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useMemo, useRef, useState } from 'react';
 import { AccountMenu, CloudSaveStatus, useAccountSession, type AccountSignIn } from '@physbox-io/ui';
 import { clearStoredAuth, fetchCurrentUser, getStoredUser, loginWithGoogle } from '../utils/apiClient';
 import { disableGoogleAutoSelect, isGoogleSignInConfigured, renderGoogleSignInButton } from '../utils/googleAuth';
 import { pullCloudState } from '../utils/cloudSync';
-import { RemoteMachiningModal } from './RemoteMachiningModal';
-import { JobHistoryModal } from './JobHistoryModal';
 import { cloudAutosave } from '../utils/cloudDocuments';
-import { GuestListModal } from './GuestListModal';
+
+const RemoteMachiningModal = lazy(() =>
+  import('./RemoteMachiningModal').then(m => ({ default: m.RemoteMachiningModal }))
+);
+const JobHistoryModal = lazy(() =>
+  import('./JobHistoryModal').then(m => ({ default: m.JobHistoryModal }))
+);
+const GuestListModal = lazy(() =>
+  import('./GuestListModal').then(m => ({ default: m.GuestListModal }))
+);
 
 export const UserProfileButton: React.FC = () => {
   const { user, sync, refresh } = useAccountSession({
@@ -65,11 +72,23 @@ export const UserProfileButton: React.FC = () => {
       onOpenHistory={() => setShowHistoryModal(true)}
       onOpenGuestList={() => setShowGuestModal(true)}
     >
-      <RemoteMachiningModal isOpen={showRemoteModal} onClose={() => setShowRemoteModal(false)} />
-      <JobHistoryModal isOpen={showHistoryModal} onClose={() => setShowHistoryModal(false)} />
+      <Suspense fallback={null}>
+        {showRemoteModal && (
+          <RemoteMachiningModal isOpen={showRemoteModal} onClose={() => setShowRemoteModal(false)} />
+        )}
+        {showHistoryModal && (
+          <JobHistoryModal isOpen={showHistoryModal} onClose={() => setShowHistoryModal(false)} />
+        )}
+        {showGuestModal && (
+          <GuestListModal
+            isOpen={showGuestModal}
+            onClose={() => setShowGuestModal(false)}
+            userEmail={user?.email || ''}
+          />
+        )}
+      </Suspense>
       {/* Mounted here because this component is always on screen; it paints itself through a portal. */}
       <CloudSaveStatus autosave={cloudAutosave} accentClassName="bg-emerald-600 hover:bg-emerald-500" />
-      <GuestListModal isOpen={showGuestModal} onClose={() => setShowGuestModal(false)} userEmail={user?.email || ''} />
     </AccountMenu>
   );
 };

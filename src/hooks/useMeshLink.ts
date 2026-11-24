@@ -64,6 +64,8 @@ export function useMeshLink({ nodesRef, edgesRef, setNodes, setRunAdvisories, so
   const [channels, setChannels] = useState<CoSimChannel[]>([]);
   const [scene, setScene] = useState('');
   const runningRef = useRef(false);
+  /** Monotonic run generation token: incremented on every start/stop so rapid restarts never overlap. */
+  const runIdRef = useRef(0);
   const onRunEndedRef = useRef(onRunEnded);
   useEffect(() => { onRunEndedRef.current = onRunEnded; }, [onRunEnded]);
 
@@ -76,6 +78,7 @@ export function useMeshLink({ nodesRef, edgesRef, setNodes, setRunAdvisories, so
       advise(setRunAdvisories, { id: 'mesh:failed-to-link', severity: 'warning', title: 'Could not link Mesh', detail: link.failure });
     }
     if (link.status === 'closed' && runningRef.current) {
+      runIdRef.current++;
       runningRef.current = false;
       advise(setRunAdvisories, {
         id: 'mesh:closed', severity: 'warning', title: 'Mesh link lost',
@@ -99,26 +102,34 @@ export function useMeshLink({ nodesRef, edgesRef, setNodes, setRunAdvisories, so
     return link.status === 'linked' && (b.shafts.length > 0 || b.signals.length > 0);
   };
 
-  const loop = async () => {
+  const loop = async (runId: number) => {
     let state = initialCoSimState();
     const history = new TraceHistory();
     const wallStart = performance.now();
     let simMs = 0;
     let sinceDraw = 0;
     let warnedUnknown = false;
+    const accumulatedLogs: Record<string, string[]> = {};
     advise(setRunAdvisories, null);
 
-    while (runningRef.current) {
+    while (runningRef.current && runId === runIdRef.current) {
       try {
         const out = await coSimStep(
           state,
           { nodes: nodesRef.current, edges: edgesRef.current, sliceMs: SLICE_MS },
           { solve: netlist => solve(netlist, SLICE_TIMEOUT_MS), endpoint: link },
         );
+        if (!runningRef.current || runId !== runIdRef.current) break;
         state = out.state;
         simMs += SLICE_MS;
         sinceDraw += SLICE_MS;
         history.append(out.nodes, out.result, out.portToNet, SLICE_MS);
+        for (const [mcuId, lines] of Object.entries(out.logs)) {
+          if (lines.length === 0) continue;
+          const prev = (accumulatedLogs[mcuId] ??= []);
+          prev.push(...lines);
+          if (prev.length > 200) prev.splice(0, prev.length - 200);
+        }
         if (out.unknown.length > 0 && !warnedUnknown) {
           warnedUnknown = true;
           advise(setRunAdvisories, {
@@ -129,13 +140,14 @@ export function useMeshLink({ nodesRef, edgesRef, setNodes, setRunAdvisories, so
           });
         }
       } catch (e) {
-        if (!runningRef.current) break;
+        if (!runningRef.current || runId !== runIdRef.current) break;
         // A link that failed is not a circuit that failed: the solver's
         // explanation read as "the circuit was solved to nothing".
         const explained = e instanceof MeshLinkError
           ? { title: 'Mesh is not open or the link was lost', detail: e.message }
           : explainSpiceFailure(messagesFromError(e));
         advise(setRunAdvisories, { id: 'mesh:failed', severity: 'error', title: `Linked run stopped: ${explained.title}`, detail: explained.detail });
+        runIdRef.current++;
         runningRef.current = false;
         onRunEndedRef.current();
         break;
@@ -144,7 +156,15 @@ export function useMeshLink({ nodesRef, edgesRef, setNodes, setRunAdvisories, so
       if (sinceDraw >= DRAW_EVERY_MS) {
         sinceDraw = 0;
         const shown = readouts(nodesRef.current, state);
-        setNodes(nds => history.applyTo(nds).map(n => (shown.has(n.id) ? { ...n, data: { ...n.data, ...shown.get(n.id) } } : n)));
+        const logsSnapshot = Object.fromEntries(
+          Object.entries(accumulatedLogs).map(([id, lines]) => [id, [...lines]]),
+        );
+        setNodes(nds => history.applyTo(nds).map(n => {
+          const patch = shown.get(n.id);
+          const logs = n.type === 'mcu' ? logsSnapshot[n.id] : undefined;
+          if (!patch && !logs) return n;
+          return { ...n, data: { ...n.data, ...(patch ?? {}), ...(logs ? { logs } : {}) } };
+        }));
       }
 
       // Never ahead of real time: a motor that spins up in 0.1s should be seen to.
@@ -156,12 +176,22 @@ export function useMeshLink({ nodesRef, edgesRef, setNodes, setRunAdvisories, so
   /** Starts a linked run. False when there is nothing to drive. */
   const start = (nodes: Node[]): boolean => {
     if (runningRef.current || !wouldDrive(nodes)) return false;
+    // Reset MCU sketch state so generators restart at t=0 in sync with SPICE.
+    const clearedNodes = nodesRef.current.map(n =>
+      n.type === 'mcu' && n.data.state !== undefined ? { ...n, data: { ...n.data, state: undefined } } : n
+    );
+    nodesRef.current = clearedNodes;
+    setNodes(nds => nds.map(n =>
+      n.type === 'mcu' && n.data.state !== undefined ? { ...n, data: { ...n.data, state: undefined } } : n
+    ));
+    const runId = ++runIdRef.current;
     runningRef.current = true;
-    void loop();
+    void loop(runId);
     return true;
   };
 
   const stop = () => {
+    runIdRef.current++;
     runningRef.current = false;
   };
 

@@ -13,7 +13,6 @@ import { encodeSpeakerAudio } from '../hil/pinEncoding';
 import {
   HeltecLink,
   POLL_TAG,
-  STOP_CODE,
   backgroundPollCode,
   bootstrapCode,
   boardUrl,
@@ -21,6 +20,7 @@ import {
   calibrateReading,
   connectedHeltecPins,
   polledPins,
+  stopCode,
   type ExecutionMode,
 } from '../hil/heltecLink';
 
@@ -49,6 +49,8 @@ type UseHilArgs = {
   setInitialConditions: (state: SimState) => void;
   setRunAdvisories: Dispatch<SetStateAction<Advisory[]>>;
   solve: (netlist: string, timeoutMs: number) => Promise<SpiceResult>;
+  /** Optional callback invoked if an active HIL run ends unexpectedly (e.g. WebSocket closed). */
+  onRunEnded?: () => void;
 };
 
 /**
@@ -62,9 +64,11 @@ type UseHilArgs = {
  * Everything the socket's callbacks touch is a ref or a state setter, so a
  * callback created in an earlier render still sees the current run.
  */
-export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef, setInitialConditions, setRunAdvisories, solve }: UseHilArgs) {
+export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef, setInitialConditions, setRunAdvisories, solve, onRunEnded }: UseHilArgs) {
   const linkRef = useRef(new HeltecLink());
   const runningRef = useRef(false);
+  /** Monotonic run generation token: incremented on every start/stop to fence off stale async work. */
+  const runIdRef = useRef(0);
   // Polling the idle board for its readings. It self-perpetuates through
   // setTimeout, and stopping a run turns it off rather than resuming it.
   const bgPollActiveRef = useRef(true);
@@ -74,9 +78,13 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
   const sliceStateRef = useRef<SliceState>(initialSliceState());
   /** The last second of each scope channel and LED, for the canvas. */
   const historyRef = useRef(new TraceHistory());
-  const toppingUpRef = useRef(false);
+  const toppingUpRunIdRef = useRef<number | null>(null);
   const memoizerRef = useRef(new HILMemoizer());
   const connectedPinsCacheRef = useRef<{ edges: Edge[]; nodeId: string; pins: Set<string> } | null>(null);
+  const onRunEndedRef = useRef(onRunEnded);
+  useEffect(() => { onRunEndedRef.current = onRunEnded; }, [onRunEnded]);
+  /** Suppresses immediate reconnect in the effect after an unexpected socket close; cleared on manual start/toggle. */
+  const reconnectSuppressedRef = useRef(false);
 
   // Wiring essentially never changes mid-run, so the slice loop reuses the set
   // until the edges array itself changes.
@@ -119,17 +127,22 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
     setInitialConditions(sliceStateRef.current.sim);
   };
 
-  const runOneSlice = async () => {
-    if (!runningRef.current) return;
+  const runOneSlice = async (runId: number): Promise<boolean> => {
+    if (!runningRef.current || runId !== runIdRef.current) return false;
     const board = nodesRef.current.find(isBoard);
-    if (!board) return;
+    if (!board) return false;
     const link = linkRef.current;
 
     try {
       const memoizer = memoizerRef.current;
+      const nextInputDP = typeof board.data.hilInputDP === 'number' ? board.data.hilInputDP : 3;
+      const nextIcDP = typeof board.data.hilIcDP === 'number' ? board.data.hilIcDP : 3;
+      if (memoizer.inputDP !== nextInputDP || memoizer.icDP !== nextIcDP) {
+        memoizer.clear();
+      }
       memoizer.enabled = typeof board.data.hilMemoizationEnabled === 'boolean' ? board.data.hilMemoizationEnabled : true;
-      memoizer.inputDP = typeof board.data.hilInputDP === 'number' ? board.data.hilInputDP : 3;
-      memoizer.icDP = typeof board.data.hilIcDP === 'number' ? board.data.hilIcDP : 3;
+      memoizer.inputDP = nextInputDP;
+      memoizer.icDP = nextIcDP;
       memoizer.maxConsecutiveHits = typeof board.data.hilMaxConsecutiveHits === 'number' ? board.data.hilMaxConsecutiveHits : 50;
       if (board.data.hilClearCacheRequested) {
         memoizer.clear();
@@ -142,6 +155,8 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
         { nodes: nodesRef.current, edges: edgesRef.current, boardId: board.id, inputs: { ...valuesRef.current }, sliceMs },
         { solve: netlist => solve(netlist, HIL_SLICE_TIMEOUT_MS), memoizer },
       );
+      if (!runningRef.current || runId !== runIdRef.current) return false;
+
       sliceStateRef.current = slice.state;
       const { result, portToNet, index: resultIndex } = slice;
 
@@ -164,7 +179,9 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
       // History every slice, for gap-free traces; drawn by flushDisplay.
       historyRef.current.append(slice.nodes, result, portToNet, sliceMs, resultIndex);
       setRunAdvisories(prev => (prev.some(a => a.id === 'hil:failed') ? prev.filter(a => a.id !== 'hil:failed') : prev));
+      return true;
     } catch (e) {
+      if (!runningRef.current || runId !== runIdRef.current) return false;
       console.error("[HIL] Simulation slice run failed:", e);
       const messages = messagesFromError(e);
       const explained = messages.some(m => m.includes('TIMED_OUT'))
@@ -177,32 +194,35 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
         ...prev.filter(a => a.id !== 'hil:failed'),
         { id: 'hil:failed', severity: 'warning', title: `HIL: ${explained.title}`, detail: explained.detail },
       ]);
+      return false;
     }
   };
 
-  const topUpQueue = async () => {
-    if (toppingUpRef.current) return;
-    toppingUpRef.current = true;
+  const topUpQueue = async (runId: number) => {
+    if (toppingUpRunIdRef.current === runId || runId !== runIdRef.current) return;
+    toppingUpRunIdRef.current = runId;
     try {
-      while (runningRef.current && linkRef.current.queuedMs < HIL_BUFFER_TARGET_MS) {
-        await runOneSlice();
+      while (runningRef.current && runId === runIdRef.current && linkRef.current.queuedMs < HIL_BUFFER_TARGET_MS) {
+        const ok = await runOneSlice(runId);
+        if (!ok) break;
       }
     } finally {
-      toppingUpRef.current = false;
+      if (toppingUpRunIdRef.current === runId) toppingUpRunIdRef.current = null;
     }
   };
 
-  const startPipeline = async () => {
+  const startPipeline = async (runId: number) => {
     const link = linkRef.current;
-    if (!link.connected || !link.socket) return;
+    if (!link.connected || !link.socket || !runningRef.current || runId !== runIdRef.current) return;
     link.resetQueue();
     try {
       // Fill the lookahead buffer before sending anything
-      await topUpQueue();
+      await topUpQueue(runId);
+      if (!runningRef.current || runId !== runIdRef.current) return;
       if (link.dispatch(HIL_BATCH_TARGET_MS)) {
         // Keep refilling in the background so the buffer stays topped up
         // once the device starts reporting back slice results
-        topUpQueue().catch(err => console.error("[HIL] Queue top-up failed:", err));
+        topUpQueue(runId).catch(err => console.error("[HIL] Queue top-up failed:", err));
       }
     } catch (err) {
       console.error("[HIL] Pipeline start failed:", err);
@@ -211,6 +231,8 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
 
   /** A slice finished on the board: take its readings and send it the next. */
   const onSliceResult = (node: Node, values: Record<string, number> | null) => {
+    if (!runningRef.current) return;
+    const runId = runIdRef.current;
     const link = linkRef.current;
     if (values) {
       const board = nodesRef.current.find(isBoard) || node;
@@ -230,6 +252,8 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
           const alpha = 0.15;
           volt = prevSmoothed === undefined ? volt : alpha * volt + (1 - alpha) * prevSmoothed;
           smoothedValuesRef.current[pinId] = volt;
+        } else if (pins[pinId] === 'digital_in') {
+          volt = raw ? 3.3 : 0.0;
         }
         valuesRef.current[pinId] = volt;
       }
@@ -241,7 +265,7 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
     // Keep the lookahead buffer topped up in the background so a slow
     // SPICE call (e.g. a slice that lands on a switching edge) doesn't
     // starve the device of its next command.
-    topUpQueue().catch(err => console.error("[HIL] Queue top-up failed:", err));
+    topUpQueue(runId).catch(err => console.error("[HIL] Queue top-up failed:", err));
     flushDisplay();
   };
 
@@ -255,7 +279,10 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
       const inputPins = polledPins(pins, connectedHeltecPins(board.id, edgesRef.current));
       dataStr.split(',').forEach((valStr, idx) => {
         const pinId = inputPins[idx];
-        if (pinId) valuesRef.current[pinId] = calibrateReading(pinId, parseFloat(valStr) || 0.0, selectedPresetRef.current);
+        if (!pinId) return;
+        const raw = parseFloat(valStr) || 0.0;
+        const volts = pins[pinId] === 'digital_in' ? (raw ? 3.3 : 0.0) : raw;
+        valuesRef.current[pinId] = calibrateReading(pinId, volts, selectedPresetRef.current);
       });
       showPinVoltages();
     }
@@ -284,11 +311,12 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
     try {
       link.open(url, {
         onOpen: () => {
+          reconnectSuppressedRef.current = false;
           setNodes(nds => nds.map(n => n.id === node.id ? { ...n, data: { ...n.data, isConnected: true } } : n));
           const pins = (node.data.pins as Record<string, string>) || {};
           link.sendRepl(bootstrapCode(pins, connectedHeltecPins(node.id, edgesRef.current), runningRef.current));
           if (runningRef.current) {
-            startPipeline();
+            void startPipeline(runIdRef.current);
           } else {
             setTimeout(runBackgroundPoll, 100);
           }
@@ -296,7 +324,23 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
         onSliceResult: values => onSliceResult(node, values),
         onReplLine: line => onReplLine(node, line),
         onClose: () => {
-          setNodes(nds => nds.map(n => isBoard(n) ? { ...n, data: { ...n.data, isConnected: false } } : n));
+          // Stop any active run cleanly and suppress tight auto-reconnect loops
+          // until the user explicitly reconnects or starts a new run.
+          const wasRunning = runningRef.current;
+          reconnectSuppressedRef.current = true;
+          runIdRef.current++;
+          runningRef.current = false;
+          bgPollActiveRef.current = false;
+          link.resetQueue();
+          link.resetRepl();
+          setNodes(nds => nds.map(n => isBoard(n) ? { ...n, data: { ...n.data, isConnected: false, hilEnabled: false } } : n));
+          if (wasRunning) {
+            setRunAdvisories(prev => [
+              ...prev.filter(a => a.id !== 'hil:closed'),
+              { id: 'hil:closed', severity: 'warning', title: 'HIL board disconnected', detail: 'The WebSocket connection to the board closed. The HIL run stopped.' },
+            ]);
+            onRunEndedRef.current?.();
+          }
         },
       });
     } catch (err) {
@@ -316,39 +360,31 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
   const boardIp = boardNode?.data?.ip;
   const boardEnabled = !!boardNode?.data?.hilEnabled;
 
-  /*
-   * The board's session, not React's state.
-   *
-   * `ensureConnection` is one of a set of mutually recursive closures — it
-   * opens the socket, which starts the pipeline, which polls, which reconnects —
-   * and it is a fresh function on every render. Listing it as a dependency
-   * would hang up on the board and dial it again on every keystroke, which is
-   * the opposite of what this effect is for.
-   *
-   * The `setNodes` in the other branch is the socket telling React it has gone.
-   * That is precisely what an effect is meant to do with an external system; it
-   * simply happens synchronously, because closing a socket does.
-   */
   useEffect(() => {
     const link = linkRef.current;
     if (boardId && boardIp && boardEnabled) {
-      if (!link.connected && (!link.socket || link.socket.readyState === WebSocket.CLOSED)) {
+      if (!reconnectSuppressedRef.current && !link.connected && (!link.socket || link.socket.readyState === WebSocket.CLOSED)) {
         const node = nodes.find(n => n.id === boardId);
         if (node) {
           ensureConnection(boardIp as string, node);
         }
       }
-    } else if (!boardEnabled && link.socket) {
-      // User turned HIL off (or the node lost its enable flag): tear the socket down.
-      runningRef.current = false;
-      link.close();
-      if (boardId) {
-        setNodes(nds => nds.map(n => n.id === boardId ? { ...n, data: { ...n.data, isConnected: false } } : n));
+    } else if (!boardEnabled) {
+      reconnectSuppressedRef.current = false;
+      if (link.socket) {
+        // User turned HIL off (or the node lost its enable flag): tear the socket down.
+        runIdRef.current++;
+        runningRef.current = false;
+        link.close();
+        if (boardId) {
+          setNodes(nds => nds.map(n => n.id === boardId ? { ...n, data: { ...n.data, isConnected: false } } : n));
+        }
       }
     }
     return () => {
       // Clean up connection if no Heltec V4 node is present on the canvas
       if (!nodes.some(isBoard)) {
+        runIdRef.current++;
         runningRef.current = false;
         link.close();
       }
@@ -363,15 +399,27 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
    */
   const start = (board: Node): boolean => {
     const link = linkRef.current;
+    const runId = ++runIdRef.current;
+    reconnectSuppressedRef.current = false;
     runningRef.current = true;
     link.executionMode = (board.data.hilExecutionMode as ExecutionMode) || 'native';
     bgPollActiveRef.current = true;
     historyRef.current.clear();
+    memoizerRef.current.clear();
     smoothedValuesRef.current = {};
     sliceStateRef.current = initialSliceState();
     link.resetRepl();
     link.resetQueue();
     setInitialConditions({});
+
+    // Reset MCU sketch state so generators restart at t=0 in sync with SPICE.
+    const clearedNodes = nodesRef.current.map(n =>
+      n.type === 'mcu' && n.data.state !== undefined ? { ...n, data: { ...n.data, state: undefined } } : n
+    );
+    nodesRef.current = clearedNodes;
+    setNodes(nds => nds.map(n =>
+      n.type === 'mcu' && n.data.state !== undefined ? { ...n, data: { ...n.data, state: undefined } } : n
+    ));
 
     const ip = (board.data.ip as string) || '192.168.1.244';
     if (link.connected && link.socket) {
@@ -380,13 +428,14 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
         link.sendRepl(bootstrapCode(pins, connectedHeltecPins(board.id, edgesRef.current), true, 'starting (existing ws)...'));
       }
       setTimeout(() => {
-        if (runningRef.current) startPipeline();
+        if (runningRef.current && runId === runIdRef.current) void startPipeline(runId);
       }, 150);
       return true;
     }
     if (!ensureConnection(ip, board)) {
       // Couldn't even attempt the socket (e.g. ws:// blocked on an https page) —
       // unwind the run instead of leaving it stuck.
+      runIdRef.current++;
       runningRef.current = false;
       bgPollActiveRef.current = false;
       alert(`Can't reach the board at ${ip}: the browser blocks plain ws:// connections from an https page. Run the app over http (or expose the board over wss://) to use hardware-in-the-loop.`);
@@ -398,12 +447,17 @@ export function useHil({ nodes, nodesRef, edgesRef, setNodes, selectedPresetRef,
   /** Ends a run and puts the board back to idle. Background polling stays off. */
   const stop = () => {
     const link = linkRef.current;
+    runIdRef.current++;
     runningRef.current = false;
     bgPollActiveRef.current = false;
     memoizerRef.current.clear();
     if (link.socket && link.connected) {
       try {
-        if (nodesRef.current.some(isBoard)) link.sendRepl(STOP_CODE);
+        const board = nodesRef.current.find(isBoard);
+        if (board) {
+          const pins = (board.data.pins as Record<string, string>) || {};
+          link.sendRepl(stopCode(pins, connectedHeltecPins(board.id, edgesRef.current)));
+        }
       } catch (e) {
         console.error("[HIL] Failed to send stop state:", e);
       }

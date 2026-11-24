@@ -44,8 +44,14 @@ export class HILMemoizer {
     this.enabled = options.enabled ?? true;
     this.inputDP = options.inputDP ?? 3;
     this.icDP = options.icDP ?? 3;
-    this.maxEntries = options.maxEntries ?? 2000;
+    this.maxEntries = options.maxEntries ?? 256;
     this.maxConsecutiveHits = options.maxConsecutiveHits ?? 50;
+  }
+
+  private fmtNum(val: number | undefined, dp: number): string {
+    const n = val ?? 0;
+    const s = (n === 0 ? 0 : n).toFixed(dp);
+    return s === `-${(0).toFixed(dp)}` ? (0).toFixed(dp) : s;
   }
 
   /**
@@ -60,19 +66,20 @@ export class HILMemoizer {
     initialConditions: Record<string, number>,
     sliceDurationMs: number,
     maxStepMs: number,
-    drive = ''
+    drive = '',
+    circuitKey = ''
   ): string {
     const sortedInputKeys = Object.keys(inputs).sort();
     const inputParts = sortedInputKeys.map(
-      k => `${k}:${(inputs[k] ?? 0).toFixed(this.inputDP)}`
+      k => `${k}:${this.fmtNum(inputs[k], this.inputDP)}`
     );
 
     const sortedICKeys = Object.keys(initialConditions).sort();
     const icParts = sortedICKeys.map(
-      k => `${k}:${(initialConditions[k] ?? 0).toFixed(this.icDP)}`
+      k => `${k}:${this.fmtNum(initialConditions[k], this.icDP)}`
     );
 
-    return `U[${inputParts.join(';')}]|IC[${icParts.join(';')}]|dt:${sliceDurationMs.toFixed(2)}|step:${maxStepMs.toFixed(4)}|drive:${drive}`;
+    return `U[${inputParts.join(';')}]|IC[${icParts.join(';')}]|dt:${this.fmtNum(sliceDurationMs, 2)}|step:${this.fmtNum(maxStepMs, 4)}|drive:${drive}${circuitKey ? `|ckt:${circuitKey}` : ''}`;
   }
 
   /**
@@ -83,7 +90,8 @@ export class HILMemoizer {
     initialConditions: Record<string, number>,
     sliceDurationMs: number,
     maxStepMs: number,
-    drive = ''
+    drive = '',
+    circuitKey = ''
   ): CachedHILSliceResult | null {
     if (!this.enabled) return null;
 
@@ -94,7 +102,7 @@ export class HILMemoizer {
       return null;
     }
 
-    const key = this.generateKey(inputs, initialConditions, sliceDurationMs, maxStepMs, drive);
+    const key = this.generateKey(inputs, initialConditions, sliceDurationMs, maxStepMs, drive, circuitKey);
     const cached = this.cacheMap.get(key);
 
     if (cached) {
@@ -120,14 +128,17 @@ export class HILMemoizer {
     sliceDurationMs: number,
     maxStepMs: number,
     val: CachedHILSliceResult,
-    drive = ''
+    drive = '',
+    circuitKey = ''
   ): void {
     if (!this.enabled) return;
 
-    const key = this.generateKey(inputs, initialConditions, sliceDurationMs, maxStepMs, drive);
+    const key = this.generateKey(inputs, initialConditions, sliceDurationMs, maxStepMs, drive, circuitKey);
 
-    // Evict oldest if exceeding capacity
-    if (this.cacheMap.size >= this.maxEntries && !this.cacheMap.has(key)) {
+    if (this.cacheMap.has(key)) {
+      // Refresh LRU recency on overwrite.
+      this.cacheMap.delete(key);
+    } else if (this.cacheMap.size >= this.maxEntries) {
       const oldestKey = this.cacheMap.keys().next().value;
       if (oldestKey !== undefined) {
         this.cacheMap.delete(oldestKey);

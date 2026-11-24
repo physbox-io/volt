@@ -196,16 +196,19 @@ function SweepPane({
     const px = ((e.clientX - rect.left) / rect.width) * width;
     const frac = (px - PAD.left) / plotW;
     const target = lo + frac * span;
-    let best = 0;
-    let bestD = Infinity;
-    for (let i = 0; i < transformedXs.length; i++) {
-      const d = Math.abs(transformedXs[i] - target);
-      if (d < bestD) {
-        bestD = d;
-        best = i;
-      }
+    // Binary search on monotonic transformedXs instead of O(N) linear scan.
+    let l = 0;
+    let r = transformedXs.length - 1;
+    while (l < r) {
+      const mid = (l + r) >> 1;
+      if (transformedXs[mid] < target) l = mid + 1;
+      else r = mid;
     }
-    onHover(best);
+    const best =
+      l > 0 && Math.abs(transformedXs[l - 1] - target) < Math.abs(transformedXs[l] - target)
+        ? l - 1
+        : l;
+    if (best !== hoverIndex) onHover(best);
   };
 
   const hoverX =
@@ -603,12 +606,31 @@ export function BodePanel({
       if (tranTraces.length === 1) {
         return `${tStr} · ${formatVolts(first.voltage[hoverIndex])}`;
       }
+      const sampleAtTimeMs = (timeMs: number[], voltage: number[], targetMs: number): number | null => {
+        const n = Math.min(timeMs.length, voltage.length);
+        if (n === 0) return null;
+        if (targetMs <= timeMs[0]) return voltage[0];
+        if (targetMs >= timeMs[n - 1]) return voltage[n - 1];
+        let lo = 0;
+        let hi = n - 1;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (timeMs[mid] >= targetMs) hi = mid;
+          else lo = mid + 1;
+        }
+        const i1 = lo;
+        const i0 = Math.max(0, i1 - 1);
+        const dt = timeMs[i1] - timeMs[i0];
+        if (!(dt > 0)) return voltage[i1];
+        const frac = (targetMs - timeMs[i0]) / dt;
+        return voltage[i0] + (voltage[i1] - voltage[i0]) * frac;
+      };
       const parts = tranTraces
         .filter((_, idx) => activeSeriesIndex === null || activeSeriesIndex === idx)
-        .map(
-          t =>
-            `${t.label.replace(/^.*=\s*/, '')}: ${formatVolts(t.trace.voltage[hoverIndex] ?? 0)}`,
-        );
+        .map(t => {
+          const sampled = sampleAtTimeMs(t.trace.timeMs, t.trace.voltage, tMs);
+          return `${t.label.replace(/^.*=\s*/, '')}: ${sampled !== null ? formatVolts(sampled) : '—'}`;
+        });
       return `${tStr} · ${parts.join(' | ')}`;
     }
   }, [hoverIndex, domain, acTraces, tranTraces, activeSeriesIndex]);

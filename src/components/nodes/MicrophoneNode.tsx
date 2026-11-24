@@ -61,7 +61,8 @@ export function MicrophoneNode({ id, data }: NodeProps<Node<MicrophoneNodeData>>
         };
         
         mediaRecorder.current.onstop = async () => {
-          const blob = new Blob(chunks.current, { type: 'audio/webm' });
+          const mimeType = mediaRecorder.current?.mimeType || 'audio/webm';
+          const blob = new Blob(chunks.current, { type: mimeType });
           const arrayBuffer = await blob.arrayBuffer();
           const audioCtx = new (window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)();
           const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
@@ -69,18 +70,16 @@ export function MicrophoneNode({ id, data }: NodeProps<Node<MicrophoneNodeData>>
           const rawData = audioBuffer.getChannelData(0);
           const sampleRate = audioBuffer.sampleRate;
           
-          // Decimate to ~8kHz to keep PWL manageable, take all recorded audio
+          // Decimate to ~8kHz with boxcar averaging (anti-aliasing) to keep PWL manageable
           const targetSampleRate = 8000;
           const decimationFactor = Math.max(1, Math.floor(sampleRate / targetSampleRate)); 
           const points: { t: number; v: number }[] = [];
           
           for (let i = 0; i < rawData.length; i += decimationFactor) {
-            // Raw audio is -1..+1, scale by gain to produce output voltage
-            // Default gain of 100 means ±1 raw → ±100 * 0.001V = ±0.1V base,
-            // but we use raw * 0.001 * gain so gain=100 → ±0.1V
-            // Actually simpler: raw electret mic is ~5-50mV peak. 
-            // We'll store the raw normalized values and apply gain in spice.ts
-            points.push({ t: i / sampleRate, v: rawData[i] });
+            const end = Math.min(rawData.length, i + decimationFactor);
+            let sum = 0;
+            for (let j = i; j < end; j++) sum += rawData[j];
+            points.push({ t: i / sampleRate, v: sum / (end - i) });
           }
           
           // Stop all tracks to release mic

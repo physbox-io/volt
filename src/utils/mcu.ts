@@ -32,8 +32,81 @@ export interface McuState {
   pwlOutputs: Record<string, PWLPoint[]>;
   /** The compiled sketch, mid-run. `yield` hands back a sleep in ms. */
   generator?: Generator<number, void, unknown>;
+  /** Source code that `generator` was compiled from, to detect edits. */
+  code?: string;
+  /** Mutable holder shared with the generator's API closure across slices. */
+  ctx?: { state: McuState };
   /** A sleep that ran past the end of a slice, and how much of it was served. */
   pendingYield?: { duration: number; elapsed: number } | null;
+}
+
+const MAX_MCU_STEPS_PER_SLICE = 100_000;
+
+/**
+ * Rewrites standalone `sleep(` and `wait(` calls into `yield(` while leaving
+ * strings, comments, property accesses (`obj.wait(`), and superstrings
+ * (`await(`, `my_sleep(`) untouched.
+ */
+function rewriteSleepCalls(code: string): string {
+  let out = '';
+  let i = 0;
+  const n = code.length;
+  const isIdent = (ch: string) => /[A-Za-z0-9_$]/.test(ch);
+  while (i < n) {
+    const ch = code[i];
+    // Line comment
+    if (ch === '/' && code[i + 1] === '/') {
+      const start = i;
+      i += 2;
+      while (i < n && code[i] !== '\n') i++;
+      out += code.slice(start, i);
+      continue;
+    }
+    // Block comment
+    if (ch === '/' && code[i + 1] === '*') {
+      const start = i;
+      i += 2;
+      while (i < n && !(code[i] === '*' && code[i + 1] === '/')) i++;
+      i = Math.min(n, i + 2);
+      out += code.slice(start, i);
+      continue;
+    }
+    // String or template literal
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const quote = ch;
+      const start = i++;
+      while (i < n) {
+        if (code[i] === '\\') { i += 2; continue; }
+        if (code[i] === quote) { i++; break; }
+        i++;
+      }
+      out += code.slice(start, i);
+      continue;
+    }
+    // Identifier
+    if (isIdent(ch)) {
+      const start = i;
+      while (i < n && isIdent(code[i])) i++;
+      const word = code.slice(start, i);
+      if (word === 'sleep' || word === 'wait') {
+        // Check preceding non-whitespace is not '.'
+        let prev = start - 1;
+        while (prev >= 0 && /\s/.test(code[prev])) prev--;
+        // Check following non-whitespace is '('
+        let next = i;
+        while (next < n && /\s/.test(code[next])) next++;
+        if ((prev < 0 || code[prev] !== '.') && next < n && code[next] === '(') {
+          out += 'yield';
+          continue;
+        }
+      }
+      out += word;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
 }
 
 export function executeMcuCode(
@@ -47,6 +120,22 @@ export function executeMcuCode(
   // function. The fields the rest of this body relies on are all filled in
   // immediately below, which is what makes the assertion good.
   const state = (initialState || {}) as McuState;
+
+  // Invalidate compiled generator if the sketch code changed
+  if (state.code !== undefined && state.code !== code) {
+    state.generator = undefined;
+    state.pendingYield = null;
+  }
+  state.code = code;
+
+  // Keep a stable reference container so the compiled generator always reads
+  // the current slice's state even if a caller shallow-cloned `initialState`.
+  if (!state.ctx) {
+    state.ctx = { state };
+  } else {
+    state.ctx.state = state;
+  }
+  const ctx = state.ctx;
 
   // Setup execution context inside state to share with generator closures
   state.mcuTimeMs = 0;
@@ -69,7 +158,7 @@ export function executeMcuCode(
   }
 
   function getVoltageAtTime(pin: string, timeMs: number): number {
-    const wave = state.inputWaveforms[pin];
+    const wave = ctx.state.inputWaveforms[pin];
     if (!wave || wave.length === 0) return 0;
     
     let lastP = wave[0];
@@ -86,63 +175,55 @@ export function executeMcuCode(
     return lastP.v;
   }
 
+  const pushPwlPoint = (pin: string, v: number) => {
+    const s = ctx.state;
+    if (s.pinModes[pin] !== 'OUTPUT') return;
+    const out = s.pwlOutputs[pin];
+    s.lastPinVals[pin] = v; // Remember last value for next slice
+
+    if (out.length > 0 && out[out.length - 1].v === v) return;
+
+    if (out.length > 0 && out[out.length - 1].t === s.mcuTimeMs) {
+      out[out.length - 1].v = v;
+    } else {
+      const lastVal = out.length > 0 ? out[out.length - 1].v : 0;
+      if (s.mcuTimeMs > 0 && out.length > 0) {
+        const holdT = s.mcuTimeMs - 0.001;
+        if (holdT > out[out.length - 1].t) {
+          out.push({ t: holdT, v: lastVal });
+        }
+      }
+      out.push({ t: s.mcuTimeMs, v });
+    }
+  };
+
   const api = {
     HIGH: 1,
     LOW: 0,
     INPUT: 'INPUT',
     OUTPUT: 'OUTPUT',
-    state,
-    simLength: state.simLengthMs,
+    get state() { return ctx.state; },
+    get simLength() { return ctx.state.simLengthMs; },
     pinMode: (pin: string, mode: 'INPUT' | 'OUTPUT') => {
-       state.pinModes[pin] = mode;
-       if (mode === 'OUTPUT' && !state.pwlOutputs[pin]) {
-          state.pwlOutputs[pin] = [{ t: 0, v: 0 }]; // start at 0V
+       const s = ctx.state;
+       s.pinModes[pin] = mode;
+       if (mode === 'OUTPUT' && !s.pwlOutputs[pin]) {
+          s.pwlOutputs[pin] = [{ t: 0, v: 0 }]; // start at 0V
        }
     },
     digitalWrite: (pin: string, val: number) => {
-       if (state.pinModes[pin] !== 'OUTPUT') return;
-       const out = state.pwlOutputs[pin];
-       const v = val ? 5 : 0;
-       
-       state.lastPinVals[pin] = v; // Remember last value for next slice
-       
-       if (out.length > 0 && out[out.length - 1].v === v) return;
-       
-       if (out.length > 0 && out[out.length - 1].t === state.mcuTimeMs) {
-         out[out.length - 1].v = v;
-       } else {
-         const lastVal = out.length > 0 ? out[out.length - 1].v : 0;
-         if (state.mcuTimeMs > 0 && out.length > 0 && out[out.length - 1].t < state.mcuTimeMs) {
-           out.push({ t: state.mcuTimeMs - 0.001, v: lastVal });
-         }
-         out.push({ t: state.mcuTimeMs, v: v });
-       }
+       pushPwlPoint(pin, val ? 5 : 0);
     },
     analogWrite: (pin: string, val: number) => {
-       if (state.pinModes[pin] !== 'OUTPUT') return;
-       const out = state.pwlOutputs[pin];
-       const v = (Math.max(0, Math.min(255, val)) / 255) * 5; 
-       
-       state.lastPinVals[pin] = v; // Remember last value for next slice
-       
-       if (out.length > 0 && out[out.length - 1].v === v) return;
-       
-       if (out.length > 0 && out[out.length - 1].t === state.mcuTimeMs) {
-         out[out.length - 1].v = v;
-       } else {
-         const lastVal = out.length > 0 ? out[out.length - 1].v : 0;
-         if (state.mcuTimeMs > 0 && out.length > 0 && out[out.length - 1].t < state.mcuTimeMs) {
-           out.push({ t: state.mcuTimeMs - 0.001, v: lastVal });
-         }
-         out.push({ t: state.mcuTimeMs, v });
-       }
+       const v = (Math.max(0, Math.min(255, val)) / 255) * 5;
+       pushPwlPoint(pin, v);
     },
     digitalRead: (pin: string) => {
-       const v = getVoltageAtTime(pin, state.mcuTimeMs);
+       const v = getVoltageAtTime(pin, ctx.state.mcuTimeMs);
        return v > 2.5 ? 1 : 0;
     },
     analogRead: (pin: string) => {
-       const v = getVoltageAtTime(pin, state.mcuTimeMs);
+       const v = getVoltageAtTime(pin, ctx.state.mcuTimeMs);
        let val = (v / 5.0) * 1023;
        if (val < 0) val = 0;
        if (val > 1023) val = 1023;
@@ -152,12 +233,13 @@ export function executeMcuCode(
        // Generator-based sleep is resolved outside via yield
     },
     wait: (_ms: number) => {},
-    millis: () => (state.sliceStartMs ?? 0) + state.mcuTimeMs,
+    millis: () => (ctx.state.sliceStartMs ?? 0) + ctx.state.mcuTimeMs,
     Serial: {
-      println: (msg: unknown) => state.logs.push(String(msg)),
+      println: (msg: unknown) => ctx.state.logs.push(String(msg)),
       print: (msg: unknown) => {
-        if (state.logs.length === 0) state.logs.push("");
-        state.logs[state.logs.length - 1] += String(msg);
+        const s = ctx.state;
+        if (s.logs.length === 0) s.logs.push("");
+        s.logs[s.logs.length - 1] += String(msg);
       }
     }
   };
@@ -165,12 +247,21 @@ export function executeMcuCode(
   // Compile the user script into a Generator Function on first run
   if (!state.generator) {
      const apiKeys = Object.keys(api);
-     const apiValues = Object.values(api);
-     const rewrittenCode = code.replace(/sleep\(/g, 'yield(').replace(/wait\(/g, 'yield(');
+     const rewrittenCode = rewriteSleepCalls(code);
      
      try {
-        const wrapper = new Function(...apiKeys, `return function*() { ${rewrittenCode} }`);
-        const genFactory = wrapper(...apiValues);
+        // Pass live getters for `state` and `simLength` by reading from `api` inside the wrapper
+        const wrapper = new Function(
+          '__api__',
+          `const { HIGH, LOW, INPUT, OUTPUT, pinMode, digitalWrite, analogWrite, digitalRead, analogRead, sleep, wait, millis, Serial } = __api__;\n` +
+          `return function*() {\n` +
+          `  const state = __api__.state;\n` +
+          `  const simLength = __api__.simLength;\n` +
+          `  ${rewrittenCode}\n` +
+          `}`
+        );
+        void apiKeys;
+        const genFactory = wrapper(api);
         state.generator = genFactory();
      } catch (err) {
         console.error("MCU Compilation Error:", err);
@@ -197,7 +288,12 @@ export function executeMcuCode(
   }
 
   // Run the generator function up to the slice boundary
+  let steps = 0;
   while (!currentYield && state.mcuTimeMs < state.simLengthMs) {
+     if (++steps > MAX_MCU_STEPS_PER_SLICE) {
+        state.logs.push("Runtime Error: MCU execution limit exceeded (possible infinite loop without positive sleep)");
+        break;
+     }
      let res;
      try {
         res = state.generator.next();
@@ -211,7 +307,12 @@ export function executeMcuCode(
         break;
      }
      
-     const sleepDuration = res.value || 0;
+     const rawSleep = res.value === undefined ? 0 : Number(res.value);
+     if (!Number.isFinite(rawSleep) || rawSleep < 0) {
+        state.logs.push(`Runtime Error: invalid sleep duration (${String(res.value)})`);
+        break;
+     }
+     const sleepDuration = rawSleep;
      if (state.mcuTimeMs + sleepDuration >= state.simLengthMs) {
         const elapsedInSlice = state.simLengthMs - state.mcuTimeMs;
         currentYield = { duration: sleepDuration, elapsed: elapsedInSlice };

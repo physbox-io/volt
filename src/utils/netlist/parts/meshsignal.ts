@@ -1,5 +1,6 @@
 import type { PartEmitter } from '../part';
 import { numParam } from '../params';
+import { parseEngValue } from '../../engValue';
 
 export const MESH_SIGNAL_DEFAULTS = {
   gain: 1,
@@ -24,8 +25,12 @@ export function meshSignalLevel(data: Record<string, unknown>, value: number, wa
   const p = (key: keyof typeof MESH_SIGNAL_DEFAULTS) => numParam(data, key, MESH_SIGNAL_DEFAULTS[key]);
   const scaled = p('gain') * value + p('offset');
   const raw = data.threshold;
-  if (raw === undefined || raw === null || raw === '') return { volts: scaled, high: scaled > 0 };
-  const threshold = numParam(data, 'threshold', 0);
+  const threshold = typeof raw === 'number'
+    ? (Number.isFinite(raw) ? raw : null)
+    : typeof raw === 'string' && raw.trim()
+      ? parseEngValue(raw)
+      : null;
+  if (threshold === null || !Number.isFinite(threshold)) return { volts: scaled, high: scaled > 0 };
   const half = Math.abs(p('hysteresis')) / 2;
   const high = scaled > threshold + half ? true : scaled < threshold - half ? false : wasHigh;
   return { volts: high ? p('high') : p('low'), high };

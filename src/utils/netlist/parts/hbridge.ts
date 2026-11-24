@@ -30,15 +30,19 @@ export const hbridge: PartEmitter = {
     const out1 = net('out1');
     const out2 = net('out2');
     const g = 1 / Math.max(numParam(node.data, 'rdsOn', HBRIDGE_DEFAULTS.rdsOn), 1e-6);
-    const s1 = logicHigh(in1, gnd);
-    const s2 = logicHigh(in2, gnd);
+    // Break-before-make thresholds (1.2V off / 1.8V on) prevent simultaneous
+    // high-side + low-side shoot-through across VM-GND during transitions.
+    const s1Hi = logicHigh(in1, gnd, 1.8);
+    const s1Lo = logicHigh(in1, gnd, 1.2);
+    const s2Hi = logicHigh(in2, gnd, 1.8);
+    const s2Lo = logicHigh(in2, gnd, 1.2);
     const sw = (name: string, from: string, to: string, on: string) =>
       `B_${id}_${name} ${from} ${to} I = V(${from}, ${to}) * (${g} * ${on} + 1e-9)\n`;
     const model = `HB_DIODE_${id}`;
-    return sw('h1', vm, out1, `${s1} * (1 - ${s2})`)
-      + sw('l1', out1, gnd, s2)
-      + sw('h2', vm, out2, `${s2} * (1 - ${s1})`)
-      + sw('l2', out2, gnd, s1)
+    return sw('h1', vm, out1, `${s1Hi} * (1 - ${s2Lo})`)
+      + sw('l1', out1, gnd, s2Hi)
+      + sw('h2', vm, out2, `${s2Hi} * (1 - ${s1Lo})`)
+      + sw('l2', out2, gnd, s1Hi)
       + `D_${id}_h1 ${out1} ${vm} ${model}\n`
       + `D_${id}_l1 ${gnd} ${out1} ${model}\n`
       + `D_${id}_h2 ${out2} ${vm} ${model}\n`

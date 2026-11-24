@@ -168,7 +168,7 @@ export function mergeOverlappingNodesAndJunctions(
             }
             return updated;
           }).filter(edge => {
-            return edge.source !== edge.target;
+            return !(edge.source === edge.target && edge.sourceHandle === edge.targetHandle);
           });
           
           updatedNodes = updatedNodes.filter(n => n.id !== junc.id);
@@ -205,6 +205,8 @@ export function mergeOverlappingNodesAndJunctions(
   return { nodes: updatedNodes, edges: updatedEdges };
 }
 
+let splitEdgeCounter = 0;
+
 export function splitEdgesOnOverlappingNodes(
   nodes: Node[],
   edges: Edge[],
@@ -224,7 +226,7 @@ export function splitEdgesOnOverlappingNodes(
 
       if (node.type === 'junction') {
         const edgeToJunction: Edge = {
-          id: `e-${matchedEdge.source}-${node.id}-${Date.now()}`,
+          id: `e-${matchedEdge.source}-${node.id}-s${++splitEdgeCounter}`,
           source: matchedEdge.source,
           sourceHandle: matchedEdge.sourceHandle,
           target: node.id,
@@ -233,7 +235,7 @@ export function splitEdgesOnOverlappingNodes(
         };
 
         const edgeFromJunction: Edge = {
-          id: `e-${node.id}-${matchedEdge.target}-${Date.now()}`,
+          id: `e-${node.id}-${matchedEdge.target}-s${++splitEdgeCounter}`,
           source: node.id,
           sourceHandle: 'out',
           target: matchedEdge.target,
@@ -249,7 +251,7 @@ export function splitEdgesOnOverlappingNodes(
       } 
       else if (node.type === 'ground') {
         const edgeToGround: Edge = {
-          id: `e-${matchedEdge.source}-${node.id}-${Date.now()}`,
+          id: `e-${matchedEdge.source}-${node.id}-s${++splitEdgeCounter}`,
           source: matchedEdge.source,
           sourceHandle: matchedEdge.sourceHandle,
           target: node.id,
@@ -258,7 +260,7 @@ export function splitEdgesOnOverlappingNodes(
         };
 
         const edgeFromGround: Edge = {
-          id: `e-${node.id}-${matchedEdge.target}-${Date.now()}`,
+          id: `e-${node.id}-${matchedEdge.target}-s${++splitEdgeCounter}`,
           source: node.id,
           sourceHandle: 'in',
           target: matchedEdge.target,

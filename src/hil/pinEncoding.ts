@@ -54,7 +54,7 @@ export function encodePinEdges(
     lastState = state;
     lastT = t;
   }
-  seq.push([lastState, Math.round((sliceMs - lastT) * 1000)]);
+  seq.push([lastState, Math.max(0, Math.round((sliceMs - lastT) * 1000))]);
   return { seq, shortestPulseUs };
 }
 
@@ -97,24 +97,30 @@ export function encodeSpeakerAudio(speaker: Trace | null, ground: Trace | null, 
 
   const sampleRate = 16000;
   const frameCount = Math.floor(sampleRate * (sliceMs / 1000));
+  if (frameCount <= 0) return null;
   const audioBuffer = new Int16Array(frameCount);
 
   let dataIdx = 0;
   let sumV = 0;
   const rawV = new Float32Array(frameCount);
+  const lastIdx = times.length - 1;
   for (let i = 0; i < frameCount; i++) {
     const t_ms = (i / sampleRate) * 1000;
-    while (dataIdx < times.length - 2 && times[dataIdx + 1] < t_ms) {
+    while (dataIdx < lastIdx - 1 && times[dataIdx + 1] < t_ms) {
       dataIdx++;
     }
-    const t1 = times[dataIdx];
-    const t2 = times[dataIdx + 1];
-    const v1 = volts[dataIdx] - (gndVolts ? gndVolts[dataIdx] : 0);
-    const v2 = volts[dataIdx + 1] - (gndVolts ? gndVolts[dataIdx + 1] : 0);
+    const g1 = gndVolts && dataIdx < gndVolts.length ? gndVolts[dataIdx] : 0;
+    const v1 = volts[dataIdx] - g1;
     let v = v1;
-    if (t2 > t1) {
-      const fraction = (t_ms - t1) / (t2 - t1);
-      v = v1 + fraction * (v2 - v1);
+    if (dataIdx + 1 <= lastIdx) {
+      const t1 = times[dataIdx];
+      const t2 = times[dataIdx + 1];
+      if (t2 > t1) {
+        const g2 = gndVolts && dataIdx + 1 < gndVolts.length ? gndVolts[dataIdx + 1] : 0;
+        const v2 = volts[dataIdx + 1] - g2;
+        const fraction = Math.min(1, Math.max(0, (t_ms - t1) / (t2 - t1)));
+        v = v1 + fraction * (v2 - v1);
+      }
     }
     rawV[i] = v;
     sumV += v;
@@ -122,16 +128,22 @@ export function encodeSpeakerAudio(speaker: Trace | null, ground: Trace | null, 
 
   // Subtract DC offset
   const meanV = sumV / frameCount;
-  let maxAbs = 0.001;
+  let maxAbs = 0;
   for (let i = 0; i < frameCount; i++) {
     rawV[i] -= meanV;
-    if (Math.abs(rawV[i]) > maxAbs) maxAbs = Math.abs(rawV[i]);
+    const abs = Math.abs(rawV[i]);
+    if (abs > maxAbs) maxAbs = abs;
   }
 
-  // Normalize and convert to Int16
+  // Silence gate: do not amplify sub-5mV numerical noise to full volume
+  const NOISE_GATE_V = 0.005;
+  if (maxAbs < NOISE_GATE_V) return audioBuffer;
+
+  // Normalize with a minimum reference floor so quiet signals do not pump loudly
+  const normPeak = Math.max(maxAbs, 0.05);
   const targetPeak = 20000;
   for (let i = 0; i < frameCount; i++) {
-    audioBuffer[i] = Math.round((rawV[i] / maxAbs) * targetPeak);
+    audioBuffer[i] = Math.round((rawV[i] / normPeak) * targetPeak);
   }
   return audioBuffer;
 }

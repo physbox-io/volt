@@ -13,13 +13,15 @@ export const ldr: PartEmitter = {
      * simulated as a 100 ohm resistor. parseEngValue is what reads a
      * component value everywhere else on the canvas, suffix and all.
      */
-    const rDark = parseEngValue(String(node.data.r_dark ?? '')) ?? 100000;
-    const lightLevel = node.data.lightLevel !== undefined ? Number(node.data.lightLevel) : 0;
+    const parsedDark = parseEngValue(String(node.data.r_dark ?? ''));
+    const rDark = parsedDark !== null && parsedDark > 0 ? Math.max(100, parsedDark) : 100000;
+    const rawLight = node.data.lightLevel !== undefined ? Number(node.data.lightLevel) : 0;
+    const lightLevel = Number.isFinite(rawLight) ? Math.max(0, Math.min(1, rawLight)) : 0;
 
     const pwlData = node.data.pwlData as { t: number; v: number }[] | undefined;
     if (pwlData && pwlData.length > 0) {
       return pwlSource(`V_light_${node.id} light_node_${node.id} 0`, pwlFrom(pwlData, time))
-        + `B_ldr_${node.id} ${n1} ${n2} I = V(${n1}, ${n2}) / (100 + (${rDark} - 100) * (1 - V(light_node_${node.id})))\n`;
+        + `B_ldr_${node.id} ${n1} ${n2} I = V(${n1}, ${n2}) / max(100 + (${rDark} - 100) * (1 - min(max(V(light_node_${node.id}), 0), 1)), 1)\n`;
     }
     const resVal = 100 + (rDark - 100) * (1 - lightLevel);
     return `R_${node.id} ${n1} ${n2} ${resVal.toFixed(2)}\n`;

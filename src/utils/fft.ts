@@ -11,6 +11,10 @@ export interface FFTBin {
 
 /** Compute FFT of real-valued signal. sampleRate in Hz. */
 export function computeFFT(samples: number[], sampleRate: number): FFTBin[] {
+  if (samples.length < 2 || !Number.isFinite(sampleRate) || sampleRate <= 0) {
+    return [];
+  }
+
   // Zero-pad to next power of 2
   let N = 1;
   while (N < samples.length) N <<= 1;
@@ -18,10 +22,13 @@ export function computeFFT(samples: number[], sampleRate: number): FFTBin[] {
   // Apply Hanning window and copy into real/imag arrays
   const re = new Float64Array(N);
   const im = new Float64Array(N);
+  let windowSum = 0;
   for (let i = 0; i < samples.length; i++) {
     const window = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (samples.length - 1)));
     re[i] = samples[i] * window;
+    windowSum += window;
   }
+  if (windowSum <= 0) return [];
 
   // Bit-reversal permutation
   const bits = Math.log2(N);
@@ -56,10 +63,13 @@ export function computeFFT(samples: number[], sampleRate: number): FFTBin[] {
   }
 
   // Convert to magnitude spectrum (only first half — positive frequencies)
+  // Normalize by windowSum (DC) and windowSum / 2 (single-sided AC) to compensate
+  // for both Hanning coherent gain (0.5) and zero-padding ratio.
   const bins: FFTBin[] = [];
   const halfN = N >> 1;
   for (let i = 0; i < halfN; i++) {
-    const mag = Math.sqrt(re[i] * re[i] + im[i] * im[i]) / halfN;
+    const scale = i === 0 ? windowSum : windowSum / 2;
+    const mag = Math.sqrt(re[i] * re[i] + im[i] * im[i]) / scale;
     const dB = mag > 1e-12 ? 20 * Math.log10(mag) : -120;
     bins.push({
       freq: (i * sampleRate) / N,

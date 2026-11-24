@@ -1,5 +1,6 @@
 import type { PartEmitter } from '../part';
 import { resolveOpAmpParams } from '../../deviceModels';
+import { sanitizeSpiceValue } from '../values';
 
 export const opamp: PartEmitter = {
   emit: (node, { net }) => {
@@ -26,7 +27,8 @@ B1 5 0 V=V(6) > V(3) ? V(3) : (V(6) < V(4) ? V(4) : V(6))
 
     for (const node of parts) {
       const resolved = resolveOpAmpParams(node.data);
-      const { gain, gbw, rin, rout } = resolved;
+      const { gain, gbw, rout } = resolved;
+      const rin = sanitizeSpiceValue(resolved.rin) || '100MEG';
       const dropHi = Math.max(0, resolved.vRailDropHi);
       const dropLo = Math.max(0, resolved.vRailDropLo);
 
@@ -42,6 +44,14 @@ E1 6 0 1 2 ${gain}
 `;
 
       const internalDrive = rout > 0.01 ? '8' : '5';
+      const clampExpr = (driveNode: string) => {
+        const base = `V(${driveNode}) > ${upperLimit} ? ${upperLimit} : (V(${driveNode}) < ${lowerLimit} ? ${lowerLimit} : V(${driveNode}))`;
+        // When headroom drops exceed the supply span (e.g. LM741 on 3.3V), upperLimit < lowerLimit
+        // would invert the output; hold output at mid-supply instead.
+        return dropHi > 0 || dropLo > 0
+          ? `${upperLimit} < ${lowerLimit} ? 0.5 * (V(3) + V(4)) : (${base})`
+          : base;
+      };
 
       if (gbw > 0) {
         // Dominant pole for GBW roll-off: fp = GBW / gain.
@@ -50,9 +60,9 @@ E1 6 0 1 2 ${gain}
         const cpole = cpoleVal < 1e-12 ? `${(cpoleVal * 1e12).toFixed(4)}p` : cpoleVal.toExponential(6);
         lib += `Rpole 6 7 100k\n`;
         lib += `Cpole 7 0 ${cpole}\n`;
-        lib += `B1 ${internalDrive} 0 V=V(7) > ${upperLimit} ? ${upperLimit} : (V(7) < ${lowerLimit} ? ${lowerLimit} : V(7))\n`;
+        lib += `B1 ${internalDrive} 0 V=${clampExpr('7')}\n`;
       } else {
-        lib += `B1 ${internalDrive} 0 V=V(6) > ${upperLimit} ? ${upperLimit} : (V(6) < ${lowerLimit} ? ${lowerLimit} : V(6))\n`;
+        lib += `B1 ${internalDrive} 0 V=${clampExpr('6')}\n`;
       }
 
       if (rout > 0.01) {

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef, useContext, type DragEvent, type Dispatch, type SetStateAction } from 'react';
+import { memo, useState, useCallback, useEffect, useMemo, useRef, useContext, type DragEvent, type Dispatch, type SetStateAction } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -161,7 +161,11 @@ export interface FlowAreaProps {
   onPickedPartPlaced?: () => void;
 }
 
-export function FlowArea({
+const DEFAULT_EDGE_OPTIONS = { type: 'aura' } as const;
+const SNAP_GRID: [number, number] = [4, 4];
+const PRO_OPTIONS = { hideAttribution: true } as const;
+
+export const FlowArea = memo(function FlowArea({
   nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange, onConnect, onNodeClick,
   probeMode, onEdgeProbe, isSimulating, fitKey, hasNoteCard, noteCardRect,
   pickedPart, onPickedPartPlaced, designators,
@@ -575,10 +579,10 @@ export function FlowArea({
         edgeTypes={edgeTypes}
         nodesConnectable={!isSimulating}
         connectionMode={ConnectionMode.Loose}
-        defaultEdgeOptions={{ type: 'aura' }}
+        defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
         snapToGrid={true}
-        snapGrid={[4, 4]}
-        proOptions={{ hideAttribution: true }}
+        snapGrid={SNAP_GRID}
+        proOptions={PRO_OPTIONS}
         fitView
       >
         {/* Drafting grid: 16px reads as guidance, the 8px default read as noise.
@@ -619,4 +623,4 @@ export function FlowArea({
     </div>
     </DesignatorContext.Provider>
   );
-}
+});

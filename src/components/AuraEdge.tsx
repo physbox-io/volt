@@ -240,14 +240,14 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
   }, [edgePath]);
 
   useEffect(() => {
-    if (store) {
-      store.registerPath(id, points);
-      return () => store.unregisterPath(id);
-    }
-    // `points` itself rather than a JSON key of it: it is memoised on the path
-    // string, and `registerPath` already discards a re-registration that is
-    // structurally identical, so the key bought nothing but a missing dep.
+    store?.registerPath(id, points);
   }, [id, points, store]);
+
+  useEffect(() => {
+    return () => {
+      store?.unregisterPath(id);
+    };
+  }, [id, store]);
 
   /*
    * The DC overlay's chip.
@@ -304,9 +304,13 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
     return ids;
   }, [id, source, target, sourceHandle, targetHandle, store, getEdges]);
 
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragCleanupRef.current?.(), []);
+
   const handleWireMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    dragCleanupRef.current?.();
     setIsDragging(true);
 
     const startX = e.clientX;
@@ -343,12 +347,18 @@ export const AuraEdge = memo(function AuraEdge(props: EdgeProps) {
       }));
     };
 
-    const handleMouseUp = () => {
-      setIsDragging(false);
+    const cleanup = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      if (dragCleanupRef.current === cleanup) dragCleanupRef.current = null;
     };
 
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      cleanup();
+    };
+
+    dragCleanupRef.current = cleanup;
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
   }, [waypoints, screenToFlowPosition, getViewport, setEdges, collectBundleIds]);

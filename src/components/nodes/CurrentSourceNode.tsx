@@ -58,9 +58,9 @@ export function CurrentSourceNode({ id, data, selected }: NodeProps<Node<Current
             <path d="M 40 24 H 50" />
             {/* Circle */}
             <circle cx="24" cy="24" r="16" />
-            {/* Arrow (current direction pointing right) */}
-            <line x1="16" y1="24" x2="32" y2="24" />
-            <path d="M 27 20 L 32 24 L 27 28" />
+            {/* Arrow (current direction pointing left, from neg to pos) */}
+            <line x1="32" y1="24" x2="16" y2="24" />
+            <path d="M 21 20 L 16 24 L 21 28" />
           </>
         ) : (
           <>

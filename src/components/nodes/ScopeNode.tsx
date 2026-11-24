@@ -1,6 +1,6 @@
 import { Handle, Position, NodeResizer, useReactFlow } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
-import { useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { computeFFT } from '../../utils/fft';
 import { detectPeriod } from '../../utils/periodDetect';
 import type { NodePropertiesProps } from './registry';
@@ -70,22 +70,49 @@ function pickStep(range: number, divs: number, steps: number[]): number {
   return steps[steps.length - 1];
 }
 
-export function ScopeNode({ id, data, selected }: NodeProps<Node<ScopeNodeData>>) {
-  /*
-   * The screen size is written from here rather than through a callback App
-   * injected into the node's `data` after render. That injection was an effect
-   * that re-rendered the whole canvas to hand each scope a closure, and a scope
-   * dropped onto the canvas had no handler at all until the effect next ran.
-   */
+const MAX_SCOPE_SVG_POINTS = 400;
+
+function buildScopePolylinePoints(
+  points: PwlPoint[],
+  vCenter: number,
+  vDiv: number,
+  tDiv: number
+): string | null {
+  if (points.length === 0) return null;
+  const totalV = vDiv * 4;
+  const minV = vCenter - totalV / 2;
+  const maxT = tDiv * 10;
+
+  let visibleCount = 0;
+  for (let i = 0; i < points.length; i++) {
+    if (points[i].t <= maxT) visibleCount++;
+  }
+  if (visibleCount === 0) return null;
+
+  const stride = Math.max(1, Math.floor(visibleCount / MAX_SCOPE_SVG_POINTS));
+  const out: string[] = [];
+  let seen = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    if (p.t > maxT) continue;
+    if (seen % stride === 0 || seen === visibleCount - 1) {
+      const x = (p.t / maxT) * 100;
+      let y = 60 - ((p.v - minV) / totalV) * 60;
+      if (y < 0) y = 0;
+      else if (y > 60) y = 60;
+      out.push(`${x.toFixed(2)},${y.toFixed(2)}`);
+    }
+    seen++;
+  }
+  return out.join(' ');
+}
+
+export const ScopeNode = memo(function ScopeNode({ id, data, selected }: NodeProps<Node<ScopeNodeData>>) {
   const { setNodes } = useReactFlow();
-  const onResize = useCallback((w: number, h: number) => {
+  const onResizeEnd = useCallback((w: number, h: number) => {
     setNodes(nds => nds.map(n => (n.id === id ? { ...n, data: { ...n.data, width: w, height: h } } : n)));
   }, [id, setNodes]);
 
-  // Memoised, not computed inline: `|| []` hands back a fresh array on every
-  // render, and three separate useMemos downstream take these as dependencies —
-  // so the FFT, the auto-ranging and the period detection were all recomputed
-  // on every render of a scope that had no trace on it.
   const points1 = useMemo<PwlPoint[]>(
     () => data.voltageData1 || data.voltageData || [],
     [data.voltageData1, data.voltageData],
@@ -96,15 +123,31 @@ export function ScopeNode({ id, data, selected }: NodeProps<Node<ScopeNodeData>>
   const width = data.width ?? 240;
   const height = data.height ?? 160;
 
-  // Compute auto V/div and time/div from data
-  const { autoVDiv, autoTDiv } = useMemo(() => {
-    const allV = [...points1.map(p => p.v), ...points2.map(p => p.v)];
-    const allT = [...points1.map(p => p.t), ...points2.map(p => p.t)];
-    const vRange = allV.length > 0 ? Math.max(...allV) - Math.min(...allV) : 10;
-    const tRange = allT.length > 0 ? Math.max(...allT) : 1000;
+  // Compute auto V/div, time/div, and vCenter in a single pass without
+  // variadic Math.max(...arr) spread (which overflows the stack on large traces).
+  const { autoVDiv, autoTDiv, vCenter } = useMemo(() => {
+    let minV = Infinity;
+    let maxV = -Infinity;
+    let maxT = -Infinity;
+    for (let i = 0; i < points1.length; i++) {
+      const p = points1[i];
+      if (p.v < minV) minV = p.v;
+      if (p.v > maxV) maxV = p.v;
+      if (p.t > maxT) maxT = p.t;
+    }
+    for (let i = 0; i < points2.length; i++) {
+      const p = points2[i];
+      if (p.v < minV) minV = p.v;
+      if (p.v > maxV) maxV = p.v;
+      if (p.t > maxT) maxT = p.t;
+    }
+    const hasV = Number.isFinite(minV);
+    const vRange = hasV ? maxV - minV : 10;
+    const tRange = Number.isFinite(maxT) ? maxT : 1000;
     return {
       autoVDiv: pickStep(Math.max(vRange, 0.1), 4, VDIV_STEPS),
       autoTDiv: pickStep(Math.max(tRange, 0.1), 10, TDIV_STEPS),
+      vCenter: hasV ? (maxV + minV) / 2 : 0,
     };
   }, [points1, points2]);
 
@@ -117,42 +160,49 @@ export function ScopeNode({ id, data, selected }: NodeProps<Node<ScopeNodeData>>
     return detectPeriod(points1.length >= 8 ? points1 : points2);
   }, [showPeriod, showFFT, points1, points2]);
 
-  // FFT computation
+  // FFT computation — resample non-uniform SPICE timesteps onto a uniform power-of-2 grid first.
   const fftBins = useMemo(() => {
     if (!showFFT || points1.length < 4) return [];
-    const dt = points1.length > 1 ? (points1[points1.length - 1].t - points1[0].t) / (points1.length - 1) : 1;
+    const t0 = points1[0].t;
+    const t1 = points1[points1.length - 1].t;
+    const span = t1 - t0;
+    if (!(span > 0)) return [];
+
+    let numSamples = 1;
+    while (numSamples < points1.length && numSamples < 4096) numSamples <<= 1;
+    const dt = span / (numSamples - 1);
+    const uniform = new Array<number>(numSamples);
+    let j = 0;
+    for (let i = 0; i < numSamples; i++) {
+      const t = t0 + i * dt;
+      while (j < points1.length - 2 && points1[j + 1].t < t) j++;
+      const a = points1[j];
+      const b = points1[j + 1] ?? a;
+      const frac = b.t > a.t ? (t - a.t) / (b.t - a.t) : 0;
+      uniform[i] = a.v + (b.v - a.v) * frac;
+    }
+
     const sampleRate = 1000 / dt; // dt is in ms
-    return computeFFT(points1.map(p => p.v), sampleRate);
+    return computeFFT(uniform, sampleRate);
   }, [showFFT, points1]);
 
-  // Time-domain polyline generator
-  const getPolyline = (points: { t: number; v: number }[], color: string) => {
-    if (points.length === 0) return null;
-    const totalV = vDiv * 4; // 4 vertical divisions
-    const vCenter = (() => {
-      const allV = [...points1.map(p => p.v), ...points2.map(p => p.v)];
-      return allV.length > 0 ? (Math.max(...allV) + Math.min(...allV)) / 2 : 0;
-    })();
-    const minV = vCenter - totalV / 2;
-    const maxT = tDiv * 10; // 10 horizontal divisions
-
-    const pts = points
-      .filter(p => p.t <= maxT)
-      .map(p => {
-        const x = (p.t / maxT) * 100;
-        let y = 60 - ((p.v - minV) / totalV) * 60;
-        if (y < 0) y = 0;
-        if (y > 60) y = 60;
-        return `${x},${y}`;
-      }).join(' ');
-    return <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" />;
-  };
+  const polyline1Pts = useMemo(
+    () => (showFFT ? null : buildScopePolylinePoints(points1, vCenter, vDiv, tDiv)),
+    [showFFT, points1, vCenter, vDiv, tDiv]
+  );
+  const polyline2Pts = useMemo(
+    () => (showFFT ? null : buildScopePolylinePoints(points2, vCenter, vDiv, tDiv)),
+    [showFFT, points2, vCenter, vDiv, tDiv]
+  );
 
   // FFT polyline
   const fftPolyline = useMemo(() => {
     if (fftBins.length === 0) return null;
     const maxFreq = fftBins[fftBins.length - 1].freq;
-    const maxMag = Math.max(...fftBins.map(b => b.mag));
+    let maxMag = -Infinity;
+    for (let i = 0; i < fftBins.length; i++) {
+      if (fftBins[i].mag > maxMag) maxMag = fftBins[i].mag;
+    }
     const minMag = maxMag - 80; // 80dB dynamic range
     return (
       <polyline
@@ -161,7 +211,7 @@ export function ScopeNode({ id, data, selected }: NodeProps<Node<ScopeNodeData>>
           let y = 60 - ((b.mag - minMag) / (maxMag - minMag)) * 60;
           if (y < 0) y = 0;
           if (y > 60) y = 60;
-          return `${x},${y}`;
+          return `${x.toFixed(2)},${y.toFixed(2)}`;
         }).join(' ')}
         fill="none" stroke="#a78bfa" strokeWidth="1.5"
       />
@@ -181,7 +231,7 @@ export function ScopeNode({ id, data, selected }: NodeProps<Node<ScopeNodeData>>
         isVisible={selected}
         lineClassName="!border-indigo-400"
         handleClassName="!w-2 !h-2 !bg-indigo-400 !border-indigo-600"
-        onResize={(_e, params) => onResize(params.width, params.height)}
+        onResizeEnd={(_e, params) => onResizeEnd(params.width, params.height)}
       />
 
       {/* Header */}
@@ -212,8 +262,8 @@ export function ScopeNode({ id, data, selected }: NodeProps<Node<ScopeNodeData>>
           <svg width="100%" height="100%" viewBox="0 0 100 60" preserveAspectRatio="none" className="relative z-10">
             {showFFT ? fftPolyline : (
               <>
-                {getPolyline(points1, "#facc15")}
-                {getPolyline(points2, "#22d3ee")}
+                {polyline1Pts && <polyline points={polyline1Pts} fill="none" stroke="#facc15" strokeWidth="1.5" />}
+                {polyline2Pts && <polyline points={polyline2Pts} fill="none" stroke="#22d3ee" strokeWidth="1.5" />}
               </>
             )}
           </svg>
@@ -242,4 +292,4 @@ export function ScopeNode({ id, data, selected }: NodeProps<Node<ScopeNodeData>>
       <Handle type="source" position={Position.Left} id="gnd" className="w-3 h-3 bg-gray-500" style={{ top: pinRow(144) }} />
     </div>
   );
-}
+});

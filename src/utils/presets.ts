@@ -754,8 +754,8 @@ export const currentMirror: CircuitPreset = {
   ],
   edges: [
     // Reference branch: V+ → current source → mm1 → Q1 collector (diode-connected)
-    { id: 'e-v-isrc', source: 'v1', target: 'isrc', sourceHandle: 'pos', targetHandle: 'pos', type: 'smoothstep' },
-    { id: 'e-isrc-mm1', source: 'isrc', target: 'mm1', sourceHandle: 'neg', targetHandle: 'pos', type: 'smoothstep' },
+    { id: 'e-v-isrc', source: 'v1', target: 'isrc', sourceHandle: 'pos', targetHandle: 'neg', type: 'smoothstep' },
+    { id: 'e-isrc-mm1', source: 'isrc', target: 'mm1', sourceHandle: 'pos', targetHandle: 'pos', type: 'smoothstep' },
     { id: 'e-mm1-q1c', source: 'mm1', target: 'q1', sourceHandle: 'neg', targetHandle: 'c', type: 'smoothstep' },
     // Q1 diode-connected: base tied to collector
     { id: 'e-q1c-q1b', source: 'q1', target: 'q1', sourceHandle: 'c', targetHandle: 'b', type: 'smoothstep' },

@@ -51,6 +51,34 @@ export type CoSimBindings = { shafts: ShaftBinding[]; signals: SignalBinding[]; 
 
 const bound = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
+/**
+ * Trapezoidal time-average of a SPICE vector over the slice, falling back to
+ * `fallback` (the end sample) when the vector is absent or has < 2 samples.
+ */
+function sliceAverage(result: SpiceResult, vectorName: string, fallback: number): number {
+  if (!result?.variableNames || !result.data) return fallback;
+  const target = vectorName.toLowerCase();
+  let tIdx = -1;
+  let vIdx = -1;
+  for (let i = 0; i < result.variableNames.length; i++) {
+    const name = result.variableNames[i].toLowerCase();
+    if (name === 'time') tIdx = i;
+    else if (name === target) vIdx = i;
+  }
+  if (tIdx < 0 || vIdx < 0) return fallback;
+  const times = result.data[tIdx]?.values as number[] | undefined;
+  const vals = result.data[vIdx]?.values as number[] | undefined;
+  if (!times || !vals || times.length < 2 || vals.length < 2) return fallback;
+  const n = Math.min(times.length, vals.length);
+  const dtTotal = times[n - 1] - times[0];
+  if (!(dtTotal > 0)) return fallback;
+  let area = 0;
+  for (let i = 1; i < n; i++) {
+    area += 0.5 * (vals[i - 1] + vals[i]) * (times[i] - times[i - 1]);
+  }
+  return area / dtTotal;
+}
+
 /** What the circuit has bound to the scene: motor shafts to joints, signals to channels. */
 export function coSimBindings(nodes: Node[]): CoSimBindings {
   const shafts: ShaftBinding[] = [];
@@ -151,6 +179,9 @@ export async function coSimStep(state: CoSimState, input: CoSimInput, { solve, e
     }
     const signal = signalById.get(n.id);
     if (signal) {
+      // Strip the stepped signal's driven net from .ic so it does not fight V_<id> under uic.
+      const outNet = state.portToNet[`${n.id}-out`];
+      if (outNet && outNet !== '0') delete sim[outNet.toLowerCase()];
       return { ...n, data: { ...n.data, signalValue: outputs[signal.channel] ?? 0, latchedHigh: state.latches[n.id] === true } };
     }
     return n;
@@ -179,10 +210,13 @@ export async function coSimStep(state: CoSimState, input: CoSimInput, { solve, e
   const result = await solve(netlist);
   const end = readEndState(result, sim);
 
-  // The currents the slice ended on drive the joint through the next one.
+  // The slice-averaged phase currents drive the joint through the next step.
   const inputs: Record<string, number> = {};
   for (const shaft of bindings.shafts) {
-    const currents = shaft.spec.phases.map((_, i) => end[`i(${phaseSense(shaft.nodeId, i + 1)})`.toLowerCase()] ?? 0);
+    const currents = shaft.spec.phases.map((_, i) => {
+      const vec = `i(${phaseSense(shaft.nodeId, i + 1)})`.toLowerCase();
+      return sliceAverage(result, vec, end[vec] ?? 0);
+    });
     shaftInputs(shaft.joint, shaft.spec, currents, inputs);
   }
 

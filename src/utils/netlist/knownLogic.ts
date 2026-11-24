@@ -43,21 +43,41 @@ export function knownLogic(
   };
   const isHigh = (v: number) => v > LOGIC_THRESHOLD_V;
 
+  const UNKNOWN_OUT_TYPES = new Set(['and', 'or', 'nand', 'nor', 'xor', 'not', 'timer555', 'meshsignal']);
+  const HELTEC_GPIO = ['GPIO_1', 'GPIO_3', 'GPIO_33', 'GPIO_36', 'GPIO_37', 'GPIO_41'];
+
   for (const n of nodes) {
     const at = (h: string) => portToNet[`${n.id}-${h}`];
-    if (n.type === 'voltage' && at('neg') === '0') {
-      const raw = n.data.voltage !== undefined ? Number(n.data.voltage) : parseFloat(sanitizeSpiceValue(String(n.data.label || '5')));
-      add(at('pos'), Number.isFinite(raw) ? constant(isHigh(raw)) : null);
+    if (n.type === 'voltage') {
+      if (at('neg') === '0') {
+        const raw = n.data.voltage !== undefined ? Number(n.data.voltage) : parseFloat(sanitizeSpiceValue(String(n.data.label || '5')));
+        add(at('pos'), Number.isFinite(raw) ? constant(isHigh(raw)) : null);
+      } else {
+        add(at('pos'), null);
+        add(at('neg'), null);
+      }
     } else if (n.type === 'powerrail') {
       add(at('in'), constant(isHigh(railVoltage(n.data))));
-    } else if (n.type === 'signalgen' && at('gnd') === '0') {
-      add(at('out'), squareTrace(n.data, lengthS, startS));
+    } else if (n.type === 'signalgen') {
+      add(at('out'), at('gnd') === '0' ? squareTrace(n.data, lengthS, startS) : null);
     } else if (n.type === 'mcu') {
       const drive = mcuDrives[n.id];
       for (const [pin, mode] of Object.entries(drive?.pinModes ?? {})) {
         const pwl = drive!.pwlOutputs[pin];
         if (mode === 'OUTPUT' && pwl && pwl.length > 0) add(at(pin), pwlTrace(pwl, lengthS, isHigh));
       }
+    } else if (n.type && UNKNOWN_OUT_TYPES.has(n.type)) {
+      add(at('out'), null);
+    } else if (n.type === 'dff') {
+      add(at('q'), null);
+      add(at('qbar'), null);
+    } else if (n.type === 'heltec_v4') {
+      const pins = (n.data.pins || {}) as Record<string, string>;
+      for (const pin of HELTEC_GPIO) {
+        const mode = pins[pin] || 'digital_in';
+        if (mode === 'analog_in' || mode === 'digital_in') add(at(pin), null);
+      }
+      add(at('3V3'), null);
     }
   }
 
@@ -75,8 +95,11 @@ function squareTrace(data: Record<string, unknown>, lengthS: number, startS: num
   const amp = numParam(data, 'amplitude', 5);
   if (!(freq > 0)) return constant(amp > LOGIC_THRESHOLD_V);
   if (data.waveform !== 'square' || !(amp > LOGIC_THRESHOLD_V)) return null;
+  const duty = numParam(data, 'dutyCycle', 50);
+  if (duty <= 0) return constant(false);
+  if (duty >= 100) return constant(true);
   const period = 1 / freq;
-  const pw = (numParam(data, 'dutyCycle', 50) / 100) * period;
+  const pw = (duty / 100) * period;
   const phase0 = ((startS % period) + period) % period;
   const edges: LogicTrace['edges'] = [];
   // Every rise at (k·period − start) and fall a pulse width later, inside the run.

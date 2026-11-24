@@ -5,7 +5,6 @@
  */
 
 import { getNodesBounds, getViewportForBounds, type Node } from '@xyflow/react';
-import { toJpeg, toPng } from 'html-to-image';
 
 /**
  * Margin left around the circuit in a screenshot.
@@ -91,6 +90,7 @@ export async function captureCircuit(
         transform: `translate(${x}px, ${y}px) scale(${zoom})`,
       },
     };
+    const { toJpeg, toPng } = await import('html-to-image');
     return format === 'jpeg'
       ? await toJpeg(viewportEl, { ...options, quality: 0.75, pixelRatio: 1 })
       : await toPng(viewportEl, options);

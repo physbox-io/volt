@@ -126,12 +126,12 @@ export function checkComponentRatings({ nodes, portToNet, result, nameOf }: Rati
   const across = (nodeId: string, handleA: string, handleB: string): number[] | null => {
     const a = findNetGraph(result, portToNet[`${nodeId}-${handleA}`], index);
     const b = findNetGraph(result, portToNet[`${nodeId}-${handleB}`], index);
-    if (!a && !b) return null;
-    const av = a?.voltage_levels;
-    const bv = b?.voltage_levels;
-    const n = av?.length ?? bv?.length ?? 0;
+    if (!a || !b) return null;
+    const av = a.voltage_levels;
+    const bv = b.voltage_levels;
+    const n = Math.min(av.length, bv.length);
     const series = new Array<number>(n);
-    for (let i = 0; i < n; i++) series[i] = (av?.[i] ?? 0) - (bv?.[i] ?? 0);
+    for (let i = 0; i < n; i++) series[i] = av[i] - bv[i];
     return series;
   };
 
@@ -175,15 +175,36 @@ export function checkComponentRatings({ nodes, portToNet, result, nameOf }: Rati
     else if (node.type === 'potentiometer') {
       // Both halves, because the wiper near one end puts nearly all of it in
       // the other — a pot rated as a whole can still cook one half of its track.
+      // Each track segment's continuous rating scales proportionally with its length.
       const total = resistanceOf(node, 10000);
       const rawPos = Number(data.position);
       const pos = Math.max(0.001, Math.min(0.999, (Number.isFinite(rawPos) ? rawPos : 50) / 100));
       const top = across(node.id, 'in', 'wiper');
       const bot = across(node.id, 'wiper', 'out');
       if (!top && !bot) continue;
-      const a = top ? dissipation(top, Math.max(1e-6, total * (1 - pos))) : { mean: 0, peak: 0 };
-      const b = bot ? dissipation(bot, Math.max(1e-6, total * pos)) : { mean: 0, peak: 0 };
-      report(node, a.mean + b.mean, a.peak + b.peak, powerRatingFor(node), 'Most of it is in the shorter half of the track; a series resistor takes the heat out of the pot.');
+      const rTop = Math.max(1e-6, total * (1 - pos));
+      const rBot = Math.max(1e-6, total * pos);
+      const pTop = top ? top.map(x => (x * x) / rTop) : null;
+      const pBot = bot ? bot.map(x => (x * x) / rBot) : null;
+      const meanTop = pTop ? timeWeightedMean(pTop, t) : 0;
+      const meanBot = pBot ? timeWeightedMean(pBot, t) : 0;
+      const n = Math.max(pTop?.length ?? 0, pBot?.length ?? 0);
+      let combinedPeak = 0;
+      for (let i = 0; i < n; i++) {
+        const inst = (pTop?.[i] ?? 0) + (pBot?.[i] ?? 0);
+        if (inst > combinedPeak) combinedPeak = inst;
+      }
+      const rating = powerRatingFor(node);
+      const topRating = rating.watts * (1 - pos);
+      const botRating = rating.watts * pos;
+      const totalMean = meanTop + meanBot;
+      if (totalMean > rating.watts) {
+        report(node, totalMean, combinedPeak, rating, 'Most of it is in the shorter half of the track; a series resistor takes the heat out of the pot.');
+      } else if (meanTop > topRating) {
+        report(node, meanTop, pTop ? Math.max(...pTop) : 0, { ...rating, watts: topRating }, 'The upper track segment is overloaded for this wiper position; add a series resistor to share the heat.');
+      } else if (meanBot > botRating) {
+        report(node, meanBot, pBot ? Math.max(...pBot) : 0, { ...rating, watts: botRating }, 'The lower track segment is overloaded for this wiper position; add a series resistor to share the heat.');
+      }
     }
 
     // A capacitor's limit is volts, not watts, and the number is printed on the

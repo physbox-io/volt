@@ -40,13 +40,29 @@ export class TraceHistory {
   /** One slice's waveforms, `sliceMs` long, ending `sliceMs` after the last. Pass `index` if built already. */
   append(nodes: Node[], result: SpiceResult, portToNet: Record<string, string>, sliceMs: number, index?: NetlistResultIndex): void {
     this.endMs += sliceMs;
+    let hasWatched = false;
+    for (const n of nodes) {
+      if (n.type === 'scope' || n.type === 'led') {
+        hasWatched = true;
+        break;
+      }
+    }
+    if (!hasWatched) {
+      if (Object.keys(this.traces).length > 0) this.traces = {};
+      return;
+    }
+
     const now = this.endMs;
     const cutoff = now - this.windowMs;
     const idx = index ?? buildNetlistResultIndex(result);
     const start = now - sliceMs;
+    const activeKeys = new Set<string>();
     const add = (key: string, times: number[], value: (i: number) => number) => {
+      activeKeys.add(key);
       const trace = (this.traces[key] ??= { points: [], head: 0 });
-      for (let i = 0; i < times.length; i++) trace.points.push({ t: start + times[i], v: value(i) });
+      const lastT = trace.points.length > 0 ? trace.points[trace.points.length - 1].t : -Infinity;
+      const startIdx = times.length > 0 && start + times[0] <= lastT ? 1 : 0;
+      for (let i = startIdx; i < times.length; i++) trace.points.push({ t: start + times[i], v: value(i) });
       while (trace.head < trace.points.length && trace.points[trace.head].t < cutoff) trace.head++;
       if (trace.head > 256 && trace.head * 2 > trace.points.length) {
         trace.points = trace.points.slice(trace.head);
@@ -68,30 +84,47 @@ export class TraceHistory {
         if (anode && inside) add(n.id, anode.timestamps_ms, i => anode.voltage_levels[i] - inside.voltage_levels[i]);
       }
     }
-  }
-
-  /** The points of trace `key` in the window, oldest first. */
-  private window(key: string): Point[] | undefined {
-    const trace = this.traces[key];
-    return trace ? trace.points.slice(trace.head) : undefined;
+    // Evict orphaned traces for scopes/LEDs removed or disconnected mid-run.
+    for (const key of Object.keys(this.traces)) {
+      if (!activeKeys.has(key)) delete this.traces[key];
+    }
   }
 
   /** The nodes with every scope and LED showing the window up to now. */
   applyTo(nodes: Node[]): Node[] {
     const cutoff = this.endMs - this.windowMs;
+    const relativePoints = (key: string): Point[] | undefined => {
+      const trace = this.traces[key];
+      if (!trace) return undefined;
+      const len = trace.points.length - trace.head;
+      const out = new Array<Point>(len);
+      for (let i = 0; i < len; i++) {
+        const p = trace.points[trace.head + i];
+        out[i] = { t: p.t - cutoff, v: p.v };
+      }
+      return out;
+    };
     return nodes.map(n => {
       if (n.type === 'scope') {
-        const hist1 = this.window(`${n.id}-ch1`);
-        const hist2 = this.window(`${n.id}-ch2`);
-        if (!hist1 && !hist2) return n;
-        const relative1 = (hist1 || []).map(p => ({ t: p.t - cutoff, v: p.v }));
-        const relative2 = (hist2 || []).map(p => ({ t: p.t - cutoff, v: p.v }));
-        return { ...n, data: { ...n.data, voltageData: relative1, voltageData1: relative1, voltageData2: relative2 } };
+        const relative1 = relativePoints(`${n.id}-ch1`);
+        const relative2 = relativePoints(`${n.id}-ch2`);
+        if (!relative1 && !relative2) return n;
+        const ch1 = relative1 ?? [];
+        const ch2 = relative2 ?? [];
+        return { ...n, data: { ...n.data, voltageData: ch1, voltageData1: ch1, voltageData2: ch2 } };
       }
       if (n.type === 'led') {
-        const hist = this.window(n.id);
-        if (!hist) return n;
-        return { ...n, data: { ...n.data, time_points: hist.map(p => p.t - cutoff), current_array: hist.map(p => p.v) } };
+        const trace = this.traces[n.id];
+        if (!trace) return n;
+        const len = trace.points.length - trace.head;
+        const time_points = new Array<number>(len);
+        const current_array = new Array<number>(len);
+        for (let i = 0; i < len; i++) {
+          const p = trace.points[trace.head + i];
+          time_points[i] = p.t - cutoff;
+          current_array[i] = p.v;
+        }
+        return { ...n, data: { ...n.data, time_points, current_array } };
       }
       return n;
     });

@@ -46,8 +46,9 @@ function discardEngine() {
 
 async function getEngine(): Promise<Simulation> {
   if (!engine) {
-    engine = new Simulation();
-    await engine.start();
+    const next = new Simulation();
+    await next.start();
+    engine = next;
   }
   return engine;
 }
@@ -64,9 +65,15 @@ async function getEngine(): Promise<Simulation> {
 let queue: Promise<void> = Promise.resolve();
 /** Requests waiting to run, so a warm-up gives way to them. */
 let pending = 0;
+let warmedUp = false;
+/** Latest queued request id for superseded-by-newer coalescing (DC .op overlays). */
+let latestOpId: string | number | null = null;
 
 self.onmessage = (evt: MessageEvent<SimRequest>) => {
-  if (evt.data.type === 'RUN') pending++;
+  if (evt.data.type === 'RUN') {
+    pending++;
+    if (evt.data.analysis === 'op') latestOpId = evt.data.id;
+  }
   queue = queue.then(() => handle(evt.data)).catch(err => {
     console.error('[SimulationWorker] unhandled:', err);
   }).finally(() => {
@@ -115,9 +122,12 @@ async function warmUp(sim: Simulation) {
 const handle = async (req: SimRequest) => {
 
   if (req.type === 'INIT') {
+    if (warmedUp) return;
+    warmedUp = true;
     try {
       await warmUp(await getEngine());
     } catch (err) {
+      warmedUp = false;
       console.error("[SimulationWorker] error preloading simulation engine:", err);
     }
     return;
@@ -127,6 +137,12 @@ const handle = async (req: SimRequest) => {
 
   const { id, netlist } = req;
   const analysis: SpiceAnalysisKind = req.analysis ?? 'tran';
+
+  // Drop superseded DC .op overlay solves before invoking WASM.
+  if (analysis === 'op' && latestOpId !== null && latestOpId !== id) {
+    self.postMessage({ id, ok: false, error: 'Superseded by newer operating point request' });
+    return;
+  }
 
   try {
     const sim = await getEngine();

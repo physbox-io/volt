@@ -44,6 +44,7 @@ export function readEndState(result: SpiceResult | null | undefined, from?: SimS
     const vals = result.data[idx]?.values as number[] | undefined;
     if (!vals || vals.length === 0) return;
     const last = vals[vals.length - 1];
+    if (!Number.isFinite(last)) return;
     if (name === 'time') {
       state[SIM_TIME] = simTime(from) + last;
     } else if (name.startsWith('v(') && name.endsWith(')')) {

@@ -5,32 +5,39 @@ class PlaybackTicker {
   private duration = 1000;
   private isRunning = false;
 
+  private tick = () => {
+    if (!this.isRunning || this.listeners.size === 0) {
+      this.animationFrameId = null;
+      return;
+    }
+    const now = performance.now();
+    let elapsed = Math.max(0, now - this.startTime);
+    if (this.duration > 0 && elapsed >= this.duration) {
+      elapsed = elapsed % this.duration;
+      this.startTime = now - elapsed;
+    }
+    for (const listener of this.listeners) {
+      try {
+        listener(elapsed);
+      } catch (err) {
+        console.error("Error in playback ticker listener:", err);
+      }
+    }
+    this.animationFrameId = requestAnimationFrame(this.tick);
+  };
+
   start(durationMs: number) {
     this.duration = durationMs;
-    this.startTime = Date.now();
+    this.startTime = performance.now();
     this.isRunning = true;
-
-    const tick = () => {
-      if (!this.isRunning) return;
-      let elapsed = Date.now() - this.startTime;
-      if (elapsed > this.duration) {
-        this.startTime = Date.now();
-        elapsed = 0;
-      }
-      for (const listener of this.listeners) {
-        try {
-          listener(elapsed);
-        } catch (err) {
-          console.error("Error in playback ticker listener:", err);
-        }
-      }
-      this.animationFrameId = requestAnimationFrame(tick);
-    };
 
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
     }
-    this.animationFrameId = requestAnimationFrame(tick);
+    if (this.listeners.size > 0) {
+      this.animationFrameId = requestAnimationFrame(this.tick);
+    }
   }
 
   stop() {
@@ -51,8 +58,15 @@ class PlaybackTicker {
 
   subscribe(listener: (elapsedMs: number) => void) {
     this.listeners.add(listener);
+    if (this.isRunning && this.animationFrameId === null) {
+      this.animationFrameId = requestAnimationFrame(this.tick);
+    }
     return () => {
       this.listeners.delete(listener);
+      if (this.listeners.size === 0 && this.animationFrameId !== null) {
+        cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null;
+      }
     };
   }
 }

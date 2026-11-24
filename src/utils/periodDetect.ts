@@ -67,8 +67,18 @@ export function detectPeriod(points: { t: number; v: number }[]): PeriodEstimate
   const corr = new Float64Array(maxLag - minLag);
   for (let lag = minLag; lag < maxLag; lag++) {
     let sum = 0;
-    for (let i = 0; i < n - lag; i++) sum += centered[i] * centered[i + lag];
-    corr[lag - minLag] = sum / energy; // normalize to [-1, 1] at lag 0 reference
+    let eLeft = 0;
+    let eRight = 0;
+    const count = n - lag;
+    for (let i = 0; i < count; i++) {
+      const a = centered[i];
+      const b = centered[i + lag];
+      sum += a * b;
+      eLeft += a * a;
+      eRight += b * b;
+    }
+    const denom = Math.sqrt(eLeft * eRight);
+    corr[lag - minLag] = denom > 1e-12 ? sum / denom : 0;
   }
 
   // Find the first strong local maximum (first cycle repeat), not just the
@@ -96,7 +106,21 @@ export function detectPeriod(points: { t: number; v: number }[]): PeriodEstimate
     if (bestVal < 0.3) return null;
   }
 
-  const lag = bestIdx + minLag;
+  let refinedIdx = bestIdx;
+  if (bestIdx > 0 && bestIdx < corr.length - 1) {
+    const y0 = corr[bestIdx - 1];
+    const y1 = corr[bestIdx];
+    const y2 = corr[bestIdx + 1];
+    const denom = y0 - 2 * y1 + y2;
+    if (Math.abs(denom) > 1e-12) {
+      const delta = 0.5 * (y0 - y2) / denom;
+      if (delta > -0.5 && delta < 0.5) {
+        refinedIdx = bestIdx + delta;
+      }
+    }
+  }
+
+  const lag = refinedIdx + minLag;
   const periodMs = lag * dt;
   if (periodMs <= 0) return null;
 

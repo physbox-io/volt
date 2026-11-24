@@ -16,7 +16,7 @@
 import type { Node } from '@xyflow/react';
 import type { Advisory } from '../types/advisories';
 import type { PinRef } from './spice';
-import { isVirtualPortKey, nodeNetName, virtualNetPort } from './netNaming';
+import { nodeNetName, railVoltage, virtualNetPort } from './netNaming';
 import { NON_SIMULATING_TYPES } from './spice';
 import { pinBoxPart } from '../components/nodes/pinBoxParts';
 
@@ -94,9 +94,14 @@ export function dcPathGroups(nodeType: string, data: Record<string, unknown>, ha
     // what silences this check, or every floating net with a scope clipped to
     // it reads as grounded.
     case 'scope':
+    case 'sevenseg':
       return [];
     case 'multimeter':
       return data.mode === 'current' ? [handles] : [];
+    // A MOSFET gate is insulated from the channel, so it has no DC path to drain or source.
+    case 'nmos':
+    case 'pmos':
+      return [['d', 's']];
     case 'opamp':
       return [['in_non', 'in_inv'], ['out', GND]];
     // Pins 1, 5 and 8 sit on the internal divider; OUT and DIS are driven
@@ -210,10 +215,10 @@ export function runErc({ nodes, pins, portToNet, nameOf }: ErcInput): Advisory[]
   // Two pins a screen apart share a net by carrying the same label, so a label
   // written once is a wire drawn to nowhere — and it looks exactly like a wire
   // drawn to somewhere.
-  const portsPerNet = new Map<string, number>();
-  for (const [port, net] of Object.entries(portToNet)) {
-    if (isVirtualPortKey(port)) continue;
-    portsPerNet.set(net, (portsPerNet.get(net) ?? 0) + 1);
+  const devicePinsPerNet = new Map<string, number>();
+  for (const p of pins) {
+    if (!p.connected) continue;
+    devicePinsPerNet.set(p.net, (devicePinsPerNet.get(p.net) ?? 0) + 1);
   }
   const namedSeen = new Set<string>();
   for (const node of nodes) {
@@ -222,13 +227,18 @@ export function runErc({ nodes, pins, portToNet, nameOf }: ErcInput): Advisory[]
     const net = portToNet[`${node.id}-in`] ?? portToNet[virtualNetPort(name)];
     if (!net || net === GND) continue;
     if (namedSeen.has(net)) continue;
-    // Every label symbol on the net is itself a port on it; more than that many
-    // means something real is attached.
-    const labelCount = nodes.filter(n => {
+    const namedOnNet = nodes.filter(n => {
       const nm = nodeNetName(n.type, n.data);
       return !!nm && (portToNet[`${n.id}-in`] ?? portToNet[virtualNetPort(nm)]) === net;
-    }).length;
-    if ((portsPerNet.get(net) ?? 0) > labelCount) continue;
+    });
+    const devicePinCount = devicePinsPerNet.get(net) ?? 0;
+    const hasRailOnNet = namedOnNet.some(n => n.type === 'powerrail');
+    // A power rail drives its net, so 1+ device pin is valid; a net label only
+    // joins symbols by name, so a single label with <= 1 device pin goes nowhere.
+    const isLonely = hasRailOnNet
+      ? devicePinCount === 0
+      : devicePinCount === 0 || (namedOnNet.length < 2 && devicePinCount <= 1);
+    if (!isLonely) continue;
     namedSeen.add(net);
     out.push({
       id: `erc:lonely-net:${net}`,
@@ -238,6 +248,81 @@ export function runErc({ nodes, pins, portToNet, nameOf }: ErcInput): Advisory[]
       detail:
         'A net label joins pins that carry the same name. Only this symbol does, so nothing is connected to it — check the spelling on the other end.',
     });
+  }
+
+  // ── 3b. Conflicting power rails & zero-impedance voltage-source loops ─
+  const railsByNet = new Map<string, { node: Node; voltage: number }[]>();
+  for (const node of nodes) {
+    if (node.type !== 'powerrail') continue;
+    const name = nodeNetName(node.type, node.data);
+    if (!name) continue;
+    const net = portToNet[`${node.id}-in`] ?? portToNet[virtualNetPort(name)];
+    if (!net) continue;
+    const voltage = railVoltage(node.data);
+    if (net === GND) {
+      if (Math.abs(voltage) > 1e-6) {
+        out.push({
+          id: `erc:rail-short-gnd:${node.id}`,
+          severity: 'warning',
+          nodeId: node.id,
+          title: `Power rail "${name}" (${voltage}V) is shorted to ground`,
+          detail:
+            'This power rail is connected directly to ground, which shorts the supply. Remove the short or change the net name.',
+        });
+      }
+      continue;
+    }
+    const list = railsByNet.get(net) ?? [];
+    list.push({ node, voltage });
+    railsByNet.set(net, list);
+  }
+  for (const [net, rails] of railsByNet) {
+    const first = rails[0];
+    const conflicting = rails.find(r => Math.abs(r.voltage - first.voltage) > 1e-6);
+    if (conflicting) {
+      out.push({
+        id: `erc:rail-conflict:${net}`,
+        severity: 'warning',
+        nodeId: conflicting.node.id,
+        title: `Conflicting power rails (${first.voltage}V and ${conflicting.voltage}V) on the same net`,
+        detail:
+          'Two power rails with different voltages are wired together. SPICE cannot hold one node at two voltages, so only the first rail is simulated.',
+      });
+    }
+  }
+
+  // Detect cycles of zero-impedance voltage sources, ammeters, power rails, and ideal inductors.
+  const zDs = new DisjointSet();
+  const checkZeroZBranch = (netA: string | undefined, netB: string | undefined, nodeId: string, label: string) => {
+    if (!netA || !netB) return;
+    if (netA === netB || zDs.find(netA) === zDs.find(netB)) {
+      out.push({
+        id: `erc:vsource-loop:${nodeId}`,
+        severity: 'warning',
+        nodeId,
+        title: `${label} forms a voltage-source loop or short`,
+        detail:
+          'Ideal voltage sources, ammeters, and zero-resistance inductors cannot be shorted or wired in parallel loops — SPICE will fail with a singular matrix.',
+      });
+    } else {
+      zDs.union(netA, netB);
+    }
+  };
+  for (const [net, rails] of railsByNet) {
+    checkZeroZBranch(net, GND, rails[0].node.id, `Power rail ${nameOf(rails[0].node.id)}`);
+  }
+  for (const node of simulatingNodes) {
+    const type = node.type ?? '';
+    const d = (node.data ?? {}) as Record<string, unknown>;
+    if (type === 'voltage' || type === 'acvoltage') {
+      checkZeroZBranch(portToNet[`${node.id}-pos`], portToNet[`${node.id}-neg`], node.id, nameOf(node.id));
+    } else if (type === 'signalgen') {
+      checkZeroZBranch(portToNet[`${node.id}-out`], portToNet[`${node.id}-gnd`], node.id, nameOf(node.id));
+    } else if (type === 'multimeter' && d.mode === 'current') {
+      checkZeroZBranch(portToNet[`${node.id}-pos`], portToNet[`${node.id}-neg`], node.id, nameOf(node.id));
+    } else if (type === 'inductor') {
+      checkZeroZBranch(portToNet[`${node.id}-in`], portToNet[`${node.id}-out`], node.id, nameOf(node.id));
+    }
   }
 
   // ── 4. Nets with no DC path to ground ────────────────────────────────

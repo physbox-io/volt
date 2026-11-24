@@ -1,6 +1,7 @@
 import type { Node } from '@xyflow/react';
 import type { PartEmitter } from '../part';
 import { numParam } from '../params';
+import { inductorIc, type SimState } from '../../simState';
 import { emitTransducer, shaftNodes, type TransducerSpec } from '../../transducer';
 
 /**
@@ -122,7 +123,7 @@ const num = (v: number) => (Number.isFinite(v) ? String(v) : '0');
  * a driver in free air would in truth lose its bass to the back wave; the
  * SPL node is what it would make in a baffle.
  */
-function emitAcoustics(node: Node, enclosure: SpeakerEnclosure): string {
+function emitAcoustics(node: Node, enclosure: SpeakerEnclosure, initialConditions?: SimState): string {
   const id = node.id;
   const data = node.data as Record<string, unknown>;
   const { velocity: w, boxPressure: pb, spl } = speakerNodes(id);
@@ -136,7 +137,7 @@ function emitAcoustics(node: Node, enclosure: SpeakerEnclosure): string {
     cards += `C_${id}_ab ${pb} 0 ${num(cab)}\n`;
     if (enclosure === 'ported') {
       const map = portMass(Math.max(param(data, 'portLength'), 0), Math.max(param(data, 'portRadius'), 1e-6));
-      cards += `${portSense(id)} ${pb} 0 ${num(map)}\n`;
+      cards += `${portSense(id)} ${pb} 0 ${num(map)}${inductorIc(initialConditions, portSense(id))}\n`;
       // Leakage in parallel with the box, set so its Q at the tuning is QL:
       // R = QL·√(Map/Cab).
       const ql = Math.max(param(data, 'boxLeakQ'), 1e-3);
@@ -150,7 +151,10 @@ function emitAcoustics(node: Node, enclosure: SpeakerEnclosure): string {
   }
   cards += `B_${id}_u int_${id}_u 0 V = ${outward}\n`;
   cards += `V_${id}_du int_${id}_u int_${id}_ud DC 0\n`;
-  cards += `C_${id}_du int_${id}_ud 0 1\n`;
+  // Tiny damping resistor (fc ≈ 1.59 MHz with 1F) prevents zero-ohm capacitor
+  // impulse spikes on transient/UIC starts while staying flat (<0.001 dB) in audio.
+  cards += `R_${id}_du int_${id}_ud int_${id}_ur 1e-7\n`;
+  cards += `C_${id}_du int_${id}_ur 0 1\n`;
   const gain = AIR.rho / (2 * Math.PI * SPL_DISTANCE_M * SPL_REFERENCE_PA);
   cards += `B_${id}_spl ${spl} 0 V = ${num(gain)} * I(V_${id}_du)\n`;
   return cards;
@@ -162,7 +166,7 @@ export const speaker: PartEmitter = {
     // The plain load stays the default, byte for byte, so every circuit made
     // before the driver model existed sounds and solves exactly as it did.
     if (!usesDriverModel(data)) return `R_${node.id} ${net('in')} ${net('gnd')} 8\n`; // 8 ohm speaker load
-    return emitTransducer(node.id, speakerSpec(data), net, initialConditions) + emitAcoustics(node, speakerEnclosure(data));
+    return emitTransducer(node.id, speakerSpec(data), net, initialConditions) + emitAcoustics(node, speakerEnclosure(data), initialConditions);
   },
   audio: () => true,
 };

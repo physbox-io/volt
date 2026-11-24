@@ -51,6 +51,11 @@ export function SpeakerNode({ id, data }: NodeProps<Node<SpeakerNodeData>>) {
   const { isVertical } = resolveOrientation(data.orientation);
   const audioCtx = useRef<AudioContext | null>(null);
 
+  useEffect(() => () => {
+    audioCtx.current?.close().catch(() => {});
+    audioCtx.current = null;
+  }, []);
+
   useEffect(() => {
     if (data.voltageData && data.voltageData.length > 0 && data.outputTarget !== 'cyd') {
       if (!audioCtx.current) {
@@ -60,39 +65,30 @@ export function SpeakerNode({ id, data }: NodeProps<Node<SpeakerNodeData>>) {
       if (ctx.state === 'suspended') ctx.resume();
 
       const sampleRate = ctx.sampleRate;
-      const durationSec = data.voltageData[data.voltageData.length - 1].t / 1000;
+      const t0 = data.voltageData[0].t;
+      const durationSec = Math.max(0, (data.voltageData[data.voltageData.length - 1].t - t0) / 1000);
       const frameCount = Math.max(1, Math.floor(sampleRate * durationSec));
       const buffer = ctx.createBuffer(1, frameCount, sampleRate);
       const channelData = buffer.getChannelData(0);
 
-      // Interpolate SPICE data to audio sample rate using Cubic Hermite
+      // Monotone linear interpolation to audio sample rate (avoids Hermite
+      // overshoot/ringing on non-uniform SPICE switching timesteps).
       const rawSamples = new Float32Array(frameCount);
       let dataIdx = 0;
       for (let i = 0; i < frameCount; i++) {
-        const t_ms = (i / sampleRate) * 1000;
+        const t_ms = t0 + (i / sampleRate) * 1000;
         
         while (dataIdx < data.voltageData.length - 2 && data.voltageData[dataIdx + 1].t < t_ms) {
           dataIdx++;
         }
         
-        const p0 = data.voltageData[Math.max(0, dataIdx - 1)];
         const p1 = data.voltageData[dataIdx];
         const p2 = data.voltageData[Math.min(data.voltageData.length - 1, dataIdx + 1)];
-        const p3 = data.voltageData[Math.min(data.voltageData.length - 1, dataIdx + 2)];
         
         let v = p1.v;
         if (p2.t > p1.t) {
-          const t = Math.max(0, Math.min(1, (t_ms - p1.t) / (p2.t - p1.t)));
-          const t2 = t * t;
-          const t3 = t2 * t;
-          const m1 = (p2.v - p0.v) / (p2.t - p0.t || 1);
-          const m2 = (p3.v - p1.v) / (p3.t - p1.t || 1);
-          const dt = p2.t - p1.t;
-          const h00 = 2 * t3 - 3 * t2 + 1;
-          const h10 = t3 - 2 * t2 + t;
-          const h01 = -2 * t3 + 3 * t2;
-          const h11 = t3 - t2;
-          v = h00 * p1.v + h10 * dt * m1 + h01 * p2.v + h11 * dt * m2;
+          const frac = Math.max(0, Math.min(1, (t_ms - p1.t) / (p2.t - p1.t)));
+          v = p1.v + frac * (p2.v - p1.v);
         }
         rawSamples[i] = v;
       }

@@ -154,6 +154,8 @@ export function validateMcuConfig(config: McuGeometryConfig): McuConfigCheck {
     const where = `pins[${i}]`;
     if (typeof pin?.id !== 'string' || pin.id.trim() === '') {
       errors.push(`${where}.id is required — it is the handle wires connect to and the name code addresses`);
+    } else if (!/^[A-Za-z0-9_]+$/.test(pin.id.trim())) {
+      errors.push(`${where}.id '${pin.id}' must contain only letters, digits, and underscores (SPICE identifier)`);
     } else {
       const key = pin.id.trim().toLowerCase();
       const first = seenId.get(key);
@@ -162,6 +164,9 @@ export function validateMcuConfig(config: McuGeometryConfig): McuConfigCheck {
       } else {
         seenId.set(key, i);
       }
+    }
+    if (pin?.voltage !== undefined && (typeof pin.voltage !== 'number' || !Number.isFinite(pin.voltage))) {
+      errors.push(`${where}.voltage must be a finite number, got ${JSON.stringify(pin.voltage)}`);
     }
     if (pin?.label !== undefined && typeof pin.label !== 'string') {
       errors.push(`${where}.label must be a string`);
