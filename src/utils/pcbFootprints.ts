@@ -566,31 +566,42 @@ import {
 } from './mcuConfig';
 import type { RawNodeData } from '../types/nodes';
 
-export function generateHeaderFootprint(pinCount: number, pitch = 2.54): ComponentFootprint {
+export function generateHeaderFootprint(
+  pinCount: number,
+  pitch = 2.54,
+  drillDiaMm?: number,
+  padWidthMm?: number,
+  padHeightMm?: number
+): ComponentFootprint {
   const count = Math.max(1, pinCount);
-  const totalWidth = count * pitch;
-  const startX = -((count - 1) * pitch) / 2;
+  const p = Math.max(0.4, pitch);
+  const defaultPad = parseFloat(Math.min(1.8, p * 0.72).toFixed(2));
+  const pw = Math.max(0.3, padWidthMm ?? defaultPad);
+  const ph = Math.max(0.3, padHeightMm ?? defaultPad);
+  const drill = Math.max(0, drillDiaMm ?? parseFloat(Math.min(1.0, Math.min(pw, ph) * 0.6).toFixed(2)));
+  const totalWidth = count * p;
+  const startX = -((count - 1) * p) / 2;
 
   const pads: PadSpec[] = [];
   for (let i = 0; i < count; i++) {
     pads.push({
       pinNumber: (i + 1).toString(),
-      x: startX + i * pitch,
+      x: startX + i * p,
       y: 0,
-      padWidth: 1.8,
-      padHeight: 1.8,
+      padWidth: pw,
+      padHeight: ph,
       shape: i === 0 ? 'rect' : 'circle',
-      drillDiameter: 1.0,
+      drillDiameter: drill,
     });
   }
 
-  return {
+  return withContainedCourtyard({
     packageId: `HEADER-1x${count}`,
-    name: `${count}-Pin Header (${pitch}mm)`,
+    name: `${count}-Pin Header (${p}mm)`,
     widthMm: totalWidth + 0.5,
-    heightMm: 2.54,
+    heightMm: Math.max(2.54, ph + 0.6),
     pads,
-  };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -622,6 +633,8 @@ export interface DualRowSpec {
   rightOffsetMm?: number;
   /** Pin numbers, in order, defaulting to 1..N. */
   pinLabels?: (string | number)[];
+  /** Right-column ordering: `'up'` (CCW DIP/IC default) or `'down'` (dual-column breakout modules like Heltec V4). */
+  rightColumnDirection?: 'up' | 'down';
   packageId?: string;
   name?: string;
 }
@@ -657,11 +670,12 @@ export function generateDualRowFootprint(spec: DualRowSpec): ComponentFootprint 
   }
 
   const rightSpan = ((rightCount - 1) * pitch) / 2;
+  const rightRunsDown = spec.rightColumnDirection === 'down';
   for (let i = 0; i < rightCount; i++) {
     pads.push({
       pinNumber: label(leftCount + i),
       x: rowSpacing / 2,
-      y: -rightSpan + i * pitch + (spec.rightOffsetMm ?? 0),
+      y: (rightRunsDown ? rightSpan - i * pitch : -rightSpan + i * pitch) + (spec.rightOffsetMm ?? 0),
       padWidth: padW,
       padHeight: padH,
       shape,
@@ -1148,7 +1162,7 @@ export function generateTwoPadSmdFootprint(sizeCode: string): ComponentFootprint
  */
 export const DISCRETE_SMD_FOOTPRINTS: Record<string, ComponentFootprint> = {
   'SOT-23-5': {
-    packageId: 'SOT-23-5', name: 'SOT-23-5 (0.95mm pitch)', widthMm: 3.0, heightMm: 3.0,
+    packageId: 'SOT-23-5', name: 'SOT-23-5 (0.95mm pitch)', widthMm: 3.2, heightMm: 3.0,
     pads: [
       { pinNumber: '1', x: -1.1, y: -0.95, padWidth: 1.0, padHeight: 0.6, shape: 'rect', drillDiameter: 0 },
       { pinNumber: '2', x: -1.1, y: 0, padWidth: 1.0, padHeight: 0.6, shape: 'rect', drillDiameter: 0 },
@@ -1158,7 +1172,7 @@ export const DISCRETE_SMD_FOOTPRINTS: Record<string, ComponentFootprint> = {
     ],
   },
   'SOT-23-6': {
-    packageId: 'SOT-23-6', name: 'SOT-23-6 (0.95mm pitch)', widthMm: 3.0, heightMm: 3.0,
+    packageId: 'SOT-23-6', name: 'SOT-23-6 (0.95mm pitch)', widthMm: 3.2, heightMm: 3.0,
     pads: [
       { pinNumber: '1', x: -1.1, y: -0.95, padWidth: 1.0, padHeight: 0.6, shape: 'rect', drillDiameter: 0 },
       { pinNumber: '2', x: -1.1, y: 0, padWidth: 1.0, padHeight: 0.6, shape: 'rect', drillDiameter: 0 },
@@ -1195,7 +1209,7 @@ export const DISCRETE_SMD_FOOTPRINTS: Record<string, ComponentFootprint> = {
     ],
   },
   'TO-252': {
-    packageId: 'TO-252', name: 'TO-252 / DPAK Power Package', widthMm: 10.5, heightMm: 9.5,
+    packageId: 'TO-252', name: 'TO-252 / DPAK Power Package', widthMm: 10.6, heightMm: 9.5,
     pads: [
       { pinNumber: '1', x: -3.0, y: -2.28, padWidth: 3.0, padHeight: 1.6, shape: 'rect', drillDiameter: 0 },
       { pinNumber: '2', x: -3.0, y: 0, padWidth: 3.0, padHeight: 1.6, shape: 'rect', drillDiameter: 0 },
@@ -1238,7 +1252,13 @@ export function generateModule2xFootprint(
    * Real modules are not always symmetric: the two headers can carry different
    * pin counts and can be staggered relative to each other.
    */
-  extra: { leftCount?: number; rightCount?: number; leftOffsetMm?: number; rightOffsetMm?: number } = {}
+  extra: {
+    leftCount?: number;
+    rightCount?: number;
+    leftOffsetMm?: number;
+    rightOffsetMm?: number;
+    rightColumnDirection?: 'up' | 'down';
+  } = {}
 ): ComponentFootprint {
   const left = extra.leftCount ?? pinsPerSide;
   const right = extra.rightCount ?? pinsPerSide;
@@ -1256,6 +1276,7 @@ export function generateModule2xFootprint(
     bodyHeightMm: Math.max(heightMm, Math.max(left, right) * pitchMm + 1.0),
     leftOffsetMm: extra.leftOffsetMm,
     rightOffsetMm: extra.rightOffsetMm,
+    rightColumnDirection: extra.rightColumnDirection,
     packageId: `MODULE-2x${pinsPerSide}`,
     name: `Dual Header Module (${count}-Pin, ${widthMm}x${heightMm}mm)`,
   });
@@ -1444,14 +1465,13 @@ export function generateCustomMcuFootprint(config: McuGeometryConfig): Component
           px = halfW - pw / 2;
           py = offset;
         } else if (side === 'top') {
+          if (isSmd) { pw = padHeightMm; ph = padWidthMm; }
           px = offset;
           py = halfH - ph / 2;
-          // Swap width/height for horizontal edge pads if SMD
-          if (isSmd) { pw = padHeightMm; ph = padWidthMm; }
         } else if (side === 'bottom') {
+          if (isSmd) { pw = padHeightMm; ph = padWidthMm; }
           px = -offset;
           py = -halfH + ph / 2;
-          if (isSmd) { pw = padHeightMm; ph = padWidthMm; }
         }
 
         pads.push({
@@ -1546,13 +1566,13 @@ export function generateCustomMcuFootprint(config: McuGeometryConfig): Component
     ? `MCU-${config.presetKey.toUpperCase()}`
     : `MCU-CUSTOM-${pins.length}P-${widthMm.toFixed(0)}x${heightMm.toFixed(0)}`;
 
-  return {
+  return withContainedCourtyard({
     packageId: pkgId,
     name: `MCU (${pins.length}-Pin, ${widthMm}x${heightMm}mm)`,
     widthMm,
     heightMm,
     pads,
-  };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1657,14 +1677,22 @@ export function parsePackageId(raw: string, pinCountHint = 0): ComponentFootprin
   const family = parts[0];
   const rest = parts.slice(1);
 
-  // Pin count is usually the first trailing token; anything after it modifies.
-  const countToken = rest.length > 0 && /^\d+$/.test(rest[0]) ? rest[0] : undefined;
-  const count = countToken ? parseInt(countToken, 10) : pinCountHint;
-  const mods = parsePackageModifiers(countToken ? rest.slice(1) : rest);
+  // Pin count is usually the first trailing token (optionally suffixed with W,
+  // e.g. SOIC-16W); anything after it modifies.
+  const countMatch = rest.length > 0 ? /^(\d+)(W)?$/.exec(rest[0]) : null;
+  const countToken = countMatch ? countMatch[1] : undefined;
+  const countTokenWide = Boolean(countMatch?.[2]);
+  const dualMatch = DUAL_SMD_PATTERN.exec(family);
+  const count = countToken
+    ? parseInt(countToken, 10)
+    : dualMatch?.[2]
+      ? parseInt(dualMatch[2], 10)
+      : pinCountHint;
+  const mods = parsePackageModifiers(countMatch ? rest.slice(1) : rest);
 
   if (family === 'DIP' && count >= 4) {
     return generateDIPFootprint(count, {
-      rowSpacing: mods.spanMm ?? (mods.wide ? 'wide' : mods.narrow ? 'narrow' : undefined),
+      rowSpacing: mods.spanMm ?? (mods.wide || countTokenWide ? 'wide' : mods.narrow ? 'narrow' : undefined),
       pitchMm: mods.pitchMm,
       padDiaMm: mods.padWidthMm,
       drillDiaMm: mods.drillDiaMm,
@@ -1673,10 +1701,9 @@ export function parsePackageId(raw: string, pinCountHint = 0): ComponentFootprin
     });
   }
 
-  // SOIC-16W and SOIC-16-W both mean the wide body.
-  const dualMatch = DUAL_SMD_PATTERN.exec(family);
+  // SOIC-16W, SOIC16W and SOIC-16-W all mean the wide body.
   if (dualMatch && count >= 4) {
-    const wide = mods.wide || family.endsWith('W') || dualMatch[1] === 'SOICW';
+    const wide = mods.wide || countTokenWide || family.endsWith('W') || dualMatch[1] === 'SOICW';
     const base = dualMatch[1] === 'SOICW' ? 'SOIC' : dualMatch[1];
     const key = wide && SMD_DUAL_FAMILIES[`${base}-W`] ? `${base}-W` : base;
     return generateDualSmdFootprint(key, count, {
@@ -1718,7 +1745,13 @@ export function parsePackageId(raw: string, pinCountHint = 0): ComponentFootprin
     const cols = parseInt(gridMatch[2], 10);
     const gridMods = parsePackageModifiers(rest.slice(1));
     if (rows === 1) {
-      return generateHeaderFootprint(cols, gridMods.pitchMm ?? 2.54);
+      return generateHeaderFootprint(
+        cols,
+        gridMods.pitchMm ?? 2.54,
+        gridMods.drillDiaMm,
+        gridMods.padWidthMm,
+        gridMods.padHeightMm
+      );
     }
     return generateMatrixHeaderFootprint(
       cols,
@@ -1864,7 +1897,9 @@ function fallbackFootprint(requested: string, base: ComponentFootprint): Compone
  */
 function buildSpecialPackage(packageId: string): ComponentFootprint | null {
   if (packageId === 'HELTEC-V4' || packageId.startsWith('HELTEC')) {
-    return generateModule2xFootprint(18, 28.0, 58.0, 2.54, 22.86, 1.0);
+    return generateModule2xFootprint(18, 28.0, 58.0, 2.54, 22.86, 1.0, 1.8, 1.8, {
+      rightColumnDirection: 'down',
+    });
   }
   if (packageId === 'CC1101') {
     return generateMatrixHeaderFootprint(4, 2, 2.54, 2.54);
@@ -1931,23 +1966,41 @@ export function resolveFootprint(
   // If component is an MCU and has custom geometry or mcuConfig defined, generate exact footprint
   if (type === 'mcu' || (customData && customData.mcuConfig)) {
     const config = getEffectiveMcuConfig(customData);
-    // If user explicitly chose a standard package override like DIP-8, DIP-14, etc.
-    if (packageId && packageId !== 'DEFAULT' && STANDARD_FOOTPRINTS[packageId]) {
-      return STANDARD_FOOTPRINTS[packageId];
+    // If user explicitly chose a standard or parametric package override like DIP-14, TQFP-32, HEADER-1x08, etc.
+    if (packageId && packageId !== 'DEFAULT' && !packageId.toUpperCase().startsWith('MCU-')) {
+      if (STANDARD_FOOTPRINTS[packageId]) return STANDARD_FOOTPRINTS[packageId];
+      const special = buildSpecialPackage(packageId);
+      if (special) return special;
+      const parsed = parsePackageId(packageId, config.pins.length);
+      if (parsed) return parsed;
     }
     return generateCustomMcuFootprint(config);
   }
 
-  if (packageId && STANDARD_FOOTPRINTS[packageId]) {
-    return STANDARD_FOOTPRINTS[packageId];
+  const explicitPackageId = packageId && packageId !== 'DEFAULT' ? packageId : undefined;
+  if (explicitPackageId && STANDARD_FOOTPRINTS[explicitPackageId]) {
+    return STANDARD_FOOTPRINTS[explicitPackageId];
   }
 
-  if (packageId) {
-    const special = buildSpecialPackage(packageId);
+  if (explicitPackageId) {
+    const special = buildSpecialPackage(explicitPackageId);
     if (special) return special;
 
-    const parsed = parsePackageId(packageId, pinCount);
+    const parsed = parsePackageId(explicitPackageId, pinCount);
     if (parsed) return parsed;
+
+    // A package the user named explicitly but that nothing above could build is
+    // an error, not an invitation to guess from the component type. Guessing here
+    // is what silently milled an 0805 where a QFN was meant to go.
+    if (!UNRESOLVED_PACKAGE_IDS.has(explicitPackageId)) {
+      console.warn(
+        `[pcbFootprints] Unknown package "${explicitPackageId}" — substituting a generic footprint. ` +
+          `Use a known package, a parametric id such as "DIP-28-W", "TSSOP-20", ` +
+          `"QFN-32-P0.5-B5x5" or "MODULE-2x20-P2.54-R17.78", or set footprintParams on the node.`
+      );
+    }
+    const base = pinCount > 2 ? generateDIPFootprint(pinCount) : STANDARD_FOOTPRINTS['0805'];
+    return fallbackFootprint(explicitPackageId, base);
   }
 
   // Exact node-type lookup first — this is the path that matters, since node
@@ -1964,21 +2017,6 @@ export function resolveFootprint(
     if (mappedSpecial) return mappedSpecial;
     const mappedFp = parsePackageId(mapped, pinCount);
     if (mappedFp) return mappedFp;
-  }
-
-  // A package the user named explicitly but that nothing above could build is
-  // an error, not an invitation to guess from the component type. Guessing here
-  // is what silently milled an 0805 where a QFN was meant to go.
-  if (packageId) {
-    if (!UNRESOLVED_PACKAGE_IDS.has(packageId)) {
-      console.warn(
-        `[pcbFootprints] Unknown package "${packageId}" — substituting a generic footprint. ` +
-          `Use a known package, a parametric id such as "DIP-28-W", "TSSOP-20", ` +
-          `"QFN-32-P0.5-B5x5" or "MODULE-2x20-P2.54-R17.78", or set footprintParams on the node.`
-      );
-    }
-    const base = pinCount > 2 ? generateDIPFootprint(pinCount) : STANDARD_FOOTPRINTS['0805'];
-    return fallbackFootprint(packageId, base);
   }
 
   // Substring fallbacks for anything not in the registry map.

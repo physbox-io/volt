@@ -67,8 +67,20 @@ export const BoardMapView: React.FC<BoardMapViewProps> = ({
   // plane whichever side of it the copper is on.
   const span = Math.max(Math.abs(stats.minZ), Math.abs(stats.maxZ), FLAT_SPAN_MM);
 
-  const width = grid.maxX - grid.minX;
-  const height = grid.maxY - grid.minY;
+  const width = Math.max(1e-3, grid.maxX - grid.minX);
+  const height = Math.max(1e-3, grid.maxY - grid.minY);
+
+  // Union of probed grid and board outline so stale outlines stay visible.
+  const viewMinX = board ? Math.min(grid.minX, board.originMm) : grid.minX;
+  const viewMaxX = board ? Math.max(grid.maxX, board.originMm + board.widthMm) : grid.maxX;
+  const viewMinY = board ? Math.min(grid.minY, board.originMm) : grid.minY;
+  const viewMaxY = board ? Math.max(grid.maxY, board.originMm + board.heightMm) : grid.maxY;
+  const viewW = Math.max(1e-3, viewMaxX - viewMinX);
+  const viewH = Math.max(1e-3, viewMaxY - viewMinY);
+  const scaleRef = Math.max(viewW, viewH);
+  // CNC Y climbs away from the operator; SVG Y climbs downward. Flip Y so the
+  // heightmap matches the physical blank on the bed and the Copper preview.
+  const py = (y: number) => viewMinY + viewMaxY - y;
 
   /**
    * The field, as one filled rectangle per sub-cell. Flat fills rather than an
@@ -76,8 +88,8 @@ export const BoardMapView: React.FC<BoardMapViewProps> = ({
    * rects render instantly and print correctly.
    */
   const cells = useMemo(() => {
-    const nx = (grid.gridX - 1) * SUBDIVISIONS;
-    const ny = (grid.gridY - 1) * SUBDIVISIONS;
+    const nx = Math.max(1, (grid.gridX - 1) * SUBDIVISIONS);
+    const ny = Math.max(1, (grid.gridY - 1) * SUBDIVISIONS);
     const dx = width / nx;
     const dy = height / ny;
     const out: { x: number; y: number; w: number; h: number; fill: string }[] = [];
@@ -85,16 +97,12 @@ export const BoardMapView: React.FC<BoardMapViewProps> = ({
       for (let c = 0; c < nx; c++) {
         const x = grid.minX + c * dx;
         const y = grid.minY + r * dy;
-        // Sampled at the centre: sampling at a corner shifts the whole field
-        // half a sub-cell up and left, which is visible against the outline.
         const z = interpolateGridZ(grid, x + dx / 2, y + dy / 2);
-        // Overlapped by a hair so antialiasing does not leave a grid of seams
-        // between the fills.
-        out.push({ x, y, w: dx * 1.02, h: dy * 1.02, fill: shade(z, span) });
+        out.push({ x, y: viewMinY + viewMaxY - (y + dy), w: dx * 1.02, h: dy * 1.02, fill: shade(z, span) });
       }
     }
     return out;
-  }, [grid, width, height, span]);
+  }, [grid, width, height, span, viewMinY, viewMaxY]);
 
   /** Where the warp is deeper than the job has room for. */
   const overBudget =
@@ -102,14 +110,12 @@ export const BoardMapView: React.FC<BoardMapViewProps> = ({
       ? grid.points.flat().filter(p => Math.abs(p.z) > depthMarginMm)
       : [];
 
-  // Room for the corner labels, which sit outside the probed rectangle. Sized
-  // off the label rather than guessed: five glyphs at the font size below.
-  const pad = width * 0.1;
+  const pad = scaleRef * 0.1;
 
   return (
     <div className={className}>
       <svg
-        viewBox={`${grid.minX - pad} ${grid.minY - pad} ${width + pad * 2} ${height + pad * 2}`}
+        viewBox={`${viewMinX - pad} ${viewMinY - pad} ${viewW + pad * 2} ${viewH + pad * 2}`}
         className="w-full h-auto max-h-[42vh]"
         role="img"
         aria-label={`Probed surface map, ${grid.gridX} by ${grid.gridY} points, ${stats.spanZ.toFixed(3)}mm of warp`}
@@ -118,42 +124,39 @@ export const BoardMapView: React.FC<BoardMapViewProps> = ({
           <rect key={i} x={cell.x} y={cell.y} width={cell.w} height={cell.h} fill={cell.fill} />
         ))}
 
-        {/* The board, over the field: the map is probed inside the finished
-            edge, so the two are not the same rectangle and the difference is
-            worth seeing. */}
+        {/* The board, over the field */}
         {board && (
           <rect
             x={board.originMm}
-            y={board.originMm}
+            y={py(board.originMm + board.heightMm)}
             width={board.widthMm}
             height={board.heightMm}
             fill="none"
             stroke="currentColor"
             className="text-slate-900/40 dark:text-white/40"
-            strokeWidth={Math.max(0.15, width / 400)}
-            strokeDasharray={`${width / 60} ${width / 90}`}
+            strokeWidth={Math.max(0.15, scaleRef / 400)}
+            strokeDasharray={`${scaleRef / 60} ${scaleRef / 90}`}
           />
         )}
 
-        {/* The readings themselves. Everything above is interpolation; these
-            are the only places the machine actually touched. */}
+        {/* The readings themselves */}
         {grid.points.map((row, r) =>
           row.map((pt, c) => (
             <g key={`p_${r}_${c}`}>
               <circle
                 cx={pt.x}
-                cy={pt.y}
-                r={Math.max(0.25, width / 150)}
+                cy={py(pt.y)}
+                r={Math.max(0.25, scaleRef / 150)}
                 fill="none"
                 stroke="currentColor"
                 className="text-slate-900/60 dark:text-white/70"
-                strokeWidth={Math.max(0.1, width / 500)}
+                strokeWidth={Math.max(0.1, scaleRef / 500)}
               />
               <text
                 x={pt.x}
-                y={pt.y - width / 60}
+                y={py(pt.y) - scaleRef / 60}
                 textAnchor="middle"
-                fontSize={width / 44}
+                fontSize={scaleRef / 44}
                 className="fill-slate-900/70 dark:fill-white/80 font-mono"
               >
                 {pt.z >= 0 ? '+' : ''}
@@ -163,17 +166,15 @@ export const BoardMapView: React.FC<BoardMapViewProps> = ({
           ))
         )}
 
-        {/* Ringed, not recoloured: the colour is carrying the height, and a
-            second meaning on the same channel would fight it. */}
         {overBudget.map((pt, i) => (
           <circle
             key={`ob_${i}`}
             cx={pt.x}
-            cy={pt.y}
-            r={width / 55}
+            cy={py(pt.y)}
+            r={scaleRef / 55}
             fill="none"
             stroke="#ef4444"
-            strokeWidth={Math.max(0.15, width / 350)}
+            strokeWidth={Math.max(0.15, scaleRef / 350)}
           />
         ))}
       </svg>
@@ -200,11 +201,7 @@ export const BoardMapView: React.FC<BoardMapViewProps> = ({
 
       {overBudget.length > 0 && (
         <p className="mt-1.5 text-[10px] text-red-600 dark:text-red-400 leading-snug">
-          {overBudget.length} probed point{overBudget.length === 1 ? '' : 's'} sit
-          {overBudget.length === 1 ? 's' : ''} further from the Z0 plane than the{' '}
-          {depthMarginMm!.toFixed(3)}mm this job has spare over the copper. Levelling compensates
-          the shape, so the cut still lands — but there is nothing left for probe scatter, and a
-          board this far out is usually not clamped flat.
+          {overBudget.length} point{overBudget.length === 1 ? '' : 's'} exceed ±{depthMarginMm!.toFixed(3)}mm margin — re-clamp board flatter.
         </p>
       )}
     </div>

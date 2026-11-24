@@ -76,7 +76,6 @@ import { webSerialManager } from '../utils/webSerialManager';
 import { NumberInput, readMachineLink, setMachineLink, setTouchPlateMm, useSafetyGate, useTouchPlateMm } from '@physbox-io/ui';
 import {
   getGridStats,
-  findUnwarpableCommands,
   suggestProbeGrid,
   interpolateGridZ,
   type ProbeGrid,
@@ -103,36 +102,13 @@ const EMPTY_EDGES: Edge[] = [];
  * then take off again.
  */
 const PASTE_STENCIL_HINT =
-  'Download a printable solder paste stencil: a ' +
-  `${DEFAULT_PASTE_STENCIL_OPTIONS.thicknessMm}mm sheet with an aperture over every SMD pad and ` +
-  'corner brackets that register it on the milled board. Squeegee paste across it, lift it off, ' +
-  'place the parts, reflow. Printed apertures close up below about 0.5mm, so this route stops at ' +
-  'roughly SOIC/1.27mm pitch — finer boards want the laser.';
+  `Download ${DEFAULT_PASTE_STENCIL_OPTIONS.thicknessMm}mm 3D-printable SMD paste stencil (.stl) for ≥1.27mm pitch.`;
 
-/**
- * Why the scissors sit next to the download.
- *
- * The material advice is the part worth getting right: a blue diode cuts what
- * absorbs blue, which is a much shorter list than "plastic film".
- */
 const ETCH_HINT =
-  'Open the stencil in Physbox Etch as vector artwork, to laser cut it. A ~0.1mm beam holds ' +
-  'apertures a nozzle closes up — roughly 0.65mm pitch against 1.27mm. Cut it from thin opaque ' +
-  'film your machine\'s wavelength actually absorbs: a CO2 takes almost any polymer, a blue diode ' +
-  'needs dark stock such as the printed shim, and never cut PVC on either. Etch offsets the cut ' +
-  'by half its kerf, so set that figure in its status bar and apertures come out the size drawn.';
+  'Open paste stencil in Etch for laser cutting (use dark stock for diode lasers; never PVC).';
 
-/**
- * The shim is stock, not a part, which is the bit that needs saying: it comes
- * out of the printer blank and only becomes a stencil on the laser.
- */
 const SHIM_HINT =
-  `Download a blank ${DEFAULT_PASTE_SHIM_OPTIONS.thicknessMm}mm shim to laser the stencil out of ` +
-  '— a single layer, sized to the stencil plus ' +
-  `${DEFAULT_PASTE_SHIM_OPTIONS.marginMm}mm of holding margin. Print it in BLACK, which is the ` +
-  'whole point: black absorbs 450nm, so this is the one stencil material a diode laser is ' +
-  'reliable on. Thin dark film is awkward to buy in ones; a single layer of black filament is ' +
-  'the same thing, and you already have it.';
+  `Download blank ${DEFAULT_PASTE_SHIM_OPTIONS.thicknessMm}mm shim (.stl) — print 1 layer in black PLA to laser-cut a stencil.`;
 
 /** Search distance for a mesh probe point, measured down from the retract. */
 const DEFAULT_PROBE_DEPTH_MM = 3;
@@ -347,13 +323,13 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !panelMachineOpen) {
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [onClose, panelMachineOpen]);
 
   /*
    * The ids the pickers show. A selection stored before the rack — or the
@@ -377,9 +353,10 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * changes the channel width, which changes the auto-sized board, which would
    * otherwise invalidate the map that set the depth in the first place.
    */
+  const [staleMapIgnored, setStaleMapIgnored] = useState(false);
   const probedSpanZ = useMemo(
-    () => (heightmap ? getGridStats(heightmap).spanZ : undefined),
-    [heightmap]
+    () => (heightmap && !staleMapIgnored ? getGridStats(heightmap).spanZ : undefined),
+    [heightmap, staleMapIgnored]
   );
 
   /**
@@ -510,25 +487,24 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   };
 
   const suggestedGrid = useMemo(() => {
-    return suggestProbeGrid(options.boardWidthMm, options.boardHeightMm, 4, 8);
-  }, [options.boardWidthMm, options.boardHeightMm]);
+    const w = hasResult && result.boardWidthMm > 0 ? result.boardWidthMm : options.boardWidthMm;
+    const h = hasResult && result.boardHeightMm > 0 ? result.boardHeightMm : options.boardHeightMm;
+    return suggestProbeGrid(w, h, 4, 8);
+  }, [hasResult, result.boardWidthMm, result.boardHeightMm, options.boardWidthMm, options.boardHeightMm]);
 
   const errorCount = result.violations.filter(v => v.severity === 'error').length;
-  /**
-   * A map stays usable as long as it still spans the board. Comparing bounds
-   * rather than board dimensions matters because probing itself moves the
-   * board: the measured flatness feeds the auto isolation depth, which changes
-   * the channel width and so the auto-sized board by a fraction of a mm. That
-   * shift leaves the mesh covering the board perfectly well, and an equality
-   * test on the size would throw away every map the moment it was made. The
-   * margin is what the edge samples can be stretched over before the flat
-   * extrapolation outside the mesh is a guess rather than a reading.
-   */
-  // Shared with the MCP mill verb, which used to skip this check entirely.
   const coversBoard = heightmapCoversBoard(heightmap, result);
 
   const activeHeightmap = coversBoard ? heightmap : null;
   const heightmapStale = heightmap !== null && activeHeightmap === null;
+
+  // When a saved heightmap no longer covers the board, drop its span from
+  // `autoDepthZ` automatically so the unlevelled depth is used without blocking
+  // the user with an error banner.
+  const wantStaleIgnored = heightmap !== null && heightmapStale;
+  if (staleMapIgnored !== wantStaleIgnored) {
+    setStaleMapIgnored(wantStaleIgnored);
+  }
 
   const gridStats = activeHeightmap ? getGridStats(activeHeightmap) : null;
 
@@ -583,11 +559,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * single bad probe sat in red over every good job that followed it.
    */
   const machineNote = machineError ?? serialState.lastError ?? null;
-
-  const unwarpable = useMemo(
-    () => (activeHeightmap ? findUnwarpableCommands(result.gcode) : []),
-    [activeHeightmap, result.gcode]
-  );
 
   /**
    * A straight-walled cutter has no included angle, so the V-bit width formula
@@ -706,7 +677,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
         plungeFeedrate: feeds.plungeFeedrate,
         spindleRpm: feeds.spindleRpm,
         isolationDepthZ: feeds.isolationDepthZ,
-        zStepdown: feeds.zStepdown,
       }));
     }
   };
@@ -735,7 +705,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
         maxY: result.boardOriginMm + result.boardHeightMm,
         cols: suggestedGrid.cols,
         rows: suggestedGrid.rows,
-        probeDepthMm,
+        probeDepthMm: Math.max(probeDepthMm, options.safeZ + 0.5),
         clearanceMm: options.safeZ,
       });
       setHeightmap(grid);
@@ -820,20 +790,6 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
   };
 
   /**
-   * Refuses a job whose depth was calculated against a height map that will not
-   * be applied to it.
-   *
-   * The isolation depth is shaved down on the strength of a probed map — the
-   * levelling is what buys back the margin. If the map no longer covers the
-   * board (`heightmapStale`) it is dropped from the warp, and unless auto-level
-   * is going to re-probe, the job would stream at the shallower depth with no
-   * compensation at all: the two halves of the same decision disagreeing, which
-   * cuts traces too faint to isolate and misses the copper entirely on the high
-   * spots.
-   */
-  const heightmapWontBeApplied = heightmapStale;
-
-  /**
    * What this run should be remembered as.
    *
    * Gathered here, where the board, the laminate and the bits are all in scope,
@@ -856,25 +812,9 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
   const handleMillBoard = async () => {
     if (!result.success || machineBusy) return;
-    // Cutting is the CAM view's job: it is the one that follows the machine
-    // line by line and carries the restart-this-operation control. Leaving the
-    // panel on Layout meant watching a static picture of the board while the
-    // spindle ran, with the live view one click away and nothing saying so.
     setActiveTab('cam');
-    if (heightmapWontBeApplied) {
-      setMachineError(
-        'The probed height map no longer covers this board, so it will not be applied — but the ' +
-          'isolation depth was calculated assuming it would be. Re-probe the surface on the CAM ' +
-          'tab, or clear the old map there so the depth is worked out without it.'
-      );
-      return;
-    }
     if (!(await ensureConnected())) return;
 
-    // Whatever has been probed, or nothing. Cutting unlevelled is a real
-    // choice — the auto depth falls back to its most conservative flatness
-    // allowance without a map — so it is not refused here; the board map panel
-    // says in so many words what it costs.
     const grid = activeHeightmap;
 
     // Warped here, once, and this exact string is what streams: the machine
@@ -1016,21 +956,24 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * thicknesses an FDM machine cannot reach — so the fine-pitch boards this
    * refuses to print are exactly the ones worth sending here.
    */
+  const hasSmdPads = useMemo(
+    () => (result.pads ?? []).some(p => (p.spec.drillDiameter ?? 0) <= 0),
+    [result.pads]
+  );
+
   const handleStencilToEtch = async () => {
-    if (!result.success) return;
+    if (!result.success || !hasSmdPads) return;
     setStencilNote(null);
     try {
       const svg = pasteStencilSvg(result, options);
       await openSvgInEtch(
         svg,
         `PCB paste stencil ${Math.round(result.boardWidthMm)}x${Math.round(result.boardHeightMm)}`,
-        // The shim's thickness, because that is the stock this app can make.
-        // Cutting bought film means correcting it there, which is one field.
         { material: 'film', thicknessMm: DEFAULT_PASTE_SHIM_OPTIONS.thicknessMm }
       );
-      setStencilNote('Stencil sent to Etch — set the kerf compensation there before cutting.');
+      setStencilNote('Sent stencil to Etch.');
     } catch (e) {
-      setStencilNote(errorMessage(e) || 'Could not open the stencil in Etch.');
+      setStencilNote(errorMessage(e) || 'Could not open stencil in Etch.');
     }
   };
 
@@ -1100,8 +1043,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
       link.click();
       URL.revokeObjectURL(url);
       setStencilNote(
-        `Shim written: ${Math.round(shim.widthMm)}×${Math.round(shim.heightMm)}mm at ` +
-          `${shim.thicknessMm}mm. Print it in black, one layer, then cut the stencil from it.`
+        `Saved shim (${Math.round(shim.widthMm)}×${Math.round(shim.heightMm)}mm) — print 1 layer in black.`
       );
     } catch (e) {
       setStencilNote(errorMessage(e) || 'Could not build the shim.');
@@ -1186,7 +1128,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
    * imprecise.
    */
   const handleGoToZero = async () => {
-    if (machineBusy) return;
+    if (manualMoveBlocked) return;
     if (!(await ensureConnected())) return;
     clearErrors();
     try {
@@ -1369,28 +1311,15 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                PCB Milling &amp; CAM Engine
+                PCB Milling &amp; CAM
                 <span className="text-xs font-normal px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
                   WebSerial CNC
                 </span>
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Automated trace routing, isolation toolpaths, through-hole drilling, outline framing, printable paste stencils, and surface heightmaps.
-                <InfoTip>
-                  Generates a single-sided copper board from your schematic, then drives a GRBL
-                  machine directly over WebSerial.
-                </InfoTip>
-              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Whether this board has been mapped, said where it can be seen
-                from either tab. It used to be one line in the legend under the
-                layout preview, competing for a flex row with two other
-                statuses — so "has a board map been done" was a question the
-                panel could only answer if you were looking at the right tab
-                and the row happened to have room. */}
             <span
               className={`hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] font-semibold ${
                 activeHeightmap
@@ -1401,11 +1330,10 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
               }`}
               title={
                 activeHeightmap
-                  ? `Levelled against a ${activeHeightmap.gridX}×${activeHeightmap.gridY} probed mesh, ` +
-                    `${gridStats!.spanZ.toFixed(3)}mm of warp. Open the machine dialog to see the map.`
+                  ? `${activeHeightmap.gridX}×${activeHeightmap.gridY} probe mesh · ${gridStats!.spanZ.toFixed(3)}mm warp`
                   : heightmapStale
-                  ? 'A map was probed, but the board has since outgrown it, so it will not be applied.'
-                  : 'No surface probe has been done, so the job cuts at the commanded depth.'
+                  ? 'Board outgrew map — re-probe on CAM tab'
+                  : 'Unprobed — cutting at fixed depth'
               }
             >
               <Map className="w-3 h-3 shrink-0" />
@@ -1627,29 +1555,13 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                       of the same margin over the foil. Shown next to the warp
                       rather than buried, because a repeatability figure the
                       operator never sees is one nobody can act on. */}
-                  {machineAccuracy.length > 0 && (
-                    <span
-                      className={`font-bold flex items-center gap-1 ${
-                        accuracyIsPoor
-                          ? 'text-amber-600 dark:text-amber-400'
-                          : 'text-slate-500 dark:text-slate-400'
-                      }`}
-                      title={
-                        'Measured on this setup: how far a second reading of the same spot landed ' +
-                        'from the first. It comes out of the same margin over the copper as the warp does.'
-                      }
-                    >
-                      {accuracyIsPoor && <AlertTriangle className="w-3 h-3" />}
-                      Machine repeatability — {machineAccuracy.join(', ')}
+                  {accuracyIsPoor && machineAccuracy.length > 0 && (
+                    <span className="font-bold flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                      <AlertTriangle className="w-3 h-3" />
+                      Probe scatter high ({machineAccuracy.join(', ')}) — check collet/clip
                     </span>
                   )}
                 </div>
-              </div>
-            )}
-
-            {unwarpable.length > 0 && (
-              <div className="p-2 mt-2 bg-amber-500/10 border border-amber-500/30 rounded text-[11px] text-amber-700 dark:text-amber-300">
-                Not compensated: {unwarpable.join(', ')} — these run at commanded depth.
               </div>
             )}
 
@@ -1789,25 +1701,16 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                           <input
                             type="checkbox"
                             checked={options.mirrorSingleSided !== false}
-                            onChange={e => setOptions({ ...options, mirrorSingleSided: e.target.checked })}
+                            onChange={e => setOptions(prev => ({ ...prev, mirrorSingleSided: e.target.checked }))}
                             className="mt-0.5 accent-emerald-600 cursor-pointer"
                           />
                           <span className="text-[11px] text-slate-600 dark:text-slate-300">
-                            <span className="font-semibold flex items-center gap-1">
-                              Mirror for assembly from the bare face
-                              <InfoTip>
-                                The mill cuts copper-up, but a through-hole part is inserted from
-                                the other face and soldered to the copper &mdash; so the side the
-                                parts land on is the mirror of the side that was cut. Mirroring
-                                the board puts the layout back the right way round once it is
-                                turned over. Clear this only if you seat parts on the copper face.
-                              </InfoTip>
-                            </span>
-                            <span className="block text-slate-500 dark:text-slate-400 mt-0.5">
-                              {options.mirrorSingleSided !== false
-                                ? 'Copper side is cut mirrored; seat parts against the component side view.'
-                                : 'Cut as drawn \u2014 parts will seat mirrored, and an inline header reverses end-for-end.'}
-                            </span>
+                            <span className="font-semibold">Mirror for assembly from the bare face</span>
+                            {options.mirrorSingleSided === false && (
+                              <span className="block text-amber-600 dark:text-amber-400 mt-0.5">
+                                Unmirrored: through-hole parts must sit on the copper side.
+                              </span>
+                            )}
                           </span>
                         </label>
                       </div>
@@ -1869,8 +1772,8 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                         type="checkbox"
                         checked={options.autoGrowBoard}
                         onChange={e =>
-                          setOptions({
-                            ...options,
+                          setOptions(prev => ({
+                            ...prev,
                             autoGrowBoard: e.target.checked,
                             ...(e.target.checked
                               ? {}
@@ -1878,25 +1781,19 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                                   boardWidthMm: result.boardWidthMm,
                                   boardHeightMm: result.boardHeightMm,
                                 }),
-                          })
+                          }))
                         }
                         className="cursor-pointer"
                       />
                       <span className="text-slate-600 dark:text-slate-300 font-semibold">Auto-size board</span>
-                      <InfoTip>
-                        On, the board is sized dynamically to fit the parts. Off, the board is exactly the fixed dimensions you set.
-                      </InfoTip>
                     </label>
 
-                    {/* Redundant while auto-sizing: that already fits the board to
-                        the circuit, and setting the floor to a padded estimate
-                        would only stop it cropping. */}
                     {!options.autoGrowBoard && (
                       <button
                         type="button"
                         onClick={handleFitToCircuit}
                         className="text-[11px] text-cyan-700 dark:text-cyan-400 hover:text-cyan-600 dark:hover:text-cyan-300 hover:underline cursor-pointer flex items-center gap-1 font-semibold"
-                        title="Recalculate dimensions to comfortably fit all components in the circuit"
+                        title="Size board to fit components"
                       >
                         <RefreshCw className="w-3 h-3" />
                         Fit to circuit
@@ -1908,18 +1805,11 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     <input
                       type="checkbox"
                       checked={options.isolateUnusedPads !== false}
-                      onChange={e => setOptions({ ...options, isolateUnusedPads: e.target.checked })}
+                      onChange={e => setOptions(prev => ({ ...prev, isolateUnusedPads: e.target.checked }))}
                       className="cursor-pointer"
                     />
                     <span className="text-slate-600 dark:text-slate-300 font-semibold">Isolate unused pins</span>
-                    <InfoTip>
-                      Cuts a ring around every pad with nothing wired to it. The board is
-                      isolation-milled, so copper the toolpath never encircles stays on the blank —
-                      an unconnected pin then pokes through leftover foil and makes an intermittent
-                      connection to whatever that foil touches, usually the ground pour. Ringed, the
-                      pad is an isolated island: still solderable for mechanical strength, but on its
-                      own electrically. Leave this on unless you want those pins tied to the pour.
-                    </InfoTip>
+                    <InfoTip>Disconnects unused pins from surrounding copper.</InfoTip>
                   </label>
 
 
@@ -1929,7 +1819,7 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     </label>
                     <NumberInput
                       value={options.boardWidthMm}
-                      onChange={v => setOptions({ ...options, boardWidthMm: v })}
+                      onChange={v => setOptions(prev => ({ ...prev, boardWidthMm: v }))}
                       className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
@@ -1939,104 +1829,61 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     </label>
                     <NumberInput
                       value={options.boardHeightMm}
-                      onChange={v => setOptions({ ...options, boardHeightMm: v })}
+                      onChange={v => setOptions(prev => ({ ...prev, boardHeightMm: v }))}
                       className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
                   {options.autoGrowBoard && (
-                    <>
-                      <p className="text-[11px] text-slate-500">
-                        Auto-sized to{' '}
-                        <span className="text-slate-600 dark:text-slate-300 font-semibold">
-                          {result.boardWidthMm} x {result.boardHeightMm} mm
-                        </span>
-                        . Untick to force an exact size.
-                      </p>
-                      <div>
-                        <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
-                          Edge Margin (mm)
-                          <InfoTip>
-                            Blank laminate left around the outermost copper, per side. The board
-                            is cropped to the traces once routing is done, so this is what is
-                            left to hold and clamp. The isolation ring and the profile kerf are
-                            allowed for separately, so a small value here cannot cut into them.
-                          </InfoTip>
-                        </label>
-                        <NumberInput
-                          step="0.5"
-                          min={0}
-                          value={options.boardMarginMm ?? 1.5}
-                          onChange={v => setOptions({
-                              ...options,
-                              boardMarginMm: v,
-                            })
-                          } className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
-                    />
-                      </div>
-                    </>
+                    <div>
+                      <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
+                        Edge Margin (mm)
+                        <InfoTip>Border left around outermost copper.</InfoTip>
+                      </label>
+                      <NumberInput
+                        step="0.5"
+                        min={0}
+                        value={options.boardMarginMm ?? 1.5}
+                        onChange={v => setOptions(prev => ({ ...prev, boardMarginMm: v }))}
+                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                      />
+                    </div>
                   )}
                   <div>
                     <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
                       Trace Width (mm)
-                      <InfoTip>
-                        What the router routes with — the width it reserves when deciding where a
-                        track may go. It is the <em>minimum</em> copper, not the finished copper:
-                        with flooding on, every track that has room ends up wider than this.
-                      </InfoTip>
+                      <InfoTip>Minimum routed trace width.</InfoTip>
                     </label>
                     <NumberInput
                       step="0.05"
                       value={options.traceWidthMm}
-                      onChange={v => setOptions({ ...options, traceWidthMm: v })}
+                      onChange={v => setOptions(prev => ({ ...prev, traceWidthMm: v }))}
                       className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
                   <div>
                     <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
                       Copper Flood (mm)
-                      <InfoTip>
-                        Expands traces outward into unrouted copper to minimize milling time and
-                        tool wear. Turn down on high-frequency RF boards.
-                      </InfoTip>
+                      <InfoTip>Widens traces into unused copper to reduce milling time.</InfoTip>
                     </label>
                     <NumberInput
                       step="0.1"
                       min={0}
                       value={options.copperFloodMm ?? 0}
-                      onChange={v => setOptions({
-                          ...options,
-                          copperFloodMm: v,
-                        })
-                      } className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                      onChange={v => setOptions(prev => ({ ...prev, copperFloodMm: v }))}
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
-                    <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
-                      {result.copperFloodMm > 0
-                        ? `Traces widen to ${(options.traceWidthMm + result.copperFloodMm * 2).toFixed(2)}mm ` +
-                          `where there is room, stopping ${result.effectiveToolDiaMm.toFixed(3)}mm ` +
-                          `short of the next net.`
-                        : `Every trace is milled to ${options.traceWidthMm}mm and the rest of the gap is cut away.`}
-                    </p>
                   </div>
                   <div>
                     <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
                       Pad Clearance (mm)
-                      <InfoTip>
-                        Bare laminate kept between every pad and the copper of any other net. There is
-                        no solder mask on a milled board, so without this the only thing between a pad
-                        and the ground flood is the isolation channel, which solder bridges easily. A
-                        pad's own net still floods right into it at full width, so the pin is never left
-                        hanging off a thin neck, and the wider gap is milled out rather than outlined.
-                      </InfoTip>
+                      <InfoTip>Extra bare gap around pads to prevent solder bridges.</InfoTip>
                     </label>
                     <NumberInput
                       step="0.1"
                       min={0}
                       value={options.padClearanceMm ?? 0}
-                      onChange={v => setOptions({
-                          ...options,
-                          padClearanceMm: v,
-                        })
-                      } className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                      onChange={v => setOptions(prev => ({ ...prev, padClearanceMm: v }))}
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
                   <div>
@@ -2044,59 +1891,36 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     <NumberInput
                       step="0.05"
                       value={options.clearanceMm}
-                      onChange={v => setOptions({ ...options, clearanceMm: v })}
+                      onChange={v => setOptions(prev => ({ ...prev, clearanceMm: v }))}
                       className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
                   <div>
                     <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
                       Pad Margin (mm)
-                      <InfoTip>
-                        Adds extra copper around pads for easier hand soldering and drill
-                        alignment tolerance.
-                      </InfoTip>
+                      <InfoTip>Extra copper ring around pads for easier soldering.</InfoTip>
                     </label>
                     <NumberInput
                       step="0.05"
                       min={0}
                       value={options.padMarginMm ?? 0}
-                      onChange={v => setOptions({ ...options, padMarginMm: v })
-                      } className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                      onChange={v => setOptions(prev => ({ ...prev, padMarginMm: v }))}
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
                   <div>
                     <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold mb-1">
                       Drill Bit Merge (mm)
-                      <InfoTip>
-                        Hole sizes within this span share one drill bit, sized to the largest hole
-                        in the group. Footprints carry the exact lead diameter of each part, so a
-                        board with four part types otherwise means four drill changes. Set to 0 to
-                        drill every nominal size with its own bit.
-                      </InfoTip>
+                      <InfoTip>Groups hole sizes within this tolerance to reduce bit changes.</InfoTip>
                     </label>
                     <NumberInput
                       step="0.1"
                       min={0}
                       value={options.drillConsolidationMm ?? 0}
-                      onChange={v => setOptions({
-                          ...options,
-                          drillConsolidationMm: v,
-                        })
-                      } className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                      onChange={v => setOptions(prev => ({ ...prev, drillConsolidationMm: v }))}
+                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                     />
                   </div>
-                  {/* No routing-effort dial. A budget never decided whether a
-                      board routed, only how long it took to say so — the
-                      placement search is what rescues a board that stalls, and
-                      it runs on its own when the first pass falls short. The
-                      router starts cheap and climbs by itself, so there is
-                      nothing here to set.
-
-                      Nor anything to report once it has finished: the DRC line
-                      under the preview already says "100% routed" in green,
-                      with a tick. This only speaks while the router is still
-                      working, or when it has given up — the two things that
-                      line cannot say. */}
                   {isRouting ? (
                     <div className="flex items-center gap-2 text-[11px] text-sky-700 dark:text-sky-300">
                       <RefreshCw size={11} className="animate-spin shrink-0" />
@@ -2106,15 +1930,9 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                             `board ${progress.attempt}/${progress.totalAttempts}, ` +
                             `${(progress.completion * 100).toFixed(0)}% connected`
                           : effortStep > 1
-                          ? `Retrying with more effort (${effortStep} of ${effortSteps})…`
+                          ? `Retrying (${effortStep}/${effortSteps})…`
                           : 'Routing…'}
                       </span>
-                    </div>
-                  ) : hasResult && result.completion < 1 ? (
-                    <div className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug">
-                      {(result.completion * 100).toFixed(0)}% routed after {effortSteps} attempts at
-                      increasing effort. More time will not help — this board needs wider
-                      clearances, a bigger board, or a jumper.
                     </div>
                   ) : null}
                 </div>
@@ -2131,14 +1949,9 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                         onClick={() => setShowToolEditor(v => !v)}
                         className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline font-sans"
                       >
-                        {showToolEditor ? 'Cancel' : '+ Add my own tool'}
+                        {showToolEditor ? 'Cancel' : '+ Add tool'}
                       </button>
                     </div>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
-                      Loaded in this order, one pause per change. Swap any row for a bit you
-                      actually have: a bigger drill just leaves the hole oversize, and a smaller
-                      one gets spiralled out to the right size instead.
-                    </p>
 
                     {/* --- 1. Isolation --- */}
                     <div className="flex items-start gap-2">
@@ -2165,19 +1978,14 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                             </option>
                           ))}
                         </select>
-                        {selectedTool && (
-                          <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
-                            {selectedTool.description}
-                            {selectedTool.rackUid && !selectedTool.retired && (
-                              <button
-                                onClick={() => handleRetireTool(selectedTool.id)}
-                                className="ml-1 text-red-500 hover:underline"
-                                title="Take this bit out of your rack. It is no longer offered here, in Etch or in Mesh; Tools in the machine dialog brings it back."
-                              >
-                                Retire
-                              </button>
-                            )}
-                          </p>
+                        {selectedTool?.rackUid && !selectedTool.retired && (
+                          <button
+                            onClick={() => handleRetireTool(selectedTool.id)}
+                            className="mt-0.5 text-[10px] text-red-500 hover:underline"
+                            title="Remove bit from tool rack"
+                          >
+                            Retire
+                          </button>
                         )}
                       </div>
                     </div>
@@ -2204,22 +2012,22 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                           >
                             <option value={bit.requiredMm}>Exact &mdash; {bit.requiredMm}mm</option>
                             {drillPresets
-                              .filter(({ tool }) => tool.tipDiameterMm > bit.requiredMm)
+                              .filter(({ tool }) => Math.abs(tool.tipDiameterMm - bit.requiredMm) > 0.01)
                               .map(({ tool, label }) => (
                                 <option key={tool.id} value={tool.tipDiameterMm}>
                                   {label}
+                                  {tool.tipDiameterMm < bit.requiredMm ? ' (helical)' : ''}
                                 </option>
                               ))}
                           </select>
                           {bit.nominals.length > 1 && (
                             <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
-                              Covers {bit.nominals.map(n => `${n}mm`).join(', ')} &mdash; merged by the
-                              drill-bit merge setting on the Layout tab.
+                              Covers {bit.nominals.map(n => `${n}mm`).join(', ')}
                             </p>
                           )}
                           {bit.loadedMm > bit.requiredMm && (
                             <p className="mt-0.5 text-[10px] text-amber-600 dark:text-amber-400 leading-snug">
-                              Holes come out {(bit.loadedMm - bit.requiredMm).toFixed(2)}mm oversize.
+                              +{(bit.loadedMm - bit.requiredMm).toFixed(2)}mm oversize
                             </p>
                           )}
                         </div>
@@ -2411,95 +2219,67 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
+                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 block">
                         Cut Feed (mm/min)
-                        <InfoTip>
-                          How fast the bit travels while it is cutting. It is not a speed setting so
-                          much as a bite setting: feed ÷ (RPM × flutes) is the chipload — how much
-                          material each cutting edge takes per revolution. Too slow and the edge
-                          rubs instead of cutting, which heats the tip and blunts it; too fast and
-                          the chip is more than a 0.1mm carbide tip can carry and it snaps. Derived
-                          from the bit and the material when you pick either, so you only need this
-                          field if yours is behaving differently from the catalogue&apos;s.
-                        </InfoTip>
                       </label>
                       <NumberInput
                         value={options.cutFeedrate}
-                        onChange={v => setOptions({ ...options, cutFeedrate: v })}
-                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
-                      integer
-                    />
+                        onChange={v => setOptions(prev => ({ ...prev, cutFeedrate: v }))}
+                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                        integer
+                      />
                     </div>
                     <div>
-                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
+                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 block">
                         Plunge Feed (mm/min)
-                        <InfoTip>
-                          The same number for straight-down moves, and the one that actually breaks
-                          bits. Going down, the whole tip is buried and the only escape route for
-                          the chips is back up the flute it just came from — a V-bit has one flute
-                          and almost no room in it. Roughly a third of the cut feed is the usual
-                          ratio; drills are the exception and plunge at their full feed, because
-                          plunging is the only thing they do.
-                        </InfoTip>
                       </label>
                       <NumberInput
                         value={options.plungeFeedrate}
-                        onChange={v => setOptions({ ...options, plungeFeedrate: v })}
-                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
-                      integer
-                    />
+                        onChange={v => setOptions(prev => ({ ...prev, plungeFeedrate: v }))}
+                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                        integer
+                      />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
+                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 block">
                         Spindle RPM
-                        <InfoTip>
-                          Chosen for the tip diameter, not for the material. What a cutting edge
-                          cares about is its surface speed, and on a 0.1mm tip the edge is
-                          travelling a tiny circle — at 12,000rpm that is only about 0.6 metres a
-                          minute, which is slow for carbide in fibreglass. That is why the fine
-                          bits ask for more, not less: the 0.05mm tip runs at 18,000. A larger
-                          endmill reaches the same surface speed at far lower rpm and would just
-                          burn at 18,000. Above the figure here you are mostly adding heat, runout
-                          and noise; well below it the edge rubs, and a rubbed tip goes blunt in
-                          one board. Most hobby spindles are also weakest at the bottom of their
-                          range, which is a second reason not to drop far under it.
-                        </InfoTip>
                       </label>
                       <NumberInput
                         value={options.spindleRpm}
-                        onChange={v => setOptions({ ...options, spindleRpm: v })}
-                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
-                      integer
-                    />
+                        onChange={v => setOptions(prev => ({ ...prev, spindleRpm: v }))}
+                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
+                        integer
+                      />
                     </div>
                     <div>
-                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
+                      <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 block">
                         Isolation Depth (mm)
-                        <InfoTip>
-                          Sets cut depth based on copper foil thickness and probed board flatness.
-                        </InfoTip>
                       </label>
                       <NumberInput
                         step="0.01"
                         value={options.isolationDepthZ}
                         disabled={autoIsolationDepth}
-                        onChange={v => setOptions({ ...options, isolationDepthZ: v })}
-                      className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 disabled:opacity-60"
-                    />
+                        onChange={v => setOptions(prev => ({ ...prev, isolationDepthZ: v }))}
+                        className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                      />
                       <label className="flex items-center gap-1.5 mt-1 cursor-pointer text-[10px] text-slate-500 dark:text-slate-400">
                         <input
                           type="checkbox"
                           checked={autoIsolationDepth}
                           onChange={e => {
-                            setAutoIsolationDepth(e.target.checked);
-                            saveAutoIsolationDepth(e.target.checked);
+                            const nextAuto = e.target.checked;
+                            if (!nextAuto && autoDepthZ !== null) {
+                              setOptions(prev => ({ ...prev, isolationDepthZ: autoDepthZ }));
+                            }
+                            setAutoIsolationDepth(nextAuto);
+                            saveAutoIsolationDepth(nextAuto);
                           }}
                           className="accent-emerald-500"
                         />
-                        <span>Auto — shallowest cut that clears the copper</span>
+                        <span>Auto depth</span>
                       </label>
                     </div>
                   </div>
@@ -2508,49 +2288,44 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                     <div>
                       <label className="text-slate-500 dark:text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
                         Isolation Passes
-                        <InfoTip>
-                          Extra offset passes widen the isolation channel around each trace, at the cost of a longer job. Most boards only need 1.
-                        </InfoTip>
+                        <InfoTip>Extra widening passes around traces (1 is usually enough).</InfoTip>
                       </label>
                       <NumberInput
                         integer
                         min={1}
                         max={3}
                         value={options.isolationPasses}
-                        onChange={v => setOptions({ ...options, isolationPasses: v })}
+                        onChange={v => setOptions(prev => ({ ...prev, isolationPasses: v }))}
                         className="w-full px-3 py-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200"
                       />
                     </div>
                   </div>
 
-                  <div className="p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded space-y-1.5">
+                  <div className="p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded space-y-1">
                     <label className="flex items-center gap-2 cursor-pointer text-slate-600 dark:text-slate-300 font-medium">
                       <input
                         type="checkbox"
                         checked={options.rubOutClearing === true}
-                        onChange={e => setOptions({ ...options, rubOutClearing: e.target.checked })}
+                        onChange={e => setOptions(prev => ({ ...prev, rubOutClearing: e.target.checked }))}
                         className="accent-emerald-500"
                       />
                       <span>Clear excess copper</span>
                     </label>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed pl-5">
-                      Mills away the foil between nets with the {options.profileToolDiaMm}mm end mill, after drilling, so only traces and pads are left. Gaps too narrow for the end mill keep their copper; the preview shows them in grey. Lower the copper flood to clear more.
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 pl-5">
+                      Removes unused copper with the {options.profileToolDiaMm}mm end mill.
                     </p>
                   </div>
 
-                  <div className="p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded space-y-1.5">
+                  <div className="p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded">
                     <label className="flex items-center gap-2 cursor-pointer text-slate-600 dark:text-slate-300 font-medium">
                       <input
                         type="checkbox"
                         checked={options.rampedPlunge !== false}
-                        onChange={e => setOptions({ ...options, rampedPlunge: e.target.checked })}
+                        onChange={e => setOptions(prev => ({ ...prev, rampedPlunge: e.target.checked }))}
                         className="accent-emerald-500"
                       />
-                      <span>Enable Ramped Entry Plunges</span>
+                      <span>Ramped entry plunges</span>
                     </label>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed pl-5">
-                      Angles Z entry into copper over 1.2mm travel, protecting fragile V-bit tip points from chip shock.
-                    </p>
                   </div>
                 </div>
               )}
@@ -2590,12 +2365,12 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
                 <button
                   onClick={handleFrameBoard}
                   disabled={!result.success || machineBusy}
-                  onMouseEnter={() => setHoveredFooterHint('Trace the board outline live with the spindle off, to check the blank before cutting.')}
+                  onMouseEnter={() => setHoveredFooterHint('Trace board outline live with spindle off.')}
                   onMouseLeave={() => setHoveredFooterHint(null)}
-                  onFocus={() => setHoveredFooterHint('Trace the board outline live with the spindle off, to check the blank before cutting.')}
+                  onFocus={() => setHoveredFooterHint('Trace board outline live with spindle off.')}
                   onBlur={() => setHoveredFooterHint(null)}
                   className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer text-xs shadow-sm whitespace-nowrap"
-                  title={`Trace the outline of the whole job live — board edge and registration holes — at the job's own highest Z (Z${Math.max(options.safeZ, options.toolChangeZ)}), never below where the bit is now, with no spindle and no plunges. Checks the blank is where the job thinks it is.`}
+                  title={`Dry-run outline at Z${Math.max(options.safeZ, options.toolChangeZ)} (spindle off)`}
                 >
                   <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
                   Frame
@@ -2603,39 +2378,39 @@ export const ExportPcbModal: React.FC<ExportPcbModalProps> = ({
 
                 <button
                   onClick={handleExportPasteStencil}
-                  disabled={!result.success}
-                  onMouseEnter={() => setHoveredFooterHint('Download a printable solder paste stencil for the SMD pads on this board.')}
+                  disabled={!result.success || !hasSmdPads}
+                  onMouseEnter={() => setHoveredFooterHint(hasSmdPads ? 'Download printable SMD paste stencil (.stl).' : 'No SMD pads to stencil.')}
                   onMouseLeave={() => setHoveredFooterHint(null)}
-                  onFocus={() => setHoveredFooterHint('Download a printable solder paste stencil for the SMD pads on this board.')}
+                  onFocus={() => setHoveredFooterHint(hasSmdPads ? 'Download printable SMD paste stencil (.stl).' : 'No SMD pads to stencil.')}
                   onBlur={() => setHoveredFooterHint(null)}
                   className="px-2 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 font-bold rounded flex items-center cursor-pointer text-xs"
-                  title={PASTE_STENCIL_HINT}
+                  title={hasSmdPads ? PASTE_STENCIL_HINT : 'No SMD pads on this board'}
                 >
                   <Box className="w-3.5 h-3.5" />
                 </button>
 
                 <button
                   onClick={handleExportShim}
-                  disabled={!result.success}
-                  onMouseEnter={() => setHoveredFooterHint('Download the blank shim to laser the stencil out of.')}
+                  disabled={!result.success || !hasSmdPads}
+                  onMouseEnter={() => setHoveredFooterHint(hasSmdPads ? 'Download blank shim (.stl) for laser stencil.' : 'No SMD pads to stencil.')}
                   onMouseLeave={() => setHoveredFooterHint(null)}
-                  onFocus={() => setHoveredFooterHint('Download the blank shim to laser the stencil out of.')}
+                  onFocus={() => setHoveredFooterHint(hasSmdPads ? 'Download blank shim (.stl) for laser stencil.' : 'No SMD pads to stencil.')}
                   onBlur={() => setHoveredFooterHint(null)}
                   className="px-2 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 font-bold rounded flex items-center cursor-pointer text-xs"
-                  title={SHIM_HINT}
+                  title={hasSmdPads ? SHIM_HINT : 'No SMD pads on this board'}
                 >
                   <Layers2 className="w-3.5 h-3.5" />
                 </button>
 
                 <button
                   onClick={handleStencilToEtch}
-                  disabled={!result.success}
-                  onMouseEnter={() => setHoveredFooterHint('Send the stencil to PhysBox: Etch as vector artwork, to laser cut.')}
+                  disabled={!result.success || !hasSmdPads}
+                  onMouseEnter={() => setHoveredFooterHint(hasSmdPads ? 'Open paste stencil in Etch for laser cutting.' : 'No SMD pads to stencil.')}
                   onMouseLeave={() => setHoveredFooterHint(null)}
-                  onFocus={() => setHoveredFooterHint('Send the stencil to PhysBox: Etch as vector artwork, to laser cut.')}
+                  onFocus={() => setHoveredFooterHint(hasSmdPads ? 'Open paste stencil in Etch for laser cutting.' : 'No SMD pads to stencil.')}
                   onBlur={() => setHoveredFooterHint(null)}
                   className="px-2 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-800 dark:text-slate-200 font-bold rounded flex items-center cursor-pointer text-xs"
-                  title={ETCH_HINT}
+                  title={hasSmdPads ? ETCH_HINT : 'No SMD pads on this board'}
                 >
                   <Scissors className="w-3.5 h-3.5" />
                 </button>

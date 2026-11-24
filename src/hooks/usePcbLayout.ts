@@ -148,10 +148,16 @@ export function usePcbLayout(
   }: { enabled?: boolean; debounceMs?: number } = {}
 ): PcbLayoutState {
   /**
-   * Which rung of the effort ladder this board is on. Reset whenever the board
-   * itself changes, so every new circuit starts at the cheap end.
+   * Which rung of the effort ladder this board is on. Keyed to `boardKey` so a
+   * new circuit resets to rung 0 synchronously on the same render instead of
+   * racing a separate effect.
    */
-  const [rung, setRung] = useState(0);
+  const boardKey = useMemo(() => layoutBoardKey(nodes, edges, options), [nodes, edges, options]);
+  const [rungState, setRungState] = useState<{ boardKey: string; rung: number }>({
+    boardKey,
+    rung: 0,
+  });
+  const rung = rungState.boardKey === boardKey ? rungState.rung : 0;
   const budgetMs = ROUTING_BUDGET_LADDER[rung];
 
   /*
@@ -167,20 +173,14 @@ export function usePcbLayout(
     }),
     [nodes, edges, options, budgetMs]
   );
-  /*
-   * What makes this a different board. Feeds, speeds, depths and the rest of
-   * the emit-time options are left out: they cannot move a trace, so a layout
-   * routed without them is still the right answer, and the program is rewritten
-   * from it in about four milliseconds rather than re-routed in seconds.
-   */
-  const boardKey = useMemo(() => layoutBoardKey(nodes, edges, options), [nodes, edges, options]);
   const gcodeKey = useMemo(() => gcodeKeyOf(payload.options), [payload]);
   const cacheKey = `${boardKey}|${budgetMs}`;
 
-  // Back to the bottom of the ladder for a different board.
-  useEffect(() => {
-    setRung(0);
-  }, [boardKey]);
+  // Keep latest raw inputs in refs so the layout effect keys strictly on
+  // semantic keys (`cacheKey`/`gcodeKey`) and never cancels an in-flight
+  // worker on unrelated parent re-renders.
+  const latestRef = useRef({ nodes, edges, payload });
+  latestRef.current = { nodes, edges, payload };
 
   const effortOf = (r: number) => ({ effortStep: r + 1, effortSteps: ROUTING_BUDGET_LADDER.length });
 
@@ -199,26 +199,10 @@ export function usePcbLayout(
 
   /**
    * Takes a finished layout and either settles on it or climbs a rung.
-   *
-   * `isRouting` stays true across a climb: from outside, an escalation is one
-   * continuous attempt to route this board, not a result followed by a second
-   * request. The partial board is shown while the next rung runs, because a
-   * 94%-routed preview is a far better thing to look at than the last board.
    */
   const settle = useCallback(
-    (result: PcbLayoutResult) => {
-      const climbing = wantsMoreEffort(result) && rung < ROUTING_BUDGET_LADDER.length - 1;
-      /*
-       * Keep the board once the search has actually stopped.
-       *
-       * Not mid-climb: an 82% board on its way to 100% is not the answer, and
-       * writing it would leave the slow machine restoring the rung the fast
-       * one had already abandoned. A board that finishes the ladder still
-       * incomplete is kept, though — it is the best answer anyone is going to
-       * get for that circuit, the app refuses to mill it either way, and
-       * re-deriving it elsewhere only spends four budgets to arrive somewhere
-       * no better.
-       */
+    (result: PcbLayoutResult, allowClimb = true) => {
+      const climbing = allowClimb && wantsMoreEffort(result) && rung < ROUTING_BUDGET_LADDER.length - 1;
       if (!climbing && result.snapshot && result.snapshot.boardKey !== lastSavedBoardKey) {
         saveLayoutSnapshot(result.snapshot);
         lastSavedBoardKey = result.snapshot.boardKey;
@@ -231,58 +215,52 @@ export function usePcbLayout(
         effortStep: (climbing ? rung + 1 : rung) + 1,
         effortSteps: ROUTING_BUDGET_LADDER.length,
       });
-      if (climbing) setRung(rung + 1);
+      if (climbing) setRungState({ boardKey, rung: rung + 1 });
     },
-    [rung]
+    [boardKey, rung]
   );
 
   const workerRef = useRef<Worker | null>(null);
   const supported = useRef(typeof Worker !== 'undefined');
 
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
+  const stopWorker = () => {
+    if (workerRef.current) {
+      workerRef.current.terminate();
+      workerRef.current = null;
+    }
+  };
 
-    /*
-     * Laid out already, on this machine or another one.
-     *
-     * Ahead of the in-memory cache because it survives a reload and a
-     * different computer, and costs about as little: restoring replays only
-     * the arithmetic below the router — copper, toolpaths, drills, previews,
-     * the program — which is the same work re-emitting a cached board does.
-     * This is the path that matters for laying a board out on a fast machine
-     * and milling it from a slow one: the router never runs there at all.
-     *
-     * `restorePcbLayout` returns null unless the snapshot fingerprints as this
-     * exact board, so an edited circuit falls through to the router below.
-     */
+  useEffect(() => {
+    if (!enabled) {
+      stopWorker();
+      return;
+    }
+    let cancelled = false;
+    const { nodes: curNodes, edges: curEdges, payload: curPayload } = latestRef.current;
+
     if (!layoutCache.has(cacheKey)) {
       const stored = loadLayoutSnapshot();
-      const restored = restorePcbLayout(stored, nodes, edges, payload.options);
+      const restored = restorePcbLayout(stored, curNodes, curEdges, curPayload.options);
       if (restored) {
+        stopWorker();
         lastSavedBoardKey = stored!.boardKey;
         rememberLayout(cacheKey, { result: restored, gcodeKey });
-        settle(restored);
+        // Persisted snapshots already represent a settled layout — do not
+        // climb the effort ladder and replay restorePcbLayout 4 times.
+        settle(restored, false);
         return;
       }
     }
 
-    // Already routed these exact inputs — show that result rather than paying
-    // for the same search again.
     const cached = layoutCache.get(cacheKey);
     if (cached) {
-      // The same board, but possibly asked for at a different feed or depth
-      // since it was routed. Rewriting the program off the stored layout is
-      // the whole point of keying the cache this way.
+      stopWorker();
       if (cached.gcodeKey !== gcodeKey) {
-        const reemitted = reemitPcbGcode(cached.result, payload.options);
+        const reemitted = reemitPcbGcode(cached.result, curPayload.options);
         rememberLayout(cacheKey, { result: reemitted, gcodeKey });
         settle(reemitted);
         return;
       }
-      // Through `settle`, so a cached partial climbs exactly as a fresh one
-      // does — otherwise reopening the panel on a board that needed the top
-      // rung would stop at whatever the bottom rung managed.
       settle(cached.result);
       return;
     }
@@ -290,9 +268,9 @@ export function usePcbLayout(
     const runSync = () => {
       try {
         const result = layoutWithOverrides(
-          payload.nodes as never,
-          payload.edges as never,
-          payload.options
+          curPayload.nodes as never,
+          curPayload.edges as never,
+          curPayload.options
         );
         rememberLayout(cacheKey, { result, gcodeKey });
         if (cancelled) return;
@@ -301,7 +279,7 @@ export function usePcbLayout(
         if (cancelled) return;
         setState(prev => ({
           ...prev,
-          result: emptyPcbLayout(payload.options, err instanceof Error ? err.message : String(err)),
+          result: emptyPcbLayout(curPayload.options, err instanceof Error ? err.message : String(err)),
           isRouting: false,
           progress: null,
           hasResult: true,
@@ -318,7 +296,7 @@ export function usePcbLayout(
       }
 
       // Terminate any in-flight run: it is CPU-bound and cannot be interrupted.
-      workerRef.current?.terminate();
+      stopWorker();
 
       let worker: Worker;
       try {
@@ -335,6 +313,19 @@ export function usePcbLayout(
 
       const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+      const failWorker = (reason: string) => {
+        if (workerRef.current === worker) workerRef.current = null;
+        worker.terminate();
+        if (cancelled) return;
+        setState(prev => ({
+          ...prev,
+          result: emptyPcbLayout(curPayload.options, reason),
+          isRouting: false,
+          progress: null,
+          hasResult: true,
+        }));
+      };
+
       worker.onmessage = (evt: MessageEvent<PcbLayoutResponse>) => {
         const msg = evt.data;
         if (cancelled || msg.id !== id) return;
@@ -342,13 +333,15 @@ export function usePcbLayout(
           setState(prev => ({ ...prev, progress: msg.progress }));
           return;
         }
+        if (workerRef.current === worker) workerRef.current = null;
+        worker.terminate();
         if (msg.ok === true) {
           rememberLayout(cacheKey, { result: msg.result as PcbLayoutResult, gcodeKey });
           settle(msg.result as PcbLayoutResult);
         } else {
           setState(prev => ({
             ...prev,
-            result: emptyPcbLayout(payload.options, msg.error),
+            result: emptyPcbLayout(curPayload.options, msg.error),
             isRouting: false,
             progress: null,
             hasResult: true,
@@ -357,37 +350,38 @@ export function usePcbLayout(
       };
 
       worker.onerror = err => {
-        if (cancelled) return;
-        console.warn('[pcb] worker failed, falling back to the main thread', err.message);
-        supported.current = false;
-        worker.terminate();
-        runSync();
+        console.warn('[pcb] worker error', err.message);
+        failWorker(err.message || 'PCB layout worker failed.');
+      };
+
+      worker.onmessageerror = () => {
+        console.warn('[pcb] worker message deserialization failed');
+        failWorker('PCB layout worker returned an unreadable message.');
       };
 
       const req: PcbLayoutRequest = {
         type: 'LAYOUT',
         id,
-        nodes: payload.nodes,
-        edges: payload.edges,
-        options: payload.options,
+        nodes: curPayload.nodes,
+        edges: curPayload.edges,
+        options: curPayload.options,
       };
       try {
         worker.postMessage(req);
       } catch (err) {
-        console.warn('[pcb] could not post to worker, routing on the main thread', err);
-        supported.current = false;
-        worker.terminate();
-        runSync();
+        console.warn('[pcb] could not post to worker', err);
+        failWorker(err instanceof Error ? err.message : String(err));
       }
     }, debounceMs);
 
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      stopWorker();
     };
-  }, [enabled, nodes, edges, payload, cacheKey, gcodeKey, debounceMs, settle]);
+  }, [enabled, boardKey, cacheKey, gcodeKey, debounceMs, settle]);
 
-  useEffect(() => () => workerRef.current?.terminate(), []);
+  useEffect(() => () => stopWorker(), []);
 
   return state;
 }

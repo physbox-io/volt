@@ -185,34 +185,82 @@ export function unjoinedNets(core: LayoutCore, options: PcbOptions): string[] {
   const compById = new Map(core.placed.map(c => [c.id, c]));
   const out: string[] = [];
 
+  // Auto-jumpers physically bridge their two pads with a wire.
+  const jumperPairsByNet = new Map<string, [string, string][]>();
+  for (const c of core.placed) {
+    if (!c.data?.autoJumper) continue;
+    const jp = core.pads.filter(p => p.componentId === c.id && p.netId);
+    if (jp.length === 2 && jp[0].netId === jp[1].netId) {
+      const list = jumperPairsByNet.get(jp[0].netId!) ?? [];
+      list.push([pinKey(jp[0]), pinKey(jp[1])]);
+      jumperPairsByNet.set(jp[0].netId!, list);
+    }
+  }
+
+  const layersOverlap = (a: 'top' | 'bottom' | 'both', b: 'top' | 'bottom' | 'both'): boolean =>
+    a === 'both' || b === 'both' || a === b;
+
   for (const netId of new Set(core.pads.filter(p => p.netId).map(p => p.netId!))) {
     const pads = core.pads.filter(p => p.netId === netId);
     if (pads.length < 2) continue;
-    /** A piece of this net's copper: a centre or a polyline, and a radius. */
-    const blobs: { pts: Pt[]; r: number }[] = [
+    /** A piece of this net's copper: a centre or a polyline, a radius, and layer presence. */
+    const blobs: { pts: Pt[]; r: number; layer: 'top' | 'bottom' | 'both' }[] = [
       ...pads.map(pad => {
         const comp = compById.get(pad.componentId)!;
-        return { pts: [{ x: pad.x, y: pad.y }], r: padRadiusMm(pad, comp, padMargin) };
+        return {
+          pts: [{ x: pad.x, y: pad.y }],
+          r: padRadiusMm(pad, comp, padMargin),
+          layer: (isTht(pad) ? 'both' : 'top') as 'top' | 'bottom' | 'both',
+        };
       }),
-      ...core.traces.filter(t => t.netId === netId).map(t => ({ pts: t.points, r: t.width / 2 })),
+      ...core.traces
+        .filter(t => t.netId === netId)
+        .map(t => ({
+          pts: t.points,
+          r: t.width / 2,
+          layer: (t.layer === 'bottom' ? 'bottom' : 'top') as 'top' | 'bottom' | 'both',
+        })),
       ...(core.vias ?? [])
         .filter(v => v.netId === netId)
-        .map(v => ({ pts: [{ x: v.x, y: v.y }], r: v.padMm / 2 })),
+        .map(v => ({
+          pts: [{ x: v.x, y: v.y }],
+          r: v.padMm / 2,
+          layer: 'both' as const,
+        })),
     ];
 
     const parent = blobs.map((_, i) => i);
     const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
     for (let i = 0; i < blobs.length; i++) {
       for (let j = i + 1; j < blobs.length; j++) {
+        if (!layersOverlap(blobs[i].layer, blobs[j].layer)) continue;
         if (blobGapMm(blobs[i], blobs[j]) <= blobs[i].r + blobs[j].r + 1e-6) {
           parent[find(i)] = find(j);
         }
       }
     }
+
+    // Union auto-jumper pairs so jumper-bridged nets are not treated as permanently broken.
+    const padIndexByKey = new Map(pads.map((p, i) => [pinKey(p), i]));
+    for (const [ka, kb] of jumperPairsByNet.get(netId) ?? []) {
+      const ia = padIndexByKey.get(ka);
+      const ib = padIndexByKey.get(kb);
+      if (ia !== undefined && ib !== undefined) parent[find(ia)] = find(ib);
+    }
+
     // The pads are the first entries, and they all have to end up in one piece.
     if (new Set(pads.map((_, i) => find(i))).size > 1) out.push(netId);
   }
   return out;
+}
+
+function segmentsIntersect(a0: Pt, a1: Pt, b0: Pt, b1: Pt): boolean {
+  const cross = (o: Pt, p: Pt, q: Pt) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+  const d1 = cross(b0, b1, a0);
+  const d2 = cross(b0, b1, a1);
+  const d3 = cross(a0, a1, b0);
+  const d4 = cross(a0, a1, b1);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
 }
 
 /** Closest approach between two pieces of copper, centreline to centreline. */
@@ -224,6 +272,7 @@ function blobGapMm(a: { pts: Pt[] }, b: { pts: Pt[] }): number {
   let best = Infinity;
   for (const [a0, a1] of segs(a)) {
     for (const [b0, b1] of segs(b)) {
+      if (segmentsIntersect(a0, a1, b0, b1)) return 0;
       best = Math.min(
         best,
         pointToSegmentMm(a0.x, a0.y, b0.x, b0.y, b1.x, b1.y),
@@ -375,13 +424,22 @@ export function moveComponentInCore(
     if (hitsPad || hitsCutout) affected.add(trace.netId);
   }
   // A via is copper on both faces and a hole through the middle, so one under
-  // the part's new pads is the same problem as a track under them.
+  // the part's new pads or cutouts is the same problem as a track under them.
   for (const via of next.vias ?? []) {
     if (affected.has(via.netId)) continue;
     const reach = via.padMm / 2 + clearance;
-    if (ownPads.some(pad =>
+    const hitsPad = ownPads.some(pad =>
       Math.hypot(via.x - pad.x, via.y - pad.y) < padRadiusMm(pad, comp, padMargin) + reach
-    )) {
+    );
+    const hitsCutout =
+      !hitsPad &&
+      next.cutouts.some(
+        c =>
+          c.componentId === comp.id &&
+          Math.abs(via.x - c.x) < c.widthMm / 2 + reach &&
+          Math.abs(via.y - c.y) < c.heightMm / 2 + reach
+      );
+    if (hitsPad || hitsCutout) {
       affected.add(via.netId);
     }
   }

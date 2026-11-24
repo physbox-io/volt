@@ -93,27 +93,16 @@ export const BoardMapPanel: React.FC<BoardMapPanelProps> = ({
       <div className="space-y-2">
         <div className="flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-300">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
-          <span>
-            The map on file no longer covers this board, so it will not be applied. Re-probe, or
-            clear it and cut at the commanded depth.
-          </span>
+          <span>Board outgrew the saved map — cutting unlevelled until re-probed.</span>
         </div>
         {heightmap && <BoardMapView grid={heightmap} board={board} className="opacity-50" />}
         <button onClick={onClearHeightmap} className={`${quietButton} w-full`}>
-          Clear the old map
+          Clear old map
         </button>
       </div>
     ) : (
-      /* Not an error — a board can be cut unlevelled, and the auto isolation
-         depth already falls back to its most conservative flatness allowance
-         when there is no measurement. It just costs copper, so say so. */
-      <div className="flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-300 leading-snug">
-        <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
-        <span>
-          Not probed. The job will cut at the commanded depth, so the isolation pass has to run deep
-          enough to clear the copper on the low spots — which is a wider channel, and less copper,
-          everywhere else. Probing takes a few minutes and needs the continuity clip on the bit.
-        </span>
+      <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+        Unprobed — optional; probing improves thin-trace consistency.
       </div>
     )}
 
@@ -123,31 +112,21 @@ export const BoardMapPanel: React.FC<BoardMapPanelProps> = ({
       </label>
       <NumberInput
         step={0.5}
-        min={0.5}
-        value={probeDepthMm}
+        min={Number((safeZMm + 0.5).toFixed(1))}
+        value={Math.max(probeDepthMm, Number((safeZMm + 0.5).toFixed(1)))}
         disabled={machineBusy}
-        onChange={onProbeDepthChange}
+        onChange={v => onProbeDepthChange(Math.max(v, Number((safeZMm + 0.5).toFixed(1))))}
         className="w-full px-2 py-1.5 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-800 dark:text-slate-200 font-mono text-[11px] disabled:opacity-40"
       />
     </div>
-
-    {/* The probe starts at the retract height, so anything less than that never
-        reaches Z0 at all — it alarms out on the first point rather than after a
-        slow full-grid pass. */}
-    {probeDepthMm <= safeZMm && (
-      <div className="text-[10px] text-amber-700 dark:text-amber-400 leading-relaxed">
-        Search depth must exceed the {safeZMm}mm retract height set in the machine dialog, or the
-        probe stops above the copper and the machine raises ALARM:5.
-      </div>
-    )}
 
     <button
       onClick={onProbeSurface}
       disabled={machineBusy || !boardReady}
       title={
         boardReady
-          ? `Probe a ${suggestedGrid.cols}×${suggestedGrid.rows} mesh across this board's surface`
-          : 'Waiting for the board to finish routing — the mesh is probed inside its outline'
+          ? `Probe ${suggestedGrid.cols}×${suggestedGrid.rows} mesh`
+          : 'Waiting for board routing to finish'
       }
       className={`${quietButton} w-full`}
     >

@@ -21,7 +21,7 @@ import {
   type PcbOptions,
 } from './pcbExporter';
 import { layoutWithOverrides } from './pcbNudge';
-import { loadLayoutSnapshot, loadMachiningSettings } from './storage';
+import { loadLayoutSnapshot, loadMachiningSettings, saveLayoutSnapshot } from './storage';
 
 /**
  * The board on the canvas: the saved one if it is still the same board, and a
@@ -35,7 +35,16 @@ export function layoutForCircuit(
   edges: Edge[],
   overrides?: Partial<PcbOptions>
 ): PcbLayoutResult {
-  const options = { ...loadMachiningSettings(), ...overrides };
+  const cleaned: Partial<PcbOptions> = {};
+  if (overrides) {
+    for (const [k, v] of Object.entries(overrides)) {
+      if (v !== undefined) (cleaned as Record<string, unknown>)[k] = v;
+    }
+  }
+  const options = { ...loadMachiningSettings(), ...cleaned };
   const restored = restorePcbLayout(loadLayoutSnapshot(), nodes, edges, options);
-  return restored ?? layoutWithOverrides(nodes, edges, options);
+  if (restored) return restored;
+  const fresh = layoutWithOverrides(nodes, edges, options);
+  if (fresh.snapshot) saveLayoutSnapshot(fresh.snapshot);
+  return fresh;
 }

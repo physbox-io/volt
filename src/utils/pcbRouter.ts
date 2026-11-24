@@ -305,7 +305,13 @@ function stampBoardEdge(grid: Grid, opts: RouterOptions): void {
  * via the disc test would have allowed - never the other way round - and is
  * separable, so it costs two linear passes instead of a per-cell scan.
  */
-function buildViaMask(grid: Grid, net: number, rViaMm: number): Uint8Array {
+function buildViaMask(
+  grid: Grid,
+  net: number,
+  extraViaRadiusMm: number,
+  borderRadiusMm: number,
+  thtPadCells?: number[]
+): Uint8Array {
   const { cols, rows } = grid;
   const stride = cols * rows;
   const allowed = new Uint8Array(stride);
@@ -318,7 +324,11 @@ function buildViaMask(grid: Grid, net: number, rViaMm: number): Uint8Array {
     if ((c0 !== FREE && c0 !== net) || (c1 !== FREE && c1 !== net)) blocked[c] = 1;
   }
 
-  const r = Math.ceil(rViaMm / grid.gridMm);
+  // Other nets' copper is already inflated in `grid.cells` by
+  // `clearanceMm + traceWidthMm / 2`, so we only need to dilate by the excess
+  // radius of a via pad over a trace half-width.
+  const r = extraViaRadiusMm > 0 ? Math.ceil(extraViaRadiusMm / grid.gridMm) : 0;
+  const rBorder = Math.ceil(borderRadiusMm / grid.gridMm);
 
   // Horizontal pass, then vertical, each over a running prefix sum.
   const rowGrown = new Uint8Array(stride);
@@ -338,8 +348,16 @@ function buildViaMask(grid: Grid, net: number, rViaMm: number): Uint8Array {
       const lo = Math.max(0, y - r);
       const hi = Math.min(rows - 1, y + r);
       // The pad also has to fit inside the grid, so the border is out too.
-      const onBorder = x < r || y < r || x >= cols - r || y >= rows - r;
+      const onBorder = x < rBorder || y < rBorder || x >= cols - rBorder || y >= rows - rBorder;
       allowed[y * cols + x] = !onBorder && prefix[hi + 1] - prefix[lo] === 0 ? 1 : 0;
+    }
+  }
+
+  // Same-net through-hole pads already connect both copper layers without
+  // needing a new via, so allow layer transitions right on top of them.
+  if (thtPadCells) {
+    for (const c2d of thtPadCells) {
+      if (c2d >= 0 && c2d < stride) allowed[c2d] = 1;
     }
   }
   return allowed;
@@ -744,7 +762,12 @@ function singlePassRoute(
           const dx = cellX(grid, gx) - pin.x;
           const dy = cellY(grid, gy) - pin.y;
           if (dx * dx + dy * dy <= r2) {
-            grid.cells[rowOff + gx] = net;
+            const cur = grid.cells[rowOff + gx];
+            // Never erase hard obstacles (board edge, frozen pads, keepTraces)
+            // or another pad's copper keepout conflict.
+            if (cur === FREE || cur === net) {
+              grid.cells[rowOff + gx] = net;
+            }
           }
         }
       }
@@ -767,11 +790,16 @@ function singlePassRoute(
   // on top of one needs no via — drilling one there would only put a second
   // hole through a pad that is about to be soldered.
   const thtPadsByNet = new Map<number, { x: number; y: number; r: number }[]>();
+  const thtCellsByNet = new Map<number, number[]>();
   for (const pin of pins) {
     if (pin.layer === 'top' || pin.layer === 'bottom') continue;
     const net = netIndex.get(pin.netId)!;
     if (!thtPadsByNet.has(net)) thtPadsByNet.set(net, []);
     thtPadsByNet.get(net)!.push({ x: pin.x, y: pin.y, r: pin.padRadiusMm });
+    const gx = Math.max(0, Math.min(grid.cols - 1, toGx(grid, pin.x)));
+    const gy = Math.max(0, Math.min(grid.rows - 1, toGy(grid, pin.y)));
+    if (!thtCellsByNet.has(net)) thtCellsByNet.set(net, []);
+    thtCellsByNet.get(net)!.push(gy * grid.cols + gx);
   }
   const transitionIsPin = (net: number, x: number, y: number): boolean =>
     (thtPadsByNet.get(net) ?? []).some(
@@ -812,8 +840,11 @@ function singlePassRoute(
       const goalSet = new Set<number>(goalIndices);
 
       // Rebuilt per connection: the grid gains this net's copper as it goes.
+      const extraViaR = Math.max(0, viaPad / 2 - halfTrace);
       const viaMask =
-        rViaKeepout !== undefined ? buildViaMask(grid, net, rViaKeepout) : undefined;
+        rViaKeepout !== undefined
+          ? buildViaMask(grid, net, extraViaR, viaPad / 2 + opts.edgeClearanceMm, thtCellsByNet.get(net))
+          : undefined;
 
       const path = isReachable(grid, startSet, goalSet, net, reachScratch, reachQueue, viaMask)
         ? findPath(grid, startSet, goalSet, net, opts.bendPenalty, 1.0, viaMask, viaCost)
@@ -842,10 +873,11 @@ function singlePassRoute(
           const segCells = path.slice(segStart, k);
           const pts = simplifyPath(grid, segCells);
           const layerName = curLayer === 0 ? 'top' : 'bottom';
-          traces.push({ netId, points: pts, widthMm: opts.traceWidthMm, layer: layerName });
-
-          for (let p = 0; p + 1 < pts.length; p++) {
-            stampSegment(grid, pts[p].x, pts[p].y, pts[p + 1].x, pts[p + 1].y, halfTrace + keepout, net, curLayer);
+          if (pts.length >= 2) {
+            traces.push({ netId, points: pts, widthMm: opts.traceWidthMm, layer: layerName });
+            for (let p = 0; p + 1 < pts.length; p++) {
+              stampSegment(grid, pts[p].x, pts[p].y, pts[p + 1].x, pts[p + 1].y, halfTrace + keepout, net, curLayer);
+            }
           }
 
           // Via placed at transition cell (which is at the same XY)
@@ -868,10 +900,11 @@ function singlePassRoute(
       const finalSegCells = path.slice(segStart);
       const finalPts = simplifyPath(grid, finalSegCells);
       const finalLayerName = curLayer === 0 ? 'top' : 'bottom';
-      traces.push({ netId, points: finalPts, widthMm: opts.traceWidthMm, layer: finalLayerName });
-
-      for (let p = 0; p + 1 < finalPts.length; p++) {
-        stampSegment(grid, finalPts[p].x, finalPts[p].y, finalPts[p + 1].x, finalPts[p + 1].y, halfTrace + keepout, net, curLayer);
+      if (finalPts.length >= 2) {
+        traces.push({ netId, points: finalPts, widthMm: opts.traceWidthMm, layer: finalLayerName });
+        for (let p = 0; p + 1 < finalPts.length; p++) {
+          stampSegment(grid, finalPts[p].x, finalPts[p].y, finalPts[p + 1].x, finalPts[p + 1].y, halfTrace + keepout, net, curLayer);
+        }
       }
 
       path.forEach(c => reached.add(c));
@@ -981,7 +1014,10 @@ export function routeBoard(pins: RoutePin[], opts: RouterOptions): RouteResult {
     return bestResult.completion < 1 && Date.now() - startedAt < budgetMs;
   };
 
+  const triedOrders = new Set<string>();
+  const orderKey = (o: [string, RoutePin[]][]) => o.map(([id]) => id).join('\0');
   for (const order of candidateOrders) {
+    triedOrders.add(orderKey(order));
     if (!tryOrder(order)) return bestResult!;
   }
 
@@ -990,17 +1026,19 @@ export function routeBoard(pins: RoutePin[], opts: RouterOptions): RouteResult {
     const unroutedNetIds = new Set(bestResult!.unrouted.map(u => u.netId));
     if (unroutedNetIds.size === 0) break;
 
-    currentOrder = [...currentOrder].sort((a, b) => {
-      const aFailed = unroutedNetIds.has(a[0]);
-      const bFailed = unroutedNetIds.has(b[0]);
-      if (aFailed && !bFailed) return -1;
-      if (!aFailed && bFailed) return 1;
-      return 0;
-    });
-
-    if (ripIter > 0 && currentOrder.length > 1) {
-      currentOrder.push(currentOrder.shift()!);
+    const failed = currentOrder.filter(e => unroutedNetIds.has(e[0]));
+    const passed = currentOrder.filter(e => !unroutedNetIds.has(e[0]));
+    if (ripIter > 0 && failed.length > 1) {
+      // Rotate only within the failed prefix so failed nets stay prioritized.
+      failed.push(failed.shift()!);
+    } else if (ripIter > 0 && passed.length > 1) {
+      // Rotate the passing blockers so different nets yield first.
+      passed.push(passed.shift()!);
     }
+    currentOrder = [...failed, ...passed];
+    const key = orderKey(currentOrder);
+    if (triedOrders.has(key)) continue;
+    triedOrders.add(key);
 
     if (!tryOrder(currentOrder)) return bestResult!;
   }

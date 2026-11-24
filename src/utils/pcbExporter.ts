@@ -658,6 +658,8 @@ export interface PcbLayoutResult {
   svg: string;
   /** The same board mirrored, as seen from the face the parts sit on. */
   svgComponentSide: string;
+  /** True when a single-sided layout has been mirrored in X for bottom-copper CNC milling. */
+  mirrored?: boolean;
   gcode: string;
   error?: string;
   /** 2-layer board outputs */
@@ -882,9 +884,9 @@ export function turnedSize(footprint: ComponentFootprint, rot: Rotation): { widt
 export function padPolygon(pad: PlacedPad, rotationDeg: Rotation, marginMm = 0): Poly {
   const { w: rawW, h: rawH } = padOffset(pad.spec, rotationDeg);
   const drill = pad.spec.drillDiameter || 0;
-  const grow = Math.max(marginMm, 0);
-  const w = Math.max(rawW + grow * 2, drill);
-  const h = Math.max(rawH + grow * 2, drill);
+  const floor = Math.max(0.05, drill);
+  const w = Math.max(rawW + marginMm * 2, floor);
+  const h = Math.max(rawH + marginMm * 2, floor);
   switch (pad.spec.shape) {
     case 'circle':
       return circlePoly(pad.x, pad.y, Math.max(w, h) / 2);
@@ -1293,6 +1295,12 @@ function cropBoardToContent(
   for (const co of cutouts) {
     grow(co.x - co.widthMm / 2, co.y - co.heightMm / 2);
     grow(co.x + co.widthMm / 2, co.y + co.heightMm / 2);
+  }
+
+  const viaHalf = (opts.viaPadMm || 1.4) / 2;
+  for (const v of vias ?? []) {
+    grow(v.x - viaHalf, v.y - viaHalf);
+    grow(v.x + viaHalf, v.y + viaHalf);
   }
 
   if (!isFinite(minX)) return { boardWidthMm: opts.boardWidthMm, boardHeightMm: opts.boardHeightMm };
@@ -2804,6 +2812,7 @@ function finishLayout(
   // the bottom pass already mirrors for its own flip.
   if (!isTwoLayer && options.mirrorSingleSided !== false) {
     mirrorLayoutInX(result);
+    result.mirrored = true;
   }
 
   if (!isTwoLayer && options.mirrorSingleSided === false) {
@@ -4015,10 +4024,10 @@ export function estimatePcbMachiningMetrics(
   let curFeed = options.cutFeedrate;
 
   for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith(';') || trimmed.startsWith('(')) continue;
+    const noComment = line.replace(/;.*$/, '').replace(/\([^)]*\)/g, '').trim();
+    if (!noComment) continue;
 
-    const parts = trimmed.toUpperCase().split(/\s+/);
+    const parts = noComment.toUpperCase().split(/\s+/);
     const cmd = parts[0];
 
     let targetX = curX;
@@ -4026,10 +4035,19 @@ export function estimatePcbMachiningMetrics(
     let targetZ = curZ;
 
     for (const p of parts.slice(1)) {
-      if (p.startsWith('X')) targetX = parseFloat(p.slice(1)) || targetX;
-      if (p.startsWith('Y')) targetY = parseFloat(p.slice(1)) || targetY;
-      if (p.startsWith('Z')) targetZ = parseFloat(p.slice(1)) || targetZ;
-      if (p.startsWith('F')) curFeed = parseFloat(p.slice(1)) || curFeed;
+      if (p.startsWith('X')) {
+        const v = parseFloat(p.slice(1));
+        if (!Number.isNaN(v)) targetX = v;
+      } else if (p.startsWith('Y')) {
+        const v = parseFloat(p.slice(1));
+        if (!Number.isNaN(v)) targetY = v;
+      } else if (p.startsWith('Z')) {
+        const v = parseFloat(p.slice(1));
+        if (!Number.isNaN(v)) targetZ = v;
+      } else if (p.startsWith('F')) {
+        const v = parseFloat(p.slice(1));
+        if (!Number.isNaN(v) && v > 0) curFeed = v;
+      }
     }
 
     const dist = Math.hypot(targetX - curX, targetY - curY, targetZ - curZ);
@@ -4044,7 +4062,7 @@ export function estimatePcbMachiningMetrics(
     }
 
     if (cmd === 'G4') {
-      const pMatch = /P(\d+(?:\.\d+)?)/.exec(trimmed.toUpperCase());
+      const pMatch = /P(\d+(?:\.\d+)?)/.exec(noComment.toUpperCase());
       if (pMatch) totalTimeSec += parseFloat(pMatch[1]);
     }
 
@@ -4119,11 +4137,14 @@ function profileToolpath(
     for (let i = 0; i + 1 < corners.length; i++) {
       perim += Math.hypot(corners[i + 1].x - corners[i].x, corners[i + 1].y - corners[i].y);
     }
+    // Tool-centreline span must include the endmill diameter so the physical
+    // uncut tab left standing is `tabWidthMm` wide rather than `tabWidthMm - dia`.
+    const halfSpan = (options.tabWidthMm + options.profileToolDiaMm) / 2;
     for (let i = 0; i < options.tabCount; i++) {
       const centre = ((i + 0.5) / options.tabCount) * perim;
       tabs.push({
-        start: centre - options.tabWidthMm / 2,
-        end: centre + options.tabWidthMm / 2,
+        start: Math.max(0, centre - halfSpan),
+        end: Math.min(perim, centre + halfSpan),
       });
     }
   }
@@ -4223,9 +4244,10 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
    * to travel height — the operation that follows opens with an XY rapid, and
    * at the parking height that rapid is over the board, not through it.
    */
+  const parkZ = Math.max(options.safeZ, options.toolChangeZ);
   const toolChange = (line: string, catalogue: number) => {
     if (!options.pauseOnToolChange) return;
-    g.push(`G0 Z${f3(options.toolChangeZ)} ; Park clear for the bit change`);
+    g.push(`G0 Z${f3(parkZ)} ; Park clear for the bit change`);
     g.push(`M5 ; Spindle off before hands go near the collet`);
     g.push(line);
     // This bit's own speed, not the isolation bit's: see toolSpindle.
@@ -4265,18 +4287,30 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
       g.push(`G0 X${f3(mx(p0.x))} Y${f3(p0.y)}`);
 
       const segLen = p1 ? Math.hypot(p1.x - p0.x, p1.y - p0.y) : 0;
+      const lastPt = path.points[path.points.length - 1];
+      const isClosed = path.points.length >= 3 && Math.hypot(lastPt.x - p0.x, lastPt.y - p0.y) < 1e-3;
+      const effDepthZ = -Math.abs(depthZ);
       if (options.rampedPlunge !== false && p1 && segLen > 0.4) {
         const rampLen = Math.min(1.2, segLen * 0.8);
         const t = rampLen / segLen;
         const rx = p0.x + (p1.x - p0.x) * t;
         const ry = p0.y + (p1.y - p0.y) * t;
-        g.push(`G1 X${f3(mx(rx))} Y${f3(ry)} Z${f3(depthZ)} F${fd(options.plungeFeedrate)}`);
-        g.push(`G1 X${f3(mx(p1.x))} Y${f3(p1.y)} Z${f3(depthZ)} F${fd(options.cutFeedrate)}`);
+        // Rapid down to just above the copper so the ramp enters the foil
+        // immediately rather than spending 90% of its run descending through air.
+        const rampStartZ = Math.min(options.safeZ, 0.2);
+        if (rampStartZ < options.safeZ) g.push(`G0 Z${f3(rampStartZ)}`);
+        g.push(`G1 X${f3(mx(rx))} Y${f3(ry)} Z${f3(effDepthZ)} F${fd(options.plungeFeedrate)}`);
+        g.push(`G1 X${f3(mx(p1.x))} Y${f3(p1.y)} Z${f3(effDepthZ)} F${fd(options.cutFeedrate)}`);
         for (let i = 2; i < path.points.length; i++) {
           g.push(`G1 X${f3(mx(path.points[i].x))} Y${f3(path.points[i].y)} F${fd(options.cutFeedrate)}`);
         }
+        // On a closed loop, finish the initial ramp span at full depth so no
+        // uncut copper bridge remains between p0 and (rx, ry).
+        if (isClosed) {
+          g.push(`G1 X${f3(mx(rx))} Y${f3(ry)} F${fd(options.cutFeedrate)}`);
+        }
       } else {
-        g.push(`G1 Z${f3(depthZ)} F${fd(options.plungeFeedrate)}`);
+        g.push(`G1 Z${f3(effDepthZ)} F${fd(options.plungeFeedrate)}`);
         for (let i = 1; i < path.points.length; i++) {
           g.push(`G1 X${f3(mx(path.points[i].x))} Y${f3(path.points[i].y)} F${fd(options.cutFeedrate)}`);
         }
@@ -4341,7 +4375,7 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
     for (const { bitMm, holeMm, nominals, holes } of groups) {
       const merged =
         nominals.length > 1 ? ` (covers ${nominals.map(n => `${n}mm`).join(', ')})` : '';
-      const interpolated = bitMm < holeMm - 0.01;
+      const interpolated = holeMm - bitMm > 0.02;
       g.push(
         `; --- ${holes.length} hole(s) at ${holeMm}mm${merged}, ` +
         `${interpolated ? `interpolated with a ${bitMm}mm bit` : `drilled with a ${bitMm}mm bit`} ---`
@@ -4353,24 +4387,28 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
       }
       loadedBitMm = bitMm;
 
-      const depth = options.drillDepthZ;
+      const depth = -Math.abs(options.drillDepthZ);
       const ordered = orderHolesNearestNeighbor(holes, cursor);
       if (ordered.length) cursor = ordered[ordered.length - 1];
 
       if (interpolated) {
         for (const hole of ordered) {
           const holeDepth = hole.isRegistration
-            ? options.drillDepthZ - Math.abs(options.spoilboardRegistrationDepthMm ?? 2.0)
+            ? depth - Math.abs(options.spoilboardRegistrationDepthMm ?? 2.0)
             : depth;
-          const path = helicalHoleToolpath(holeMm, bitMm, holeDepth, options.zStepdown);
+          const rings = helicalHoleToolpathRings(holeMm, bitMm, holeDepth, options.zStepdown);
+          if (rings.length === 0) continue;
           g.push(`; ${hole.componentId} pin ${hole.pinNumber}${hole.isRegistration ? ' [Registration Pin]' : ''}`);
-          g.push(`G0 X${f3(hole.x + path[0].x)} Y${f3(hole.y + path[0].y)}`);
-          g.push(`G1 Z0 F${fd(options.plungeFeedrate)}`);
-          for (const pt of path) {
-            g.push(
-              `G1 X${f3(hole.x + pt.x)} Y${f3(hole.y + pt.y)} Z${f3(pt.z)} ` +
-              `F${fd(options.cutFeedrate)}`
-            );
+          for (const ring of rings) {
+            g.push(`G0 Z${f3(options.safeZ)}`);
+            g.push(`G0 X${f3(hole.x + ring[0].x)} Y${f3(hole.y + ring[0].y)}`);
+            g.push(`G1 Z0 F${fd(options.plungeFeedrate)}`);
+            for (const pt of ring) {
+              g.push(
+                `G1 X${f3(hole.x + pt.x)} Y${f3(hole.y + pt.y)} Z${f3(pt.z)} ` +
+                `F${fd(options.cutFeedrate)}`
+              );
+            }
           }
           g.push(`G0 Z${f3(options.safeZ)}`);
         }
@@ -4379,7 +4417,7 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
 
       for (const hole of ordered) {
         const holeDepth = hole.isRegistration
-          ? options.drillDepthZ - Math.abs(options.spoilboardRegistrationDepthMm ?? 2.0)
+          ? depth - Math.abs(options.spoilboardRegistrationDepthMm ?? 2.0)
           : depth;
         g.push(`; ${hole.componentId} pin ${hole.pinNumber}${hole.isRegistration ? ' [Registration Pin - Spoilboard Depth]' : ''}`);
         g.push(`G0 X${f3(hole.x)} Y${f3(hole.y)}`);
@@ -4413,7 +4451,7 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
     g.push(`; 4. Re-clamp board securely; re-zero Z on top copper surface.`);
     g.push(`; 5. Press Cycle Start / Resume.`);
     g.push(`; ==================================================`);
-    g.push(`G0 Z${f3(options.toolChangeZ)} ; Safe park height clear of clamps`);
+    g.push(`G0 Z${f3(parkZ)} ; Safe park height clear of clamps`);
     g.push(`M5 ; Spindle off before touching board`);
     g.push(`G0 X0 Y0 ; Move machine clear for operator access`);
     // The levelling reads this line to know where the probed face ends — see
@@ -4465,9 +4503,25 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   // Internal features first: the board is still fully captive, so the cutout
   // slugs come free while the outside edge is still uncut.
   const stepDown = Math.abs(options.zStepdown) || 0.8;
+  const profileTargetZ = -Math.abs(options.profileDepthZ);
   for (const cut of result.cutouts) {
     const path = cutoutToolpath(cut, options);
     if (!path) {
+      // Auto-handle circular cutouts whose diameter matches the endmill by
+      // peck-drilling straight through at the cutout centre.
+      if (cut.shape === 'circle' && Math.max(cut.widthMm, cut.heightMm) >= options.profileToolDiaMm - 0.02) {
+        g.push(``);
+        g.push(`; --- cutout ${cut.componentId} (circle plunge, ${cut.widthMm.toFixed(1)}mm) ---`);
+        g.push(`G0 Z${f3(options.safeZ)}`);
+        g.push(`G0 X${f3(mx(cut.x))} Y${f3(cut.y)}`);
+        let cz = 0;
+        while (cz > profileTargetZ) {
+          cz = Math.max(profileTargetZ, cz - stepDown);
+          g.push(`G1 Z${f3(cz)} F${fd(options.plungeFeedrate)}`);
+          g.push(`G0 Z${f3(options.safeZ)}`);
+        }
+        continue;
+      }
       g.push(
         `; SKIPPED cutout on ${cut.componentId}: ` +
         `${cut.widthMm.toFixed(1)}x${cut.heightMm.toFixed(1)}mm is smaller than the ` +
@@ -4483,8 +4537,8 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
     g.push(`G0 Z${f3(options.safeZ)}`);
     g.push(`G0 X${f3(mx(path[0].x))} Y${f3(path[0].y)}`);
     let cz = 0;
-    while (cz > options.profileDepthZ) {
-      cz = Math.max(options.profileDepthZ, cz - stepDown);
+    while (cz > profileTargetZ) {
+      cz = Math.max(profileTargetZ, cz - stepDown);
       g.push(`G1 Z${f3(cz)} F${fd(options.plungeFeedrate)}`);
       for (let i = 1; i < path.length; i++) {
         g.push(`G1 X${f3(mx(path[i].x))} Y${f3(path[i].y)} F${fd(options.cutFeedrate)}`);
@@ -4494,10 +4548,10 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
   }
 
   const { corners, tabs } = profileToolpath(result, options);
-  const inTab = (d: number) => tabs.some(t => d >= t.start && d <= t.end);
+  const inTab = (d: number) => tabs.some(t => d > t.start + 1e-6 && d < t.end - 1e-6);
 
   let currentZ = 0;
-  const targetZ = options.profileDepthZ;
+  const targetZ = profileTargetZ;
   const step = Math.abs(options.zStepdown) || 0.8;
   // Tabs only matter once the cut is deeper than the tab height. The height is
   // material left standing above the *bottom face*, so it is measured from
@@ -4514,7 +4568,8 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
     const useTabs = options.tabCount > 0 && currentZ < tabZ;
 
     g.push(`; --- profile pass Z${f3(currentZ)}${useTabs ? ' (with holding tabs)' : ''} ---`);
-    g.push(`G1 Z${f3(currentZ)} F${fd(options.plungeFeedrate)}`);
+    let lifted = useTabs && inTab(0);
+    g.push(`G1 Z${f3(lifted ? tabZ : currentZ)} F${fd(options.plungeFeedrate)}`);
 
     let travelled = 0;
     for (let i = 0; i + 1 < corners.length; i++) {
@@ -4528,26 +4583,41 @@ export function generatePcbGcode(result: PcbLayoutResult, options: PcbOptions): 
         continue;
       }
 
-      // Walk the segment, lifting to the tab height across each tab.
-      const steps = Math.max(1, Math.ceil(segLen / 0.5));
-      let lifted = false;
-      for (let s = 1; s <= steps; s++) {
-        const t = s / steps;
-        const px = a.x + (b.x - a.x) * t;
-        const py = a.y + (b.y - a.y) * t;
-        const needLift = inTab(travelled + segLen * t);
+      // Split the edge at exact tab boundary crossings rather than 0.5mm
+      // quantization, and carry `lifted` across corners so a corner-straddling
+      // tab is never plunged through.
+      const segStart = travelled;
+      const segEnd = travelled + segLen;
+      const splits = [0, 1];
+      for (const tab of tabs) {
+        if (tab.start > segStart + 1e-6 && tab.start < segEnd - 1e-6) {
+          splits.push((tab.start - segStart) / segLen);
+        }
+        if (tab.end > segStart + 1e-6 && tab.end < segEnd - 1e-6) {
+          splits.push((tab.end - segStart) / segLen);
+        }
+      }
+      splits.sort((u, v) => u - v);
+
+      for (let k = 0; k + 1 < splits.length; k++) {
+        const t0 = splits[k];
+        const t1 = splits[k + 1];
+        if (t1 - t0 < 1e-6) continue;
+        const midDist = segStart + ((t0 + t1) / 2) * segLen;
+        const needLift = inTab(midDist);
         if (needLift !== lifted) {
           g.push(`G1 Z${f3(needLift ? tabZ : currentZ)} F${fd(options.plungeFeedrate)}`);
           lifted = needLift;
         }
+        const px = a.x + (b.x - a.x) * t1;
+        const py = a.y + (b.y - a.y) * t1;
         g.push(`G1 X${f3(px)} Y${f3(py)} F${fd(options.cutFeedrate)}`);
       }
-      if (lifted) g.push(`G1 Z${f3(currentZ)} F${fd(options.plungeFeedrate)}`);
-      travelled += segLen;
+      travelled = segEnd;
     }
   }
 
-  g.push(`G0 Z${f3(options.safeZ * 2)}`);
+  g.push(`G0 Z${f3(Math.max(parkZ, options.safeZ * 2))}`);
   g.push(`M5 ; Spindle off`);
   g.push(`G0 X0 Y0`);
   g.push(`M30 ; End`);
@@ -4591,11 +4661,16 @@ export function groupDrillsByBit(
   toleranceMm: number,
   bitOverridesMm?: Record<string, number>
 ): DrillBitGroup[] {
+  // Keep registration pin holes in their own un-consolidated groups so
+  // `drillConsolidationMm` never upsizes alignment pins to match 1.0–1.1mm
+  // component leads and introduce top-to-bottom flip slop.
+  const regByNominal = new Map<number, DrillPoint[]>();
   const byNominal = new Map<number, DrillPoint[]>();
   for (const d of drills) {
     const key = Math.round(d.diameter * 100) / 100;
-    if (!byNominal.has(key)) byNominal.set(key, []);
-    byNominal.get(key)!.push(d);
+    const target = d.isRegistration ? regByNominal : byNominal;
+    if (!target.has(key)) target.set(key, []);
+    target.get(key)!.push(d);
   }
 
   const sizes = [...byNominal.keys()].sort((a, b) => a - b);
@@ -4620,6 +4695,24 @@ export function groupDrillsByBit(
       });
     }
   }
+
+  for (const size of [...regByNominal.keys()].sort((a, b) => a - b)) {
+    const regHoles = regByNominal.get(size)!;
+    // Share an existing group only when the finished hole size already matches
+    // the exact pin diameter; otherwise give the pins their own group.
+    const exact = groups.find(g => g.holeMm === size);
+    if (exact) {
+      exact.holes.push(...regHoles);
+    } else {
+      groups.push({
+        bitMm: size,
+        holeMm: size,
+        nominals: [size],
+        holes: [...regHoles],
+      });
+    }
+  }
+  groups.sort((a, b) => a.bitMm - b.bitMm || a.holeMm - b.holeMm);
 
   if (!bitOverridesMm) return groups;
 
@@ -4665,12 +4758,12 @@ export function groupDrillsByBit(
  * Rings run inside-out. The innermost is placed so the cutter overlaps the
  * centre, otherwise a slug is left standing in the middle of the hole.
  */
-function helicalHoleToolpath(
+function helicalHoleToolpathRings(
   holeMm: number,
   bitMm: number,
   depthZ: number,
   stepdownMm: number
-): { x: number; y: number; z: number }[] {
+): { x: number; y: number; z: number }[][] {
   const maxR = (holeMm - bitMm) / 2;
   if (maxR <= 0.01) return [];
 
@@ -4682,9 +4775,10 @@ function helicalHoleToolpath(
   radii.push(maxR);
 
   const perRev = Math.max(0.1, Math.min(stepdownMm, bitMm * 0.5));
-  const path: { x: number; y: number; z: number }[] = [];
+  const rings: { x: number; y: number; z: number }[][] = [];
 
   for (const r of radii) {
+    const ring: { x: number; y: number; z: number }[] = [];
     // ~0.15mm chords: fine enough that the flat-sided polygon is inside the
     // tolerance of a hand-soldered through-hole.
     const steps = Math.max(16, Math.ceil((2 * Math.PI * r) / 0.15));
@@ -4692,7 +4786,7 @@ function helicalHoleToolpath(
     const total = steps * revs;
     for (let i = 0; i <= total; i++) {
       const a = (i / steps) * Math.PI * 2;
-      path.push({
+      ring.push({
         x: r * Math.cos(a),
         y: r * Math.sin(a),
         z: (depthZ * i) / total,
@@ -4702,10 +4796,11 @@ function helicalHoleToolpath(
     // slope, so the bottom of the wall is otherwise undersize.
     for (let i = 0; i <= steps; i++) {
       const a = (i / steps) * Math.PI * 2;
-      path.push({ x: r * Math.cos(a), y: r * Math.sin(a), z: depthZ });
+      ring.push({ x: r * Math.cos(a), y: r * Math.sin(a), z: depthZ });
     }
+    rings.push(ring);
   }
 
-  return path;
+  return rings;
 }
 

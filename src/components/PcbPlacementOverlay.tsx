@@ -102,6 +102,9 @@ export const PcbPlacementOverlay: React.FC<PcbPlacementOverlayProps> = ({
     onMove(id, snap(x - o), snap(y - o), rotationDeg);
   };
 
+  const dragStartClientRef = useRef<{ x: number; y: number } | null>(null);
+  const draggedEnoughRef = useRef(false);
+
   const handlePointerDown = (e: React.PointerEvent, id: string) => {
     if (busy || e.button !== 0) return;
     // The container underneath pans on a drag, and this one does not want to.
@@ -111,50 +114,78 @@ export const PcbPlacementOverlay: React.FC<PcbPlacementOverlayProps> = ({
     if (!at || !part) return;
     (e.target as Element).setPointerCapture?.(e.pointerId);
     setSelected(id);
+    dragStartClientRef.current = { x: e.clientX, y: e.clientY };
+    draggedEnoughRef.current = false;
     setDrag({ id, x: part.x, y: part.y, grabDx: at.x - part.x, grabDy: at.y - part.y });
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!drag) return;
     e.stopPropagation();
+    if (!draggedEnoughRef.current && dragStartClientRef.current) {
+      if (Math.hypot(e.clientX - dragStartClientRef.current.x, e.clientY - dragStartClientRef.current.y) < 3) {
+        return;
+      }
+      draggedEnoughRef.current = true;
+    }
     const at = pointAt(e);
     if (!at) return;
-    setDrag({ ...drag, x: snap(at.x - drag.grabDx), y: snap(at.y - drag.grabDy) });
+    // Snap once in board-frame coordinates to avoid double-snap drift.
+    setDrag({ ...drag, x: o + snap(at.x - drag.grabDx - o), y: o + snap(at.y - drag.grabDy - o) });
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
     if (!drag) return;
     e.stopPropagation();
     const part = parts.find(c => c.id === drag.id);
-    const moved = part && (Math.abs(part.x - drag.x) > 1e-6 || Math.abs(part.y - drag.y) > 1e-6);
+    const moved =
+      draggedEnoughRef.current &&
+      part &&
+      (Math.abs(part.x - drag.x) > 1e-6 || Math.abs(part.y - drag.y) > 1e-6);
     if (part && moved && dropIsLegal(drag.id, drag.x, drag.y)) {
       commit(drag.id, drag.x, drag.y, part.rotationDeg);
     }
+    dragStartClientRef.current = null;
+    draggedEnoughRef.current = false;
     setDrag(null);
   };
 
   // R turns the selected part a quarter turn; Escape puts a drag back.
-  //
-  // Re-bound every render on purpose: the handler moves the part off the
-  // board as it stands *now*, and a dependency list would leave it turning
-  // the board that was on screen when the part was first picked up.
+  const keyStateRef = useRef({ busy, parts, drag, commit });
+  useEffect(() => {
+    keyStateRef.current = { busy, parts, drag, commit };
+  });
   useEffect(() => {
     if (!selected) return;
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
       if (e.key === 'Escape') {
         setDrag(null);
         setSelected(null);
         return;
       }
-      if (busy || e.key !== 'r' || e.metaKey || e.ctrlKey || e.altKey) return;
-      const part = parts.find(c => c.id === selected);
+      const st = keyStateRef.current;
+      if (st.busy || e.key.toLowerCase() !== 'r' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const part = st.parts.find(c => c.id === selected);
       if (!part) return;
       e.preventDefault();
-      commit(part.id, part.x, part.y, quarterTurn(part.rotationDeg));
+      const rx = st.drag?.id === part.id ? st.drag.x : part.x;
+      const ry = st.drag?.id === part.id ? st.drag.y : part.y;
+      setDrag(null);
+      st.commit(part.id, rx, ry, quarterTurn(part.rotationDeg));
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  });
+  }, [selected]);
 
   const legal = drag ? dropIsLegal(drag.id, drag.x, drag.y) : true;
 
@@ -165,6 +196,9 @@ export const PcbPlacementOverlay: React.FC<PcbPlacementOverlayProps> = ({
       width="100%"
       height="100%"
       className={`${className} ${busy ? 'cursor-progress' : ''}`}
+      onPointerDown={e => {
+        if (e.target === svgRef.current) setSelected(null);
+      }}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={() => setDrag(null)}

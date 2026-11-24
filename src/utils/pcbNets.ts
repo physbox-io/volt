@@ -14,7 +14,7 @@
 import type { Node, Edge } from '@xyflow/react';
 import { buildPortAdjacency } from './graphTopology';
 import type { ComponentFootprint } from './pcbFootprints';
-import { getEffectiveMcuConfig } from './mcuConfig';
+import { getEffectiveMcuConfig, MCU_PRESETS } from './mcuConfig';
 import { isVirtualPortKey, netKey, netNameFromVirtualPort } from './netNaming';
 import type { RawNodeData } from '../types/nodes';
 
@@ -263,6 +263,25 @@ const HANDLE_ORDER: Record<string, string[]> = {
   hbridge: ['vm', 'gnd', 'in1', 'in2', 'out1', 'out2'],
 };
 
+function buildHeltecV4PinOverride(): Record<string, string> {
+  const map: Record<string, string> = {};
+  const preset = MCU_PRESETS.find(p => p.key === 'heltec_v4');
+  if (preset) {
+    for (const pin of preset.config.pins) {
+      if (pin.pinNumber === undefined) continue;
+      const num = String(pin.pinNumber);
+      map[pin.id] = num;
+      if (pin.label) map[pin.label] = num;
+    }
+  }
+  // Legacy / alias handle ids used by HeltecV4Node
+  map['3V3'] ??= '1';
+  map['GND'] = '2';
+  map['GND_2'] = '20';
+  map['GND2'] = '20';
+  return map;
+}
+
 /**
  * Explicit handle -> pin number overrides, where a part's schematic handles do
  * not map onto consecutive footprint pads. Single op-amp in a DIP-8 is the
@@ -302,20 +321,8 @@ const HANDLE_PIN_OVERRIDE: Record<string, Record<string, string>> = {
     in: '1',
     out: '3',
   },
-  // Heltec WiFi LoRa 32 V4 (36-pin dual header: left row 1..18, right row 19..36)
-  heltec_v4: {
-    '3V3': '1',
-    'GND': '2',
-    'GPIO_1': '3',
-    'GPIO_3': '5',
-    'VIN': '19',
-    'GND_2': '20',
-    'GND2': '20',
-    'GPIO_33': '23',
-    'GPIO_36': '26',
-    'GPIO_37': '27',
-    'GPIO_41': '31',
-  },
+  // Heltec WiFi LoRa 32 V4 (all 36 pins from MCU_PRESETS.heltec_v4)
+  heltec_v4: buildHeltecV4PinOverride(),
 };
 
 export interface PinMapping {
@@ -342,11 +349,22 @@ export function resolveHandleToPin(
   const type = (nodeType || '').toLowerCase();
   const handle = (handleId || '').trim();
 
-  // 1. Explicit override table.
-  const override = HANDLE_PIN_OVERRIDE[type]?.[handle];
-  if (override !== undefined) {
-    const idx = pads.findIndex(p => String(p.pinNumber) === override);
-    if (idx >= 0) return { pinNumber: pads[idx].pinNumber, padIndex: idx };
+  // 1. Explicit override table (only when the footprint actually contains the
+  //    table's pin range; e.g. an 8-pin header on a heltec_v4 falls through to
+  //    HANDLE_ORDER instead of mixing override and positional pad indices).
+  const overrideTable = HANDLE_PIN_OVERRIDE[type];
+  if (overrideTable) {
+    const maxPin = Math.max(
+      0,
+      ...Object.values(overrideTable).map(v => parseInt(v, 10)).filter(n => !Number.isNaN(n))
+    );
+    if (maxPin === 0 || pads.length >= maxPin) {
+      const override = overrideTable[handle];
+      if (override !== undefined) {
+        const idx = pads.findIndex(p => String(p.pinNumber) === override);
+        if (idx >= 0) return { pinNumber: pads[idx].pinNumber, padIndex: idx };
+      }
+    }
   }
 
   // 2. Direct match against a pad's pin number (555 '1'..'8', headers, pin names, etc).
@@ -364,11 +382,13 @@ export function resolveHandleToPin(
     );
     if (pinIdx >= 0) {
       const pin = mcuPins[pinIdx];
-      // Try match by pin.pinNumber
+      // Try match by pin.pinNumber or pin.id
       if (pin.pinNumber !== undefined) {
         const pIdx = pads.findIndex(p => String(p.pinNumber).toLowerCase() === String(pin.pinNumber).toLowerCase());
         if (pIdx >= 0) return { pinNumber: pads[pIdx].pinNumber, padIndex: pIdx };
       }
+      const idIdx = pads.findIndex(p => String(p.pinNumber).toLowerCase() === pin.id.toLowerCase());
+      if (idIdx >= 0) return { pinNumber: pads[idIdx].pinNumber, padIndex: idIdx };
       // Try positional index
       if (pinIdx < pads.length) {
         return { pinNumber: pads[pinIdx].pinNumber, padIndex: pinIdx };
@@ -388,7 +408,7 @@ export function resolveHandleToPin(
   // 4. Generic two-terminal fallback for unknown types.
   if (pads.length === 2) {
     const first = ['in', 'anode', 'pos', 'a', '1', 'p1'];
-    const second = ['out', 'cathode', 'neg', 'k', '2', 'p2', 'gnd'];
+    const second = ['out', 'cathode', 'neg', 'k', 'b', '2', 'p2', 'gnd'];
     const h = handle.toLowerCase();
     if (first.includes(h)) {
       return { pinNumber: pads[0].pinNumber, padIndex: 0 };

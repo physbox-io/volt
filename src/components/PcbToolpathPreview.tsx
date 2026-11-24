@@ -96,21 +96,32 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
-      if (trimmed.includes('OP 1/3') || trimmed.includes('Isolation')) currentOp = 'isolation';
-      if (trimmed.includes('OP 2/3') || trimmed.includes('drilling')) currentOp = 'drill';
-      if (trimmed.includes('OP 3/3') || trimmed.includes('profile')) currentOp = 'profile';
-      if (trimmed.includes('Copper clearing')) currentOp = 'clearing';
+      const lower = trimmed.toLowerCase();
+      if (lower.includes('isolation')) currentOp = 'isolation';
+      else if (lower.includes('drilling')) currentOp = 'drill';
+      else if (lower.includes('copper clearing')) currentOp = 'clearing';
+      else if (lower.includes('flip board')) currentOp = 'unknown';
+      else if (lower.includes('profile')) currentOp = 'profile';
 
       if (trimmed.startsWith(';')) continue;
-      const parts = trimmed.toUpperCase().split(/\s+/);
+      const noComment = trimmed.replace(/;.*$/, '').replace(/\([^)]*\)/g, '').trim();
+      if (!noComment) continue;
+      const parts = noComment.toUpperCase().split(/\s+/);
       const cmd = parts[0];
 
       if (cmd === 'G0' || cmd === 'G1') {
         let tX = curX, tY = curY, tZ = curZ;
         for (const p of parts.slice(1)) {
-          if (p.startsWith('X')) tX = parseFloat(p.slice(1)) ?? tX;
-          if (p.startsWith('Y')) tY = parseFloat(p.slice(1)) ?? tY;
-          if (p.startsWith('Z')) tZ = parseFloat(p.slice(1)) ?? tZ;
+          if (p.startsWith('X')) {
+            const v = parseFloat(p.slice(1));
+            if (!Number.isNaN(v)) tX = v;
+          } else if (p.startsWith('Y')) {
+            const v = parseFloat(p.slice(1));
+            if (!Number.isNaN(v)) tY = v;
+          } else if (p.startsWith('Z')) {
+            const v = parseFloat(p.slice(1));
+            if (!Number.isNaN(v)) tZ = v;
+          }
         }
 
         if (Math.hypot(tX - curX, tY - curY, tZ - curZ) > 0.0001) {
@@ -184,9 +195,58 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
     return m > 0 ? `${m}m ${s}s` : `${s}s`;
   };
 
-  const visibleMoves = useMemo(() => {
-    return parsedMoves.slice(0, currentMoveIdx + 1);
-  }, [parsedMoves, currentMoveIdx]);
+  const vw = result.boardWidthMm + result.boardOriginMm * 2;
+  const vh = result.boardHeightMm + result.boardOriginMm * 2;
+  // CNC Y climbs away from the operator; SVG Y climbs downward. Flip Y so the
+  // toolpath preview matches the Copper layout view and physical blank.
+  const py = (y: number) => vh - y;
+
+  // Consolidate thousands of move segments into one SVG path `d` per operation
+  // to avoid mutating thousands of `<line>` DOM nodes on every 60fps tick.
+  const pathStrings = useMemo(() => {
+    const f = (n: number) => n.toFixed(2);
+    const ghost: string[] = [];
+    const rapid: string[] = [];
+    const isolation: string[] = [];
+    const drill: string[] = [];
+    const clearing: string[] = [];
+    const profile: string[] = [];
+
+    for (let i = 0; i < parsedMoves.length; i++) {
+      const m = parsedMoves[i];
+      if (m.op === 'isolation' && !showIsolation) continue;
+      if (m.op === 'drill' && !showDrills) continue;
+      if (m.op === 'profile' && !showProfile) continue;
+      if (m.op === 'clearing' && !showClearing) continue;
+      const isRapid = m.type === 'G0';
+      if (Math.hypot(m.x1 - m.x0, m.y1 - m.y0) < 0.0001) continue;
+
+      const seg = `M${f(m.x0)} ${f(vh - m.y0)}L${f(m.x1)} ${f(vh - m.y1)}`;
+      if (i > currentMoveIdx) {
+        if (!isRapid) ghost.push(seg);
+        continue;
+      }
+      if (isRapid) {
+        if (showRapids) rapid.push(seg);
+      } else if (m.op === 'isolation') {
+        isolation.push(seg);
+      } else if (m.op === 'drill') {
+        drill.push(seg);
+      } else if (m.op === 'clearing') {
+        clearing.push(seg);
+      } else {
+        profile.push(seg);
+      }
+    }
+    return {
+      ghost: ghost.join(''),
+      rapid: rapid.join(''),
+      isolation: isolation.join(''),
+      drill: drill.join(''),
+      clearing: clearing.join(''),
+      profile: profile.join(''),
+    };
+  }, [parsedMoves, currentMoveIdx, vh, showIsolation, showDrills, showProfile, showClearing, showRapids]);
 
   // Only armed for the layer that is still on the machine.
   const restartArmed = isLive && armedFor !== null && armedFor === (liveLayerLabel ?? '');
@@ -197,10 +257,13 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
       <div className="p-2.5 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <button
-            onClick={() => setPlaying(!playing)}
+            onClick={() => {
+              if (!playing && progress >= 0.999) setProgress(0);
+              setPlaying(!playing);
+            }}
             disabled={isLive}
             className="p-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded cursor-pointer flex items-center gap-1 font-medium"
-            title={isLive ? 'Following the running job' : playing ? 'Pause Playback' : 'Play Toolpath Animation'}
+            title={isLive ? 'Following running job' : playing ? 'Pause' : 'Play'}
           >
             {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
             <span>{playing ? 'Pause' : 'Play'}</span>
@@ -299,21 +362,18 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
         {isAirCut && (
           <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-amber-500/20 border border-amber-500/40 rounded text-amber-300 font-mono text-[10px] flex items-center gap-1">
             <ShieldCheck className="w-3 h-3 text-amber-400" />
-            AIR CUT DRY RUN (outline at Z{Math.max(options.safeZ, options.toolChangeZ)})
+            AIR CUT · Z{Math.max(options.safeZ, options.toolChangeZ)}
           </div>
         )}
 
         <svg
-          viewBox={`-5 -5 ${result.boardWidthMm + result.boardOriginMm * 2 + 10} ${
-            result.boardHeightMm + result.boardOriginMm * 2 + 10
-          }`}
+          viewBox={`-5 -5 ${vw + 10} ${vh + 10}`}
           className="w-full h-full max-h-[300px] select-none"
         >
-          {/* Board outline. Inset from the program origin by the profile tool
-              radius, so the outline pass itself starts on X0Y0. */}
+          {/* Board outline */}
           <rect
             x={result.boardOriginMm}
-            y={result.boardOriginMm}
+            y={py(result.boardOriginMm + result.boardHeightMm)}
             width={result.boardWidthMm}
             height={result.boardHeightMm}
             fill="#0f172a"
@@ -322,19 +382,19 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
             rx="1"
           />
 
-          {/* Render Probed Heightmap Grid Overlay */}
+          {/* Probed Heightmap Grid Overlay */}
           {heightmap && showHeightmap && (
             <g opacity="0.4">
               {heightmap.points.map((row, rIdx) =>
                 row.map((pt, cIdx) => (
                   <g key={`hm_${rIdx}_${cIdx}`}>
-                    <circle cx={pt.x} cy={pt.y} r="0.8" fill={pt.z >= 0 ? '#10b981' : '#f59e0b'} />
+                    <circle cx={pt.x} cy={py(pt.y)} r="0.8" fill={pt.z >= 0 ? '#10b981' : '#f59e0b'} />
                     {cIdx + 1 < row.length && (
                       <line
                         x1={pt.x}
-                        y1={pt.y}
+                        y1={py(pt.y)}
                         x2={row[cIdx + 1].x}
-                        y2={row[cIdx + 1].y}
+                        y2={py(row[cIdx + 1].y)}
                         stroke="#10b981"
                         strokeWidth="0.15"
                         strokeDasharray="0.5 0.5"
@@ -343,9 +403,9 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
                     {rIdx + 1 < heightmap.points.length && (
                       <line
                         x1={pt.x}
-                        y1={pt.y}
+                        y1={py(pt.y)}
                         x2={heightmap.points[rIdx + 1][cIdx].x}
-                        y2={heightmap.points[rIdx + 1][cIdx].y}
+                        y2={py(heightmap.points[rIdx + 1][cIdx].y)}
                         stroke="#10b981"
                         strokeWidth="0.15"
                         strokeDasharray="0.5 0.5"
@@ -361,7 +421,7 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
           {result.traces.map((t, idx) => (
             <polyline
               key={`tr_${idx}`}
-              points={t.points.map(p => `${p.x},${p.y}`).join(' ')}
+              points={t.points.map(p => `${p.x},${py(p.y)}`).join(' ')}
               fill="none"
               stroke="#059669"
               strokeWidth={t.width}
@@ -371,64 +431,27 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
             />
           ))}
 
-          {/* The rest of the program, drawn faintly underneath. Playback now
-              starts at 0 so Play has somewhere to go, and without this the
-              preview would open on an empty board — the toolpath is the whole
-              reason to look at it. Rapids are left out: at full length they are
-              a hairball that hides the cuts. */}
-          {parsedMoves.slice(currentMoveIdx + 1).map((m, idx) => {
-            if (m.type === 'G0') return null;
-            if (m.op === 'isolation' && !showIsolation) return null;
-            if (m.op === 'drill' && !showDrills) return null;
-            if (m.op === 'profile' && !showProfile) return null;
-            if (m.op === 'clearing' && !showClearing) return null;
-            return (
-              <line
-                key={`ghost_${idx}`}
-                x1={m.x0}
-                y1={m.y0}
-                x2={m.x1}
-                y2={m.y1}
-                stroke="#64748b"
-                strokeWidth="0.15"
-                opacity="0.35"
-              />
-            );
-          })}
+          {/* Remaining toolpath (faint) */}
+          {pathStrings.ghost && (
+            <path d={pathStrings.ghost} fill="none" stroke="#64748b" strokeWidth="0.15" opacity="0.35" />
+          )}
 
-          {/* Animated Motion Moves */}
-          {visibleMoves.map((m, idx) => {
-            if (m.type === 'G0' && !showRapids) return null;
-            if (m.op === 'isolation' && !showIsolation) return null;
-            if (m.op === 'drill' && !showDrills) return null;
-            if (m.op === 'profile' && !showProfile) return null;
-            if (m.op === 'clearing' && !showClearing) return null;
-
-            const isRapid = m.type === 'G0';
-            const color = isRapid
-              ? '#eab308' // Yellow rapid
-              : m.op === 'isolation'
-              ? '#06b6d4' // Cyan isolation
-              : m.op === 'drill'
-              ? '#f97316' // Orange drill
-              : m.op === 'clearing'
-              ? '#a3e635' // Lime copper clearing
-              : '#d946ef'; // Fuchsia profile
-
-            return (
-              <line
-                key={`m_${idx}`}
-                x1={m.x0}
-                y1={m.y0}
-                x2={m.x1}
-                y2={m.y1}
-                stroke={color}
-                strokeWidth={isRapid ? '0.12' : '0.25'}
-                strokeDasharray={isRapid ? '0.4 0.4' : undefined}
-                opacity={idx === visibleMoves.length - 1 ? 1.0 : 0.75}
-              />
-            );
-          })}
+          {/* Active toolpaths grouped by operation */}
+          {pathStrings.rapid && (
+            <path d={pathStrings.rapid} fill="none" stroke="#eab308" strokeWidth="0.12" strokeDasharray="0.4 0.4" opacity="0.7" />
+          )}
+          {pathStrings.isolation && (
+            <path d={pathStrings.isolation} fill="none" stroke="#06b6d4" strokeWidth="0.25" opacity="0.8" />
+          )}
+          {pathStrings.drill && (
+            <path d={pathStrings.drill} fill="none" stroke="#f97316" strokeWidth="0.25" opacity="0.8" />
+          )}
+          {pathStrings.clearing && (
+            <path d={pathStrings.clearing} fill="none" stroke="#a3e635" strokeWidth="0.25" opacity="0.8" />
+          )}
+          {pathStrings.profile && (
+            <path d={pathStrings.profile} fill="none" stroke="#d946ef" strokeWidth="0.25" opacity="0.8" />
+          )}
 
           {/* Drill Holes Markers */}
           {showDrills &&
@@ -436,7 +459,7 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
               <circle
                 key={`dr_${idx}`}
                 cx={d.x}
-                cy={d.y}
+                cy={py(d.y)}
                 r={d.diameter / 2}
                 fill="#f97316"
                 opacity="0.6"
@@ -444,7 +467,7 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
             ))}
 
           {/* Toolhead Cursor Position */}
-          <g transform={`translate(${activeToolhead.x}, ${activeToolhead.y})`}>
+          <g transform={`translate(${activeToolhead.x}, ${py(activeToolhead.y)})`}>
             <circle r="1.2" fill="none" stroke="#ef4444" strokeWidth="0.3" />
             <circle r="0.3" fill="#ef4444" />
             <line x1="-2" y1="0" x2="2" y2="0" stroke="#ef4444" strokeWidth="0.15" />
@@ -501,20 +524,20 @@ export const PcbToolpathPreview: React.FC<PcbToolpathPreviewProps> = ({
                   disabled={machineBusy}
                   className="px-2 py-1 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-950 rounded text-[10px] font-bold cursor-pointer"
                 >
-                  Sure?
+                  Restart
                 </button>
                 <button
                   onClick={() => setArmedFor(null)}
                   className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] font-semibold cursor-pointer"
                 >
-                  No
+                  Cancel
                 </button>
               </div>
             ) : (
               <button
                 onClick={() => setArmedFor(liveLayerLabel ?? '')}
                 disabled={machineBusy}
-                title="Stop, then run this operation again from its first line"
+                title="Restart current operation"
                 className="px-2 py-1 shrink-0 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-300 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer"
               >
                 <RotateCcw className="w-3 h-3" />

@@ -557,7 +557,9 @@ export function vBitWidthAtDepth(
   includedAngleDeg: number,
   depthMm: number
 ): number {
-  const halfAngle = ((includedAngleDeg / 2) * Math.PI) / 180;
+  const clampedAngle = Math.max(0, Math.min(170, Number.isFinite(includedAngleDeg) ? includedAngleDeg : 0));
+  if (clampedAngle === 0) return tipMm;
+  const halfAngle = ((clampedAngle / 2) * Math.PI) / 180;
   return tipMm + 2 * Math.abs(depthMm) * Math.tan(halfAngle);
 }
 
@@ -616,7 +618,9 @@ export function calculatePcbFeeds(
   const plungeFeedrate = Math.round(tool.recommendedPlungeFeed * material.feedMultiplier * fluteScale);
   const spindleRpm = tool.recommendedRpm;
   const isolationDepthZ = parseFloat((tool.recommendedDepthMm * material.depthMultiplier).toFixed(3));
-  const zStepdown = parseFloat((tool.maxStepdownMm * material.feedMultiplier).toFixed(3));
+  const zStepdown = parseFloat(
+    Math.min(tool.maxStepdownMm, tool.maxStepdownMm * material.feedMultiplier).toFixed(3)
+  );
 
   const effectiveToolDiaMm =
     tool.type === 'vbit' && tool.angleDeg !== undefined
@@ -907,16 +911,26 @@ export function pcbToolFromRack(tool: RackTool): PcbToolPreset {
   const match = catalogueMatchForRackTool(tool);
   if (match) {
     // Chipload is a property of the edge, so a two-flute copy of a one-flute
-    // catalogue bit takes twice the feed for the same bite — the rule
-    // `calculatePcbFeeds` applies to a flute override.
-    const scale = flutes / Math.max(1, match.fluteCount);
+    // catalogue bit takes twice the feed for the same bite — and an explicit
+    // RPM override scales feeds proportionally to hold the same chipload.
+    const rpm = tool.rpm && tool.rpm > 0 ? Math.max(1000, Math.round(tool.rpm)) : match.recommendedRpm;
+    const scale = (flutes / Math.max(1, match.fluteCount)) * (rpm / Math.max(1, match.recommendedRpm));
+    const stepdown =
+      tool.maxStepdownMm ??
+      (tool.maxStepdownRatio !== undefined ? tool.maxStepdownRatio * tool.diameterMm : match.maxStepdownMm);
+    let plunge = Math.round(match.recommendedPlungeFeed * scale);
+    if (tool.maxPlungeRate !== undefined && tool.maxPlungeRate > 0) {
+      plunge = Math.min(plunge, Math.round(tool.maxPlungeRate));
+    }
     return {
       ...match,
       id: tool.uid,
       name: tool.name,
       fluteCount: flutes,
+      recommendedRpm: rpm,
+      maxStepdownMm: Math.max(0.02, stepdown),
       recommendedCutFeed: Math.round(match.recommendedCutFeed * scale),
-      recommendedPlungeFeed: Math.round(match.recommendedPlungeFeed * scale),
+      recommendedPlungeFeed: plunge,
       catalogueId: match.id,
       isCustom: false,
       ...fromRack,
@@ -1269,7 +1283,7 @@ export function checkMillability(
       `Needs a ${needed.toFixed(3)}mm channel but the pads are only ${minGap.toFixed(3)}mm apart. ` +
         `Use a sharper bit, cut shallower, or reduce the pad margin.`
     );
-    if (tool.type === 'vbit' && tool.angleDeg !== undefined) {
+    if (tool.type === 'vbit' && tool.angleDeg !== undefined && tool.angleDeg > 0 && tool.angleDeg < 180) {
       // Solve tip + 2*d*tan(a/2) = minGap - 2*clearance for d.
       const halfAngle = ((tool.angleDeg / 2) * Math.PI) / 180;
       const maxDepth =

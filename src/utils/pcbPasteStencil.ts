@@ -472,17 +472,27 @@ export function generatePasteStencilStl(
   options: PcbOptions,
   stencilOptions: Partial<PasteStencilOptions> = {}
 ): PasteStencilResult {
-  const stencil: PasteStencilOptions = { ...DEFAULT_PASTE_STENCIL_OPTIONS, ...stencilOptions };
+  const raw: PasteStencilOptions = { ...DEFAULT_PASTE_STENCIL_OPTIONS, ...stencilOptions };
+  const stencil: PasteStencilOptions = {
+    ...raw,
+    thicknessMm: Math.max(0.05, Number.isFinite(raw.thicknessMm) ? raw.thicknessMm : DEFAULT_PASTE_STENCIL_OPTIONS.thicknessMm),
+    resolutionMm: Math.max(0.02, Number.isFinite(raw.resolutionMm) ? raw.resolutionMm : DEFAULT_PASTE_STENCIL_OPTIONS.resolutionMm),
+  };
   const { list, skippedTht } = apertures(result, options, stencil);
   const warnings: string[] = [];
 
   const outline = sheetOutline(result, stencil);
-  const sheet = differencePolys([outline], unionPolys(list.map(a => a.poly)));
+  const sheetRaw = differencePolys([outline], unionPolys(list.map(a => a.poly)));
+  // Brackets stand on the printed top face (z > thicknessMm), so the stencil
+  // is flipped upside-down onto the PCB. Mirroring across X before extruding
+  // ensures every aperture lands on the right pad once flipped onto the board.
+  const xMid = result.boardOriginMm + result.boardWidthMm / 2;
+  const mirrorPolyX = (poly: Poly): Poly =>
+    poly.map(p => ({ x: 2 * xMid - p.x, y: p.y })).reverse();
+  const sheet = stencil.registration === 'corners' ? sheetRaw.map(mirrorPolyX) : sheetRaw;
 
   const tris: Tri[] = [];
   extrudePolys(tris, sheet, 0, stencil.thicknessMm, stencil.resolutionMm);
-  // Brackets stand on the printed top face, so the finished part is used the
-  // other way up: the bed-side face — the flat one — is what meets the copper.
   extrudePolys(
     tris,
     registrationBrackets(result, stencil),
@@ -495,9 +505,8 @@ export function generatePasteStencilStl(
   if (list.length === 0) {
     warnings.push(
       skippedTht > 0
-        ? `Every pad on this board is through-hole, so there is nothing to stencil — ` +
-          `paste goes in no ${skippedTht === 1 ? 'hole' : 'holes'}. Solder it by hand.`
-        : 'No pads on this board, so there is nothing to stencil.'
+        ? 'No SMD pads to stencil (through-hole only).'
+        : 'No pads on this board to stencil.'
     );
   }
 
@@ -506,25 +515,20 @@ export function generatePasteStencilStl(
   ).length;
   if (starved > 0) {
     warnings.push(
-      `${starved} of ${list.length} apertures fall below an area ratio of ${MIN_AREA_RATIO} at ` +
-        `${stencil.thicknessMm}mm — the paste will stay in the stencil rather than on the pad. ` +
-        'Print thinner, or paste those pads by hand.'
+      `${starved}/${list.length} apertures below ${MIN_AREA_RATIO} area ratio at ${stencil.thicknessMm}mm — print thinner or paste by hand.`
     );
   }
 
   const tooFine = list.filter(a => a.padShortMm < MIN_APERTURE_MM).length;
   if (tooFine > 0) {
     warnings.push(
-      `${tooFine} ${tooFine === 1 ? 'aperture is' : 'apertures are'} under ${MIN_APERTURE_MM}mm ` +
-        'across — around a nozzle width, where the walls either side of the hole merge and close ' +
-        'it. This board wants a laser-cut foil, not a printed stencil.'
+      `${tooFine} ${tooFine === 1 ? 'aperture' : 'apertures'} under ${MIN_APERTURE_MM}mm — use a laser-cut stencil.`
     );
   }
 
   if (skippedTht > 0 && list.length > 0) {
     warnings.push(
-      `${skippedTht} through-hole ${skippedTht === 1 ? 'pad is' : 'pads are'} left closed — ` +
-        'solder those by hand after reflow.'
+      `${skippedTht} through-hole ${skippedTht === 1 ? 'pad' : 'pads'} skipped (hand-solder).`
     );
   }
 

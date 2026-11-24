@@ -202,6 +202,7 @@ export function polysBounds(
       if (p.y > maxY) maxY = p.y;
     }
   }
+  if (!Number.isFinite(minX)) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
   return { minX, minY, maxX, maxY };
 }
 
