@@ -701,8 +701,8 @@ export class WebSerialManager extends GrblMachine<MachineState> {
         ...(preservesHeightmap ? {} : { datumEpoch: (this.state.datumEpoch ?? 0) + 1 }),
       });
     } finally {
-      if (this.state.status === 'PROBING') {
-        this.updateState({ status: resumeStatus === 'PROBING' ? 'IDLE' : resumeStatus });
+      if (this.getState().status === 'PROBING') {
+        this.updateState({ status: resumeStatus });
       }
     }
   }
@@ -1124,9 +1124,10 @@ export class WebSerialManager extends GrblMachine<MachineState> {
     } finally {
       this.probingGrid = false;
       setJobWakeLock(this.isRunning());
+      const curStatus = this.getState().status;
       this.updateState({
         probeProgress: undefined,
-        status: this.state.status === 'PROBING' ? 'IDLE' : this.state.status,
+        status: curStatus === 'PROBING' ? 'IDLE' : curStatus,
       });
     }
   }

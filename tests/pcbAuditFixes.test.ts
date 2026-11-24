@@ -42,6 +42,7 @@ function makeMinimalResult(overrides: Partial<PcbLayoutResult> = {}): PcbLayoutR
     isolationPaths: [
       {
         netId: 'N1',
+        pass: 0,
         points: [
           { x: 5, y: 5 },
           { x: 15, y: 5 },
@@ -328,6 +329,7 @@ describe('PCB Audit Fixes — Footprints, Nets, Nudger & Geometry', () => {
       vias: [],
       cutouts: [],
       unrouted: [],
+      violations: [],
       warnings: [],
       completion: 1,
     };

@@ -14,7 +14,7 @@ class TestMachine extends WebSerialManager {
     this.onAlarm();
   }
 
-  protected override async sendLine(line: string): Promise<void> {
+  public override async sendLine(line: string): Promise<void> {
     this.sent.push(line);
   }
 
@@ -30,7 +30,7 @@ class TestMachine extends WebSerialManager {
     return { x: 0, y: 0, z: -10.0 };
   }
 
-  protected override async drain(): Promise<void> {
+  public override async drain(): Promise<void> {
     // no-op in mock
   }
 
@@ -66,7 +66,7 @@ describe('Audit #2 — Machining 0.10.0 & WebSerial Safety', () => {
       'G1 X15 Y5 F300',
       'G1 X15 Y15 F300',
     ];
-    const plan = planResume(lines, 7, { isLaser: false, safeZ: 2 });
+    const plan = planResume(lines, 7, { isLaser: false });
     const preamble = plan.preamble.join('\n');
     // 0.10.0 rapids down to Z(-0.1 + 1.0) = Z0.900 and plunges at the derived slow feed (<= 120), not hardcoded F300
     expect(preamble).toContain('G0 Z0.900');
