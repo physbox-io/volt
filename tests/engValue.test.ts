@@ -66,6 +66,18 @@ describe('parseEngValue', () => {
       expect(parseEngValue(bad), bad).toBeNull();
     }
   });
+
+  it('handles scientific notation, leading +, T, and distinguishes F (Farads) from f (femto)', () => {
+    expect(parseEngValue('1e-6')!).toBeCloseTo(1e-6, 15);
+    expect(parseEngValue('1.00e-13')!).toBeCloseTo(1e-13, 20);
+    expect(parseEngValue('+5V')!).toBeCloseTo(5, 12);
+    expect(parseEngValue('1T')!).toBeCloseTo(1e12, 3);
+    expect(parseEngValue('1F')!).toBeCloseTo(1, 12);
+    expect(parseEngValue('10f')!).toBeCloseTo(10e-15, 22);
+    expect(parseEngValue('10fF')!).toBeCloseTo(10e-15, 22);
+    expect(sanitizeSpiceValue('1F')).toBe('1');
+    expect(sanitizeSpiceValue('10 kΩ')).toBe('10k');
+  });
 });
 
 describe('formatEngValue', () => {

@@ -147,7 +147,11 @@ describe('MOSFET SPICE netlist generation', () => {
       },
     ];
     const { netlist } = generateSpiceNetlist(nodes, []);
-    expect(netlist).toContain('.model NMOS_MODEL_m1 NMOS(LEVEL=1 VTO=2.1 KP=0.12 GAMMA=0.5 PHI=0.6 LAMBDA=0.02 RD=1.2 RS=1.2 CGS=25p CGD=5p)');
+    expect(netlist).toContain('.model NMOS_MODEL_m1 NMOS(LEVEL=1 VTO=2.1 KP=0.12 GAMMA=0.5 PHI=0.6 LAMBDA=0.02 RD=1.2 RS=1.2)');
+    expect(netlist).toContain('C_gs_m1 ');
+    expect(netlist).toContain(' 25p\n');
+    expect(netlist).toContain('C_gd_m1 ');
+    expect(netlist).toContain(' 5p\n');
   });
 
   it('generates IRF9540 power PMOS model', () => {
@@ -170,7 +174,11 @@ describe('MOSFET SPICE netlist generation', () => {
       },
     ];
     const { netlist } = generateSpiceNetlist(nodes, []);
-    expect(netlist).toContain('.model PMOS_MODEL_m2 PMOS(LEVEL=1 VTO=-3.5 KP=0.8 GAMMA=0.5 PHI=0.6 LAMBDA=0.005 RD=0.058 RS=0.058 CGS=1.1n CGD=150p)');
+    expect(netlist).toContain('.model PMOS_MODEL_m2 PMOS(LEVEL=1 VTO=-3.5 KP=0.8 GAMMA=0.5 PHI=0.6 LAMBDA=0.005 RD=0.058 RS=0.058)');
+    expect(netlist).toContain('C_gs_m2 ');
+    expect(netlist).toContain(' 1.1n\n');
+    expect(netlist).toContain('C_gd_m2 ');
+    expect(netlist).toContain(' 150p\n');
   });
 });
 
@@ -284,8 +292,10 @@ describe('a named part simulates as that part', () => {
     expect(netlist).toContain(`VTO=${m.vto}`);
     expect(netlist).toContain(`KP=${m.kp}`);
     expect(netlist).toContain(`RD=${m.rd}`);
-    expect(netlist).toContain(`CGS=${m.cgs}`);
-    expect(netlist).toContain(`CGD=${m.cgd}`);
+    expect(netlist).toContain(`C_gs_m1 `);
+    expect(netlist).toContain(` ${m.cgs}\n`);
+    expect(netlist).toContain(`C_gd_m1 `);
+    expect(netlist).toContain(` ${m.cgd}\n`);
   });
 
   it('takes an op-amp’s gain, bandwidth and rail headroom', () => {

@@ -7,15 +7,17 @@ R_r1 N1 N2 4.7k
 R_r2 N4 N6 2k
 C_c1 N6 NC_c1_out 10uF
 L_l1 N2 0 1mH
-L_pri_t1 NC_t1_p1 NC_t1_p2 10m
-L_sec_t1 NC_t1_s1 NC_t1_s2 2.5m
+R_pri_t1 NC_t1_p1 int_pri_t1 0.1
+L_pri_t1 int_pri_t1 NC_t1_p2 10m
+R_sec_t1 NC_t1_s1 int_sec_t1 0.1
+L_sec_t1 int_sec_t1 NC_t1_s2 2.5m
 K_t1 L_pri_t1 L_sec_t1 0.95
 V_v1 N1 0 DC 9V
 V_ac1 NC_ac1_pos NC_ac1_neg SINE(0 12 50) AC 1
 V_sg_sine NC_sg_sine_out NC_sg_sine_gnd SINE(0 2 1000)
 V_sg_sq NC_sg_sq_out NC_sg_sq_gnd PULSE(0 5 0 0.000001 0.000001 0.0025 0.01)
 V_sg_dc NC_sg_dc_out NC_sg_dc_gnd DC 3
-I_i1 NC_i1_pos NC_i1_neg DC 20mA
+I_i1 NC_i1_neg NC_i1_pos DC 20mA
 R_ammeter_led1 NC_led1_anode int_led_led1 1
 D_led1 int_led_led1 NC_led1_cathode LED_MODEL_led1
 .model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.7500000000000002)
@@ -43,15 +45,17 @@ R_seg1_e NC_seg1_e NC_seg1_common 1G
 R_seg1_f NC_seg1_f NC_seg1_common 1G
 R_seg1_g NC_seg1_g NC_seg1_common 1G
 R_spk1 NC_spk1_in NC_spk1_gnd 8
-V_mic_pwl NC_mic_pwl_out NC_mic_pwl_gnd PWL(
+V_mic_pwl int_mic_mic_pwl NC_mic_pwl_gnd PWL(
 + 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
 + )
-V_mic_dc NC_mic_dc_out NC_mic_dc_gnd DC 0
+R_mic_pwl_out int_mic_mic_pwl NC_mic_pwl_out 1k
+V_mic_dc int_mic_mic_dc NC_mic_dc_gnd DC 0
+R_mic_dc_out int_mic_mic_dc NC_mic_dc_out 1k
 R_ldr_fixed NC_ldr_fixed_in NC_ldr_fixed_out 100050.00
 V_light_ldr_pwl light_node_ldr_pwl 0 PWL(
 + 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
 + )
-B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / (100 + (100000 - 100) * (1 - V(light_node_ldr_pwl)))
+B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / max(100 + (100000 - 100) * (1 - min(max(V(light_node_ldr_pwl), 0), 1)), 1)
 Q_q1 NC_q1_c NC_q1_b NC_q1_e NPN_MODEL_q1
 .model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
 Q_q2 NC_q2_c NC_q2_b NC_q2_e PNP_MODEL_q2
@@ -63,12 +67,24 @@ M_m2 NC_m2_d NC_m2_g NC_m2_s NC_m2_s PMOS_MODEL_m2
 X_u1 NC_u1_in_non NC_u1_in_inv NC_u1_vcc NC_u1_vee NC_u1_out OPAMP_MODEL_u1
 X_u2 NC_u2_1 NC_u2_2 NC_u2_3 NC_u2_4 NC_u2_5 NC_u2_6 NC_u2_7 NC_u2_8 NE555
 X_u3 NC_u3_d NC_u3_clk NC_u3_q NC_u3_qbar DFF
-B_gate_g_and NC_g_and_out 0 V = V(NC_g_and_in1) > 2.5 ? (V(NC_g_and_in2) > 2.5 ? 5 : 0) : 0
-B_gate_g_or NC_g_or_out 0 V = V(NC_g_or_in1) > 2.5 ? 5 : (V(NC_g_or_in2) > 2.5 ? 5 : 0)
-B_gate_g_nand NC_g_nand_out 0 V = V(NC_g_nand_in1) > 2.5 ? (V(NC_g_nand_in2) > 2.5 ? 0 : 5) : 5
-B_gate_g_nor NC_g_nor_out 0 V = V(NC_g_nor_in1) > 2.5 ? 0 : (V(NC_g_nor_in2) > 2.5 ? 0 : 5)
-B_gate_g_xor NC_g_xor_out 0 V = V(NC_g_xor_in1) > 2.5 ? (V(NC_g_xor_in2) > 2.5 ? 0 : 5) : (V(NC_g_xor_in2) > 2.5 ? 5 : 0)
-B_gate_g_not NC_g_not_out 0 V = V(NC_g_not_in1) > 2.5 ? 0 : 5
+B_gate_g_and int_gate_g_and 0 V = 5 * ((1 / (1 + exp(-(V(NC_g_and_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_and_in2, 0) - 2.5) / 0.05))))
+R_gate_g_and_out int_gate_g_and NC_g_and_out 50
+C_gate_g_and_out NC_g_and_out 0 10p
+B_gate_g_or int_gate_g_or 0 V = 5 * (1 - (1 - (1 / (1 + exp(-(V(NC_g_or_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_or_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_or_out int_gate_g_or NC_g_or_out 50
+C_gate_g_or_out NC_g_or_out 0 10p
+B_gate_g_nand int_gate_g_nand 0 V = 5 * (1 - ((1 / (1 + exp(-(V(NC_g_nand_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_nand_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_nand_out int_gate_g_nand NC_g_nand_out 50
+C_gate_g_nand_out NC_g_nand_out 0 10p
+B_gate_g_nor int_gate_g_nor 0 V = 5 * (1 - (1 / (1 + exp(-(V(NC_g_nor_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_nor_in2, 0) - 2.5) / 0.05))))
+R_gate_g_nor_out int_gate_g_nor NC_g_nor_out 50
+C_gate_g_nor_out NC_g_nor_out 0 10p
+B_gate_g_xor int_gate_g_xor 0 V = 5 * (((1 / (1 + exp(-(V(NC_g_xor_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_xor_in2, 0) - 2.5) / 0.05)))) + (1 - (1 / (1 + exp(-(V(NC_g_xor_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_xor_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_xor_out int_gate_g_xor NC_g_xor_out 50
+C_gate_g_xor_out NC_g_xor_out 0 10p
+B_gate_g_not int_gate_g_not 0 V = 5 * (1 - (1 / (1 + exp(-(V(NC_g_not_in1, 0) - 2.5) / 0.05))))
+R_gate_g_not_out int_gate_g_not NC_g_not_out 50
+C_gate_g_not_out NC_g_not_out 0 10p
 R_mcu1_D0 NC_mcu1_D0 0 100MEG
 R_mcu1_D1 NC_mcu1_D1 0 100MEG
 R_mcu1_D2 NC_mcu1_D2 0 100MEG
@@ -78,13 +94,19 @@ V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
 R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
 R_mcu1_A1 NC_mcu1_A1 0 100MEG
 R_mcu1_A0 NC_mcu1_A0 0 100MEG
-V_heltec_h1_GPIO_1 NC_h1_GPIO_1 0 DC 1.2340
+V_heltec_h1_GPIO_1 int_heltec_h1_GPIO_1 0 DC 1.2340
+R_heltec_h1_GPIO_1_out int_heltec_h1_GPIO_1 NC_h1_GPIO_1 1
 R_heltec_h1_GPIO_3 NC_h1_GPIO_3 0 100k
-V_heltec_h1_GPIO_33 NC_h1_GPIO_33 0 DC 3.3000
-V_heltec_h1_GPIO_36 NC_h1_GPIO_36 0 DC 0.0000
-V_heltec_h1_GPIO_37 NC_h1_GPIO_37 0 DC 0.0000
-V_heltec_h1_GPIO_41 NC_h1_GPIO_41 0 DC 0.0000
-V_heltec_h1_3V3 NC_h1_3V3 0 DC 3.3
+V_heltec_h1_GPIO_33 int_heltec_h1_GPIO_33 0 DC 3.3000
+R_heltec_h1_GPIO_33_out int_heltec_h1_GPIO_33 NC_h1_GPIO_33 1
+V_heltec_h1_GPIO_36 int_heltec_h1_GPIO_36 0 DC 0.0000
+R_heltec_h1_GPIO_36_out int_heltec_h1_GPIO_36 NC_h1_GPIO_36 1
+V_heltec_h1_GPIO_37 int_heltec_h1_GPIO_37 0 DC 0.0000
+R_heltec_h1_GPIO_37_out int_heltec_h1_GPIO_37 NC_h1_GPIO_37 1
+V_heltec_h1_GPIO_41 int_heltec_h1_GPIO_41 0 DC 0.0000
+R_heltec_h1_GPIO_41_out int_heltec_h1_GPIO_41 NC_h1_GPIO_41 1
+V_heltec_h1_3V3 int_heltec_h1_3V3 0 DC 3.3
+R_heltec_h1_3V3_res int_heltec_h1_3V3 NC_h1_3V3 1
 R_heltec_h1_GND NC_h1_GND 0 1m
 R_mot1_p1 NC_mot1_a int_mot1_p1r 2
 L_mot1_p1 int_mot1_p1r int_mot1_p1l 0.0005
@@ -104,34 +126,35 @@ B_stp1_t 0 int_stp1_w I = (-0.23529411764705885 * sin(50 * V(int_stp1_x))) * I(L
 C_stp1_x int_stp1_x 0 1
 R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
-B_drv1_sw int_drv1_sw 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
+B_drv1_sm int_drv1_sm 0 V = 1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.25) / 0.05)))
+B_drv1_ss int_drv1_ss 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.75) / 0.05)))
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sw) < 0.999999 ? 1 - V(int_drv1_sw) : 0)
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sm) > 1e-4 ? V(int_drv1_sm) : 0)
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
-B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_sw) > 1e-6 ? V(int_drv1_sw) : 0)
+B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_ss) > 1e-4 ? V(int_drv1_ss) : 0)
 B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
-B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
-B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
+B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
+B_drv1_a1 int_drv1_da NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) + V(int_drv1_ua)) / 2
 V_drv1_sa int_drv1_da NC_drv1_a1 DC 0
-B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ua)) / 2
+B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) - V(int_drv1_ua)) / 2
 B_drv1_tb int_drv1_tb 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483))
-B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
-B_drv1_b1 int_drv1_db NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ub)) / 2
+B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
+B_drv1_b1 int_drv1_db NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) + V(int_drv1_ub)) / 2
 V_drv1_sb int_drv1_db NC_drv1_b1 DC 0
-B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ub)) / 2
+B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) - V(int_drv1_ub)) / 2
 B_drv1_sup NC_drv1_vm NC_drv1_gnd I = V(NC_drv1_vm, NC_drv1_gnd) > 0.5 ? (V(int_drv1_ua) * I(V_drv1_sa) + V(int_drv1_ub) * I(V_drv1_sb)) / V(NC_drv1_vm, NC_drv1_gnd) : 0
-B_hb1_h1 NC_hb1_vm NC_hb1_out1 I = V(NC_hb1_vm, NC_hb1_out1) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05)))) + 1e-9)
-B_hb1_l1 NC_hb1_out1 NC_hb1_gnd I = V(NC_hb1_out1, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05))) + 1e-9)
-B_hb1_h2 NC_hb1_vm NC_hb1_out2 I = V(NC_hb1_vm, NC_hb1_out2) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05)))) + 1e-9)
-B_hb1_l2 NC_hb1_out2 NC_hb1_gnd I = V(NC_hb1_out2, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05))) + 1e-9)
+B_hb1_h1 NC_hb1_vm NC_hb1_out1 I = V(NC_hb1_vm, NC_hb1_out1) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.8) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.2) / 0.05)))) + 1e-9)
+B_hb1_l1 NC_hb1_out1 NC_hb1_gnd I = V(NC_hb1_out1, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.8) / 0.05))) + 1e-9)
+B_hb1_h2 NC_hb1_vm NC_hb1_out2 I = V(NC_hb1_vm, NC_hb1_out2) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.8) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.2) / 0.05)))) + 1e-9)
+B_hb1_l2 NC_hb1_out2 NC_hb1_gnd I = V(NC_hb1_out2, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.8) / 0.05))) + 1e-9)
 D_hb1_h1 NC_hb1_out1 NC_hb1_vm HB_DIODE_hb1
 D_hb1_l1 NC_hb1_gnd NC_hb1_out1 HB_DIODE_hb1
 D_hb1_h2 NC_hb1_out2 NC_hb1_vm HB_DIODE_hb1
 D_hb1_l2 NC_hb1_gnd NC_hb1_out2 HB_DIODE_hb1
 .model HB_DIODE_hb1 D(IS=1e-12 RS=0.05 N=1)
-B_fu1_m int_fu1_m 0 V = 1 / (1 + exp(-(V(int_fu1_h) - 0.5) / 0.0005))
+B_fu1_m int_fu1_m 0 V = 0.5 * (1 + tanh((V(int_fu1_h) - 0.5) / 0.001))
 B_fu1_g int_fu1_g 0 V = 20 * (1 - V(int_fu1_m)) + 1e-9
 B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
@@ -179,47 +202,55 @@ R1 8 5 5k
 R2 5 61 5k
 R3 61 1 5k
 
-* Smooth SR Latch Integrator
-* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+* Smooth SR Latch Integrator with active-low RESET (pin 4)
 S_SET 8 state 61 2 SMOD_ON
 S_RST state 1 6 5 SMOD_ON
+S_RESET state 1 1 4 SMOD_RST
 C1 state 1 100p
 * Add parallel resistor to guarantee DC convergence
 R4 state 1 10G
 
-* Output buffer
-E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+* Rail-relative smooth output buffer
+B_OUT 3 1 V = V(8, 1) * 0.5 * (1 + tanh((V(state, 1) - 0.5 * V(8, 1)) / 0.1))
 
-* Discharge
-S_DIS 7 1 8 state SMOD_DIS
+* Rail-relative discharge switch (ON when state < VCC/2)
+B_DIS_CTRL dis_ctrl 1 V = 0.5 * V(8, 1) - V(state, 1)
+S_DIS 7 1 dis_ctrl 1 SMOD_DIS
 
-.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
-.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.MODEL SMOD_ON SW(VT=0 VH=0.05 RON=1k ROFF=10G)
+.MODEL SMOD_RST SW(VT=-0.7 VH=0.05 RON=100 ROFF=10G)
+.MODEL SMOD_DIS SW(VT=0 VH=0.05 RON=10 ROFF=10G)
 .ENDS NE555
 
-* Idealized Master-Slave D Flip-Flop
+* Idealized Master-Slave D Flip-Flop (3.3V and 5V compatible, break-before-make)
 * Node order: D CLK Q QBAR
 .SUBCKT DFF D CLK Q QBAR
-B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+* High-impedance input buffer so D is not loaded by C_M
+B_D_BUF d_buf 0 V = 5 / (1 + exp(-(V(D) - 1.5) / 0.05))
 
-* Master Latch: closed when clk_bar > 2.5
-S_M D state_m clk_bar 0 SMOD_DFF
-C_M state_m 0 10n
+* Master Latch: closed when V(CLK) < 1.25V, open above 1.35V
+S_M d_buf state_m 0 CLK SMOD_DFF_M
+C_M state_m 0 100p
 R_M state_m 0 1G
 
 * Buffer master to slave to prevent charge sharing between C_M and C_S
-B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+B_state_m_buf state_m_buf 0 V = 5 / (1 + exp(-(V(state_m) - 2.5) / 0.05))
 
-* Slave Latch: closed when CLK > 2.5
-S_S state_m_buf state_s CLK 0 SMOD_DFF
-C_S state_s 0 10n
+* Slave Latch: closed when V(CLK) > 1.75V, open below 1.65V (300mV deadband)
+S_S state_m_buf state_s CLK 0 SMOD_DFF_S
+C_S state_s 0 100p
 R_S state_s 0 1G
 
-* Output Drivers
-B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
-B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+* Smooth output drivers with finite 50 ohm output impedance
+B_Q q_int 0 V = 5 / (1 + exp(-(V(state_s) - 2.5) / 0.05))
+R_Q q_int Q 50
+C_Q Q 0 10p
+B_QBAR qbar_int 0 V = 5 / (1 + exp((V(state_s) - 2.5) / 0.05))
+R_QBAR qbar_int QBAR 50
+C_QBAR QBAR 0 10p
 
-.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.MODEL SMOD_DFF_M SW(VT=-1.3 VH=0.05 RON=1k ROFF=1G)
+.MODEL SMOD_DFF_S SW(VT=1.7 VH=0.05 RON=1k ROFF=1G)
 .ENDS DFF
 V_rail_N4 N4 0 DC 5
 R_shunt_NC_jp1_a NC_jp1_a 0 1G
@@ -237,8 +268,8 @@ R_shunt_NC_sg_sq_out NC_sg_sq_out 0 1G
 R_shunt_NC_sg_sq_gnd NC_sg_sq_gnd 0 1G
 R_shunt_NC_sg_dc_out NC_sg_dc_out 0 1G
 R_shunt_NC_sg_dc_gnd NC_sg_dc_gnd 0 1G
-R_shunt_NC_i1_pos NC_i1_pos 0 1G
 R_shunt_NC_i1_neg NC_i1_neg 0 1G
+R_shunt_NC_i1_pos NC_i1_pos 0 1G
 R_shunt_NC_led1_anode NC_led1_anode 0 1G
 R_shunt_NC_led1_cathode NC_led1_cathode 0 1G
 R_shunt_NC_led2_anode NC_led2_anode 0 1G
@@ -387,15 +418,17 @@ R_r1 N1 N2 4.7k
 R_r2 N4 N6 2k
 C_c1 N6 NC_c1_out 10uF
 L_l1 N2 0 1mH
-L_pri_t1 NC_t1_p1 NC_t1_p2 10m
-L_sec_t1 NC_t1_s1 NC_t1_s2 2.5m
+R_pri_t1 NC_t1_p1 int_pri_t1 0.1
+L_pri_t1 int_pri_t1 NC_t1_p2 10m
+R_sec_t1 NC_t1_s1 int_sec_t1 0.1
+L_sec_t1 int_sec_t1 NC_t1_s2 2.5m
 K_t1 L_pri_t1 L_sec_t1 0.95
 V_v1 N1 0 DC 9V
 V_ac1 NC_ac1_pos NC_ac1_neg SINE(0 12 50)
 V_sg_sine NC_sg_sine_out NC_sg_sine_gnd SINE(0 2 1000) AC 1
 V_sg_sq NC_sg_sq_out NC_sg_sq_gnd PULSE(0 5 0 0.000001 0.000001 0.0025 0.01)
 V_sg_dc NC_sg_dc_out NC_sg_dc_gnd DC 3
-I_i1 NC_i1_pos NC_i1_neg DC 20mA
+I_i1 NC_i1_neg NC_i1_pos DC 20mA
 R_ammeter_led1 NC_led1_anode int_led_led1 1
 D_led1 int_led_led1 NC_led1_cathode LED_MODEL_led1
 .model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.7500000000000002)
@@ -423,15 +456,17 @@ R_seg1_e NC_seg1_e NC_seg1_common 1G
 R_seg1_f NC_seg1_f NC_seg1_common 1G
 R_seg1_g NC_seg1_g NC_seg1_common 1G
 R_spk1 NC_spk1_in NC_spk1_gnd 8
-V_mic_pwl NC_mic_pwl_out NC_mic_pwl_gnd PWL(
+V_mic_pwl int_mic_mic_pwl NC_mic_pwl_gnd PWL(
 + 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
 + )
-V_mic_dc NC_mic_dc_out NC_mic_dc_gnd DC 0
+R_mic_pwl_out int_mic_mic_pwl NC_mic_pwl_out 1k
+V_mic_dc int_mic_mic_dc NC_mic_dc_gnd DC 0
+R_mic_dc_out int_mic_mic_dc NC_mic_dc_out 1k
 R_ldr_fixed NC_ldr_fixed_in NC_ldr_fixed_out 100050.00
 V_light_ldr_pwl light_node_ldr_pwl 0 PWL(
 + 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
 + )
-B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / (100 + (100000 - 100) * (1 - V(light_node_ldr_pwl)))
+B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / max(100 + (100000 - 100) * (1 - min(max(V(light_node_ldr_pwl), 0), 1)), 1)
 Q_q1 NC_q1_c NC_q1_b NC_q1_e NPN_MODEL_q1
 .model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
 Q_q2 NC_q2_c NC_q2_b NC_q2_e PNP_MODEL_q2
@@ -443,12 +478,24 @@ M_m2 NC_m2_d NC_m2_g NC_m2_s NC_m2_s PMOS_MODEL_m2
 X_u1 NC_u1_in_non NC_u1_in_inv NC_u1_vcc NC_u1_vee NC_u1_out OPAMP_MODEL_u1
 X_u2 NC_u2_1 NC_u2_2 NC_u2_3 NC_u2_4 NC_u2_5 NC_u2_6 NC_u2_7 NC_u2_8 NE555
 X_u3 NC_u3_d NC_u3_clk NC_u3_q NC_u3_qbar DFF
-B_gate_g_and NC_g_and_out 0 V = V(NC_g_and_in1) > 2.5 ? (V(NC_g_and_in2) > 2.5 ? 5 : 0) : 0
-B_gate_g_or NC_g_or_out 0 V = V(NC_g_or_in1) > 2.5 ? 5 : (V(NC_g_or_in2) > 2.5 ? 5 : 0)
-B_gate_g_nand NC_g_nand_out 0 V = V(NC_g_nand_in1) > 2.5 ? (V(NC_g_nand_in2) > 2.5 ? 0 : 5) : 5
-B_gate_g_nor NC_g_nor_out 0 V = V(NC_g_nor_in1) > 2.5 ? 0 : (V(NC_g_nor_in2) > 2.5 ? 0 : 5)
-B_gate_g_xor NC_g_xor_out 0 V = V(NC_g_xor_in1) > 2.5 ? (V(NC_g_xor_in2) > 2.5 ? 0 : 5) : (V(NC_g_xor_in2) > 2.5 ? 5 : 0)
-B_gate_g_not NC_g_not_out 0 V = V(NC_g_not_in1) > 2.5 ? 0 : 5
+B_gate_g_and int_gate_g_and 0 V = 5 * ((1 / (1 + exp(-(V(NC_g_and_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_and_in2, 0) - 2.5) / 0.05))))
+R_gate_g_and_out int_gate_g_and NC_g_and_out 50
+C_gate_g_and_out NC_g_and_out 0 10p
+B_gate_g_or int_gate_g_or 0 V = 5 * (1 - (1 - (1 / (1 + exp(-(V(NC_g_or_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_or_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_or_out int_gate_g_or NC_g_or_out 50
+C_gate_g_or_out NC_g_or_out 0 10p
+B_gate_g_nand int_gate_g_nand 0 V = 5 * (1 - ((1 / (1 + exp(-(V(NC_g_nand_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_nand_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_nand_out int_gate_g_nand NC_g_nand_out 50
+C_gate_g_nand_out NC_g_nand_out 0 10p
+B_gate_g_nor int_gate_g_nor 0 V = 5 * (1 - (1 / (1 + exp(-(V(NC_g_nor_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_nor_in2, 0) - 2.5) / 0.05))))
+R_gate_g_nor_out int_gate_g_nor NC_g_nor_out 50
+C_gate_g_nor_out NC_g_nor_out 0 10p
+B_gate_g_xor int_gate_g_xor 0 V = 5 * (((1 / (1 + exp(-(V(NC_g_xor_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_xor_in2, 0) - 2.5) / 0.05)))) + (1 - (1 / (1 + exp(-(V(NC_g_xor_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_xor_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_xor_out int_gate_g_xor NC_g_xor_out 50
+C_gate_g_xor_out NC_g_xor_out 0 10p
+B_gate_g_not int_gate_g_not 0 V = 5 * (1 - (1 / (1 + exp(-(V(NC_g_not_in1, 0) - 2.5) / 0.05))))
+R_gate_g_not_out int_gate_g_not NC_g_not_out 50
+C_gate_g_not_out NC_g_not_out 0 10p
 R_mcu1_D0 NC_mcu1_D0 0 100MEG
 R_mcu1_D1 NC_mcu1_D1 0 100MEG
 R_mcu1_D2 NC_mcu1_D2 0 100MEG
@@ -458,13 +505,19 @@ V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
 R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
 R_mcu1_A1 NC_mcu1_A1 0 100MEG
 R_mcu1_A0 NC_mcu1_A0 0 100MEG
-V_heltec_h1_GPIO_1 NC_h1_GPIO_1 0 DC 1.2340
+V_heltec_h1_GPIO_1 int_heltec_h1_GPIO_1 0 DC 1.2340
+R_heltec_h1_GPIO_1_out int_heltec_h1_GPIO_1 NC_h1_GPIO_1 1
 R_heltec_h1_GPIO_3 NC_h1_GPIO_3 0 100k
-V_heltec_h1_GPIO_33 NC_h1_GPIO_33 0 DC 3.3000
-V_heltec_h1_GPIO_36 NC_h1_GPIO_36 0 DC 0.0000
-V_heltec_h1_GPIO_37 NC_h1_GPIO_37 0 DC 0.0000
-V_heltec_h1_GPIO_41 NC_h1_GPIO_41 0 DC 0.0000
-V_heltec_h1_3V3 NC_h1_3V3 0 DC 3.3
+V_heltec_h1_GPIO_33 int_heltec_h1_GPIO_33 0 DC 3.3000
+R_heltec_h1_GPIO_33_out int_heltec_h1_GPIO_33 NC_h1_GPIO_33 1
+V_heltec_h1_GPIO_36 int_heltec_h1_GPIO_36 0 DC 0.0000
+R_heltec_h1_GPIO_36_out int_heltec_h1_GPIO_36 NC_h1_GPIO_36 1
+V_heltec_h1_GPIO_37 int_heltec_h1_GPIO_37 0 DC 0.0000
+R_heltec_h1_GPIO_37_out int_heltec_h1_GPIO_37 NC_h1_GPIO_37 1
+V_heltec_h1_GPIO_41 int_heltec_h1_GPIO_41 0 DC 0.0000
+R_heltec_h1_GPIO_41_out int_heltec_h1_GPIO_41 NC_h1_GPIO_41 1
+V_heltec_h1_3V3 int_heltec_h1_3V3 0 DC 3.3
+R_heltec_h1_3V3_res int_heltec_h1_3V3 NC_h1_3V3 1
 R_heltec_h1_GND NC_h1_GND 0 1m
 R_mot1_p1 NC_mot1_a int_mot1_p1r 2
 L_mot1_p1 int_mot1_p1r int_mot1_p1l 0.0005
@@ -484,34 +537,35 @@ B_stp1_t 0 int_stp1_w I = (-0.23529411764705885 * sin(50 * V(int_stp1_x))) * I(L
 C_stp1_x int_stp1_x 0 1
 R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
-B_drv1_sw int_drv1_sw 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
+B_drv1_sm int_drv1_sm 0 V = 1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.25) / 0.05)))
+B_drv1_ss int_drv1_ss 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.75) / 0.05)))
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sw) < 0.999999 ? 1 - V(int_drv1_sw) : 0)
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sm) > 1e-4 ? V(int_drv1_sm) : 0)
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
-B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_sw) > 1e-6 ? V(int_drv1_sw) : 0)
+B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_ss) > 1e-4 ? V(int_drv1_ss) : 0)
 B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
-B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
-B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
+B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
+B_drv1_a1 int_drv1_da NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) + V(int_drv1_ua)) / 2
 V_drv1_sa int_drv1_da NC_drv1_a1 DC 0
-B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ua)) / 2
+B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) - V(int_drv1_ua)) / 2
 B_drv1_tb int_drv1_tb 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483))
-B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
-B_drv1_b1 int_drv1_db NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ub)) / 2
+B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
+B_drv1_b1 int_drv1_db NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) + V(int_drv1_ub)) / 2
 V_drv1_sb int_drv1_db NC_drv1_b1 DC 0
-B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ub)) / 2
+B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) - V(int_drv1_ub)) / 2
 B_drv1_sup NC_drv1_vm NC_drv1_gnd I = V(NC_drv1_vm, NC_drv1_gnd) > 0.5 ? (V(int_drv1_ua) * I(V_drv1_sa) + V(int_drv1_ub) * I(V_drv1_sb)) / V(NC_drv1_vm, NC_drv1_gnd) : 0
-B_hb1_h1 NC_hb1_vm NC_hb1_out1 I = V(NC_hb1_vm, NC_hb1_out1) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05)))) + 1e-9)
-B_hb1_l1 NC_hb1_out1 NC_hb1_gnd I = V(NC_hb1_out1, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05))) + 1e-9)
-B_hb1_h2 NC_hb1_vm NC_hb1_out2 I = V(NC_hb1_vm, NC_hb1_out2) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05)))) + 1e-9)
-B_hb1_l2 NC_hb1_out2 NC_hb1_gnd I = V(NC_hb1_out2, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05))) + 1e-9)
+B_hb1_h1 NC_hb1_vm NC_hb1_out1 I = V(NC_hb1_vm, NC_hb1_out1) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.8) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.2) / 0.05)))) + 1e-9)
+B_hb1_l1 NC_hb1_out1 NC_hb1_gnd I = V(NC_hb1_out1, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.8) / 0.05))) + 1e-9)
+B_hb1_h2 NC_hb1_vm NC_hb1_out2 I = V(NC_hb1_vm, NC_hb1_out2) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.8) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.2) / 0.05)))) + 1e-9)
+B_hb1_l2 NC_hb1_out2 NC_hb1_gnd I = V(NC_hb1_out2, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.8) / 0.05))) + 1e-9)
 D_hb1_h1 NC_hb1_out1 NC_hb1_vm HB_DIODE_hb1
 D_hb1_l1 NC_hb1_gnd NC_hb1_out1 HB_DIODE_hb1
 D_hb1_h2 NC_hb1_out2 NC_hb1_vm HB_DIODE_hb1
 D_hb1_l2 NC_hb1_gnd NC_hb1_out2 HB_DIODE_hb1
 .model HB_DIODE_hb1 D(IS=1e-12 RS=0.05 N=1)
-B_fu1_m int_fu1_m 0 V = 1 / (1 + exp(-(V(int_fu1_h) - 0.5) / 0.0005))
+B_fu1_m int_fu1_m 0 V = 0.5 * (1 + tanh((V(int_fu1_h) - 0.5) / 0.001))
 B_fu1_g int_fu1_g 0 V = 20 * (1 - V(int_fu1_m)) + 1e-9
 B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
@@ -559,47 +613,55 @@ R1 8 5 5k
 R2 5 61 5k
 R3 61 1 5k
 
-* Smooth SR Latch Integrator
-* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+* Smooth SR Latch Integrator with active-low RESET (pin 4)
 S_SET 8 state 61 2 SMOD_ON
 S_RST state 1 6 5 SMOD_ON
+S_RESET state 1 1 4 SMOD_RST
 C1 state 1 100p
 * Add parallel resistor to guarantee DC convergence
 R4 state 1 10G
 
-* Output buffer
-E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+* Rail-relative smooth output buffer
+B_OUT 3 1 V = V(8, 1) * 0.5 * (1 + tanh((V(state, 1) - 0.5 * V(8, 1)) / 0.1))
 
-* Discharge
-S_DIS 7 1 8 state SMOD_DIS
+* Rail-relative discharge switch (ON when state < VCC/2)
+B_DIS_CTRL dis_ctrl 1 V = 0.5 * V(8, 1) - V(state, 1)
+S_DIS 7 1 dis_ctrl 1 SMOD_DIS
 
-.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
-.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.MODEL SMOD_ON SW(VT=0 VH=0.05 RON=1k ROFF=10G)
+.MODEL SMOD_RST SW(VT=-0.7 VH=0.05 RON=100 ROFF=10G)
+.MODEL SMOD_DIS SW(VT=0 VH=0.05 RON=10 ROFF=10G)
 .ENDS NE555
 
-* Idealized Master-Slave D Flip-Flop
+* Idealized Master-Slave D Flip-Flop (3.3V and 5V compatible, break-before-make)
 * Node order: D CLK Q QBAR
 .SUBCKT DFF D CLK Q QBAR
-B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+* High-impedance input buffer so D is not loaded by C_M
+B_D_BUF d_buf 0 V = 5 / (1 + exp(-(V(D) - 1.5) / 0.05))
 
-* Master Latch: closed when clk_bar > 2.5
-S_M D state_m clk_bar 0 SMOD_DFF
-C_M state_m 0 10n
+* Master Latch: closed when V(CLK) < 1.25V, open above 1.35V
+S_M d_buf state_m 0 CLK SMOD_DFF_M
+C_M state_m 0 100p
 R_M state_m 0 1G
 
 * Buffer master to slave to prevent charge sharing between C_M and C_S
-B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+B_state_m_buf state_m_buf 0 V = 5 / (1 + exp(-(V(state_m) - 2.5) / 0.05))
 
-* Slave Latch: closed when CLK > 2.5
-S_S state_m_buf state_s CLK 0 SMOD_DFF
-C_S state_s 0 10n
+* Slave Latch: closed when V(CLK) > 1.75V, open below 1.65V (300mV deadband)
+S_S state_m_buf state_s CLK 0 SMOD_DFF_S
+C_S state_s 0 100p
 R_S state_s 0 1G
 
-* Output Drivers
-B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
-B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+* Smooth output drivers with finite 50 ohm output impedance
+B_Q q_int 0 V = 5 / (1 + exp(-(V(state_s) - 2.5) / 0.05))
+R_Q q_int Q 50
+C_Q Q 0 10p
+B_QBAR qbar_int 0 V = 5 / (1 + exp((V(state_s) - 2.5) / 0.05))
+R_QBAR qbar_int QBAR 50
+C_QBAR QBAR 0 10p
 
-.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.MODEL SMOD_DFF_M SW(VT=-1.3 VH=0.05 RON=1k ROFF=1G)
+.MODEL SMOD_DFF_S SW(VT=1.7 VH=0.05 RON=1k ROFF=1G)
 .ENDS DFF
 V_rail_N4 N4 0 DC 5
 R_shunt_NC_jp1_a NC_jp1_a 0 1G
@@ -617,8 +679,8 @@ R_shunt_NC_sg_sq_out NC_sg_sq_out 0 1G
 R_shunt_NC_sg_sq_gnd NC_sg_sq_gnd 0 1G
 R_shunt_NC_sg_dc_out NC_sg_dc_out 0 1G
 R_shunt_NC_sg_dc_gnd NC_sg_dc_gnd 0 1G
-R_shunt_NC_i1_pos NC_i1_pos 0 1G
 R_shunt_NC_i1_neg NC_i1_neg 0 1G
+R_shunt_NC_i1_pos NC_i1_pos 0 1G
 R_shunt_NC_led1_anode NC_led1_anode 0 1G
 R_shunt_NC_led1_cathode NC_led1_cathode 0 1G
 R_shunt_NC_led2_anode NC_led2_anode 0 1G
@@ -767,15 +829,17 @@ R_r1 N1 N2 4.7k
 R_r2 N4 N6 2k
 C_c1 N6 NC_c1_out 10uF
 L_l1 N2 0 1mH
-L_pri_t1 NC_t1_p1 NC_t1_p2 10m
-L_sec_t1 NC_t1_s1 NC_t1_s2 2.5m
+R_pri_t1 NC_t1_p1 int_pri_t1 0.1
+L_pri_t1 int_pri_t1 NC_t1_p2 10m
+R_sec_t1 NC_t1_s1 int_sec_t1 0.1
+L_sec_t1 int_sec_t1 NC_t1_s2 2.5m
 K_t1 L_pri_t1 L_sec_t1 0.95
 V_v1 N1 0 DC 9V AC 1
 V_ac1 NC_ac1_pos NC_ac1_neg SINE(0 12 50)
 V_sg_sine NC_sg_sine_out NC_sg_sine_gnd SINE(0 2 1000)
 V_sg_sq NC_sg_sq_out NC_sg_sq_gnd PULSE(0 5 0 0.000001 0.000001 0.0025 0.01)
 V_sg_dc NC_sg_dc_out NC_sg_dc_gnd DC 3
-I_i1 NC_i1_pos NC_i1_neg DC 20mA
+I_i1 NC_i1_neg NC_i1_pos DC 20mA
 R_ammeter_led1 NC_led1_anode int_led_led1 1
 D_led1 int_led_led1 NC_led1_cathode LED_MODEL_led1
 .model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.7500000000000002)
@@ -803,15 +867,17 @@ R_seg1_e NC_seg1_e NC_seg1_common 1G
 R_seg1_f NC_seg1_f NC_seg1_common 1G
 R_seg1_g NC_seg1_g NC_seg1_common 1G
 R_spk1 NC_spk1_in NC_spk1_gnd 8
-V_mic_pwl NC_mic_pwl_out NC_mic_pwl_gnd PWL(
+V_mic_pwl int_mic_mic_pwl NC_mic_pwl_gnd PWL(
 + 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
 + )
-V_mic_dc NC_mic_dc_out NC_mic_dc_gnd DC 0
+R_mic_pwl_out int_mic_mic_pwl NC_mic_pwl_out 1k
+V_mic_dc int_mic_mic_dc NC_mic_dc_gnd DC 0
+R_mic_dc_out int_mic_mic_dc NC_mic_dc_out 1k
 R_ldr_fixed NC_ldr_fixed_in NC_ldr_fixed_out 100050.00
 V_light_ldr_pwl light_node_ldr_pwl 0 PWL(
 + 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
 + )
-B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / (100 + (100000 - 100) * (1 - V(light_node_ldr_pwl)))
+B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / max(100 + (100000 - 100) * (1 - min(max(V(light_node_ldr_pwl), 0), 1)), 1)
 Q_q1 NC_q1_c NC_q1_b NC_q1_e NPN_MODEL_q1
 .model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
 Q_q2 NC_q2_c NC_q2_b NC_q2_e PNP_MODEL_q2
@@ -823,12 +889,24 @@ M_m2 NC_m2_d NC_m2_g NC_m2_s NC_m2_s PMOS_MODEL_m2
 X_u1 NC_u1_in_non NC_u1_in_inv NC_u1_vcc NC_u1_vee NC_u1_out OPAMP_MODEL_u1
 X_u2 NC_u2_1 NC_u2_2 NC_u2_3 NC_u2_4 NC_u2_5 NC_u2_6 NC_u2_7 NC_u2_8 NE555
 X_u3 NC_u3_d NC_u3_clk NC_u3_q NC_u3_qbar DFF
-B_gate_g_and NC_g_and_out 0 V = V(NC_g_and_in1) > 2.5 ? (V(NC_g_and_in2) > 2.5 ? 5 : 0) : 0
-B_gate_g_or NC_g_or_out 0 V = V(NC_g_or_in1) > 2.5 ? 5 : (V(NC_g_or_in2) > 2.5 ? 5 : 0)
-B_gate_g_nand NC_g_nand_out 0 V = V(NC_g_nand_in1) > 2.5 ? (V(NC_g_nand_in2) > 2.5 ? 0 : 5) : 5
-B_gate_g_nor NC_g_nor_out 0 V = V(NC_g_nor_in1) > 2.5 ? 0 : (V(NC_g_nor_in2) > 2.5 ? 0 : 5)
-B_gate_g_xor NC_g_xor_out 0 V = V(NC_g_xor_in1) > 2.5 ? (V(NC_g_xor_in2) > 2.5 ? 0 : 5) : (V(NC_g_xor_in2) > 2.5 ? 5 : 0)
-B_gate_g_not NC_g_not_out 0 V = V(NC_g_not_in1) > 2.5 ? 0 : 5
+B_gate_g_and int_gate_g_and 0 V = 5 * ((1 / (1 + exp(-(V(NC_g_and_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_and_in2, 0) - 2.5) / 0.05))))
+R_gate_g_and_out int_gate_g_and NC_g_and_out 50
+C_gate_g_and_out NC_g_and_out 0 10p
+B_gate_g_or int_gate_g_or 0 V = 5 * (1 - (1 - (1 / (1 + exp(-(V(NC_g_or_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_or_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_or_out int_gate_g_or NC_g_or_out 50
+C_gate_g_or_out NC_g_or_out 0 10p
+B_gate_g_nand int_gate_g_nand 0 V = 5 * (1 - ((1 / (1 + exp(-(V(NC_g_nand_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_nand_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_nand_out int_gate_g_nand NC_g_nand_out 50
+C_gate_g_nand_out NC_g_nand_out 0 10p
+B_gate_g_nor int_gate_g_nor 0 V = 5 * (1 - (1 / (1 + exp(-(V(NC_g_nor_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_nor_in2, 0) - 2.5) / 0.05))))
+R_gate_g_nor_out int_gate_g_nor NC_g_nor_out 50
+C_gate_g_nor_out NC_g_nor_out 0 10p
+B_gate_g_xor int_gate_g_xor 0 V = 5 * (((1 / (1 + exp(-(V(NC_g_xor_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_xor_in2, 0) - 2.5) / 0.05)))) + (1 - (1 / (1 + exp(-(V(NC_g_xor_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_xor_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_xor_out int_gate_g_xor NC_g_xor_out 50
+C_gate_g_xor_out NC_g_xor_out 0 10p
+B_gate_g_not int_gate_g_not 0 V = 5 * (1 - (1 / (1 + exp(-(V(NC_g_not_in1, 0) - 2.5) / 0.05))))
+R_gate_g_not_out int_gate_g_not NC_g_not_out 50
+C_gate_g_not_out NC_g_not_out 0 10p
 R_mcu1_D0 NC_mcu1_D0 0 100MEG
 R_mcu1_D1 NC_mcu1_D1 0 100MEG
 R_mcu1_D2 NC_mcu1_D2 0 100MEG
@@ -838,13 +916,19 @@ V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
 R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
 R_mcu1_A1 NC_mcu1_A1 0 100MEG
 R_mcu1_A0 NC_mcu1_A0 0 100MEG
-V_heltec_h1_GPIO_1 NC_h1_GPIO_1 0 DC 1.2340
+V_heltec_h1_GPIO_1 int_heltec_h1_GPIO_1 0 DC 1.2340
+R_heltec_h1_GPIO_1_out int_heltec_h1_GPIO_1 NC_h1_GPIO_1 1
 R_heltec_h1_GPIO_3 NC_h1_GPIO_3 0 100k
-V_heltec_h1_GPIO_33 NC_h1_GPIO_33 0 DC 3.3000
-V_heltec_h1_GPIO_36 NC_h1_GPIO_36 0 DC 0.0000
-V_heltec_h1_GPIO_37 NC_h1_GPIO_37 0 DC 0.0000
-V_heltec_h1_GPIO_41 NC_h1_GPIO_41 0 DC 0.0000
-V_heltec_h1_3V3 NC_h1_3V3 0 DC 3.3
+V_heltec_h1_GPIO_33 int_heltec_h1_GPIO_33 0 DC 3.3000
+R_heltec_h1_GPIO_33_out int_heltec_h1_GPIO_33 NC_h1_GPIO_33 1
+V_heltec_h1_GPIO_36 int_heltec_h1_GPIO_36 0 DC 0.0000
+R_heltec_h1_GPIO_36_out int_heltec_h1_GPIO_36 NC_h1_GPIO_36 1
+V_heltec_h1_GPIO_37 int_heltec_h1_GPIO_37 0 DC 0.0000
+R_heltec_h1_GPIO_37_out int_heltec_h1_GPIO_37 NC_h1_GPIO_37 1
+V_heltec_h1_GPIO_41 int_heltec_h1_GPIO_41 0 DC 0.0000
+R_heltec_h1_GPIO_41_out int_heltec_h1_GPIO_41 NC_h1_GPIO_41 1
+V_heltec_h1_3V3 int_heltec_h1_3V3 0 DC 3.3
+R_heltec_h1_3V3_res int_heltec_h1_3V3 NC_h1_3V3 1
 R_heltec_h1_GND NC_h1_GND 0 1m
 R_mot1_p1 NC_mot1_a int_mot1_p1r 2
 L_mot1_p1 int_mot1_p1r int_mot1_p1l 0.0005
@@ -864,34 +948,35 @@ B_stp1_t 0 int_stp1_w I = (-0.23529411764705885 * sin(50 * V(int_stp1_x))) * I(L
 C_stp1_x int_stp1_x 0 1
 R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
-B_drv1_sw int_drv1_sw 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
+B_drv1_sm int_drv1_sm 0 V = 1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.25) / 0.05)))
+B_drv1_ss int_drv1_ss 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.75) / 0.05)))
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sw) < 0.999999 ? 1 - V(int_drv1_sw) : 0)
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sm) > 1e-4 ? V(int_drv1_sm) : 0)
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
-B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_sw) > 1e-6 ? V(int_drv1_sw) : 0)
+B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_ss) > 1e-4 ? V(int_drv1_ss) : 0)
 B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
-B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
-B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
+B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
+B_drv1_a1 int_drv1_da NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) + V(int_drv1_ua)) / 2
 V_drv1_sa int_drv1_da NC_drv1_a1 DC 0
-B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ua)) / 2
+B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) - V(int_drv1_ua)) / 2
 B_drv1_tb int_drv1_tb 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483))
-B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
-B_drv1_b1 int_drv1_db NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ub)) / 2
+B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
+B_drv1_b1 int_drv1_db NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) + V(int_drv1_ub)) / 2
 V_drv1_sb int_drv1_db NC_drv1_b1 DC 0
-B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ub)) / 2
+B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) - V(int_drv1_ub)) / 2
 B_drv1_sup NC_drv1_vm NC_drv1_gnd I = V(NC_drv1_vm, NC_drv1_gnd) > 0.5 ? (V(int_drv1_ua) * I(V_drv1_sa) + V(int_drv1_ub) * I(V_drv1_sb)) / V(NC_drv1_vm, NC_drv1_gnd) : 0
-B_hb1_h1 NC_hb1_vm NC_hb1_out1 I = V(NC_hb1_vm, NC_hb1_out1) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05)))) + 1e-9)
-B_hb1_l1 NC_hb1_out1 NC_hb1_gnd I = V(NC_hb1_out1, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05))) + 1e-9)
-B_hb1_h2 NC_hb1_vm NC_hb1_out2 I = V(NC_hb1_vm, NC_hb1_out2) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05)))) + 1e-9)
-B_hb1_l2 NC_hb1_out2 NC_hb1_gnd I = V(NC_hb1_out2, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05))) + 1e-9)
+B_hb1_h1 NC_hb1_vm NC_hb1_out1 I = V(NC_hb1_vm, NC_hb1_out1) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.8) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.2) / 0.05)))) + 1e-9)
+B_hb1_l1 NC_hb1_out1 NC_hb1_gnd I = V(NC_hb1_out1, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.8) / 0.05))) + 1e-9)
+B_hb1_h2 NC_hb1_vm NC_hb1_out2 I = V(NC_hb1_vm, NC_hb1_out2) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.8) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.2) / 0.05)))) + 1e-9)
+B_hb1_l2 NC_hb1_out2 NC_hb1_gnd I = V(NC_hb1_out2, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.8) / 0.05))) + 1e-9)
 D_hb1_h1 NC_hb1_out1 NC_hb1_vm HB_DIODE_hb1
 D_hb1_l1 NC_hb1_gnd NC_hb1_out1 HB_DIODE_hb1
 D_hb1_h2 NC_hb1_out2 NC_hb1_vm HB_DIODE_hb1
 D_hb1_l2 NC_hb1_gnd NC_hb1_out2 HB_DIODE_hb1
 .model HB_DIODE_hb1 D(IS=1e-12 RS=0.05 N=1)
-B_fu1_m int_fu1_m 0 V = 1 / (1 + exp(-(V(int_fu1_h) - 0.5) / 0.0005))
+B_fu1_m int_fu1_m 0 V = 0.5 * (1 + tanh((V(int_fu1_h) - 0.5) / 0.001))
 B_fu1_g int_fu1_g 0 V = 20 * (1 - V(int_fu1_m)) + 1e-9
 B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
@@ -939,47 +1024,55 @@ R1 8 5 5k
 R2 5 61 5k
 R3 61 1 5k
 
-* Smooth SR Latch Integrator
-* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+* Smooth SR Latch Integrator with active-low RESET (pin 4)
 S_SET 8 state 61 2 SMOD_ON
 S_RST state 1 6 5 SMOD_ON
+S_RESET state 1 1 4 SMOD_RST
 C1 state 1 100p
 * Add parallel resistor to guarantee DC convergence
 R4 state 1 10G
 
-* Output buffer
-E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+* Rail-relative smooth output buffer
+B_OUT 3 1 V = V(8, 1) * 0.5 * (1 + tanh((V(state, 1) - 0.5 * V(8, 1)) / 0.1))
 
-* Discharge
-S_DIS 7 1 8 state SMOD_DIS
+* Rail-relative discharge switch (ON when state < VCC/2)
+B_DIS_CTRL dis_ctrl 1 V = 0.5 * V(8, 1) - V(state, 1)
+S_DIS 7 1 dis_ctrl 1 SMOD_DIS
 
-.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
-.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.MODEL SMOD_ON SW(VT=0 VH=0.05 RON=1k ROFF=10G)
+.MODEL SMOD_RST SW(VT=-0.7 VH=0.05 RON=100 ROFF=10G)
+.MODEL SMOD_DIS SW(VT=0 VH=0.05 RON=10 ROFF=10G)
 .ENDS NE555
 
-* Idealized Master-Slave D Flip-Flop
+* Idealized Master-Slave D Flip-Flop (3.3V and 5V compatible, break-before-make)
 * Node order: D CLK Q QBAR
 .SUBCKT DFF D CLK Q QBAR
-B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+* High-impedance input buffer so D is not loaded by C_M
+B_D_BUF d_buf 0 V = 5 / (1 + exp(-(V(D) - 1.5) / 0.05))
 
-* Master Latch: closed when clk_bar > 2.5
-S_M D state_m clk_bar 0 SMOD_DFF
-C_M state_m 0 10n
+* Master Latch: closed when V(CLK) < 1.25V, open above 1.35V
+S_M d_buf state_m 0 CLK SMOD_DFF_M
+C_M state_m 0 100p
 R_M state_m 0 1G
 
 * Buffer master to slave to prevent charge sharing between C_M and C_S
-B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+B_state_m_buf state_m_buf 0 V = 5 / (1 + exp(-(V(state_m) - 2.5) / 0.05))
 
-* Slave Latch: closed when CLK > 2.5
-S_S state_m_buf state_s CLK 0 SMOD_DFF
-C_S state_s 0 10n
+* Slave Latch: closed when V(CLK) > 1.75V, open below 1.65V (300mV deadband)
+S_S state_m_buf state_s CLK 0 SMOD_DFF_S
+C_S state_s 0 100p
 R_S state_s 0 1G
 
-* Output Drivers
-B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
-B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+* Smooth output drivers with finite 50 ohm output impedance
+B_Q q_int 0 V = 5 / (1 + exp(-(V(state_s) - 2.5) / 0.05))
+R_Q q_int Q 50
+C_Q Q 0 10p
+B_QBAR qbar_int 0 V = 5 / (1 + exp((V(state_s) - 2.5) / 0.05))
+R_QBAR qbar_int QBAR 50
+C_QBAR QBAR 0 10p
 
-.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.MODEL SMOD_DFF_M SW(VT=-1.3 VH=0.05 RON=1k ROFF=1G)
+.MODEL SMOD_DFF_S SW(VT=1.7 VH=0.05 RON=1k ROFF=1G)
 .ENDS DFF
 V_rail_N4 N4 0 DC 5
 R_shunt_NC_jp1_a NC_jp1_a 0 1G
@@ -997,8 +1090,8 @@ R_shunt_NC_sg_sq_out NC_sg_sq_out 0 1G
 R_shunt_NC_sg_sq_gnd NC_sg_sq_gnd 0 1G
 R_shunt_NC_sg_dc_out NC_sg_dc_out 0 1G
 R_shunt_NC_sg_dc_gnd NC_sg_dc_gnd 0 1G
-R_shunt_NC_i1_pos NC_i1_pos 0 1G
 R_shunt_NC_i1_neg NC_i1_neg 0 1G
+R_shunt_NC_i1_pos NC_i1_pos 0 1G
 R_shunt_NC_led1_anode NC_led1_anode 0 1G
 R_shunt_NC_led1_cathode NC_led1_cathode 0 1G
 R_shunt_NC_led2_anode NC_led2_anode 0 1G
@@ -1147,15 +1240,17 @@ R_r1 N1 N2 4.7k
 R_r2 N4 N6 2k
 C_c1 N6 NC_c1_out 10uF
 L_l1 N2 0 1mH
-L_pri_t1 NC_t1_p1 NC_t1_p2 10m
-L_sec_t1 NC_t1_s1 NC_t1_s2 2.5m
+R_pri_t1 NC_t1_p1 int_pri_t1 0.1
+L_pri_t1 int_pri_t1 NC_t1_p2 10m
+R_sec_t1 NC_t1_s1 int_sec_t1 0.1
+L_sec_t1 int_sec_t1 NC_t1_s2 2.5m
 K_t1 L_pri_t1 L_sec_t1 0.95
 V_v1 N1 0 DC 9V
 V_ac1 NC_ac1_pos NC_ac1_neg SINE(0 12 50)
 V_sg_sine NC_sg_sine_out NC_sg_sine_gnd SINE(0 2 1000)
 V_sg_sq NC_sg_sq_out NC_sg_sq_gnd PULSE(0 5 0 0.000001 0.000001 0.0025 0.01)
 V_sg_dc NC_sg_dc_out NC_sg_dc_gnd DC 3
-I_i1 NC_i1_pos NC_i1_neg DC 20mA
+I_i1 NC_i1_neg NC_i1_pos DC 20mA
 R_ammeter_led1 NC_led1_anode int_led_led1 1
 D_led1 int_led_led1 NC_led1_cathode LED_MODEL_led1
 .model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.7500000000000002)
@@ -1183,15 +1278,17 @@ R_seg1_e NC_seg1_e NC_seg1_common 1G
 R_seg1_f NC_seg1_f NC_seg1_common 1G
 R_seg1_g NC_seg1_g NC_seg1_common 1G
 R_spk1 NC_spk1_in NC_spk1_gnd 8
-V_mic_pwl NC_mic_pwl_out NC_mic_pwl_gnd PWL(
+V_mic_pwl int_mic_mic_pwl NC_mic_pwl_gnd PWL(
 + 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
 + )
-V_mic_dc NC_mic_dc_out NC_mic_dc_gnd DC 0
+R_mic_pwl_out int_mic_mic_pwl NC_mic_pwl_out 1k
+V_mic_dc int_mic_mic_dc NC_mic_dc_gnd DC 0
+R_mic_dc_out int_mic_mic_dc NC_mic_dc_out 1k
 R_ldr_fixed NC_ldr_fixed_in NC_ldr_fixed_out 100050.00
 V_light_ldr_pwl light_node_ldr_pwl 0 PWL(
 + 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
 + )
-B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / (100 + (100000 - 100) * (1 - V(light_node_ldr_pwl)))
+B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / max(100 + (100000 - 100) * (1 - min(max(V(light_node_ldr_pwl), 0), 1)), 1)
 Q_q1 NC_q1_c NC_q1_b NC_q1_e NPN_MODEL_q1
 .model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
 Q_q2 NC_q2_c NC_q2_b NC_q2_e PNP_MODEL_q2
@@ -1203,12 +1300,24 @@ M_m2 NC_m2_d NC_m2_g NC_m2_s NC_m2_s PMOS_MODEL_m2
 X_u1 NC_u1_in_non NC_u1_in_inv NC_u1_vcc NC_u1_vee NC_u1_out OPAMP_MODEL_u1
 X_u2 NC_u2_1 NC_u2_2 NC_u2_3 NC_u2_4 NC_u2_5 NC_u2_6 NC_u2_7 NC_u2_8 NE555
 X_u3 NC_u3_d NC_u3_clk NC_u3_q NC_u3_qbar DFF
-B_gate_g_and NC_g_and_out 0 V = V(NC_g_and_in1) > 2.5 ? (V(NC_g_and_in2) > 2.5 ? 5 : 0) : 0
-B_gate_g_or NC_g_or_out 0 V = V(NC_g_or_in1) > 2.5 ? 5 : (V(NC_g_or_in2) > 2.5 ? 5 : 0)
-B_gate_g_nand NC_g_nand_out 0 V = V(NC_g_nand_in1) > 2.5 ? (V(NC_g_nand_in2) > 2.5 ? 0 : 5) : 5
-B_gate_g_nor NC_g_nor_out 0 V = V(NC_g_nor_in1) > 2.5 ? 0 : (V(NC_g_nor_in2) > 2.5 ? 0 : 5)
-B_gate_g_xor NC_g_xor_out 0 V = V(NC_g_xor_in1) > 2.5 ? (V(NC_g_xor_in2) > 2.5 ? 0 : 5) : (V(NC_g_xor_in2) > 2.5 ? 5 : 0)
-B_gate_g_not NC_g_not_out 0 V = V(NC_g_not_in1) > 2.5 ? 0 : 5
+B_gate_g_and int_gate_g_and 0 V = 5 * ((1 / (1 + exp(-(V(NC_g_and_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_and_in2, 0) - 2.5) / 0.05))))
+R_gate_g_and_out int_gate_g_and NC_g_and_out 50
+C_gate_g_and_out NC_g_and_out 0 10p
+B_gate_g_or int_gate_g_or 0 V = 5 * (1 - (1 - (1 / (1 + exp(-(V(NC_g_or_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_or_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_or_out int_gate_g_or NC_g_or_out 50
+C_gate_g_or_out NC_g_or_out 0 10p
+B_gate_g_nand int_gate_g_nand 0 V = 5 * (1 - ((1 / (1 + exp(-(V(NC_g_nand_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_nand_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_nand_out int_gate_g_nand NC_g_nand_out 50
+C_gate_g_nand_out NC_g_nand_out 0 10p
+B_gate_g_nor int_gate_g_nor 0 V = 5 * (1 - (1 / (1 + exp(-(V(NC_g_nor_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_nor_in2, 0) - 2.5) / 0.05))))
+R_gate_g_nor_out int_gate_g_nor NC_g_nor_out 50
+C_gate_g_nor_out NC_g_nor_out 0 10p
+B_gate_g_xor int_gate_g_xor 0 V = 5 * (((1 / (1 + exp(-(V(NC_g_xor_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_xor_in2, 0) - 2.5) / 0.05)))) + (1 - (1 / (1 + exp(-(V(NC_g_xor_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_xor_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_xor_out int_gate_g_xor NC_g_xor_out 50
+C_gate_g_xor_out NC_g_xor_out 0 10p
+B_gate_g_not int_gate_g_not 0 V = 5 * (1 - (1 / (1 + exp(-(V(NC_g_not_in1, 0) - 2.5) / 0.05))))
+R_gate_g_not_out int_gate_g_not NC_g_not_out 50
+C_gate_g_not_out NC_g_not_out 0 10p
 R_mcu1_D0 NC_mcu1_D0 0 100MEG
 R_mcu1_D1 NC_mcu1_D1 0 100MEG
 R_mcu1_D2 NC_mcu1_D2 0 100MEG
@@ -1218,13 +1327,19 @@ V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
 R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
 R_mcu1_A1 NC_mcu1_A1 0 100MEG
 R_mcu1_A0 NC_mcu1_A0 0 100MEG
-V_heltec_h1_GPIO_1 NC_h1_GPIO_1 0 DC 1.2340
+V_heltec_h1_GPIO_1 int_heltec_h1_GPIO_1 0 DC 1.2340
+R_heltec_h1_GPIO_1_out int_heltec_h1_GPIO_1 NC_h1_GPIO_1 1
 R_heltec_h1_GPIO_3 NC_h1_GPIO_3 0 100k
-V_heltec_h1_GPIO_33 NC_h1_GPIO_33 0 DC 3.3000
-V_heltec_h1_GPIO_36 NC_h1_GPIO_36 0 DC 0.0000
-V_heltec_h1_GPIO_37 NC_h1_GPIO_37 0 DC 0.0000
-V_heltec_h1_GPIO_41 NC_h1_GPIO_41 0 DC 0.0000
-V_heltec_h1_3V3 NC_h1_3V3 0 DC 3.3
+V_heltec_h1_GPIO_33 int_heltec_h1_GPIO_33 0 DC 3.3000
+R_heltec_h1_GPIO_33_out int_heltec_h1_GPIO_33 NC_h1_GPIO_33 1
+V_heltec_h1_GPIO_36 int_heltec_h1_GPIO_36 0 DC 0.0000
+R_heltec_h1_GPIO_36_out int_heltec_h1_GPIO_36 NC_h1_GPIO_36 1
+V_heltec_h1_GPIO_37 int_heltec_h1_GPIO_37 0 DC 0.0000
+R_heltec_h1_GPIO_37_out int_heltec_h1_GPIO_37 NC_h1_GPIO_37 1
+V_heltec_h1_GPIO_41 int_heltec_h1_GPIO_41 0 DC 0.0000
+R_heltec_h1_GPIO_41_out int_heltec_h1_GPIO_41 NC_h1_GPIO_41 1
+V_heltec_h1_3V3 int_heltec_h1_3V3 0 DC 3.3
+R_heltec_h1_3V3_res int_heltec_h1_3V3 NC_h1_3V3 1
 R_heltec_h1_GND NC_h1_GND 0 1m
 R_mot1_p1 NC_mot1_a int_mot1_p1r 2
 L_mot1_p1 int_mot1_p1r int_mot1_p1l 0.0005
@@ -1244,34 +1359,35 @@ B_stp1_t 0 int_stp1_w I = (-0.23529411764705885 * sin(50 * V(int_stp1_x))) * I(L
 C_stp1_x int_stp1_x 0 1
 R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
-B_drv1_sw int_drv1_sw 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
+B_drv1_sm int_drv1_sm 0 V = 1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.25) / 0.05)))
+B_drv1_ss int_drv1_ss 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.75) / 0.05)))
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sw) < 0.999999 ? 1 - V(int_drv1_sw) : 0)
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sm) > 1e-4 ? V(int_drv1_sm) : 0)
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
-B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_sw) > 1e-6 ? V(int_drv1_sw) : 0)
+B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_ss) > 1e-4 ? V(int_drv1_ss) : 0)
 B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
-B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
-B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
+B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
+B_drv1_a1 int_drv1_da NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) + V(int_drv1_ua)) / 2
 V_drv1_sa int_drv1_da NC_drv1_a1 DC 0
-B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ua)) / 2
+B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) - V(int_drv1_ua)) / 2
 B_drv1_tb int_drv1_tb 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483))
-B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
-B_drv1_b1 int_drv1_db NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ub)) / 2
+B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
+B_drv1_b1 int_drv1_db NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) + V(int_drv1_ub)) / 2
 V_drv1_sb int_drv1_db NC_drv1_b1 DC 0
-B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ub)) / 2
+B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) - V(int_drv1_ub)) / 2
 B_drv1_sup NC_drv1_vm NC_drv1_gnd I = V(NC_drv1_vm, NC_drv1_gnd) > 0.5 ? (V(int_drv1_ua) * I(V_drv1_sa) + V(int_drv1_ub) * I(V_drv1_sb)) / V(NC_drv1_vm, NC_drv1_gnd) : 0
-B_hb1_h1 NC_hb1_vm NC_hb1_out1 I = V(NC_hb1_vm, NC_hb1_out1) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05)))) + 1e-9)
-B_hb1_l1 NC_hb1_out1 NC_hb1_gnd I = V(NC_hb1_out1, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05))) + 1e-9)
-B_hb1_h2 NC_hb1_vm NC_hb1_out2 I = V(NC_hb1_vm, NC_hb1_out2) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05)))) + 1e-9)
-B_hb1_l2 NC_hb1_out2 NC_hb1_gnd I = V(NC_hb1_out2, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05))) + 1e-9)
+B_hb1_h1 NC_hb1_vm NC_hb1_out1 I = V(NC_hb1_vm, NC_hb1_out1) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.8) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.2) / 0.05)))) + 1e-9)
+B_hb1_l1 NC_hb1_out1 NC_hb1_gnd I = V(NC_hb1_out1, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.8) / 0.05))) + 1e-9)
+B_hb1_h2 NC_hb1_vm NC_hb1_out2 I = V(NC_hb1_vm, NC_hb1_out2) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.8) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.2) / 0.05)))) + 1e-9)
+B_hb1_l2 NC_hb1_out2 NC_hb1_gnd I = V(NC_hb1_out2, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.8) / 0.05))) + 1e-9)
 D_hb1_h1 NC_hb1_out1 NC_hb1_vm HB_DIODE_hb1
 D_hb1_l1 NC_hb1_gnd NC_hb1_out1 HB_DIODE_hb1
 D_hb1_h2 NC_hb1_out2 NC_hb1_vm HB_DIODE_hb1
 D_hb1_l2 NC_hb1_gnd NC_hb1_out2 HB_DIODE_hb1
 .model HB_DIODE_hb1 D(IS=1e-12 RS=0.05 N=1)
-B_fu1_m int_fu1_m 0 V = 1 / (1 + exp(-(V(int_fu1_h) - 0.5) / 0.0005))
+B_fu1_m int_fu1_m 0 V = 0.5 * (1 + tanh((V(int_fu1_h) - 0.5) / 0.001))
 B_fu1_g int_fu1_g 0 V = 20 * (1 - V(int_fu1_m)) + 1e-9
 B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
@@ -1319,47 +1435,55 @@ R1 8 5 5k
 R2 5 61 5k
 R3 61 1 5k
 
-* Smooth SR Latch Integrator
-* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+* Smooth SR Latch Integrator with active-low RESET (pin 4)
 S_SET 8 state 61 2 SMOD_ON
 S_RST state 1 6 5 SMOD_ON
+S_RESET state 1 1 4 SMOD_RST
 C1 state 1 100p
 * Add parallel resistor to guarantee DC convergence
 R4 state 1 10G
 
-* Output buffer
-E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+* Rail-relative smooth output buffer
+B_OUT 3 1 V = V(8, 1) * 0.5 * (1 + tanh((V(state, 1) - 0.5 * V(8, 1)) / 0.1))
 
-* Discharge
-S_DIS 7 1 8 state SMOD_DIS
+* Rail-relative discharge switch (ON when state < VCC/2)
+B_DIS_CTRL dis_ctrl 1 V = 0.5 * V(8, 1) - V(state, 1)
+S_DIS 7 1 dis_ctrl 1 SMOD_DIS
 
-.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
-.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.MODEL SMOD_ON SW(VT=0 VH=0.05 RON=1k ROFF=10G)
+.MODEL SMOD_RST SW(VT=-0.7 VH=0.05 RON=100 ROFF=10G)
+.MODEL SMOD_DIS SW(VT=0 VH=0.05 RON=10 ROFF=10G)
 .ENDS NE555
 
-* Idealized Master-Slave D Flip-Flop
+* Idealized Master-Slave D Flip-Flop (3.3V and 5V compatible, break-before-make)
 * Node order: D CLK Q QBAR
 .SUBCKT DFF D CLK Q QBAR
-B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+* High-impedance input buffer so D is not loaded by C_M
+B_D_BUF d_buf 0 V = 5 / (1 + exp(-(V(D) - 1.5) / 0.05))
 
-* Master Latch: closed when clk_bar > 2.5
-S_M D state_m clk_bar 0 SMOD_DFF
-C_M state_m 0 10n
+* Master Latch: closed when V(CLK) < 1.25V, open above 1.35V
+S_M d_buf state_m 0 CLK SMOD_DFF_M
+C_M state_m 0 100p
 R_M state_m 0 1G
 
 * Buffer master to slave to prevent charge sharing between C_M and C_S
-B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+B_state_m_buf state_m_buf 0 V = 5 / (1 + exp(-(V(state_m) - 2.5) / 0.05))
 
-* Slave Latch: closed when CLK > 2.5
-S_S state_m_buf state_s CLK 0 SMOD_DFF
-C_S state_s 0 10n
+* Slave Latch: closed when V(CLK) > 1.75V, open below 1.65V (300mV deadband)
+S_S state_m_buf state_s CLK 0 SMOD_DFF_S
+C_S state_s 0 100p
 R_S state_s 0 1G
 
-* Output Drivers
-B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
-B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+* Smooth output drivers with finite 50 ohm output impedance
+B_Q q_int 0 V = 5 / (1 + exp(-(V(state_s) - 2.5) / 0.05))
+R_Q q_int Q 50
+C_Q Q 0 10p
+B_QBAR qbar_int 0 V = 5 / (1 + exp((V(state_s) - 2.5) / 0.05))
+R_QBAR qbar_int QBAR 50
+C_QBAR QBAR 0 10p
 
-.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.MODEL SMOD_DFF_M SW(VT=-1.3 VH=0.05 RON=1k ROFF=1G)
+.MODEL SMOD_DFF_S SW(VT=1.7 VH=0.05 RON=1k ROFF=1G)
 .ENDS DFF
 V_rail_N4 N4 0 DC 5
 R_shunt_NC_jp1_a NC_jp1_a 0 1G
@@ -1377,8 +1501,8 @@ R_shunt_NC_sg_sq_out NC_sg_sq_out 0 1G
 R_shunt_NC_sg_sq_gnd NC_sg_sq_gnd 0 1G
 R_shunt_NC_sg_dc_out NC_sg_dc_out 0 1G
 R_shunt_NC_sg_dc_gnd NC_sg_dc_gnd 0 1G
-R_shunt_NC_i1_pos NC_i1_pos 0 1G
 R_shunt_NC_i1_neg NC_i1_neg 0 1G
+R_shunt_NC_i1_pos NC_i1_pos 0 1G
 R_shunt_NC_led1_anode NC_led1_anode 0 1G
 R_shunt_NC_led1_cathode NC_led1_cathode 0 1G
 R_shunt_NC_led2_anode NC_led2_anode 0 1G
@@ -1546,8 +1670,8 @@ exports[`the cards every part writes > pins, in the order the generator met them
   "sg_sq.gnd NC_sg_sq_gnd (nc)",
   "sg_dc.out NC_sg_dc_out (nc)",
   "sg_dc.gnd NC_sg_dc_gnd (nc)",
-  "i1.pos NC_i1_pos (nc)",
   "i1.neg NC_i1_neg (nc)",
+  "i1.pos NC_i1_pos (nc)",
   "led1.anode NC_led1_anode (nc)",
   "led1.cathode NC_led1_cathode (nc)",
   "led2.anode NC_led2_anode (nc)",
@@ -1693,15 +1817,17 @@ R_r1 N1 N2 4.7k
 R_r2 N4 N6 2k
 C_c1 N6 NC_c1_out 10uF
 L_l1 N2 0 1mH IC=1.000000e-2
-L_pri_t1 NC_t1_p1 NC_t1_p2 10m IC=2.000000e-3
-L_sec_t1 NC_t1_s1 NC_t1_s2 2.5m IC=-4.000000e-3
+R_pri_t1 NC_t1_p1 int_pri_t1 0.1
+L_pri_t1 int_pri_t1 NC_t1_p2 10m IC=2.000000e-3
+R_sec_t1 NC_t1_s1 int_sec_t1 0.1
+L_sec_t1 int_sec_t1 NC_t1_s2 2.5m IC=-4.000000e-3
 K_t1 L_pri_t1 L_sec_t1 0.95
 V_v1 N1 0 DC 9V
 V_ac1 NC_ac1_pos NC_ac1_neg SINE(0 12 50)
 V_sg_sine NC_sg_sine_out NC_sg_sine_gnd SINE(0 2 1000)
 V_sg_sq NC_sg_sq_out NC_sg_sq_gnd PULSE(0 5 0 0.000001 0.000001 0.0025 0.01)
 V_sg_dc NC_sg_dc_out NC_sg_dc_gnd DC 3
-I_i1 NC_i1_pos NC_i1_neg DC 20mA
+I_i1 NC_i1_neg NC_i1_pos DC 20mA
 R_ammeter_led1 NC_led1_anode int_led_led1 1
 D_led1 int_led_led1 NC_led1_cathode LED_MODEL_led1
 .model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.7500000000000002)
@@ -1728,12 +1854,13 @@ R_seg1_d NC_seg1_d NC_seg1_common 1G
 R_seg1_e NC_seg1_e NC_seg1_common 1G
 R_seg1_f NC_seg1_f NC_seg1_common 1G
 R_seg1_g NC_seg1_g NC_seg1_common 1G
-V_mic_dc NC_mic_dc_out NC_mic_dc_gnd DC 0
+V_mic_dc int_mic_mic_dc NC_mic_dc_gnd DC 0
+R_mic_dc_out int_mic_mic_dc NC_mic_dc_out 1k
 R_ldr_fixed NC_ldr_fixed_in NC_ldr_fixed_out 100050.00
 V_light_ldr_pwl light_node_ldr_pwl 0 PWL(
 + 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
 + )
-B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / (100 + (100000 - 100) * (1 - V(light_node_ldr_pwl)))
+B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / max(100 + (100000 - 100) * (1 - min(max(V(light_node_ldr_pwl), 0), 1)), 1)
 Q_q1 NC_q1_c NC_q1_b NC_q1_e NPN_MODEL_q1
 .model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
 Q_q2 NC_q2_c NC_q2_b NC_q2_e PNP_MODEL_q2
@@ -1745,12 +1872,24 @@ M_m2 NC_m2_d NC_m2_g NC_m2_s NC_m2_s PMOS_MODEL_m2
 X_u1 NC_u1_in_non NC_u1_in_inv NC_u1_vcc NC_u1_vee NC_u1_out OPAMP_MODEL_u1
 X_u2 NC_u2_1 NC_u2_2 NC_u2_3 NC_u2_4 NC_u2_5 NC_u2_6 NC_u2_7 NC_u2_8 NE555
 X_u3 NC_u3_d NC_u3_clk NC_u3_q NC_u3_qbar DFF
-B_gate_g_and NC_g_and_out 0 V = V(NC_g_and_in1) > 2.5 ? (V(NC_g_and_in2) > 2.5 ? 5 : 0) : 0
-B_gate_g_or NC_g_or_out 0 V = V(NC_g_or_in1) > 2.5 ? 5 : (V(NC_g_or_in2) > 2.5 ? 5 : 0)
-B_gate_g_nand NC_g_nand_out 0 V = V(NC_g_nand_in1) > 2.5 ? (V(NC_g_nand_in2) > 2.5 ? 0 : 5) : 5
-B_gate_g_nor NC_g_nor_out 0 V = V(NC_g_nor_in1) > 2.5 ? 0 : (V(NC_g_nor_in2) > 2.5 ? 0 : 5)
-B_gate_g_xor NC_g_xor_out 0 V = V(NC_g_xor_in1) > 2.5 ? (V(NC_g_xor_in2) > 2.5 ? 0 : 5) : (V(NC_g_xor_in2) > 2.5 ? 5 : 0)
-B_gate_g_not NC_g_not_out 0 V = V(NC_g_not_in1) > 2.5 ? 0 : 5
+B_gate_g_and int_gate_g_and 0 V = 5 * ((1 / (1 + exp(-(V(NC_g_and_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_and_in2, 0) - 2.5) / 0.05))))
+R_gate_g_and_out int_gate_g_and NC_g_and_out 50
+C_gate_g_and_out NC_g_and_out 0 10p
+B_gate_g_or int_gate_g_or 0 V = 5 * (1 - (1 - (1 / (1 + exp(-(V(NC_g_or_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_or_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_or_out int_gate_g_or NC_g_or_out 50
+C_gate_g_or_out NC_g_or_out 0 10p
+B_gate_g_nand int_gate_g_nand 0 V = 5 * (1 - ((1 / (1 + exp(-(V(NC_g_nand_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_nand_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_nand_out int_gate_g_nand NC_g_nand_out 50
+C_gate_g_nand_out NC_g_nand_out 0 10p
+B_gate_g_nor int_gate_g_nor 0 V = 5 * (1 - (1 / (1 + exp(-(V(NC_g_nor_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_nor_in2, 0) - 2.5) / 0.05))))
+R_gate_g_nor_out int_gate_g_nor NC_g_nor_out 50
+C_gate_g_nor_out NC_g_nor_out 0 10p
+B_gate_g_xor int_gate_g_xor 0 V = 5 * (((1 / (1 + exp(-(V(NC_g_xor_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_xor_in2, 0) - 2.5) / 0.05)))) + (1 - (1 / (1 + exp(-(V(NC_g_xor_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_xor_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_xor_out int_gate_g_xor NC_g_xor_out 50
+C_gate_g_xor_out NC_g_xor_out 0 10p
+B_gate_g_not int_gate_g_not 0 V = 5 * (1 - (1 / (1 + exp(-(V(NC_g_not_in1, 0) - 2.5) / 0.05))))
+R_gate_g_not_out int_gate_g_not NC_g_not_out 50
+C_gate_g_not_out NC_g_not_out 0 10p
 R_mcu1_D0 NC_mcu1_D0 0 100MEG
 R_mcu1_D1 NC_mcu1_D1 0 100MEG
 R_mcu1_D2 NC_mcu1_D2 0 100MEG
@@ -1760,13 +1899,19 @@ V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
 R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
 R_mcu1_A1 NC_mcu1_A1 0 100MEG
 R_mcu1_A0 NC_mcu1_A0 0 100MEG
-V_heltec_h1_GPIO_1 NC_h1_GPIO_1 0 DC 1.2340
+V_heltec_h1_GPIO_1 int_heltec_h1_GPIO_1 0 DC 1.2340
+R_heltec_h1_GPIO_1_out int_heltec_h1_GPIO_1 NC_h1_GPIO_1 1
 R_heltec_h1_GPIO_3 NC_h1_GPIO_3 0 100k
-V_heltec_h1_GPIO_33 NC_h1_GPIO_33 0 DC 3.3000
-V_heltec_h1_GPIO_36 NC_h1_GPIO_36 0 DC 0.0000
-V_heltec_h1_GPIO_37 NC_h1_GPIO_37 0 DC 0.0000
-V_heltec_h1_GPIO_41 NC_h1_GPIO_41 0 DC 0.0000
-V_heltec_h1_3V3 NC_h1_3V3 0 DC 3.3
+V_heltec_h1_GPIO_33 int_heltec_h1_GPIO_33 0 DC 3.3000
+R_heltec_h1_GPIO_33_out int_heltec_h1_GPIO_33 NC_h1_GPIO_33 1
+V_heltec_h1_GPIO_36 int_heltec_h1_GPIO_36 0 DC 0.0000
+R_heltec_h1_GPIO_36_out int_heltec_h1_GPIO_36 NC_h1_GPIO_36 1
+V_heltec_h1_GPIO_37 int_heltec_h1_GPIO_37 0 DC 0.0000
+R_heltec_h1_GPIO_37_out int_heltec_h1_GPIO_37 NC_h1_GPIO_37 1
+V_heltec_h1_GPIO_41 int_heltec_h1_GPIO_41 0 DC 0.0000
+R_heltec_h1_GPIO_41_out int_heltec_h1_GPIO_41 NC_h1_GPIO_41 1
+V_heltec_h1_3V3 int_heltec_h1_3V3 0 DC 3.3
+R_heltec_h1_3V3_res int_heltec_h1_3V3 NC_h1_3V3 1
 R_heltec_h1_GND NC_h1_GND 0 1m
 R_mot1_p1 NC_mot1_a int_mot1_p1r 2
 L_mot1_p1 int_mot1_p1r int_mot1_p1l 0.0005
@@ -1786,34 +1931,35 @@ B_stp1_t 0 int_stp1_w I = (-0.23529411764705885 * sin(50 * V(int_stp1_x))) * I(L
 C_stp1_x int_stp1_x 0 1
 R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
-B_drv1_sw int_drv1_sw 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
+B_drv1_sm int_drv1_sm 0 V = 1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.25) / 0.05)))
+B_drv1_ss int_drv1_ss 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.75) / 0.05)))
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sw) < 0.999999 ? 1 - V(int_drv1_sw) : 0)
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sm) > 1e-4 ? V(int_drv1_sm) : 0)
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
-B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_sw) > 1e-6 ? V(int_drv1_sw) : 0)
+B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_ss) > 1e-4 ? V(int_drv1_ss) : 0)
 B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
-B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
-B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
+B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
+B_drv1_a1 int_drv1_da NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) + V(int_drv1_ua)) / 2
 V_drv1_sa int_drv1_da NC_drv1_a1 DC 0
-B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ua)) / 2
+B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) - V(int_drv1_ua)) / 2
 B_drv1_tb int_drv1_tb 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483))
-B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
-B_drv1_b1 int_drv1_db NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ub)) / 2
+B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
+B_drv1_b1 int_drv1_db NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) + V(int_drv1_ub)) / 2
 V_drv1_sb int_drv1_db NC_drv1_b1 DC 0
-B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ub)) / 2
+B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) - V(int_drv1_ub)) / 2
 B_drv1_sup NC_drv1_vm NC_drv1_gnd I = V(NC_drv1_vm, NC_drv1_gnd) > 0.5 ? (V(int_drv1_ua) * I(V_drv1_sa) + V(int_drv1_ub) * I(V_drv1_sb)) / V(NC_drv1_vm, NC_drv1_gnd) : 0
-B_hb1_h1 NC_hb1_vm NC_hb1_out1 I = V(NC_hb1_vm, NC_hb1_out1) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05)))) + 1e-9)
-B_hb1_l1 NC_hb1_out1 NC_hb1_gnd I = V(NC_hb1_out1, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05))) + 1e-9)
-B_hb1_h2 NC_hb1_vm NC_hb1_out2 I = V(NC_hb1_vm, NC_hb1_out2) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05)))) + 1e-9)
-B_hb1_l2 NC_hb1_out2 NC_hb1_gnd I = V(NC_hb1_out2, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05))) + 1e-9)
+B_hb1_h1 NC_hb1_vm NC_hb1_out1 I = V(NC_hb1_vm, NC_hb1_out1) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.8) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.2) / 0.05)))) + 1e-9)
+B_hb1_l1 NC_hb1_out1 NC_hb1_gnd I = V(NC_hb1_out1, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.8) / 0.05))) + 1e-9)
+B_hb1_h2 NC_hb1_vm NC_hb1_out2 I = V(NC_hb1_vm, NC_hb1_out2) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.8) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.2) / 0.05)))) + 1e-9)
+B_hb1_l2 NC_hb1_out2 NC_hb1_gnd I = V(NC_hb1_out2, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.8) / 0.05))) + 1e-9)
 D_hb1_h1 NC_hb1_out1 NC_hb1_vm HB_DIODE_hb1
 D_hb1_l1 NC_hb1_gnd NC_hb1_out1 HB_DIODE_hb1
 D_hb1_h2 NC_hb1_out2 NC_hb1_vm HB_DIODE_hb1
 D_hb1_l2 NC_hb1_gnd NC_hb1_out2 HB_DIODE_hb1
 .model HB_DIODE_hb1 D(IS=1e-12 RS=0.05 N=1)
-B_fu1_m int_fu1_m 0 V = 1 / (1 + exp(-(V(int_fu1_h) - 0.5) / 0.0005))
+B_fu1_m int_fu1_m 0 V = 0.5 * (1 + tanh((V(int_fu1_h) - 0.5) / 0.001))
 B_fu1_g int_fu1_g 0 V = 20 * (1 - V(int_fu1_m)) + 1e-9
 B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
@@ -1861,47 +2007,55 @@ R1 8 5 5k
 R2 5 61 5k
 R3 61 1 5k
 
-* Smooth SR Latch Integrator
-* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+* Smooth SR Latch Integrator with active-low RESET (pin 4)
 S_SET 8 state 61 2 SMOD_ON
 S_RST state 1 6 5 SMOD_ON
+S_RESET state 1 1 4 SMOD_RST
 C1 state 1 100p
 * Add parallel resistor to guarantee DC convergence
 R4 state 1 10G
 
-* Output buffer
-E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+* Rail-relative smooth output buffer
+B_OUT 3 1 V = V(8, 1) * 0.5 * (1 + tanh((V(state, 1) - 0.5 * V(8, 1)) / 0.1))
 
-* Discharge
-S_DIS 7 1 8 state SMOD_DIS
+* Rail-relative discharge switch (ON when state < VCC/2)
+B_DIS_CTRL dis_ctrl 1 V = 0.5 * V(8, 1) - V(state, 1)
+S_DIS 7 1 dis_ctrl 1 SMOD_DIS
 
-.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
-.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.MODEL SMOD_ON SW(VT=0 VH=0.05 RON=1k ROFF=10G)
+.MODEL SMOD_RST SW(VT=-0.7 VH=0.05 RON=100 ROFF=10G)
+.MODEL SMOD_DIS SW(VT=0 VH=0.05 RON=10 ROFF=10G)
 .ENDS NE555
 
-* Idealized Master-Slave D Flip-Flop
+* Idealized Master-Slave D Flip-Flop (3.3V and 5V compatible, break-before-make)
 * Node order: D CLK Q QBAR
 .SUBCKT DFF D CLK Q QBAR
-B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+* High-impedance input buffer so D is not loaded by C_M
+B_D_BUF d_buf 0 V = 5 / (1 + exp(-(V(D) - 1.5) / 0.05))
 
-* Master Latch: closed when clk_bar > 2.5
-S_M D state_m clk_bar 0 SMOD_DFF
-C_M state_m 0 10n
+* Master Latch: closed when V(CLK) < 1.25V, open above 1.35V
+S_M d_buf state_m 0 CLK SMOD_DFF_M
+C_M state_m 0 100p
 R_M state_m 0 1G
 
 * Buffer master to slave to prevent charge sharing between C_M and C_S
-B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+B_state_m_buf state_m_buf 0 V = 5 / (1 + exp(-(V(state_m) - 2.5) / 0.05))
 
-* Slave Latch: closed when CLK > 2.5
-S_S state_m_buf state_s CLK 0 SMOD_DFF
-C_S state_s 0 10n
+* Slave Latch: closed when V(CLK) > 1.75V, open below 1.65V (300mV deadband)
+S_S state_m_buf state_s CLK 0 SMOD_DFF_S
+C_S state_s 0 100p
 R_S state_s 0 1G
 
-* Output Drivers
-B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
-B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+* Smooth output drivers with finite 50 ohm output impedance
+B_Q q_int 0 V = 5 / (1 + exp(-(V(state_s) - 2.5) / 0.05))
+R_Q q_int Q 50
+C_Q Q 0 10p
+B_QBAR qbar_int 0 V = 5 / (1 + exp((V(state_s) - 2.5) / 0.05))
+R_QBAR qbar_int QBAR 50
+C_QBAR QBAR 0 10p
 
-.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.MODEL SMOD_DFF_M SW(VT=-1.3 VH=0.05 RON=1k ROFF=1G)
+.MODEL SMOD_DFF_S SW(VT=1.7 VH=0.05 RON=1k ROFF=1G)
 .ENDS DFF
 V_rail_N4 N4 0 DC 5
 R_shunt_NC_jp1_a NC_jp1_a 0 1G
@@ -1919,8 +2073,8 @@ R_shunt_NC_sg_sq_out NC_sg_sq_out 0 1G
 R_shunt_NC_sg_sq_gnd NC_sg_sq_gnd 0 1G
 R_shunt_NC_sg_dc_out NC_sg_dc_out 0 1G
 R_shunt_NC_sg_dc_gnd NC_sg_dc_gnd 0 1G
-R_shunt_NC_i1_pos NC_i1_pos 0 1G
 R_shunt_NC_i1_neg NC_i1_neg 0 1G
+R_shunt_NC_i1_pos NC_i1_pos 0 1G
 R_shunt_NC_led1_anode NC_led1_anode 0 1G
 R_shunt_NC_led1_cathode NC_led1_cathode 0 1G
 R_shunt_NC_led2_anode NC_led2_anode 0 1G
@@ -2066,15 +2220,17 @@ R_r1 N1 N2 4.7k
 R_r2 N4 N6 2k
 C_c1 N6 NC_c1_out 10uF
 L_l1 N2 0 1mH
-L_pri_t1 NC_t1_p1 NC_t1_p2 10m
-L_sec_t1 NC_t1_s1 NC_t1_s2 2.5m
+R_pri_t1 NC_t1_p1 int_pri_t1 0.1
+L_pri_t1 int_pri_t1 NC_t1_p2 10m
+R_sec_t1 NC_t1_s1 int_sec_t1 0.1
+L_sec_t1 int_sec_t1 NC_t1_s2 2.5m
 K_t1 L_pri_t1 L_sec_t1 0.95
 V_v1 N1 0 DC 9V
 V_ac1 NC_ac1_pos NC_ac1_neg SINE(0 12 50)
 V_sg_sine NC_sg_sine_out NC_sg_sine_gnd SINE(0 2 1000)
 V_sg_sq NC_sg_sq_out NC_sg_sq_gnd PULSE(0 5 0 0.000001 0.000001 0.0025 0.01)
 V_sg_dc NC_sg_dc_out NC_sg_dc_gnd DC 3
-I_i1 NC_i1_pos NC_i1_neg DC 20mA
+I_i1 NC_i1_neg NC_i1_pos DC 20mA
 R_ammeter_led1 NC_led1_anode int_led_led1 1
 D_led1 int_led_led1 NC_led1_cathode LED_MODEL_led1
 .model LED_MODEL_led1 D(IS=1e-22 RS=5 N=1.7500000000000002)
@@ -2102,15 +2258,17 @@ R_seg1_e NC_seg1_e NC_seg1_common 1G
 R_seg1_f NC_seg1_f NC_seg1_common 1G
 R_seg1_g NC_seg1_g NC_seg1_common 1G
 R_spk1 NC_spk1_in NC_spk1_gnd 8
-V_mic_pwl NC_mic_pwl_out NC_mic_pwl_gnd PWL(
+V_mic_pwl int_mic_mic_pwl NC_mic_pwl_gnd PWL(
 + 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
 + )
-V_mic_dc NC_mic_dc_out NC_mic_dc_gnd DC 0
+R_mic_pwl_out int_mic_mic_pwl NC_mic_pwl_out 1k
+V_mic_dc int_mic_mic_dc NC_mic_dc_gnd DC 0
+R_mic_dc_out int_mic_mic_dc NC_mic_dc_out 1k
 R_ldr_fixed NC_ldr_fixed_in NC_ldr_fixed_out 100050.00
 V_light_ldr_pwl light_node_ldr_pwl 0 PWL(
 + 0.000000e+0 0.000000e+0 1.000000e-2 5.000000e-1 2.000000e-2 1.000000e+0 
 + )
-B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / (100 + (100000 - 100) * (1 - V(light_node_ldr_pwl)))
+B_ldr_ldr_pwl NC_ldr_pwl_in NC_ldr_pwl_out I = V(NC_ldr_pwl_in, NC_ldr_pwl_out) / max(100 + (100000 - 100) * (1 - min(max(V(light_node_ldr_pwl), 0), 1)), 1)
 Q_q1 NC_q1_c NC_q1_b NC_q1_e NPN_MODEL_q1
 .model NPN_MODEL_q1 NPN(IS=1e-14 VAF=100 BF=300 IKF=0.4 XTB=1.5 BR=3 CJC=2p CJE=4p TR=40n TF=0.4n RB=10)
 Q_q2 NC_q2_c NC_q2_b NC_q2_e PNP_MODEL_q2
@@ -2122,12 +2280,24 @@ M_m2 NC_m2_d NC_m2_g NC_m2_s NC_m2_s PMOS_MODEL_m2
 X_u1 NC_u1_in_non NC_u1_in_inv NC_u1_vcc NC_u1_vee NC_u1_out OPAMP_MODEL_u1
 X_u2 NC_u2_1 NC_u2_2 NC_u2_3 NC_u2_4 NC_u2_5 NC_u2_6 NC_u2_7 NC_u2_8 NE555
 X_u3 NC_u3_d NC_u3_clk NC_u3_q NC_u3_qbar DFF
-B_gate_g_and NC_g_and_out 0 V = V(NC_g_and_in1) > 2.5 ? (V(NC_g_and_in2) > 2.5 ? 5 : 0) : 0
-B_gate_g_or NC_g_or_out 0 V = V(NC_g_or_in1) > 2.5 ? 5 : (V(NC_g_or_in2) > 2.5 ? 5 : 0)
-B_gate_g_nand NC_g_nand_out 0 V = V(NC_g_nand_in1) > 2.5 ? (V(NC_g_nand_in2) > 2.5 ? 0 : 5) : 5
-B_gate_g_nor NC_g_nor_out 0 V = V(NC_g_nor_in1) > 2.5 ? 0 : (V(NC_g_nor_in2) > 2.5 ? 0 : 5)
-B_gate_g_xor NC_g_xor_out 0 V = V(NC_g_xor_in1) > 2.5 ? (V(NC_g_xor_in2) > 2.5 ? 0 : 5) : (V(NC_g_xor_in2) > 2.5 ? 5 : 0)
-B_gate_g_not NC_g_not_out 0 V = V(NC_g_not_in1) > 2.5 ? 0 : 5
+B_gate_g_and int_gate_g_and 0 V = 5 * ((1 / (1 + exp(-(V(NC_g_and_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_and_in2, 0) - 2.5) / 0.05))))
+R_gate_g_and_out int_gate_g_and NC_g_and_out 50
+C_gate_g_and_out NC_g_and_out 0 10p
+B_gate_g_or int_gate_g_or 0 V = 5 * (1 - (1 - (1 / (1 + exp(-(V(NC_g_or_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_or_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_or_out int_gate_g_or NC_g_or_out 50
+C_gate_g_or_out NC_g_or_out 0 10p
+B_gate_g_nand int_gate_g_nand 0 V = 5 * (1 - ((1 / (1 + exp(-(V(NC_g_nand_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_nand_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_nand_out int_gate_g_nand NC_g_nand_out 50
+C_gate_g_nand_out NC_g_nand_out 0 10p
+B_gate_g_nor int_gate_g_nor 0 V = 5 * (1 - (1 / (1 + exp(-(V(NC_g_nor_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_nor_in2, 0) - 2.5) / 0.05))))
+R_gate_g_nor_out int_gate_g_nor NC_g_nor_out 50
+C_gate_g_nor_out NC_g_nor_out 0 10p
+B_gate_g_xor int_gate_g_xor 0 V = 5 * (((1 / (1 + exp(-(V(NC_g_xor_in1, 0) - 2.5) / 0.05)))) * (1 - (1 / (1 + exp(-(V(NC_g_xor_in2, 0) - 2.5) / 0.05)))) + (1 - (1 / (1 + exp(-(V(NC_g_xor_in1, 0) - 2.5) / 0.05)))) * ((1 / (1 + exp(-(V(NC_g_xor_in2, 0) - 2.5) / 0.05)))))
+R_gate_g_xor_out int_gate_g_xor NC_g_xor_out 50
+C_gate_g_xor_out NC_g_xor_out 0 10p
+B_gate_g_not int_gate_g_not 0 V = 5 * (1 - (1 / (1 + exp(-(V(NC_g_not_in1, 0) - 2.5) / 0.05))))
+R_gate_g_not_out int_gate_g_not NC_g_not_out 50
+C_gate_g_not_out NC_g_not_out 0 10p
 R_mcu1_D0 NC_mcu1_D0 0 100MEG
 R_mcu1_D1 NC_mcu1_D1 0 100MEG
 R_mcu1_D2 NC_mcu1_D2 0 100MEG
@@ -2137,13 +2307,19 @@ V_mcu1_5V int_mcu_mcu1_5V 0 DC 5
 R_mcu1_5V_res int_mcu_mcu1_5V NC_mcu1_5V 1
 R_mcu1_A1 NC_mcu1_A1 0 100MEG
 R_mcu1_A0 NC_mcu1_A0 0 100MEG
-V_heltec_h1_GPIO_1 NC_h1_GPIO_1 0 DC 1.2340
+V_heltec_h1_GPIO_1 int_heltec_h1_GPIO_1 0 DC 1.2340
+R_heltec_h1_GPIO_1_out int_heltec_h1_GPIO_1 NC_h1_GPIO_1 1
 R_heltec_h1_GPIO_3 NC_h1_GPIO_3 0 100k
-V_heltec_h1_GPIO_33 NC_h1_GPIO_33 0 DC 3.3000
-V_heltec_h1_GPIO_36 NC_h1_GPIO_36 0 DC 0.0000
-V_heltec_h1_GPIO_37 NC_h1_GPIO_37 0 DC 0.0000
-V_heltec_h1_GPIO_41 NC_h1_GPIO_41 0 DC 0.0000
-V_heltec_h1_3V3 NC_h1_3V3 0 DC 3.3
+V_heltec_h1_GPIO_33 int_heltec_h1_GPIO_33 0 DC 3.3000
+R_heltec_h1_GPIO_33_out int_heltec_h1_GPIO_33 NC_h1_GPIO_33 1
+V_heltec_h1_GPIO_36 int_heltec_h1_GPIO_36 0 DC 0.0000
+R_heltec_h1_GPIO_36_out int_heltec_h1_GPIO_36 NC_h1_GPIO_36 1
+V_heltec_h1_GPIO_37 int_heltec_h1_GPIO_37 0 DC 0.0000
+R_heltec_h1_GPIO_37_out int_heltec_h1_GPIO_37 NC_h1_GPIO_37 1
+V_heltec_h1_GPIO_41 int_heltec_h1_GPIO_41 0 DC 0.0000
+R_heltec_h1_GPIO_41_out int_heltec_h1_GPIO_41 NC_h1_GPIO_41 1
+V_heltec_h1_3V3 int_heltec_h1_3V3 0 DC 3.3
+R_heltec_h1_3V3_res int_heltec_h1_3V3 NC_h1_3V3 1
 R_heltec_h1_GND NC_h1_GND 0 1m
 R_mot1_p1 NC_mot1_a int_mot1_p1r 2
 L_mot1_p1 int_mot1_p1r int_mot1_p1l 0.0005
@@ -2163,34 +2339,35 @@ B_stp1_t 0 int_stp1_w I = (-0.23529411764705885 * sin(50 * V(int_stp1_x))) * I(L
 C_stp1_x int_stp1_x 0 1
 R_stp1_xl int_stp1_x 0 1e12
 B_stp1_x 0 int_stp1_x I = V(int_stp1_w)
-B_drv1_sw int_drv1_sw 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.5) / 0.05)))
+B_drv1_sm int_drv1_sm 0 V = 1 - (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.25) / 0.05)))
+B_drv1_ss int_drv1_ss 0 V = (1 / (1 + exp(-(V(NC_drv1_step, NC_drv1_gnd) - 1.75) / 0.05)))
 C_drv1_ms int_drv1_ms 0 1
 R_drv1_ms int_drv1_ms 0 1e12
-B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sw) < 0.999999 ? 1 - V(int_drv1_sw) : 0)
+B_drv1_ms 0 int_drv1_ms I = 1000000 * ((V(int_drv1_th) - 0.03125 * sin(32 * V(int_drv1_th))) + 0.19634954084936207 * (2 * (1 / (1 + exp(-(V(NC_drv1_dir, NC_drv1_gnd) - 1.5) / 0.05))) - 1) - V(int_drv1_ms)) * (V(int_drv1_sm) > 1e-4 ? V(int_drv1_sm) : 0)
 C_drv1_th int_drv1_th 0 1
 R_drv1_th int_drv1_th 0 1e12
-B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_sw) > 1e-6 ? V(int_drv1_sw) : 0)
+B_drv1_th 0 int_drv1_th I = 1000000 * (V(int_drv1_ms) - V(int_drv1_th)) * (V(int_drv1_ss) > 1e-4 ? V(int_drv1_ss) : 0)
 B_drv1_ta int_drv1_ta 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * cos((V(int_drv1_th) + 0.7853981633974483))
-B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
-B_drv1_a1 int_drv1_da NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ua)) / 2
+B_drv1_ua int_drv1_ua 0 V = 300 * (V(int_drv1_ta) - I(V_drv1_sa)) > (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : (300 * (V(int_drv1_ta) - I(V_drv1_sa)) < -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : 300 * (V(int_drv1_ta) - I(V_drv1_sa)))
+B_drv1_a1 int_drv1_da NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) + V(int_drv1_ua)) / 2
 V_drv1_sa int_drv1_da NC_drv1_a1 DC 0
-B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ua)) / 2
+B_drv1_a2 NC_drv1_a2 NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) - V(int_drv1_ua)) / 2
 B_drv1_tb int_drv1_tb 0 V = 1.2 * (1 - (1 / (1 + exp(-(V(NC_drv1_en, NC_drv1_gnd) - 1.5) / 0.05)))) * sin((V(int_drv1_th) + 0.7853981633974483))
-B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > V(NC_drv1_vm, NC_drv1_gnd) ? V(NC_drv1_vm, NC_drv1_gnd) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -V(NC_drv1_vm, NC_drv1_gnd) ? -V(NC_drv1_vm, NC_drv1_gnd) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
-B_drv1_b1 int_drv1_db NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) + V(int_drv1_ub)) / 2
+B_drv1_ub int_drv1_ub 0 V = 300 * (V(int_drv1_tb) - I(V_drv1_sb)) > (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? (V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : (300 * (V(int_drv1_tb) - I(V_drv1_sb)) < -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) ? -(V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) : 300 * (V(int_drv1_tb) - I(V_drv1_sb)))
+B_drv1_b1 int_drv1_db NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) + V(int_drv1_ub)) / 2
 V_drv1_sb int_drv1_db NC_drv1_b1 DC 0
-B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = (V(NC_drv1_vm, NC_drv1_gnd) - V(int_drv1_ub)) / 2
+B_drv1_b2 NC_drv1_b2 NC_drv1_gnd V = ((V(NC_drv1_vm, NC_drv1_gnd) > 0 ? V(NC_drv1_vm, NC_drv1_gnd) : 0) - V(int_drv1_ub)) / 2
 B_drv1_sup NC_drv1_vm NC_drv1_gnd I = V(NC_drv1_vm, NC_drv1_gnd) > 0.5 ? (V(int_drv1_ua) * I(V_drv1_sa) + V(int_drv1_ub) * I(V_drv1_sb)) / V(NC_drv1_vm, NC_drv1_gnd) : 0
-B_hb1_h1 NC_hb1_vm NC_hb1_out1 I = V(NC_hb1_vm, NC_hb1_out1) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05)))) + 1e-9)
-B_hb1_l1 NC_hb1_out1 NC_hb1_gnd I = V(NC_hb1_out1, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05))) + 1e-9)
-B_hb1_h2 NC_hb1_vm NC_hb1_out2 I = V(NC_hb1_vm, NC_hb1_out2) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.5) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05)))) + 1e-9)
-B_hb1_l2 NC_hb1_out2 NC_hb1_gnd I = V(NC_hb1_out2, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.5) / 0.05))) + 1e-9)
+B_hb1_h1 NC_hb1_vm NC_hb1_out1 I = V(NC_hb1_vm, NC_hb1_out1) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.8) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.2) / 0.05)))) + 1e-9)
+B_hb1_l1 NC_hb1_out1 NC_hb1_gnd I = V(NC_hb1_out1, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.8) / 0.05))) + 1e-9)
+B_hb1_h2 NC_hb1_vm NC_hb1_out2 I = V(NC_hb1_vm, NC_hb1_out2) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in2, NC_hb1_gnd) - 1.8) / 0.05))) * (1 - (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.2) / 0.05)))) + 1e-9)
+B_hb1_l2 NC_hb1_out2 NC_hb1_gnd I = V(NC_hb1_out2, NC_hb1_gnd) * (5.555555555555555 * (1 / (1 + exp(-(V(NC_hb1_in1, NC_hb1_gnd) - 1.8) / 0.05))) + 1e-9)
 D_hb1_h1 NC_hb1_out1 NC_hb1_vm HB_DIODE_hb1
 D_hb1_l1 NC_hb1_gnd NC_hb1_out1 HB_DIODE_hb1
 D_hb1_h2 NC_hb1_out2 NC_hb1_vm HB_DIODE_hb1
 D_hb1_l2 NC_hb1_gnd NC_hb1_out2 HB_DIODE_hb1
 .model HB_DIODE_hb1 D(IS=1e-12 RS=0.05 N=1)
-B_fu1_m int_fu1_m 0 V = 1 / (1 + exp(-(V(int_fu1_h) - 0.5) / 0.0005))
+B_fu1_m int_fu1_m 0 V = 0.5 * (1 + tanh((V(int_fu1_h) - 0.5) / 0.001))
 B_fu1_g int_fu1_g 0 V = 20 * (1 - V(int_fu1_m)) + 1e-9
 B_fu1 NC_fu1_in NC_fu1_out I = (V(NC_fu1_in, NC_fu1_out) * V(int_fu1_g))
 C_fu1_h int_fu1_h 0 1
@@ -2238,47 +2415,55 @@ R1 8 5 5k
 R2 5 61 5k
 R3 61 1 5k
 
-* Smooth SR Latch Integrator
-* Instead of G-source integrating to infinity, use standard switches to charge/discharge a capacitor
+* Smooth SR Latch Integrator with active-low RESET (pin 4)
 S_SET 8 state 61 2 SMOD_ON
 S_RST state 1 6 5 SMOD_ON
+S_RESET state 1 1 4 SMOD_RST
 C1 state 1 100p
 * Add parallel resistor to guarantee DC convergence
 R4 state 1 10G
 
-* Output buffer
-E_OUT 3 1 VOL={V(state)>2.5 ? V(8) : 0}
+* Rail-relative smooth output buffer
+B_OUT 3 1 V = V(8, 1) * 0.5 * (1 + tanh((V(state, 1) - 0.5 * V(8, 1)) / 0.1))
 
-* Discharge
-S_DIS 7 1 8 state SMOD_DIS
+* Rail-relative discharge switch (ON when state < VCC/2)
+B_DIS_CTRL dis_ctrl 1 V = 0.5 * V(8, 1) - V(state, 1)
+S_DIS 7 1 dis_ctrl 1 SMOD_DIS
 
-.MODEL SMOD_ON SW(VT=0 RON=1k ROFF=10G)
-.MODEL SMOD_DIS SW(VT=2.5 RON=10 ROFF=10G)
+.MODEL SMOD_ON SW(VT=0 VH=0.05 RON=1k ROFF=10G)
+.MODEL SMOD_RST SW(VT=-0.7 VH=0.05 RON=100 ROFF=10G)
+.MODEL SMOD_DIS SW(VT=0 VH=0.05 RON=10 ROFF=10G)
 .ENDS NE555
 
-* Idealized Master-Slave D Flip-Flop
+* Idealized Master-Slave D Flip-Flop (3.3V and 5V compatible, break-before-make)
 * Node order: D CLK Q QBAR
 .SUBCKT DFF D CLK Q QBAR
-B_CLK_BAR clk_bar 0 V = 5 - V(CLK)
+* High-impedance input buffer so D is not loaded by C_M
+B_D_BUF d_buf 0 V = 5 / (1 + exp(-(V(D) - 1.5) / 0.05))
 
-* Master Latch: closed when clk_bar > 2.5
-S_M D state_m clk_bar 0 SMOD_DFF
-C_M state_m 0 10n
+* Master Latch: closed when V(CLK) < 1.25V, open above 1.35V
+S_M d_buf state_m 0 CLK SMOD_DFF_M
+C_M state_m 0 100p
 R_M state_m 0 1G
 
 * Buffer master to slave to prevent charge sharing between C_M and C_S
-B_state_m_buf state_m_buf 0 V = V(state_m) > 2.5 ? 5 : 0
+B_state_m_buf state_m_buf 0 V = 5 / (1 + exp(-(V(state_m) - 2.5) / 0.05))
 
-* Slave Latch: closed when CLK > 2.5
-S_S state_m_buf state_s CLK 0 SMOD_DFF
-C_S state_s 0 10n
+* Slave Latch: closed when V(CLK) > 1.75V, open below 1.65V (300mV deadband)
+S_S state_m_buf state_s CLK 0 SMOD_DFF_S
+C_S state_s 0 100p
 R_S state_s 0 1G
 
-* Output Drivers
-B_Q Q 0 V = V(state_s) > 2.5 ? 5 : 0
-B_QBAR QBAR 0 V = V(state_s) > 2.5 ? 0 : 5
+* Smooth output drivers with finite 50 ohm output impedance
+B_Q q_int 0 V = 5 / (1 + exp(-(V(state_s) - 2.5) / 0.05))
+R_Q q_int Q 50
+C_Q Q 0 10p
+B_QBAR qbar_int 0 V = 5 / (1 + exp((V(state_s) - 2.5) / 0.05))
+R_QBAR qbar_int QBAR 50
+C_QBAR QBAR 0 10p
 
-.MODEL SMOD_DFF SW(VT=2.5 VH=0.2 RON=1k ROFF=1G)
+.MODEL SMOD_DFF_M SW(VT=-1.3 VH=0.05 RON=1k ROFF=1G)
+.MODEL SMOD_DFF_S SW(VT=1.7 VH=0.05 RON=1k ROFF=1G)
 .ENDS DFF
 V_rail_N4 N4 0 DC 5
 R_shunt_NC_jp1_a NC_jp1_a 0 1G
@@ -2296,8 +2481,8 @@ R_shunt_NC_sg_sq_out NC_sg_sq_out 0 1G
 R_shunt_NC_sg_sq_gnd NC_sg_sq_gnd 0 1G
 R_shunt_NC_sg_dc_out NC_sg_dc_out 0 1G
 R_shunt_NC_sg_dc_gnd NC_sg_dc_gnd 0 1G
-R_shunt_NC_i1_pos NC_i1_pos 0 1G
 R_shunt_NC_i1_neg NC_i1_neg 0 1G
+R_shunt_NC_i1_pos NC_i1_pos 0 1G
 R_shunt_NC_led1_anode NC_led1_anode 0 1G
 R_shunt_NC_led1_cathode NC_led1_cathode 0 1G
 R_shunt_NC_led2_anode NC_led2_anode 0 1G

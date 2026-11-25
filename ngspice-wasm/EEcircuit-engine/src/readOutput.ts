@@ -53,22 +53,51 @@ type ParamType = {
 export type RealNumber = number;
 export type ComplexNumber = { real: number; img: number };
 
+const BINARY_MARKER = [0x42, 0x69, 0x6e, 0x61, 0x72, 0x79, 0x3a]; // "Binary:"
+
+function findBinaryMarker(rawData: Uint8Array): { headerEnd: number; binaryStart: number } | null {
+  const mLen = BINARY_MARKER.length;
+  const limit = rawData.byteLength - mLen;
+  for (let i = 0; i <= limit; i++) {
+    let matched = true;
+    for (let j = 0; j < mLen; j++) {
+      if (rawData[i + j] !== BINARY_MARKER[j]) {
+        matched = false;
+        break;
+      }
+    }
+    if (!matched) continue;
+    const after = i + mLen;
+    if (after < rawData.byteLength && rawData[after] === 0x0a) {
+      return { headerEnd: i, binaryStart: after + 1 };
+    }
+    if (after + 1 < rawData.byteLength && rawData[after] === 0x0d && rawData[after + 1] === 0x0a) {
+      return { headerEnd: i, binaryStart: after + 2 };
+    }
+  }
+  return null;
+}
+
 export function readRawOutput(rawData: Uint8Array): RawResultType {
-  //
-
-  const resultStr = ab2str(rawData);
-
-  const offset = resultStr.indexOf("Binary:");
-  log(`file-> ${offset}`);
-  const header = resultStr.substring(0, offset) + "\n";
+  const marker = findBinaryMarker(rawData);
+  if (!marker) {
+    throw new Error("Raw output missing Binary: marker");
+  }
+  log(`file-> ${marker.headerEnd}`);
+  const header = ab2str(rawData.subarray(0, marker.headerEnd)) + "\n";
 
   const param = findParams(header);
   log(header);
   log(param);
 
-  const binaryByteOffset = offset + 8;
+  const binaryByteOffset = marker.binaryStart;
   const expectedFloats = param.varNum * param.pointNum * (param.dataType === "complex" ? 2 : 1);
   const expectedBytes = expectedFloats * 8;
+  if (rawData.byteLength < binaryByteOffset + expectedBytes) {
+    throw new Error(
+      `Truncated raw output: expected ${expectedBytes} binary bytes at offset ${binaryByteOffset}, got ${rawData.byteLength - binaryByteOffset}`,
+    );
+  }
 
   // Slice out the exact binary portion
   const binaryBytes = rawData.subarray(binaryByteOffset, binaryByteOffset + expectedBytes);

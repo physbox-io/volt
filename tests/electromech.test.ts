@@ -121,7 +121,7 @@ const heldStepper = (amps: number, load: number, data: Record<string, unknown> =
     node('S', 'stepper', { detentTorque: 0, friction: 0.02, loadTorque: load, ...data }),
   ],
   edges: [
-    wire('I1', 'neg', 'S', 'a1'), wire('S', 'a2', 'I1', 'pos'), wire('S', 'a2', 'G', 'in'),
+    wire('I1', 'pos', 'S', 'a1'), wire('S', 'a2', 'I1', 'neg'), wire('S', 'a2', 'G', 'in'),
     wire('S', 'b1', 'G', 'in'), wire('S', 'b2', 'G', 'in'),
   ],
 });

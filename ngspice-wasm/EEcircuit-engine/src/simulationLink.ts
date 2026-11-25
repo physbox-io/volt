@@ -57,7 +57,7 @@ export class Simulation {
     if (
       e !== "Warning: can't find the initialization file spinit." &&
       e !== "Using SPARSE 1.3 as Direct Linear Solver" &&
-      !e.includes("code models") &&
+      !e.includes("/usr/local/lib/ngspice/") &&
       !e.includes("Any of the following steps may fail") &&
       !e.includes("OSDI")
     ) {
@@ -181,7 +181,10 @@ export class Simulation {
       return Promise.resolve();
     }
     if (!this.startPromise) {
-      this.startPromise = this.startInternal();
+      this.startPromise = this.startInternal().catch((err) => {
+        this.startPromise = null;
+        throw err;
+      });
     }
     return this.startPromise;
   };
@@ -198,19 +201,56 @@ export class Simulation {
       this.info = "";
       this.error = [];
       this.results = {} as ResultType;
+      this.dataRaw = new Uint8Array();
 
-      const FS = (this.spiceModule as unknown as { FS: { writeFile: (p: string, d: string) => void; readFile: (p: string) => Uint8Array } }).FS;
-      FS.writeFile("/test.cir", this.netList);
-      for (const cmd of this.commandList) {
-        this.log_debug(`cmd -> ${cmd}`);
-        this.command!(cmd);
+      const FS = (this.spiceModule as unknown as {
+        FS: {
+          writeFile: (p: string, d: string) => void;
+          readFile: (p: string) => Uint8Array;
+          unlink: (p: string) => void;
+        };
+      }).FS;
+
+      // Remove any previous raw file so a failed run can never return stale data.
+      try {
+        FS.unlink("out.raw");
+      } catch {
+        // File does not exist yet.
       }
 
+      FS.writeFile("/test.cir", this.netList);
+      let sourced = false;
       try {
-        this.dataRaw = FS.readFile("out.raw") ?? new Uint8Array();
-        this.results = readOutput(this.dataRaw);
-      } catch (e) {
-        this.log_debug(e);
+        for (const cmd of this.commandList) {
+          this.log_debug(`cmd -> ${cmd}`);
+          const rc = this.command!(cmd);
+          if (cmd === "source test.cir") {
+            sourced = rc === 0;
+          }
+          if (rc !== 0 && (cmd === "source test.cir" || cmd === "run")) {
+            this.log_debug(`command failed (${rc}): ${cmd}`);
+            break;
+          }
+        }
+
+        try {
+          this.dataRaw = FS.readFile("out.raw") ?? new Uint8Array();
+          this.results = readOutput(this.dataRaw);
+        } catch (e) {
+          this.log_debug(e);
+        } finally {
+          this.dataRaw = new Uint8Array();
+          try {
+            FS.unlink("out.raw");
+          } catch {
+            // Ignore if write out.raw never created it.
+          }
+        }
+      } finally {
+        if (sourced) {
+          // Free the parsed circuit (ft_circuits) so WASM heap does not grow across runs.
+          this.command!("remcirc");
+        }
       }
       return this.results;
     };

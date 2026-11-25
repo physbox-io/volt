@@ -302,6 +302,61 @@ describe('DC paths', () => {
     expect(dcPathGroups('multimeter', { mode: 'voltage' }, ['pos', 'neg'])).toEqual([]);
     expect(dcPathGroups('multimeter', { mode: 'current' }, ['pos', 'neg'])).toEqual([['pos', 'neg']]);
   });
+
+  it('treats MOSFET gates and 7-segment 1G probes as DC-isolated', () => {
+    expect(dcPathGroups('nmos', {}, ['d', 'g', 's'])).toEqual([['d', 's']]);
+    expect(dcPathGroups('pmos', {}, ['d', 'g', 's'])).toEqual([['d', 's']]);
+    expect(dcPathGroups('sevenseg', {}, ['a', 'b', 'common'])).toEqual([]);
+  });
+
+  it('catches conflicting power rails, voltage-source loops, and single-pin misspelled net labels', () => {
+    // Single misspelled netlabel wired to 1 device pin
+    const lonely = check(
+      [
+        node('V1', 'voltage', { voltage: 5 }),
+        node('R1', 'resistor', { resistance: 1000 }),
+        node('L1', 'netlabel', { net: 'TYPO_NET' }),
+        node('GND1', 'ground'),
+      ],
+      [
+        wire('V1', 'pos', 'R1', 'in'),
+        wire('R1', 'out', 'L1', 'in'),
+        wire('V1', 'neg', 'GND1', 'in'),
+      ],
+    );
+    expect(titles(lonely)).toContain('Nothing else is on the net "TYPO_NET"');
+
+    // Conflicting power rails wired together
+    const conflict = check(
+      [
+        node('PR1', 'powerrail', { rail: '+5V', voltage: 5 }),
+        node('PR2', 'powerrail', { rail: '+12V', voltage: 12 }),
+        node('R1', 'resistor', { resistance: 1000 }),
+        node('GND1', 'ground'),
+      ],
+      [
+        wire('PR1', 'in', 'PR2', 'in'),
+        wire('PR1', 'in', 'R1', 'in'),
+        wire('R1', 'out', 'GND1', 'in'),
+      ],
+    );
+    expect(ids(conflict).some(id => id.startsWith('erc:rail-conflict:'))).toBe(true);
+
+    // Parallel voltage sources (voltage-source loop)
+    const loop = check(
+      [
+        node('V1', 'voltage', { voltage: 5 }),
+        node('V2', 'voltage', { voltage: 9 }),
+        node('GND1', 'ground'),
+      ],
+      [
+        wire('V1', 'pos', 'V2', 'pos'),
+        wire('V1', 'neg', 'GND1', 'in'),
+        wire('V2', 'neg', 'GND1', 'in'),
+      ],
+    );
+    expect(ids(loop).some(id => id.startsWith('erc:vsource-loop:'))).toBe(true);
+  });
 });
 
 describe('pin names', () => {
